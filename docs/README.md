@@ -1,20 +1,39 @@
 # Monorepo setup
 
-1. (poetry monoranger)[https://pypi.org/project/poetry-monoranger-plugin/]
-    a. (directory structures is also mentioned here and how to add individual services / libraries as dependencies)
-2. Brainstorming recommendations: https://chatgpt.com/c/67cec69d-e0f4-8006-ac22-f047fed8f9c3
-3. https://github.com/ag14774/poetry-monoranger-plugin
+## Repository Structure
 
+```text
+.
+├── services/      # Microservices
+├── libs/         # Shared libraries
+├── infra/        # Infrastructure code
+├── scripts/      # Utility scripts
+├── libs/db/      # database
+├── docs/         # Documentation
+└── tests/        # Common test utilities
+```
 
-# Python version
+## Python version
 - We use Python 3.12 since airflow supports that version, and not 3.13 for now
 
 
-# Production build with poetry
+## Production build for packages with poetry
 TODO: `poetry build`
 
 
-# Monorepo setup
+## Installation
+
+1. Install Poetry:
+
+```bash
+curl -sSL https://install.python-poetry.org | python3 -
+```
+
+2. Install dependencies:
+
+```bash
+poetry install
+```
 
 ## Local Libs (X-service dependencies)
 
