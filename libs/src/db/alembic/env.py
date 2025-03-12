@@ -6,7 +6,11 @@ from sqlalchemy import pool
 from alembic import context
 from sqlmodel import SQLModel
 
-from db.session import engine
+from db.session import async_engine, sync_engine
+
+# import services / libs models here for migrations discovery!
+# from services.linkedin_integration.models import LinkedInAccount, LinkedInPost, LinkedInComment, LinkedInReaction, LinkedInAnalytics, LinkedInPostAnalytics, EmployeeAdvocacy
+
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -60,7 +64,7 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    connectable = engine
+    connectable = sync_engine
     # engine_from_config(
     #     config.get_section(config.config_ini_section, {}),
     #     prefix="sqlalchemy.",

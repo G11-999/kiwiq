@@ -9,8 +9,19 @@ from typing import Any, Dict, Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 
-project_root = Path(__file__).resolve().parent.parent.parent.parent
-ENV_FILE_PATH = project_root / ".env"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+DATA_ROOT = PROJECT_ROOT / "data"
+
+# Ensure DATA_ROOT directory exists
+if not DATA_ROOT.exists():
+    try:
+        DATA_ROOT.mkdir(parents=True, exist_ok=True)
+        print(f"Created data directory at {DATA_ROOT}")
+    except Exception as e:
+        print(f"Warning: Failed to create data directory at {DATA_ROOT}: {e}")
+
+
+ENV_FILE_PATH = PROJECT_ROOT / ".env"
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
@@ -43,6 +54,13 @@ class Settings(BaseSettings):
     
     # Worker pool settings
     WORKER_POOL_SIZE: int = 4
+
+    # LinkedIn integration settings
+    LINKEDIN_CLIENT_ID: str = ""
+    LINKEDIN_CLIENT_SECRET: str = ""
+    LINKEDIN_ACCESS_TOKEN: str = ""
+    LINKEDIN_API_VERSION: str = "202502"
+    LINKEDIN_REDIRECT_URI: str = ""
     
     model_config = SettingsConfigDict(
         env_file=ENV_FILE_PATH,

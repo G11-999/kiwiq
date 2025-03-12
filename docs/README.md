@@ -80,4 +80,14 @@ Also ensure the following setting in your VS code settings: (it should be there 
 }
 ```
 
+5. Add `services` to pythonpath for importing them in code
+
+```bash
+PYTHONPATH=./libs:./services
+
+# OR!
+
+PYTHONPATH=./services
+```
+
 ## DB
