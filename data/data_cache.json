@@ -1,0 +1,2316 @@
+{
+    "member_organization_roles_AQWH5v-V15F1tQQlPzAf7bFmAKKazuC17ZUfpyJrheBVxkZIacaMvri7RlQmo7mFsKY_RlXzO9fQCYRvr28VXhDR_-AlgDZWZXrInRrV2x00dqRAzIFkxRFagEwoZ1JUkqD_taX4D6vhy2tXag-e0WStTxpnw_N_B4m3A2DmGFUXFJUHzNFZ4FxXFx3VFQG3VoH55CVqPkxYhVVWdQeeePP8oUyMzRH4wsMHUmF-u9qxD8BWqc5ou9kUIzeN0ic-kuLRWDPXhoLZ8Em_59zeYZW6WntDPNnoOe_vWjYc3lKb3PHXQzJPXIuD2qfkAzrlRHlMbEUdzH3lFxfoZhM1571SNQEMaw": {
+        "elements": [
+            {
+                "roleAssignee": "urn:li:person:NxwL-IvR2n",
+                "state": "APPROVED",
+                "lastModified": {
+                    "actor": "urn:li:person:qUvas1UvE2",
+                    "impersonator": "urn:li:servicePrincipal:organization",
+                    "time": 1729669208781
+                },
+                "role": "ADMINISTRATOR",
+                "created": {
+                    "actor": "urn:li:person:qUvas1UvE2",
+                    "impersonator": "urn:li:servicePrincipal:organization",
+                    "time": 1729669208781
+                },
+                "organization": "urn:li:organization:102995539"
+            },
+            {
+                "roleAssignee": "urn:li:person:NxwL-IvR2n",
+                "state": "APPROVED",
+                "lastModified": {
+                    "actor": "urn:li:person:qUvas1UvE2",
+                    "impersonator": "urn:li:servicePrincipal:organization",
+                    "time": 1736235714339
+                },
+                "role": "ADMINISTRATOR",
+                "created": {
+                    "actor": "urn:li:person:qUvas1UvE2",
+                    "impersonator": "urn:li:servicePrincipal:organization",
+                    "time": 1736235714339
+                },
+                "organization": "urn:li:organization:105029503"
+            }
+        ]
+    },
+    "posts_urn:li:organization:105029503_50_None_None_None": [
+        {
+            "id": "urn:li:ugcPost:7304968765245411329",
+            "content_text": "𝐊𝐞𝐞𝐩𝐢𝐧𝐠 𝐔𝐩 𝐖𝐢𝐭𝐡 𝐀𝐈: 𝐌𝐚𝐫𝐤𝐞𝐭𝐢𝐧𝐠 𝐄𝐝𝐢𝐭𝐢𝐨𝐧 \\(𝐰𝐞𝐞𝐤 𝐨𝐟 𝐌𝐚𝐫 𝟑\\)\n\n Quick snapshot of seven of the top AI news drops from the last week:\n\n🚀 Manus AI: China’s Autonomous AI Agent\n A Chinese startup, Monica, has unveiled Manus AI—an autonomous “general agent” that can perform complex tasks without human guidance.\n\n🎨 Coca-Cola VP Shares Lessons from GenAI Journey\n Coca-Cola has been at the forefront of GenAI-powered marketing, starting with its \"Create Real Magic\" platform.\n\n🤖 Salesforce Launches Agentforce 2dx\n Salesforce introduced Agentforce 2dx, a major update enabling AI agents to operate autonomously across enterprise applications.\n\n🔎 Google Pilots AI-Only Search Mode\n Google launched an experimental search engine that replaces the classic 10 blue links with AI-generated summaries.\n\n📊 MediaOne Showcases AI Marketing Solutions at DMWF 2025\n At the Digital Marketing World Forum 2025, MediaOne demonstrated its new AI tool, Digimetics.ai, designed to revolutionize digital marketing strategy.\n\n💰 Advertising Giant WPP Partners with Stability AI\n WPP has invested in Stability AI to integrate advanced AI into its marketing services.\n\n🧠 Anthropic CEO Predicts Imminent Superintelligent AI\n Dario Amodei, CEO of Anthropic, predicts that superintelligent AI—systems surpassing human intelligence—could emerge as early as next year.",
+            "created_at": "2025-03-11T02:27:53.818000",
+            "account_id": "urn:li:organization:105029503",
+            "media_urls": [
+                "{\"title\": \"Keeping Up With AI: Marketing Edition (Week of March 3)\", \"id\": \"urn:li:document:D4E1FAQFgEjynYlolKw\"}"
+            ],
+            "is_published": true
+        },
+        {
+            "id": "urn:li:ugcPost:7302440618364915712",
+            "content_text": "𝐊𝐞𝐞𝐩𝐢𝐧𝐠 𝐔𝐩 𝐖𝐢𝐭𝐡 𝐀𝐈: 𝐌𝐚𝐫𝐤𝐞𝐭𝐢𝐧𝐠 𝐄𝐝𝐢𝐭𝐢𝐨𝐧 \\(𝐰𝐞𝐞𝐤 𝐨𝐟 𝐅𝐞𝐛 24\\)\nQuick snapshot of seven of the top AI news drops from the last 1 week:\n\n⚛️ OpenAI Launches GPT 4.5\nOpenAI released GPT-4.5, their latest large language model -- mixed reviews from experts on how much of an improvement it is.\n\n🏯 Anthropic Launches Claude Sonnet 3.7\nFirst hybrid reasoning model, with a standard mode for quick responses and an \"extended thinking\" mode for more reasoning.\n\n🤖 xAI's Grok3 launches 2 new features for Advertisers\nX launches 2 new features - Analyze Campaign with Grok, and Prefill with Grok.\n\n🎨 AI Search Engines \\(continue to\\) shake Up SEO\nAI-powered browsers \\(like Perplexity’s \"Comet\"\\) deliver direct answers, reducing clicks to websites. More about this later.\n\n📸 Interesting study about AI chatbots vs Search\nAI chatbots are more action-oriented than Traditional Search - so the way you position yourself must change.\n\n📈 Adobe Study: CMOs Under Pressure to Deliver AI-Driven Growth\n78% of CMOs say leadership expects AI-led growth, but few have mastered it.\n\n🔃 Adobe Study: AI Increases Marketing Workload\n56% of teams say GenAI adds complexity, requiring better workflows to see real efficiency gains.\n\n\n\n\\(Links in comments\\)",
+            "created_at": "2025-03-04T03:01:56.384000",
+            "account_id": "urn:li:organization:105029503",
+            "media_urls": [
+                "{\"title\": \"Keeping Up With AI: Marketing Edition (Week of Feb 24)\", \"id\": \"urn:li:document:D561FAQF9MphPfNppXg\"}"
+            ],
+            "is_published": true
+        },
+        {
+            "id": "urn:li:share:7300938514823618560",
+            "content_text": "A great shot of Friday marketer brain juice by @[Alex Lieberman](urn:li:person:35919zhXDb).",
+            "created_at": "2025-02-27T23:33:06.940000",
+            "account_id": "urn:li:organization:105029503",
+            "media_urls": [
+                "[]"
+            ],
+            "is_published": true
+        },
+        {
+            "id": "urn:li:ugcPost:7299881440480022528",
+            "content_text": "𝐊𝐞𝐞𝐩𝐢𝐧𝐠 𝐔𝐩 𝐖𝐢𝐭𝐡 𝐀𝐈: 𝐌𝐚𝐫𝐤𝐞𝐭𝐢𝐧𝐠 𝐄𝐝𝐢𝐭𝐢𝐨𝐧 \\(𝐰𝐞𝐞𝐤 𝐨𝐟 𝐅𝐞𝐛 𝟏𝟕\\)\nQuick snapshot of seven of the top AI news drops from the last 1 week:\n\n⚛️ 𝐌𝐢𝐜𝐫𝐨𝐬𝐨𝐟𝐭 𝐔𝐧𝐯𝐞𝐢𝐥𝐬 𝐓𝐨𝐩𝐨𝐜𝐨𝐧𝐝𝐮𝐜𝐭𝐨𝐫\nMicrosoft announced the creation of a Topoconductor - a novel state of matter that could dramatically enhance AI computing capabilities. \n\n🚀 𝐆𝐨𝐨𝐠𝐥𝐞 𝐒𝐮𝐩𝐞𝐫𝐜𝐡𝐚𝐫𝐠𝐞𝐬 𝐒𝐞𝐚𝐫𝐜𝐡 𝐀𝐝𝐬 𝐰𝐢𝐭𝐡 𝐀𝐈\nGoogle enhanced its AI-powered search ads, improving precision and optimization. \n\n🤖 𝐱𝐀𝐈’𝐬 𝐆𝐫𝐨𝐤 𝟑 𝐒𝐭𝐞𝐩𝐬 𝐮𝐩 𝐂𝐨𝐦𝐩𝐞𝐭𝐢𝐭𝐢𝐨𝐧\nxAI launched Grok 3, a ChatGPT rival with advanced natural language capabilities. \n\n🎨 𝐀𝐝𝐨𝐛𝐞 𝐑𝐨𝐥𝐥𝐬 𝐎𝐮𝐭 𝐀𝐈 𝐅𝐞𝐚𝐭𝐮𝐫𝐞𝐬 𝐟𝐨𝐫 𝐂𝐫𝐞𝐚𝐭𝐢𝐯𝐞 𝐒𝐮𝐢𝐭𝐞𝐬\nAdobe’s new AI updates promise quicker turnaround times with optimized creative workflows.\n\n📸 𝐌𝐞𝐭𝐚 𝐔𝐧𝐯𝐞𝐢𝐥𝐬 𝐀𝐈 𝐓𝐨𝐨𝐥𝐬 𝐟𝐨𝐫 𝐈𝐧𝐬𝐭𝐚𝐠𝐫𝐚𝐦 𝐌𝐚𝐫𝐤𝐞𝐭𝐢𝐧𝐠\nMeta’s latest suite of AI features targets Instagram, promising improved audience segmentation and engagement metrics. \n\n⚖️ 𝐔𝐒 𝐂𝐨𝐮𝐫𝐭 𝐑𝐮𝐥𝐞𝐬 𝐨𝐧 𝐀𝐈-𝐆𝐞𝐧𝐞𝐫𝐚𝐭𝐞𝐝 𝐂𝐨𝐧𝐭𝐞𝐧𝐭 𝐂𝐨𝐩𝐲𝐫𝐢𝐠𝐡𝐭\nA recent US court decision clarified copyright issues around AI-generated content, establishing guidelines for digital content creation. \n\n📈 𝐍𝐞𝐰 𝐒𝐭𝐮𝐝𝐲: 𝐆𝐞𝐧𝐞𝐫𝐚𝐭𝐢𝐯𝐞 𝐀𝐈 𝐓𝐫𝐢𝐩𝐥𝐞𝐬 𝐄𝐟𝐟𝐢𝐜𝐢𝐞𝐧𝐜𝐲\nA recent study from the Marketing AI Institute shows that generative AI can triple efficiency in marketing tasks—from content creation to campaign management. ",
+            "created_at": "2025-02-25T01:32:41.004000",
+            "account_id": "urn:li:organization:105029503",
+            "media_urls": [
+                "{\"title\": \"Keeping Up With AI: Marketing Edition (Week of Feb 17)\", \"id\": \"urn:li:document:D4E1FAQGjR-JvrbtUtQ\"}"
+            ],
+            "is_published": true
+        },
+        {
+            "id": "urn:li:share:7298782983010889729",
+            "content_text": "Looks like something is cooking 🥘",
+            "created_at": "2025-02-22T00:47:48.104000",
+            "account_id": "urn:li:organization:105029503",
+            "media_urls": [
+                "[]"
+            ],
+            "is_published": true
+        },
+        {
+            "id": "urn:li:share:7295545337803354112",
+            "content_text": "Interesting take on Super Bowl marketing from a FinTech perspective by one of our Experts in Residence, @[Khyati Srivastava ✨](urn:li:person:UPV9MhVHZy). \n\nStepping into 2025, we are increasingly hearing—beyond the FinTech space—a shift from cost-cutting to driving smarter, sustainable growth. This may not be a passing trend; it could be a tactical switching of gears that successful companies will now start making to make additional investments count and grow smarter and faster.\n\nStay tuned for updates on how we are helping marketing teams make this shift, and grow smart! \n\n{hashtag|\\#|AIInMarketing} {hashtag|\\#|MarketingAttribution} {hashtag|\\#|AIGrowthAnalyst} {hashtag|\\#|AIForMarketing}",
+            "created_at": "2025-02-13T02:22:33.442000",
+            "account_id": "urn:li:organization:105029503",
+            "media_urls": [
+                "[]"
+            ],
+            "is_published": true
+        },
+        {
+            "id": "urn:li:share:7294797456192520192",
+            "content_text": "💡 {hashtag|\\#|AI} companies and products were all over the {hashtag|\\#|Superbowl} yesterday.  Sponsorships create multiple marketing touchpoints—OOH, digital, in-venue activations, and paid social. As @[Khyati Srivastava ✨](urn:li:person:UPV9MhVHZy) knows from @[American Express](urn:li:organization:1277) & @[Wells Fargo](urn:li:organization:1235), capturing mindshare drives revenue.  But it's tough to justify the spend without a clear way to track attribution and ROI across fragmented channels. \n\n🏈 That’s where @[KiwiQ AI](urn:li:organization:105029503) comes in—an {hashtag|\\#|AIfirst} {hashtag|\\#|marketing} platform to help marketers analyze performance, measure ROI, and optimize in real-time.",
+            "created_at": "2025-02-11T00:50:44.536000",
+            "account_id": "urn:li:organization:105029503",
+            "media_urls": [
+                "[]"
+            ],
+            "is_published": true
+        },
+        {
+            "id": "urn:li:share:7289735722838700032",
+            "content_text": "🪩  @[DeepSeek AI](urn:li:organization:106112505) Just Made AI Way More Interesting for Marketers\n\nYou must have heard about DeepSeek's recent AI breakthrough \\(even if you were living under a rock\\), but here’s the TL:DR and why you should care about it as a marketer. \n\n🍰 TL:DR: DeepSeek-R1 has demonstrated performance on par with or exceeding OpenAI's models in key benchmarks, spending only $5.6 million versus billions by others like OpenAI and Anthropic.  \nDeepSeek's models also require significantly less computational power than their competitors \\(in part, by using a Mixture of Expert systems\\). \n\nWhy you should care as a Marketer? \n\n🥇  First, their use of reinforcement learning has led to significant advancements in reasoning capabilities \\(and how to attain them\\). This means DeepSeek’s AI doesn’t just rely on static datasets—it learns through feedback loops, optimizing its decision-making over time. Instead of simply learning from patterns, it refines strategies dynamically. As a marketer, this could be powerful. Imagine AI that is trained to think critically like the world’s best marketer, so it can recommend campaign optimizations by thinking like an expert—and not with memorized patterns. \n\n🥈 But here's the exciting part: they've made this open-source. Think of it as giving businesses the freedom to build AI in-house, tailor it to their specific marketing needs, and avoid dependency on external AI providers. Now, companies can train AI using their own customer journey data, ad performance metrics, and sales funnels—without being tied to proprietary AI tools.\n\n🥉 The most exciting aspect? This isn't just about DeepSeek— they've opened the door for a new wave of innovation in marketing technology. With their approach, companies can now develop Small Language Models \\(SLMs\\) that offer:\n\n- Greater affordability and efficiency \\(lower computing power results in reduced costs\\)\n- Ideal for in-house deployment \\(your sensitive data remains secure\\)\n- Targeted towards specific marketing tasks \\(such as analyzing customer journeys or optimizing ad performance across various channels\\)\n\n🚀  Bottom line: The barriers to sophisticated AI in marketing continue to drop dramatically, but keeping up with emerging trends is going to remain key. If you are interested to explore some custom functionalities for your marketing team using DeepSeek or similar approaches, let’s connect.\n\n{hashtag|\\#|MarketingInnovation} {hashtag|\\#|AI} {hashtag|\\#|MarTech} {hashtag|\\#|DeepSeek}",
+            "created_at": "2025-01-28T01:37:13.390000",
+            "account_id": "urn:li:organization:105029503",
+            "media_urls": [
+                "[]"
+            ],
+            "is_published": true
+        },
+        {
+            "id": "urn:li:ugcPost:7287556299427393536",
+            "content_text": "It’s 2027. Picture this vision for your day as a Marketer:\n\n- Cross-channel data analyzed before your morning coffee\n- Direct control over campaign optimizations, without needing specialized teams or agencies\n- Instant ability to test messaging across email, social & web, with A/B tests running and being monitored automatically across all channels\n\nThis isn't a lazy wishlist— it's the future of marketing operations that our Expert in Residence, @[Khyati Srivastava ✨](urn:li:person:UPV9MhVHZy), sees on the horizon.\n\n“I'm able to create a campaign and then I'm able to be my own marketing ops person to see how it's performing so I can continue iterating.”\n\nAt KiwiQ AI, we're super excited about this vision. We're building our AI agents to be the always-on marketing partners that make this future possible—where every marketer can run sophisticated, data-driven campaigns without drowning in operations.\n\n\"P.S. \"We’d still recommend coffee before checking those open rates ☕️\"\n\n{hashtag|\\#|FutureofMarketingOps} {hashtag|\\#|MarTech} {hashtag|\\#|AIinMarketing}",
+            "created_at": "2025-01-22T01:16:58.319000",
+            "account_id": "urn:li:organization:105029503",
+            "media_urls": [
+                "{\"id\": \"urn:li:video:D5605AQEQGCXb973O1w\"}"
+            ],
+            "is_published": true
+        },
+        {
+            "id": "urn:li:share:7285727238841409540",
+            "content_text": "✨ 2025: The Year of Truly Personal Marketing? ✨\n\nThe world of marketing is evolving, and your customers don’t want to be treated like a \"segment\" anymore. As Sophie Musumeci mentions in this super article on CMSWire, \"In 2025, AI-driven hyper-personalization will be non-negotiable for brands that want to stand out.\"\n\nThis shift presents an exciting opportunity for marketers to go beyond superficial personalization. With the right tools and strategies, AI can empower us to:\n✅ Create customer journeys and experiences that feel personal, not generic.\n✅ Respond dynamically to behaviors and preferences in real-time.\n✅ Progressively build deeper connections with every interaction.\n\nCheck out the entire article “Top-6 Marketing Technology Trends to Watch This Year” by CMSWire \\(link in comments\\).",
+            "created_at": "2025-01-17T00:08:56.131000",
+            "account_id": "urn:li:organization:105029503",
+            "media_urls": [
+                "[]"
+            ],
+            "is_published": true
+        },
+        {
+            "id": "urn:li:ugcPost:7284625189345075200",
+            "content_text": "Google's latest white paper on AI Agents provides a glimpse into how marketing teams will work in the very near future. Think of the jump from spreadsheets to marketing automation. This could be way bigger. Here's why 👇\n\n1. AI is evolving from advisor to orchestrator \nFrom the whitepaper: AI Agents independently plan and adapt actions based on feedback. \nMarketer impact: Imagine a system that spots dropping conversions, identifies why and adjusts targeting – while you're still in that budget meeting.\n\n2. The magic is in the connections\nFrom the whitepaper: AI Agents coordinate across multiple tools simultaneously. \nMarketer impact: No more jumping between LinkedIn Ads, HubSpot, and Salesforce. Track entire customer journeys in real time.\n\n3. They learn like seasoned pros \nFrom the whitepaper: Unlike traditional software, Agents improve through continuous learning. \nMarketer impact: Just like your best team members, they learn what works and optimize across channels – getting smarter with every campaign.\n\nWhy are marketers uniquely positioned? We live at the intersection of data and human behavior, making our world one of the most complex systems out there. Agentic automation can take the heavy lifting off our plates, finally allowing us to be truly strategic.\n\nRead the full white paper here 👇\n{hashtag|\\#|AIAgents} {hashtag|\\#|MarTech} {hashtag|\\#|Google} {hashtag|\\#|Marketing} {hashtag|\\#|AIForMarketers}",
+            "created_at": "2025-01-13T23:09:47.678000",
+            "account_id": "urn:li:organization:105029503",
+            "media_urls": [
+                "{\"title\": \"Google_Agents\", \"id\": \"urn:li:document:D4D1FAQEJnjjvcnFnqQ\"}"
+            ],
+            "is_published": true
+        },
+        {
+            "id": "urn:li:ugcPost:7283559591445983232",
+            "content_text": "Every marketing leader knows the pain of disconnected data and delayed insights.\nThat's why we're rethinking marketing intelligence with AI Agents - not to bring you the moon or double your MQLs overnight, but with a clear focus: helping marketers synthesize fragmented data MUCH faster.\nIn this carousel, our Expert in Residence @[Samuel Awezec](urn:li:person:CmTAhf0ujs) shares his excitement for AI Agents and perspectives on bridging the gap between data and decisions.\nSwipe through to explore the possibilities 👉 \n\n{hashtag|\\#|MarketingIntelligence} {hashtag|\\#|AIinMarketing} {hashtag|\\#|MarTech}",
+            "created_at": "2025-01-11T00:35:28.818000",
+            "account_id": "urn:li:organization:105029503",
+            "media_urls": [
+                "{\"title\": \"Building Smarter Marketing Tools\", \"id\": \"urn:li:document:D561FAQF0ln_e02Kv_g\"}"
+            ],
+            "is_published": true
+        },
+        {
+            "id": "urn:li:share:7282819272135876608",
+            "content_text": "Excited to welcome another founding Expert in Residence to KiwiQ AI! 🎉\n\n@[Khyati Srivastava ✨](urn:li:person:UPV9MhVHZy) brings over 16 years of marketing leadership from driving growth and innovation across global enterprises and high-growth startups. Known for her ability to position organizations for revenue growth and brand expansion, Khyati’s marketing approach prioritizes customer-centricity, clarity, and consistency to ensure strategies resonate with audiences and deliver measurable results.\n\nA recognized thought leader in payments and marketing, Khyati actively contributes to the tech and fintech communities as a speaker, mentor, thought leader, and subject matter expert. She has been featured at leading industry events like @[Money20/20](urn:li:organization:2452204), AI for Marketing, and Women in Tech, and partners with accelerators and startups including Sharebird, Plug and Play, and Y-Combinator-backed Criya. She is passionate about marketing being a strategic growth driver, and the fast-growing role of AI in redefining marketing across industries.\n\nWe look forward to leveraging Khyati's expertise and enthusiasm for AI, to shape our thinking and our products. 🚀 \n\n{hashtag|\\#|ExpertInResidence} {hashtag|\\#|AIInnovation} {hashtag|\\#|TechLeadership} {hashtag|\\#|MarketingExcellence} {hashtag|\\#|WomenInTech} {hashtag|\\#|AIInMarketing}",
+            "created_at": "2025-01-08T23:33:43.136000",
+            "account_id": "urn:li:organization:105029503",
+            "media_urls": [
+                "{\"altText\": \"\", \"id\": \"urn:li:image:D5622AQHYjgX353Wr7w\"}"
+            ],
+            "is_published": true
+        },
+        {
+            "id": "urn:li:ugcPost:7281070837758140418",
+            "content_text": "🔍 Are static customer journey maps holding you back?\n\n@[Samuel Awezec](urn:li:person:CmTAhf0ujs), one of our Experts in Residence, shared this challenge in a recent conversation:\n\n🗨️ \"We define fixed paths based on what we think works. But customers constantly show us new patterns—through sales calls, on-site discovery, product usage, and support interactions. We're just not equipped to capture these signals at scale.\"\n\nWhat if we could change that? \n\nSam is bullish on AI agents that can:\n✅ Discover organic user paths Marketing and Product teams haven’t mapped\n✅ Identify patterns across touchpoints in real-time\n✅ Test and validate—without engineering overhead\n\n💡 Catch this snippet where Sam shares his vision for AI agents to help move from static customer journey maps \\(painfully constructed\\) to customer journey intelligence.\n\nIf you are a Marketing, Growth, or Product leader passionate about reimagining customer journeys with AI, let’s connect. We’d love to learn from your perspectives, and explore how we can help! \n\\(Booking Link in comments\\)",
+            "created_at": "2025-01-04T03:46:03.780000",
+            "account_id": "urn:li:organization:105029503",
+            "media_urls": [
+                "{\"id\": \"urn:li:video:D5605AQETEuVSQF1Tlg\"}"
+            ],
+            "is_published": true
+        },
+        {
+            "id": "urn:li:ugcPost:7278175484159434752",
+            "content_text": "As 2024 draws to a close, we’ve been reflecting at @[KiwiQ AI](urn:li:organization:105029503) on what we’ve learned \\(and unlearned\\) this year. Here’s one of the insights that stands out.\n\nUnlocking the full potential of AI in marketing isn’t just about what the technology can do—it’s about the dance between humans understanding AI and AI understanding humans. Bridging this gap requires trust, experimentation and tools that meet us where we work.\n\n🎥 In a recent conversation, our Expert in Residence @[Samuel Awezec](urn:li:person:CmTAhf0ujs) captured this perfectly:\n\n1️⃣ Teams often lack clarity on how AI agents can truly help them work smarter.\n2️⃣ Seamless integration with tools like HubSpot, Marketo, and Salesforce is still a major hurdle.\n\"When it’s as easy as possible to integrate them into the tools you’re already \nusing… that’s when the real 'aha' moments happen.\" – Sam Awezec\n\nHere’s to a happy and reflective end to 2024—for us, for you, and for some of these AI tools we have come to rely so much on 🙂  Let’s make 2025 the year we close these gaps together.",
+            "created_at": "2024-12-27T04:00:57.779000",
+            "account_id": "urn:li:organization:105029503",
+            "media_urls": [
+                "{\"title\": \"Sam talking about what's holding back AI for marketers\", \"id\": \"urn:li:video:D5605AQH2QBSuN9OMAA\"}"
+            ],
+            "is_published": true
+        },
+        {
+            "id": "urn:li:share:7276930818634104832",
+            "content_text": "We are pumped to share that the amazing @[Samuel Awezec](urn:li:person:CmTAhf0ujs) is joining KiwiQ AI as a Founding Expert in Residence. Sam brings extensive experience in scaling Growth and Marketing from his roles at @[HubSpot](urn:li:organization:68529), @[GitLab](urn:li:organization:5101804), and Astronomer - and has a proven track record in driving product adoption and market expansion. \n\nAt KiwiQ AI, we are building AI agents to empower Marketing and Growth teams with enhanced intelligence - and are excited to have Sam’s deep expertise to guide us on our journey.\n\nIf you are a Marketing or Growth leader curious about AI agents, follow us along here on LinkedIn!",
+            "created_at": "2024-12-23T17:35:06.279000",
+            "account_id": "urn:li:organization:105029503",
+            "media_urls": [
+                "{\"altText\": \"\", \"id\": \"urn:li:image:D5622AQFEwwOET57ItA\"}"
+            ],
+            "is_published": true
+        },
+        {
+            "id": "urn:li:share:7275323692954361858",
+            "content_text": "Fantastic perspectives from @[Andy Sack](urn:li:person:NkekylVsjb) and @[Adam Brotman](urn:li:person:KPdtXHdNwi) on the @[CMO Confidential](urn:li:organization:96962795). \n\n💡 Key Takeaways: With AI-generated content everywhere, standing out will require:\n- Orders of magnitude more strategic thinking\n- Deeper customer understanding\n- More innovative and nimble experiments\nAnd a lot of this requires teams jointly embracing experimentation with AI. \n\nThe need for great marketing is not going anywhere. In fact, AI might just make it more accessible. ",
+            "created_at": "2024-12-19T07:08:57.538000",
+            "account_id": "urn:li:organization:105029503",
+            "media_urls": [
+                "[]"
+            ],
+            "is_published": true
+        },
+        {
+            "id": "urn:li:ugcPost:7273399602572070914",
+            "content_text": "🎯 \"Get AI to Work With You, Not Just For You\"\n\n@[Ryan Oistacher](urn:li:person:Ww-h\\_\\_kIES) \\(one of our Experts in Residence, and a Product Marketing Director at Netwrix\\) reveals the systematic approach his team uses to transform content workflows with AI.\n\nRyan and his team:\n- Start with chain-of-thought prompts and rich context\n- Validate through blind stakeholder testing\n- Feed the feedback back into the model\n- Scale proven workflows\n\nAnd the result? \n\"We're taking multi-week projects and completing them in 15-20 minutes. The real unlock isn't just time savings - it's our ability to run exponentially more experiments.\"\n\nAt KiwiQ AI, we are excited about making this kind of AI setup more intuitive for marketing teams, moving beyond content generation workflows. If you are a marketer thinking about this transformation, let's chat! \n\\(Get in touch with @[Founder B](urn:li:person:qUvas1UvE2)\\)\n\n{hashtag|\\#|MarketingAI} {hashtag|\\#|FutureOfWork} {hashtag|\\#|ChainOfThoughtPrompting}",
+            "created_at": "2024-12-13T23:43:18.753000",
+            "account_id": "urn:li:organization:105029503",
+            "media_urls": [
+                "{\"id\": \"urn:li:video:D5605AQHfjVBehzRjSg\"}"
+            ],
+            "is_published": true
+        },
+        {
+            "id": "urn:li:ugcPost:7271991110535667712",
+            "content_text": "🎯 \"I need middle managers for my AI army\"\n\nA fascinating observation from @[Katie Perry](urn:li:person:gV8v0rGMCe) \\(one of our Experts in Residence\\) on managing AI tools:\n\n\"I have specific writer assistants for different clients... it's kind of like my little army I have set up. If I was sophisticated enough to create a layer of middle management, that would be very interesting.\"\n\nWhile everyone is debating if AI is doing enough for marketing, she's asking another additional question: are we doing enough to maximize these AI tools?\n\nThree takeaways: \n1. The best AI users in marketing are treating their tools like a distributed team - with specific roles, clear context, and thoughtful workflow integration\n2. Even power users see gaps in how we orchestrate these tools. Katie's intuitive \"middle management\" analogy hints at an evolution in how we might work with AI in the future\n3. The fact that the best marketers are willing to put in significant effort to build and manage their AI stack suggests something important - there is massive value to unlock here. \n\nIn the coming weeks, we will share more expert snippets and insights. \n\nAnd if you are a Marketer \\(or Growth or Revenue person\\) interested to share your experiences, let’s chat! \\(contact: @[Founder B](urn:li:person:qUvas1UvE2)\\)\n\n{hashtag|\\#|MarketingAI} {hashtag|\\#|Marketing} {hashtag|\\#|FutureOfWork}",
+            "created_at": "2024-12-10T02:26:28.144000",
+            "account_id": "urn:li:organization:105029503",
+            "media_urls": [
+                "{\"id\": \"urn:li:video:D5605AQFq-lzifLSblg\"}"
+            ],
+            "is_published": true
+        },
+        {
+            "id": "urn:li:share:7270867137626288130",
+            "content_text": "Excited to announce another founding Expert in Residence with KiwiQ AI. \n\nRyan Oistacher is a true AI-first enterprise software marketing executive, with nearly 20 years of rich experience across marketing disciplines—product marketing, demand generation, marketing operations, content, and communications. He has been an accomplished marketer with several successful exits, navigating the landscapes of early-stage startups, scale-ups, publicly traded companies, and private firms. \n\nHe is keenly interested in the intersection of AI and marketing and is passionate about leveraging AI to accelerate growth and drive operational efficiencies.\n\nAnd we are pumped to learn from Ryan's nuanced observations and insights - as someone who understands the big picture but has also really spent time in the weeds of getting AI to work for his \\(and his teams'\\) workflows. ",
+            "created_at": "2024-12-07T00:00:12.033000",
+            "account_id": "urn:li:organization:105029503",
+            "media_urls": [
+                "{\"altText\": \"\", \"id\": \"urn:li:image:D5622AQEa30SpEtMgmA\"}"
+            ],
+            "is_published": true
+        },
+        {
+            "id": "urn:li:share:7267601367039373313",
+            "content_text": "🚀  Excited to launch our Founding Experts in Residence at KiwiQ AI! \n\nWe know Marketers \\(like everyone else\\) have been oversold AI over the last 2 years. But real impact is still lagging behind the promise.\n\nThat's why we at KiwiQ AI are creating a space on LinkedIn for AI-forward marketers to have honest conversations about what actually works.\n\nThrilled to announce one of our founding Experts in Residence:\n\n@[Katie Perry](urn:li:person:gV8v0rGMCe): Fractional CMO/Head of Marketing and Former Head of Marketing at Public.com and Suzy.com, she has been at the forefront of applying AI to unlock strategic marketing as an advisor to multiple startups. Her no-BS takes on marketing analytics and AI have helped teams cut through the hype and drive real outcomes. Katie is a frequently-cited thought leader, and has contributed insights to The Wall Street Journal, Bloomberg, CNN Business, Fortune, Forbes, Morning Brew, Business Insider, and IR Magazine. She is also a seasoned speaker, participating as a panelist/presenter at Advertising Week.\n\nWe are thrilled to partner with and learn from Katie as one of our founding experts here at KiwiQ AI!\n\n🎧  Stay tuned for expert insights, real conversations and product updates! \n\nhttps://kiwiq.ai\n{hashtag|\\#|AIinMarketing} {hashtag|\\#|MarketingIntelligence} {hashtag|\\#|B2BMarketing}",
+            "created_at": "2024-11-27T23:43:11.748000",
+            "account_id": "urn:li:organization:105029503",
+            "media_urls": [
+                "{\"altText\": \"\", \"id\": \"urn:li:image:D5622AQHQerMDxI9bdw\"}"
+            ],
+            "is_published": true
+        }
+    ],
+    "posts_urn:li:person:NxwL-IvR2n_50_None_None_None": [],
+    "batch_post_social_actions_urn:li:share:7267601367039373313_urn:li:share:7270867137626288130_urn:li:share:7275323692954361858_urn:li:share:7276930818634104832_urn:li:share:7282819272135876608_urn:li:share:7285727238841409540_urn:li:share:7289735722838700032_urn:li:share:7294797456192520192_urn:li:share:7295545337803354112_urn:li:share:7298782983010889729_urn:li:share:7300938514823618560_urn:li:ugcPost:7271991110535667712_urn:li:ugcPost:7273399602572070914_urn:li:ugcPost:7278175484159434752_urn:li:ugcPost:7281070837758140418_urn:li:ugcPost:7283559591445983232_urn:li:ugcPost:7284625189345075200_urn:li:ugcPost:7287556299427393536_urn:li:ugcPost:7299881440480022528_urn:li:ugcPost:7302440618364915712_urn:li:ugcPost:7304968765245411329": {
+        "urn:li:ugcPost:7271991110535667712": {
+            "likesSummary": {
+                "selectedLikes": [
+                    "urn:li:like:(urn:li:person:AGtsfbgtpv,urn:li:ugcPost:7271991110535667712)",
+                    "urn:li:like:(urn:li:person:PdYXmUu3Jg,urn:li:ugcPost:7271991110535667712)",
+                    "urn:li:like:(urn:li:person:-TXPR_4C2Y,urn:li:ugcPost:7271991110535667712)",
+                    "urn:li:like:(urn:li:person:4luBVJ6q_I,urn:li:ugcPost:7271991110535667712)",
+                    "urn:li:like:(urn:li:person:C6th1uyjFJ,urn:li:ugcPost:7271991110535667712)",
+                    "urn:li:like:(urn:li:person:6cLSUUeEdK,urn:li:ugcPost:7271991110535667712)",
+                    "urn:li:like:(urn:li:person:1TcfIiGPkq,urn:li:ugcPost:7271991110535667712)",
+                    "urn:li:like:(urn:li:person:KRvxAQOy49,urn:li:ugcPost:7271991110535667712)",
+                    "urn:li:like:(urn:li:person:emykL2bmTT,urn:li:ugcPost:7271991110535667712)",
+                    "urn:li:like:(urn:li:person:c165F7t69F,urn:li:ugcPost:7271991110535667712)",
+                    "urn:li:like:(urn:li:person:cF6MwIaLos,urn:li:ugcPost:7271991110535667712)",
+                    "urn:li:like:(urn:li:person:50lzple0Ol,urn:li:ugcPost:7271991110535667712)",
+                    "urn:li:like:(urn:li:person:uUKzERdPS3,urn:li:ugcPost:7271991110535667712)",
+                    "urn:li:like:(urn:li:person:Nd_h9lUOHj,urn:li:ugcPost:7271991110535667712)",
+                    "urn:li:like:(urn:li:person:Clw-B9s9WS,urn:li:ugcPost:7271991110535667712)",
+                    "urn:li:like:(urn:li:person:P7hxYWgz2r,urn:li:ugcPost:7271991110535667712)",
+                    "urn:li:like:(urn:li:person:-sTYS0VRAZ,urn:li:ugcPost:7271991110535667712)",
+                    "urn:li:like:(urn:li:person:G_aQ-RRL7p,urn:li:ugcPost:7271991110535667712)",
+                    "urn:li:like:(urn:li:person:I8uBPXEI3-,urn:li:ugcPost:7271991110535667712)",
+                    "urn:li:like:(urn:li:person:GzwVHeDj3H,urn:li:ugcPost:7271991110535667712)",
+                    "urn:li:like:(urn:li:person:zjHV6Lmr6O,urn:li:ugcPost:7271991110535667712)",
+                    "urn:li:like:(urn:li:person:d6ZOiSCxZd,urn:li:ugcPost:7271991110535667712)",
+                    "urn:li:like:(urn:li:person:DYZQgpnL6V,urn:li:ugcPost:7271991110535667712)",
+                    "urn:li:like:(urn:li:person:1h57O_YA4P,urn:li:ugcPost:7271991110535667712)",
+                    "urn:li:like:(urn:li:person:JhmqMgfZjh,urn:li:ugcPost:7271991110535667712)",
+                    "urn:li:like:(urn:li:person:-V2TRrNDxU,urn:li:ugcPost:7271991110535667712)",
+                    "urn:li:like:(urn:li:person:qUvas1UvE2,urn:li:ugcPost:7271991110535667712)",
+                    "urn:li:like:(urn:li:company:105029503,urn:li:ugcPost:7271991110535667712)",
+                    "urn:li:like:(urn:li:person:iJmowlppel,urn:li:ugcPost:7271991110535667712)"
+                ],
+                "aggregatedTotalLikes": 52,
+                "likedByCurrentUser": true,
+                "totalLikes": 52
+            },
+            "commentsSummary": {
+                "selectedComments": [
+                    "urn:li:comment:(urn:li:ugcPost:7271991110535667712,7272223326897344512)",
+                    "urn:li:comment:(urn:li:ugcPost:7271991110535667712,7272223299265282049)",
+                    "urn:li:comment:(urn:li:ugcPost:7271991110535667712,7272174407437955073)"
+                ],
+                "totalFirstLevelComments": 7,
+                "commentsState": "OPEN",
+                "aggregatedTotalComments": 7
+            },
+            "target": "urn:li:ugcPost:7271991110535667712"
+        },
+        "urn:li:share:7294797456192520192": {
+            "likesSummary": {
+                "selectedLikes": [
+                    "urn:li:like:(urn:li:person:qUvas1UvE2,urn:li:activity:7294797457165561858)",
+                    "urn:li:like:(urn:li:person:ymXuyWZcjV,urn:li:activity:7294797457165561858)",
+                    "urn:li:like:(urn:li:company:102995539,urn:li:activity:7294797457165561858)"
+                ],
+                "aggregatedTotalLikes": 3,
+                "likedByCurrentUser": false,
+                "totalLikes": 3
+            },
+            "commentsSummary": {
+                "selectedComments": [],
+                "totalFirstLevelComments": 0,
+                "commentsState": "OPEN",
+                "aggregatedTotalComments": 0
+            },
+            "target": "urn:li:activity:7294797457165561858"
+        },
+        "urn:li:ugcPost:7284625189345075200": {
+            "likesSummary": {
+                "selectedLikes": [
+                    "urn:li:like:(urn:li:company:102995539,urn:li:ugcPost:7284625189345075200)",
+                    "urn:li:like:(urn:li:person:9jpIHMYnDU,urn:li:ugcPost:7284625189345075200)",
+                    "urn:li:like:(urn:li:person:Nu5vEt7Ldt,urn:li:ugcPost:7284625189345075200)",
+                    "urn:li:like:(urn:li:person:2i1nE2ptoJ,urn:li:ugcPost:7284625189345075200)",
+                    "urn:li:like:(urn:li:person:5YVn502EJp,urn:li:ugcPost:7284625189345075200)",
+                    "urn:li:like:(urn:li:person:QyxjIZ7mTS,urn:li:ugcPost:7284625189345075200)",
+                    "urn:li:like:(urn:li:person:ABKbuKSpiH,urn:li:ugcPost:7284625189345075200)",
+                    "urn:li:like:(urn:li:person:jLVxETPWw8,urn:li:ugcPost:7284625189345075200)",
+                    "urn:li:like:(urn:li:person:WC39g7MUzl,urn:li:ugcPost:7284625189345075200)",
+                    "urn:li:like:(urn:li:person:T6dAd4KrS-,urn:li:ugcPost:7284625189345075200)",
+                    "urn:li:like:(urn:li:person:LhNpJeeihQ,urn:li:ugcPost:7284625189345075200)",
+                    "urn:li:like:(urn:li:company:2125042,urn:li:ugcPost:7284625189345075200)",
+                    "urn:li:like:(urn:li:person:NxwL-IvR2n,urn:li:ugcPost:7284625189345075200)",
+                    "urn:li:like:(urn:li:person:g5IZYZHFz5,urn:li:ugcPost:7284625189345075200)",
+                    "urn:li:like:(urn:li:person:NDKlDZRxex,urn:li:ugcPost:7284625189345075200)",
+                    "urn:li:like:(urn:li:person:wXAj09mBnD,urn:li:ugcPost:7284625189345075200)",
+                    "urn:li:like:(urn:li:person:fNT9nIStHG,urn:li:ugcPost:7284625189345075200)",
+                    "urn:li:like:(urn:li:person:b9z0WS5kbe,urn:li:ugcPost:7284625189345075200)",
+                    "urn:li:like:(urn:li:person:CPZuAXv_ZT,urn:li:ugcPost:7284625189345075200)",
+                    "urn:li:like:(urn:li:person:RV1Qi4e_Il,urn:li:ugcPost:7284625189345075200)",
+                    "urn:li:like:(urn:li:person:um3PwaPBzX,urn:li:ugcPost:7284625189345075200)",
+                    "urn:li:like:(urn:li:person:qUvas1UvE2,urn:li:ugcPost:7284625189345075200)",
+                    "urn:li:like:(urn:li:person:Slgrz0Yxt5,urn:li:ugcPost:7284625189345075200)",
+                    "urn:li:like:(urn:li:person:iJmowlppel,urn:li:ugcPost:7284625189345075200)"
+                ],
+                "aggregatedTotalLikes": 27,
+                "likedByCurrentUser": true,
+                "totalLikes": 27
+            },
+            "commentsSummary": {
+                "selectedComments": [
+                    "urn:li:comment:(urn:li:ugcPost:7284625189345075200,7286434557795401728)",
+                    "urn:li:comment:(urn:li:ugcPost:7284625189345075200,7284947840802394132)",
+                    "urn:li:comment:(urn:li:ugcPost:7284625189345075200,7284853655176888320)"
+                ],
+                "totalFirstLevelComments": 4,
+                "commentsState": "OPEN",
+                "aggregatedTotalComments": 4
+            },
+            "target": "urn:li:ugcPost:7284625189345075200"
+        },
+        "urn:li:share:7285727238841409540": {
+            "likesSummary": {
+                "selectedLikes": [
+                    "urn:li:like:(urn:li:person:Nu5vEt7Ldt,urn:li:activity:7285727239466270720)",
+                    "urn:li:like:(urn:li:person:fNT9nIStHG,urn:li:activity:7285727239466270720)",
+                    "urn:li:like:(urn:li:person:1mYDuNSivT,urn:li:activity:7285727239466270720)",
+                    "urn:li:like:(urn:li:person:1h57O_YA4P,urn:li:activity:7285727239466270720)",
+                    "urn:li:like:(urn:li:person:wXAj09mBnD,urn:li:activity:7285727239466270720)",
+                    "urn:li:like:(urn:li:person:4nxY8Zz3j8,urn:li:activity:7285727239466270720)",
+                    "urn:li:like:(urn:li:person:NxwL-IvR2n,urn:li:activity:7285727239466270720)",
+                    "urn:li:like:(urn:li:person:NakPzyluYJ,urn:li:activity:7285727239466270720)",
+                    "urn:li:like:(urn:li:person:2i1nE2ptoJ,urn:li:activity:7285727239466270720)",
+                    "urn:li:like:(urn:li:person:ta85mHxu1x,urn:li:activity:7285727239466270720)",
+                    "urn:li:like:(urn:li:company:102995539,urn:li:activity:7285727239466270720)",
+                    "urn:li:like:(urn:li:person:dCgSj6leY8,urn:li:activity:7285727239466270720)",
+                    "urn:li:like:(urn:li:person:LQJtkRTNmr,urn:li:activity:7285727239466270720)",
+                    "urn:li:like:(urn:li:person:qUvas1UvE2,urn:li:activity:7285727239466270720)",
+                    "urn:li:like:(urn:li:person:Slgrz0Yxt5,urn:li:activity:7285727239466270720)",
+                    "urn:li:like:(urn:li:company:105029503,urn:li:activity:7285727239466270720)"
+                ],
+                "aggregatedTotalLikes": 16,
+                "likedByCurrentUser": true,
+                "totalLikes": 16
+            },
+            "commentsSummary": {
+                "selectedComments": [
+                    "urn:li:comment:(urn:li:activity:7285727239466270720,7286502265417281536)",
+                    "urn:li:comment:(urn:li:activity:7285727239466270720,7285727837314019328)"
+                ],
+                "totalFirstLevelComments": 2,
+                "commentsState": "OPEN",
+                "aggregatedTotalComments": 2
+            },
+            "target": "urn:li:activity:7285727239466270720"
+        },
+        "urn:li:share:7270867137626288130": {
+            "likesSummary": {
+                "selectedLikes": [
+                    "urn:li:like:(urn:li:person:UuoA6peVTR,urn:li:activity:7270867138767138816)",
+                    "urn:li:like:(urn:li:person:NxwL-IvR2n,urn:li:activity:7270867138767138816)",
+                    "urn:li:like:(urn:li:company:105029503,urn:li:activity:7270867138767138816)",
+                    "urn:li:like:(urn:li:person:qUvas1UvE2,urn:li:activity:7270867138767138816)"
+                ],
+                "aggregatedTotalLikes": 4,
+                "likedByCurrentUser": true,
+                "totalLikes": 4
+            },
+            "commentsSummary": {
+                "selectedComments": [],
+                "totalFirstLevelComments": 0,
+                "commentsState": "OPEN",
+                "aggregatedTotalComments": 0
+            },
+            "target": "urn:li:activity:7270867138767138816"
+        },
+        "urn:li:share:7298782983010889729": {
+            "likesSummary": {
+                "selectedLikes": [
+                    "urn:li:like:(urn:li:person:Nu5vEt7Ldt,urn:li:activity:7298782983648419841)",
+                    "urn:li:like:(urn:li:person:dCgSj6leY8,urn:li:activity:7298782983648419841)",
+                    "urn:li:like:(urn:li:person:iJmowlppel,urn:li:activity:7298782983648419841)",
+                    "urn:li:like:(urn:li:person:qUvas1UvE2,urn:li:activity:7298782983648419841)"
+                ],
+                "aggregatedTotalLikes": 4,
+                "likedByCurrentUser": false,
+                "totalLikes": 4
+            },
+            "commentsSummary": {
+                "selectedComments": [],
+                "totalFirstLevelComments": 0,
+                "commentsState": "OPEN",
+                "aggregatedTotalComments": 0
+            },
+            "target": "urn:li:activity:7298782983648419841"
+        },
+        "urn:li:share:7267601367039373313": {
+            "likesSummary": {
+                "selectedLikes": [
+                    "urn:li:like:(urn:li:person:QAx2dQvQCv,urn:li:activity:7267601368574488577)",
+                    "urn:li:like:(urn:li:person:NxwL-IvR2n,urn:li:activity:7267601368574488577)",
+                    "urn:li:like:(urn:li:company:105029503,urn:li:activity:7267601368574488577)",
+                    "urn:li:like:(urn:li:person:gV8v0rGMCe,urn:li:activity:7267601368574488577)",
+                    "urn:li:like:(urn:li:person:iJmowlppel,urn:li:activity:7267601368574488577)"
+                ],
+                "aggregatedTotalLikes": 5,
+                "likedByCurrentUser": true,
+                "totalLikes": 5
+            },
+            "commentsSummary": {
+                "selectedComments": [
+                    "urn:li:comment:(urn:li:activity:7267601368574488577,7267607024467611648)"
+                ],
+                "totalFirstLevelComments": 1,
+                "commentsState": "OPEN",
+                "aggregatedTotalComments": 1
+            },
+            "target": "urn:li:activity:7267601368574488577"
+        },
+        "urn:li:share:7300938514823618560": {
+            "likesSummary": {
+                "selectedLikes": [
+                    "urn:li:like:(urn:li:person:Nu5vEt7Ldt,urn:li:activity:7300938515473649665)",
+                    "urn:li:like:(urn:li:person:dCgSj6leY8,urn:li:activity:7300938515473649665)",
+                    "urn:li:like:(urn:li:person:qUvas1UvE2,urn:li:activity:7300938515473649665)"
+                ],
+                "aggregatedTotalLikes": 3,
+                "likedByCurrentUser": false,
+                "totalLikes": 3
+            },
+            "commentsSummary": {
+                "selectedComments": [],
+                "totalFirstLevelComments": 0,
+                "commentsState": "OPEN",
+                "aggregatedTotalComments": 0
+            },
+            "target": "urn:li:activity:7300938515473649665"
+        },
+        "urn:li:share:7289735722838700032": {
+            "likesSummary": {
+                "selectedLikes": [
+                    "urn:li:like:(urn:li:person:idwsVg_nuS,urn:li:activity:7289735724281516032)",
+                    "urn:li:like:(urn:li:person:UPV9MhVHZy,urn:li:activity:7289735724281516032)",
+                    "urn:li:like:(urn:li:company:105029503,urn:li:activity:7289735724281516032)",
+                    "urn:li:like:(urn:li:person:Nu5vEt7Ldt,urn:li:activity:7289735724281516032)",
+                    "urn:li:like:(urn:li:person:NxwL-IvR2n,urn:li:activity:7289735724281516032)",
+                    "urn:li:like:(urn:li:person:T-U7NTgL8O,urn:li:activity:7289735724281516032)",
+                    "urn:li:like:(urn:li:person:1mYDuNSivT,urn:li:activity:7289735724281516032)",
+                    "urn:li:like:(urn:li:person:f8M2CJfWpo,urn:li:activity:7289735724281516032)",
+                    "urn:li:like:(urn:li:person:smfz4Da4oq,urn:li:activity:7289735724281516032)",
+                    "urn:li:like:(urn:li:person:gWbqSDVcSF,urn:li:activity:7289735724281516032)",
+                    "urn:li:like:(urn:li:person:NakPzyluYJ,urn:li:activity:7289735724281516032)",
+                    "urn:li:like:(urn:li:person:dCgSj6leY8,urn:li:activity:7289735724281516032)",
+                    "urn:li:like:(urn:li:person:fNT9nIStHG,urn:li:activity:7289735724281516032)",
+                    "urn:li:like:(urn:li:person:iJmowlppel,urn:li:activity:7289735724281516032)",
+                    "urn:li:like:(urn:li:person:qUvas1UvE2,urn:li:activity:7289735724281516032)",
+                    "urn:li:like:(urn:li:person:Aozs8B4IN7,urn:li:activity:7289735724281516032)",
+                    "urn:li:like:(urn:li:person:WYiDbQIUzy,urn:li:activity:7289735724281516032)"
+                ],
+                "aggregatedTotalLikes": 17,
+                "likedByCurrentUser": true,
+                "totalLikes": 17
+            },
+            "commentsSummary": {
+                "selectedComments": [],
+                "totalFirstLevelComments": 0,
+                "commentsState": "OPEN",
+                "aggregatedTotalComments": 0
+            },
+            "target": "urn:li:activity:7289735724281516032"
+        },
+        "urn:li:ugcPost:7273399602572070914": {
+            "likesSummary": {
+                "selectedLikes": [
+                    "urn:li:like:(urn:li:person:GPynaeC7oE,urn:li:ugcPost:7273399602572070914)",
+                    "urn:li:like:(urn:li:person:iJmowlppel,urn:li:ugcPost:7273399602572070914)",
+                    "urn:li:like:(urn:li:person:LQJtkRTNmr,urn:li:ugcPost:7273399602572070914)",
+                    "urn:li:like:(urn:li:person:fNT9nIStHG,urn:li:ugcPost:7273399602572070914)",
+                    "urn:li:like:(urn:li:person:dCgSj6leY8,urn:li:ugcPost:7273399602572070914)",
+                    "urn:li:like:(urn:li:person:2FgsFOTMz-,urn:li:ugcPost:7273399602572070914)",
+                    "urn:li:like:(urn:li:person:d6ZOiSCxZd,urn:li:ugcPost:7273399602572070914)",
+                    "urn:li:like:(urn:li:person:1h57O_YA4P,urn:li:ugcPost:7273399602572070914)",
+                    "urn:li:like:(urn:li:person:JUIX8j0bVV,urn:li:ugcPost:7273399602572070914)",
+                    "urn:li:like:(urn:li:person:ku1VUXucIu,urn:li:ugcPost:7273399602572070914)",
+                    "urn:li:like:(urn:li:person:NxwL-IvR2n,urn:li:ugcPost:7273399602572070914)",
+                    "urn:li:like:(urn:li:person:QAx2dQvQCv,urn:li:ugcPost:7273399602572070914)",
+                    "urn:li:like:(urn:li:person:Cgg5CgX1wE,urn:li:ugcPost:7273399602572070914)",
+                    "urn:li:like:(urn:li:person:ta85mHxu1x,urn:li:ugcPost:7273399602572070914)",
+                    "urn:li:like:(urn:li:person:GAVMnS-twq,urn:li:ugcPost:7273399602572070914)",
+                    "urn:li:like:(urn:li:company:105029503,urn:li:ugcPost:7273399602572070914)",
+                    "urn:li:like:(urn:li:person:NakPzyluYJ,urn:li:ugcPost:7273399602572070914)",
+                    "urn:li:like:(urn:li:company:102995539,urn:li:ugcPost:7273399602572070914)",
+                    "urn:li:like:(urn:li:person:qUvas1UvE2,urn:li:ugcPost:7273399602572070914)"
+                ],
+                "aggregatedTotalLikes": 19,
+                "likedByCurrentUser": true,
+                "totalLikes": 19
+            },
+            "commentsSummary": {
+                "selectedComments": [
+                    "urn:li:comment:(urn:li:ugcPost:7273399602572070914,7273622902841692160)",
+                    "urn:li:comment:(urn:li:ugcPost:7273399602572070914,7273550051182809088)"
+                ],
+                "totalFirstLevelComments": 2,
+                "commentsState": "OPEN",
+                "aggregatedTotalComments": 3
+            },
+            "target": "urn:li:ugcPost:7273399602572070914"
+        },
+        "urn:li:ugcPost:7302440618364915712": {
+            "likesSummary": {
+                "selectedLikes": [
+                    "urn:li:like:(urn:li:person:Y9Ack78Y9e,urn:li:ugcPost:7302440618364915712)",
+                    "urn:li:like:(urn:li:person:dCgSj6leY8,urn:li:ugcPost:7302440618364915712)",
+                    "urn:li:like:(urn:li:person:1h57O_YA4P,urn:li:ugcPost:7302440618364915712)",
+                    "urn:li:like:(urn:li:person:NakPzyluYJ,urn:li:ugcPost:7302440618364915712)",
+                    "urn:li:like:(urn:li:person:jh9ODDqV6c,urn:li:ugcPost:7302440618364915712)",
+                    "urn:li:like:(urn:li:person:y9P1-tT89e,urn:li:ugcPost:7302440618364915712)",
+                    "urn:li:like:(urn:li:company:102995539,urn:li:ugcPost:7302440618364915712)",
+                    "urn:li:like:(urn:li:person:iJmowlppel,urn:li:ugcPost:7302440618364915712)",
+                    "urn:li:like:(urn:li:person:qUvas1UvE2,urn:li:ugcPost:7302440618364915712)"
+                ],
+                "aggregatedTotalLikes": 9,
+                "likedByCurrentUser": false,
+                "totalLikes": 9
+            },
+            "commentsSummary": {
+                "selectedComments": [
+                    "urn:li:comment:(urn:li:ugcPost:7302440618364915712,7302444574881263616)"
+                ],
+                "totalFirstLevelComments": 1,
+                "commentsState": "OPEN",
+                "aggregatedTotalComments": 1
+            },
+            "target": "urn:li:ugcPost:7302440618364915712"
+        },
+        "urn:li:share:7282819272135876608": {
+            "likesSummary": {
+                "selectedLikes": [
+                    "urn:li:like:(urn:li:person:wJbGXm4390,urn:li:activity:7282819274035896320)",
+                    "urn:li:like:(urn:li:person:BbTE2fJ3gz,urn:li:activity:7282819274035896320)",
+                    "urn:li:like:(urn:li:person:DYZQgpnL6V,urn:li:activity:7282819274035896320)",
+                    "urn:li:like:(urn:li:person:HZDf1menC0,urn:li:activity:7282819274035896320)",
+                    "urn:li:like:(urn:li:person:aMqLlEqgQI,urn:li:activity:7282819274035896320)",
+                    "urn:li:like:(urn:li:person:a-gtMp6zqs,urn:li:activity:7282819274035896320)",
+                    "urn:li:like:(urn:li:person:la5vMuzGWe,urn:li:activity:7282819274035896320)",
+                    "urn:li:like:(urn:li:person:b3FGo-Xo3B,urn:li:activity:7282819274035896320)",
+                    "urn:li:like:(urn:li:person:ZXd8mW-utR,urn:li:activity:7282819274035896320)",
+                    "urn:li:like:(urn:li:person:aCemTC4pzW,urn:li:activity:7282819274035896320)",
+                    "urn:li:like:(urn:li:person:Hw5FwBvKBq,urn:li:activity:7282819274035896320)",
+                    "urn:li:like:(urn:li:person:1h57O_YA4P,urn:li:activity:7282819274035896320)",
+                    "urn:li:like:(urn:li:person:iL8pe9qvuR,urn:li:activity:7282819274035896320)",
+                    "urn:li:like:(urn:li:person:J_cQ0B01ai,urn:li:activity:7282819274035896320)",
+                    "urn:li:like:(urn:li:person:AdGuSER32U,urn:li:activity:7282819274035896320)",
+                    "urn:li:like:(urn:li:person:CmTAhf0ujs,urn:li:activity:7282819274035896320)",
+                    "urn:li:like:(urn:li:person:Y1AvJcpYEa,urn:li:activity:7282819274035896320)",
+                    "urn:li:like:(urn:li:person:NxwL-IvR2n,urn:li:activity:7282819274035896320)",
+                    "urn:li:like:(urn:li:person:CQsdkZnKhY,urn:li:activity:7282819274035896320)",
+                    "urn:li:like:(urn:li:person:aT5AK3q9ey,urn:li:activity:7282819274035896320)",
+                    "urn:li:like:(urn:li:person:TUnm3ITmAL,urn:li:activity:7282819274035896320)",
+                    "urn:li:like:(urn:li:person:0ctZ1ogLSk,urn:li:activity:7282819274035896320)",
+                    "urn:li:like:(urn:li:person:PJLeWnaDIp,urn:li:activity:7282819274035896320)",
+                    "urn:li:like:(urn:li:person:ehtu-Y16Vg,urn:li:activity:7282819274035896320)",
+                    "urn:li:like:(urn:li:person:UPV9MhVHZy,urn:li:activity:7282819274035896320)",
+                    "urn:li:like:(urn:li:person:qUvas1UvE2,urn:li:activity:7282819274035896320)",
+                    "urn:li:like:(urn:li:company:105029503,urn:li:activity:7282819274035896320)",
+                    "urn:li:like:(urn:li:person:IYFE9OVXWE,urn:li:activity:7282819274035896320)",
+                    "urn:li:like:(urn:li:person:6KHgwRi1e0,urn:li:activity:7282819274035896320)",
+                    "urn:li:like:(urn:li:person:atT8vBjZPK,urn:li:activity:7282819274035896320)",
+                    "urn:li:like:(urn:li:person:fNT9nIStHG,urn:li:activity:7282819274035896320)",
+                    "urn:li:like:(urn:li:company:102995539,urn:li:activity:7282819274035896320)"
+                ],
+                "aggregatedTotalLikes": 40,
+                "likedByCurrentUser": true,
+                "totalLikes": 40
+            },
+            "commentsSummary": {
+                "selectedComments": [
+                    "urn:li:comment:(urn:li:activity:7282819274035896320,7283027665161203713)",
+                    "urn:li:comment:(urn:li:activity:7282819274035896320,7282870735184830464)",
+                    "urn:li:comment:(urn:li:activity:7282819274035896320,7282825259022524417)"
+                ],
+                "totalFirstLevelComments": 3,
+                "commentsState": "OPEN",
+                "aggregatedTotalComments": 3
+            },
+            "target": "urn:li:activity:7282819274035896320"
+        },
+        "urn:li:ugcPost:7287556299427393536": {
+            "likesSummary": {
+                "selectedLikes": [
+                    "urn:li:like:(urn:li:person:gV8v0rGMCe,urn:li:ugcPost:7287556299427393536)",
+                    "urn:li:like:(urn:li:person:dCgSj6leY8,urn:li:ugcPost:7287556299427393536)",
+                    "urn:li:like:(urn:li:person:Nu5vEt7Ldt,urn:li:ugcPost:7287556299427393536)",
+                    "urn:li:like:(urn:li:person:WLj-GBAcUB,urn:li:ugcPost:7287556299427393536)",
+                    "urn:li:like:(urn:li:person:zDKbz58qPR,urn:li:ugcPost:7287556299427393536)",
+                    "urn:li:like:(urn:li:person:xNFkoItxEa,urn:li:ugcPost:7287556299427393536)",
+                    "urn:li:like:(urn:li:person:fNT9nIStHG,urn:li:ugcPost:7287556299427393536)",
+                    "urn:li:like:(urn:li:person:2mZqAh5276,urn:li:ugcPost:7287556299427393536)",
+                    "urn:li:like:(urn:li:person:AGtsfbgtpv,urn:li:ugcPost:7287556299427393536)",
+                    "urn:li:like:(urn:li:person:rOlckLpH2o,urn:li:ugcPost:7287556299427393536)",
+                    "urn:li:like:(urn:li:person:gWbqSDVcSF,urn:li:ugcPost:7287556299427393536)",
+                    "urn:li:like:(urn:li:person:jgoRE9izu1,urn:li:ugcPost:7287556299427393536)",
+                    "urn:li:like:(urn:li:person:TUnm3ITmAL,urn:li:ugcPost:7287556299427393536)",
+                    "urn:li:like:(urn:li:person:1mYDuNSivT,urn:li:ugcPost:7287556299427393536)",
+                    "urn:li:like:(urn:li:person:iL8pe9qvuR,urn:li:ugcPost:7287556299427393536)",
+                    "urn:li:like:(urn:li:person:1h57O_YA4P,urn:li:ugcPost:7287556299427393536)",
+                    "urn:li:like:(urn:li:person:KbqCefxnh3,urn:li:ugcPost:7287556299427393536)",
+                    "urn:li:like:(urn:li:person:NakPzyluYJ,urn:li:ugcPost:7287556299427393536)",
+                    "urn:li:like:(urn:li:person:NxwL-IvR2n,urn:li:ugcPost:7287556299427393536)",
+                    "urn:li:like:(urn:li:person:lmR2LjuuO8,urn:li:ugcPost:7287556299427393536)",
+                    "urn:li:like:(urn:li:person:2FgsFOTMz-,urn:li:ugcPost:7287556299427393536)",
+                    "urn:li:like:(urn:li:person:Lmlb3YZFJg,urn:li:ugcPost:7287556299427393536)",
+                    "urn:li:like:(urn:li:person:UPV9MhVHZy,urn:li:ugcPost:7287556299427393536)",
+                    "urn:li:like:(urn:li:person:qUvas1UvE2,urn:li:ugcPost:7287556299427393536)",
+                    "urn:li:like:(urn:li:person:ehtu-Y16Vg,urn:li:ugcPost:7287556299427393536)",
+                    "urn:li:like:(urn:li:person:atT8vBjZPK,urn:li:ugcPost:7287556299427393536)",
+                    "urn:li:like:(urn:li:company:105029503,urn:li:ugcPost:7287556299427393536)"
+                ],
+                "aggregatedTotalLikes": 30,
+                "likedByCurrentUser": true,
+                "totalLikes": 30
+            },
+            "commentsSummary": {
+                "selectedComments": [
+                    "urn:li:comment:(urn:li:ugcPost:7287556299427393536,7287674565969821697)",
+                    "urn:li:comment:(urn:li:ugcPost:7287556299427393536,7287601649383088128)"
+                ],
+                "totalFirstLevelComments": 2,
+                "commentsState": "OPEN",
+                "aggregatedTotalComments": 2
+            },
+            "target": "urn:li:ugcPost:7287556299427393536"
+        },
+        "urn:li:ugcPost:7278175484159434752": {
+            "likesSummary": {
+                "selectedLikes": [
+                    "urn:li:like:(urn:li:person:GAVMnS-twq,urn:li:ugcPost:7278175484159434752)",
+                    "urn:li:like:(urn:li:person:2FgsFOTMz-,urn:li:ugcPost:7278175484159434752)",
+                    "urn:li:like:(urn:li:person:Cgg5CgX1wE,urn:li:ugcPost:7278175484159434752)",
+                    "urn:li:like:(urn:li:person:um3PwaPBzX,urn:li:ugcPost:7278175484159434752)",
+                    "urn:li:like:(urn:li:person:SkQroCuaen,urn:li:ugcPost:7278175484159434752)",
+                    "urn:li:like:(urn:li:person:1h57O_YA4P,urn:li:ugcPost:7278175484159434752)",
+                    "urn:li:like:(urn:li:person:NxwL-IvR2n,urn:li:ugcPost:7278175484159434752)",
+                    "urn:li:like:(urn:li:person:d6ZOiSCxZd,urn:li:ugcPost:7278175484159434752)",
+                    "urn:li:like:(urn:li:person:w0QBgA-qn4,urn:li:ugcPost:7278175484159434752)",
+                    "urn:li:like:(urn:li:person:fNT9nIStHG,urn:li:ugcPost:7278175484159434752)",
+                    "urn:li:like:(urn:li:person:uiO3CgTuxP,urn:li:ugcPost:7278175484159434752)",
+                    "urn:li:like:(urn:li:person:b9z0WS5kbe,urn:li:ugcPost:7278175484159434752)",
+                    "urn:li:like:(urn:li:person:NakPzyluYJ,urn:li:ugcPost:7278175484159434752)",
+                    "urn:li:like:(urn:li:person:smfz4Da4oq,urn:li:ugcPost:7278175484159434752)",
+                    "urn:li:like:(urn:li:person:GPynaeC7oE,urn:li:ugcPost:7278175484159434752)",
+                    "urn:li:like:(urn:li:person:ojbQwVfcVu,urn:li:ugcPost:7278175484159434752)",
+                    "urn:li:like:(urn:li:person:OkpZ_oXme0,urn:li:ugcPost:7278175484159434752)",
+                    "urn:li:like:(urn:li:person:qUvas1UvE2,urn:li:ugcPost:7278175484159434752)",
+                    "urn:li:like:(urn:li:person:hxg3p3_Pm9,urn:li:ugcPost:7278175484159434752)",
+                    "urn:li:like:(urn:li:person:iudCe58nQw,urn:li:ugcPost:7278175484159434752)",
+                    "urn:li:like:(urn:li:person:iJmowlppel,urn:li:ugcPost:7278175484159434752)",
+                    "urn:li:like:(urn:li:company:102995539,urn:li:ugcPost:7278175484159434752)",
+                    "urn:li:like:(urn:li:company:105029503,urn:li:ugcPost:7278175484159434752)"
+                ],
+                "aggregatedTotalLikes": 23,
+                "likedByCurrentUser": true,
+                "totalLikes": 23
+            },
+            "commentsSummary": {
+                "selectedComments": [
+                    "urn:li:comment:(urn:li:ugcPost:7278175484159434752,7278777347313487873)",
+                    "urn:li:comment:(urn:li:ugcPost:7278175484159434752,7278318056643162112)"
+                ],
+                "totalFirstLevelComments": 2,
+                "commentsState": "OPEN",
+                "aggregatedTotalComments": 2
+            },
+            "target": "urn:li:ugcPost:7278175484159434752"
+        },
+        "urn:li:share:7276930818634104832": {
+            "likesSummary": {
+                "selectedLikes": [
+                    "urn:li:like:(urn:li:person:z1mpsKRHkw,urn:li:activity:7277027699083067392)",
+                    "urn:li:like:(urn:li:person:fNT9nIStHG,urn:li:activity:7277027699083067392)",
+                    "urn:li:like:(urn:li:person:UPV9MhVHZy,urn:li:activity:7277027699083067392)",
+                    "urn:li:like:(urn:li:person:8HqM1Ng1S5,urn:li:activity:7277027699083067392)",
+                    "urn:li:like:(urn:li:person:e9x_aqHF9S,urn:li:activity:7277027699083067392)",
+                    "urn:li:like:(urn:li:person:fsxTP_xo9l,urn:li:activity:7277027699083067392)",
+                    "urn:li:like:(urn:li:person:NUE0XWrq6x,urn:li:activity:7277027699083067392)",
+                    "urn:li:like:(urn:li:person:ahHQQCjNnE,urn:li:activity:7277027699083067392)",
+                    "urn:li:like:(urn:li:person:EHWeJ7KPV2,urn:li:activity:7277027699083067392)",
+                    "urn:li:like:(urn:li:person:jlZhUvr6aV,urn:li:activity:7277027699083067392)",
+                    "urn:li:like:(urn:li:person:624kglNsQC,urn:li:activity:7277027699083067392)",
+                    "urn:li:like:(urn:li:person:lkevHuVOxq,urn:li:activity:7277027699083067392)",
+                    "urn:li:like:(urn:li:person:hunuU-zBJ3,urn:li:activity:7277027699083067392)",
+                    "urn:li:like:(urn:li:person:tU_X6sU1Xd,urn:li:activity:7277027699083067392)",
+                    "urn:li:like:(urn:li:person:PLz5GI0DEA,urn:li:activity:7277027699083067392)",
+                    "urn:li:like:(urn:li:person:A66TC55QwQ,urn:li:activity:7277027699083067392)",
+                    "urn:li:like:(urn:li:person:d6ZOiSCxZd,urn:li:activity:7277027699083067392)",
+                    "urn:li:like:(urn:li:person:BCgr2DG3ke,urn:li:activity:7277027699083067392)",
+                    "urn:li:like:(urn:li:person:KhMkW3iDDA,urn:li:activity:7277027699083067392)",
+                    "urn:li:like:(urn:li:person:oBJvcsfOrp,urn:li:activity:7277027699083067392)",
+                    "urn:li:like:(urn:li:person:AGtsfbgtpv,urn:li:activity:7277027699083067392)",
+                    "urn:li:like:(urn:li:person:SaYQD_jjW8,urn:li:activity:7277027699083067392)",
+                    "urn:li:like:(urn:li:person:icNJ5YqO-W,urn:li:activity:7277027699083067392)",
+                    "urn:li:like:(urn:li:person:Lys5u8UQo8,urn:li:activity:7277027699083067392)",
+                    "urn:li:like:(urn:li:person:PdK1PUnLjr,urn:li:activity:7277027699083067392)",
+                    "urn:li:like:(urn:li:person:UM0codh0sW,urn:li:activity:7277027699083067392)",
+                    "urn:li:like:(urn:li:person:ths_NyHO-E,urn:li:activity:7277027699083067392)",
+                    "urn:li:like:(urn:li:person:XOo36SCfyh,urn:li:activity:7277027699083067392)",
+                    "urn:li:like:(urn:li:person:iJmowlppel,urn:li:activity:7277027699083067392)",
+                    "urn:li:like:(urn:li:person:NxwL-IvR2n,urn:li:activity:7277027699083067392)",
+                    "urn:li:like:(urn:li:person:EermLgwz2N,urn:li:activity:7277027699083067392)",
+                    "urn:li:like:(urn:li:person:qUvas1UvE2,urn:li:activity:7277027699083067392)"
+                ],
+                "aggregatedTotalLikes": 66,
+                "likedByCurrentUser": true,
+                "totalLikes": 66
+            },
+            "commentsSummary": {
+                "selectedComments": [],
+                "totalFirstLevelComments": 0,
+                "commentsState": "OPEN",
+                "aggregatedTotalComments": 0
+            },
+            "target": "urn:li:activity:7277027699083067392"
+        },
+        "urn:li:ugcPost:7304968765245411329": {
+            "likesSummary": {
+                "selectedLikes": [
+                    "urn:li:like:(urn:li:person:dCgSj6leY8,urn:li:ugcPost:7304968765245411329)",
+                    "urn:li:like:(urn:li:person:WLj-GBAcUB,urn:li:ugcPost:7304968765245411329)",
+                    "urn:li:like:(urn:li:person:qUvas1UvE2,urn:li:ugcPost:7304968765245411329)",
+                    "urn:li:like:(urn:li:company:105029503,urn:li:ugcPost:7304968765245411329)"
+                ],
+                "aggregatedTotalLikes": 4,
+                "likedByCurrentUser": false,
+                "totalLikes": 4
+            },
+            "commentsSummary": {
+                "selectedComments": [],
+                "totalFirstLevelComments": 0,
+                "commentsState": "OPEN",
+                "aggregatedTotalComments": 0
+            },
+            "target": "urn:li:ugcPost:7304968765245411329"
+        },
+        "urn:li:ugcPost:7283559591445983232": {
+            "likesSummary": {
+                "selectedLikes": [
+                    "urn:li:like:(urn:li:person:Nu5vEt7Ldt,urn:li:ugcPost:7283559591445983232)",
+                    "urn:li:like:(urn:li:person:Ao7pqdrbSA,urn:li:ugcPost:7283559591445983232)",
+                    "urn:li:like:(urn:li:person:NxwL-IvR2n,urn:li:ugcPost:7283559591445983232)",
+                    "urn:li:like:(urn:li:person:1h57O_YA4P,urn:li:ugcPost:7283559591445983232)",
+                    "urn:li:like:(urn:li:person:kX2-1-fbCu,urn:li:ugcPost:7283559591445983232)",
+                    "urn:li:like:(urn:li:person:NakPzyluYJ,urn:li:ugcPost:7283559591445983232)",
+                    "urn:li:like:(urn:li:person:CmTAhf0ujs,urn:li:ugcPost:7283559591445983232)",
+                    "urn:li:like:(urn:li:person:um3PwaPBzX,urn:li:ugcPost:7283559591445983232)",
+                    "urn:li:like:(urn:li:person:UPV9MhVHZy,urn:li:ugcPost:7283559591445983232)",
+                    "urn:li:like:(urn:li:person:LQJtkRTNmr,urn:li:ugcPost:7283559591445983232)",
+                    "urn:li:like:(urn:li:person:qUvas1UvE2,urn:li:ugcPost:7283559591445983232)",
+                    "urn:li:like:(urn:li:company:105029503,urn:li:ugcPost:7283559591445983232)",
+                    "urn:li:like:(urn:li:person:jlZhUvr6aV,urn:li:ugcPost:7283559591445983232)",
+                    "urn:li:like:(urn:li:company:102995539,urn:li:ugcPost:7283559591445983232)",
+                    "urn:li:like:(urn:li:person:dCgSj6leY8,urn:li:ugcPost:7283559591445983232)"
+                ],
+                "aggregatedTotalLikes": 15,
+                "likedByCurrentUser": true,
+                "totalLikes": 15
+            },
+            "commentsSummary": {
+                "selectedComments": [],
+                "totalFirstLevelComments": 0,
+                "commentsState": "OPEN",
+                "aggregatedTotalComments": 0
+            },
+            "target": "urn:li:ugcPost:7283559591445983232"
+        },
+        "urn:li:ugcPost:7281070837758140418": {
+            "likesSummary": {
+                "selectedLikes": [
+                    "urn:li:like:(urn:li:person:iJmowlppel,urn:li:ugcPost:7281070837758140418)",
+                    "urn:li:like:(urn:li:person:smfz4Da4oq,urn:li:ugcPost:7281070837758140418)",
+                    "urn:li:like:(urn:li:person:uiO3CgTuxP,urn:li:ugcPost:7281070837758140418)",
+                    "urn:li:like:(urn:li:person:dCgSj6leY8,urn:li:ugcPost:7281070837758140418)",
+                    "urn:li:like:(urn:li:person:1mYDuNSivT,urn:li:ugcPost:7281070837758140418)",
+                    "urn:li:like:(urn:li:person:um3PwaPBzX,urn:li:ugcPost:7281070837758140418)",
+                    "urn:li:like:(urn:li:person:fNT9nIStHG,urn:li:ugcPost:7281070837758140418)",
+                    "urn:li:like:(urn:li:person:1h57O_YA4P,urn:li:ugcPost:7281070837758140418)",
+                    "urn:li:like:(urn:li:person:NakPzyluYJ,urn:li:ugcPost:7281070837758140418)",
+                    "urn:li:like:(urn:li:person:2FgsFOTMz-,urn:li:ugcPost:7281070837758140418)",
+                    "urn:li:like:(urn:li:person:b9z0WS5kbe,urn:li:ugcPost:7281070837758140418)",
+                    "urn:li:like:(urn:li:person:ta85mHxu1x,urn:li:ugcPost:7281070837758140418)",
+                    "urn:li:like:(urn:li:person:kX2-1-fbCu,urn:li:ugcPost:7281070837758140418)",
+                    "urn:li:like:(urn:li:person:GAVMnS-twq,urn:li:ugcPost:7281070837758140418)",
+                    "urn:li:like:(urn:li:company:105029503,urn:li:ugcPost:7281070837758140418)",
+                    "urn:li:like:(urn:li:person:qUvas1UvE2,urn:li:ugcPost:7281070837758140418)",
+                    "urn:li:like:(urn:li:person:Slgrz0Yxt5,urn:li:ugcPost:7281070837758140418)",
+                    "urn:li:like:(urn:li:company:102995539,urn:li:ugcPost:7281070837758140418)"
+                ],
+                "aggregatedTotalLikes": 18,
+                "likedByCurrentUser": false,
+                "totalLikes": 18
+            },
+            "commentsSummary": {
+                "selectedComments": [
+                    "urn:li:comment:(urn:li:ugcPost:7281070837758140418,7281073092578131968)"
+                ],
+                "totalFirstLevelComments": 1,
+                "commentsState": "OPEN",
+                "aggregatedTotalComments": 1
+            },
+            "target": "urn:li:ugcPost:7281070837758140418"
+        },
+        "urn:li:ugcPost:7299881440480022528": {
+            "likesSummary": {
+                "selectedLikes": [
+                    "urn:li:like:(urn:li:person:UPV9MhVHZy,urn:li:ugcPost:7299881440480022528)",
+                    "urn:li:like:(urn:li:person:2i1nE2ptoJ,urn:li:ugcPost:7299881440480022528)",
+                    "urn:li:like:(urn:li:person:0JuU8cQgai,urn:li:ugcPost:7299881440480022528)",
+                    "urn:li:like:(urn:li:person:1h57O_YA4P,urn:li:ugcPost:7299881440480022528)",
+                    "urn:li:like:(urn:li:person:fNT9nIStHG,urn:li:ugcPost:7299881440480022528)",
+                    "urn:li:like:(urn:li:person:smfz4Da4oq,urn:li:ugcPost:7299881440480022528)",
+                    "urn:li:like:(urn:li:person:a3dHpy5BzW,urn:li:ugcPost:7299881440480022528)",
+                    "urn:li:like:(urn:li:person:qV50gMbMC7,urn:li:ugcPost:7299881440480022528)",
+                    "urn:li:like:(urn:li:person:KbbcSW8Uxf,urn:li:ugcPost:7299881440480022528)",
+                    "urn:li:like:(urn:li:company:105029503,urn:li:ugcPost:7299881440480022528)",
+                    "urn:li:like:(urn:li:company:102995539,urn:li:ugcPost:7299881440480022528)",
+                    "urn:li:like:(urn:li:person:qUvas1UvE2,urn:li:ugcPost:7299881440480022528)",
+                    "urn:li:like:(urn:li:person:Nu5vEt7Ldt,urn:li:ugcPost:7299881440480022528)",
+                    "urn:li:like:(urn:li:person:iJmowlppel,urn:li:ugcPost:7299881440480022528)",
+                    "urn:li:like:(urn:li:person:dCgSj6leY8,urn:li:ugcPost:7299881440480022528)"
+                ],
+                "aggregatedTotalLikes": 15,
+                "likedByCurrentUser": false,
+                "totalLikes": 15
+            },
+            "commentsSummary": {
+                "selectedComments": [
+                    "urn:li:comment:(urn:li:ugcPost:7299881440480022528,7299883621920727040)"
+                ],
+                "totalFirstLevelComments": 1,
+                "commentsState": "OPEN",
+                "aggregatedTotalComments": 2
+            },
+            "target": "urn:li:ugcPost:7299881440480022528"
+        },
+        "urn:li:share:7295545337803354112": {
+            "likesSummary": {
+                "selectedLikes": [
+                    "urn:li:like:(urn:li:company:102995539,urn:li:activity:7295545338889740288)",
+                    "urn:li:like:(urn:li:person:idwsVg_nuS,urn:li:activity:7295545338889740288)",
+                    "urn:li:like:(urn:li:person:Nu5vEt7Ldt,urn:li:activity:7295545338889740288)",
+                    "urn:li:like:(urn:li:person:UPV9MhVHZy,urn:li:activity:7295545338889740288)",
+                    "urn:li:like:(urn:li:person:dCgSj6leY8,urn:li:activity:7295545338889740288)",
+                    "urn:li:like:(urn:li:person:qUvas1UvE2,urn:li:activity:7295545338889740288)"
+                ],
+                "aggregatedTotalLikes": 6,
+                "likedByCurrentUser": false,
+                "totalLikes": 6
+            },
+            "commentsSummary": {
+                "selectedComments": [],
+                "totalFirstLevelComments": 0,
+                "commentsState": "OPEN",
+                "aggregatedTotalComments": 0
+            },
+            "target": "urn:li:activity:7295545338889740288"
+        },
+        "urn:li:share:7275323692954361858": {
+            "likesSummary": {
+                "selectedLikes": [
+                    "urn:li:like:(urn:li:person:fNT9nIStHG,urn:li:activity:7275323693747130369)",
+                    "urn:li:like:(urn:li:person:NxwL-IvR2n,urn:li:activity:7275323693747130369)",
+                    "urn:li:like:(urn:li:person:ta85mHxu1x,urn:li:activity:7275323693747130369)",
+                    "urn:li:like:(urn:li:company:102995539,urn:li:activity:7275323693747130369)",
+                    "urn:li:like:(urn:li:company:105029503,urn:li:activity:7275323693747130369)",
+                    "urn:li:like:(urn:li:person:qUvas1UvE2,urn:li:activity:7275323693747130369)"
+                ],
+                "aggregatedTotalLikes": 6,
+                "likedByCurrentUser": true,
+                "totalLikes": 6
+            },
+            "commentsSummary": {
+                "selectedComments": [],
+                "totalFirstLevelComments": 0,
+                "commentsState": "OPEN",
+                "aggregatedTotalComments": 0
+            },
+            "target": "urn:li:activity:7275323693747130369"
+        }
+    },
+    "org_lifetime_share_stats_urn:li:organization:105029503": {
+        "elements": [
+            {
+                "totalShareStatistics": {
+                    "uniqueImpressionsCount": 5716,
+                    "shareCount": 9,
+                    "engagement": 0.15097718203212934,
+                    "clickCount": 2532,
+                    "likeCount": 382,
+                    "impressionCount": 19546,
+                    "commentCount": 28
+                },
+                "organizationalEntity": "urn:li:organization:105029503"
+            }
+        ]
+    },
+    "org_follower_count_urn:li:organization:105029503": null,
+    "org_timebound_share_stats_urn:li:organization:105029503_2025-03-05T11:07:54.723193+00:00_2025-03-12T11:07:54.723193+00:00_DAY": {
+        "elements": [
+            {
+                "totalShareStatistics": {
+                    "uniqueImpressionsCount": 28,
+                    "shareCount": 0,
+                    "engagement": 0.375,
+                    "clickCount": 21,
+                    "likeCount": 0,
+                    "impressionCount": 56,
+                    "commentCount": 0
+                },
+                "organizationalEntity": "urn:li:organization:105029503",
+                "timeRange": {
+                    "start": 1741132800000,
+                    "end": 1741219200000
+                }
+            },
+            {
+                "totalShareStatistics": {
+                    "uniqueImpressionsCount": 10,
+                    "shareCount": 0,
+                    "engagement": 0.05555555555555555,
+                    "clickCount": 1,
+                    "likeCount": 0,
+                    "impressionCount": 18,
+                    "commentCount": 0
+                },
+                "organizationalEntity": "urn:li:organization:105029503",
+                "timeRange": {
+                    "start": 1741219200000,
+                    "end": 1741305600000
+                }
+            },
+            {
+                "totalShareStatistics": {
+                    "uniqueImpressionsCount": 10,
+                    "shareCount": 0,
+                    "engagement": 0.0,
+                    "clickCount": 0,
+                    "likeCount": 0,
+                    "impressionCount": 18,
+                    "commentCount": 0
+                },
+                "organizationalEntity": "urn:li:organization:105029503",
+                "timeRange": {
+                    "start": 1741305600000,
+                    "end": 1741392000000
+                }
+            },
+            {
+                "totalShareStatistics": {
+                    "uniqueImpressionsCount": 10,
+                    "shareCount": 0,
+                    "engagement": 0.0,
+                    "clickCount": 0,
+                    "likeCount": 0,
+                    "impressionCount": 16,
+                    "commentCount": 0
+                },
+                "organizationalEntity": "urn:li:organization:105029503",
+                "timeRange": {
+                    "start": 1741392000000,
+                    "end": 1741478400000
+                }
+            },
+            {
+                "totalShareStatistics": {
+                    "uniqueImpressionsCount": 12,
+                    "shareCount": 0,
+                    "engagement": 0.09090909090909091,
+                    "clickCount": 3,
+                    "likeCount": 0,
+                    "impressionCount": 33,
+                    "commentCount": 0
+                },
+                "organizationalEntity": "urn:li:organization:105029503",
+                "timeRange": {
+                    "start": 1741478400000,
+                    "end": 1741564800000
+                }
+            },
+            {
+                "totalShareStatistics": {
+                    "uniqueImpressionsCount": 24,
+                    "shareCount": 1,
+                    "engagement": 0.16901408450704225,
+                    "clickCount": 9,
+                    "likeCount": 2,
+                    "impressionCount": 71,
+                    "commentCount": 0
+                },
+                "organizationalEntity": "urn:li:organization:105029503",
+                "timeRange": {
+                    "start": 1741564800000,
+                    "end": 1741651200000
+                }
+            },
+            {
+                "totalShareStatistics": {
+                    "uniqueImpressionsCount": 19,
+                    "shareCount": 0,
+                    "engagement": 0.6216216216216216,
+                    "clickCount": 21,
+                    "likeCount": 2,
+                    "impressionCount": 37,
+                    "commentCount": 0
+                },
+                "organizationalEntity": "urn:li:organization:105029503",
+                "timeRange": {
+                    "start": 1741651200000,
+                    "end": 1741737600000
+                }
+            }
+        ]
+    },
+    "org_timebound_share_stats_urn:li:organization:105029503_2025-03-05T11:19:38.858803+00:00_2025-03-12T11:19:38.858803+00:00_DAY": {
+        "elements": [
+            {
+                "totalShareStatistics": {
+                    "uniqueImpressionsCount": 28,
+                    "shareCount": 0,
+                    "engagement": 0.375,
+                    "clickCount": 21,
+                    "likeCount": 0,
+                    "impressionCount": 56,
+                    "commentCount": 0
+                },
+                "organizationalEntity": "urn:li:organization:105029503",
+                "timeRange": {
+                    "start": 1741132800000,
+                    "end": 1741219200000
+                }
+            },
+            {
+                "totalShareStatistics": {
+                    "uniqueImpressionsCount": 10,
+                    "shareCount": 0,
+                    "engagement": 0.05555555555555555,
+                    "clickCount": 1,
+                    "likeCount": 0,
+                    "impressionCount": 18,
+                    "commentCount": 0
+                },
+                "organizationalEntity": "urn:li:organization:105029503",
+                "timeRange": {
+                    "start": 1741219200000,
+                    "end": 1741305600000
+                }
+            },
+            {
+                "totalShareStatistics": {
+                    "uniqueImpressionsCount": 10,
+                    "shareCount": 0,
+                    "engagement": 0.0,
+                    "clickCount": 0,
+                    "likeCount": 0,
+                    "impressionCount": 18,
+                    "commentCount": 0
+                },
+                "organizationalEntity": "urn:li:organization:105029503",
+                "timeRange": {
+                    "start": 1741305600000,
+                    "end": 1741392000000
+                }
+            },
+            {
+                "totalShareStatistics": {
+                    "uniqueImpressionsCount": 10,
+                    "shareCount": 0,
+                    "engagement": 0.0,
+                    "clickCount": 0,
+                    "likeCount": 0,
+                    "impressionCount": 16,
+                    "commentCount": 0
+                },
+                "organizationalEntity": "urn:li:organization:105029503",
+                "timeRange": {
+                    "start": 1741392000000,
+                    "end": 1741478400000
+                }
+            },
+            {
+                "totalShareStatistics": {
+                    "uniqueImpressionsCount": 12,
+                    "shareCount": 0,
+                    "engagement": 0.09090909090909091,
+                    "clickCount": 3,
+                    "likeCount": 0,
+                    "impressionCount": 33,
+                    "commentCount": 0
+                },
+                "organizationalEntity": "urn:li:organization:105029503",
+                "timeRange": {
+                    "start": 1741478400000,
+                    "end": 1741564800000
+                }
+            },
+            {
+                "totalShareStatistics": {
+                    "uniqueImpressionsCount": 24,
+                    "shareCount": 1,
+                    "engagement": 0.16901408450704225,
+                    "clickCount": 9,
+                    "likeCount": 2,
+                    "impressionCount": 71,
+                    "commentCount": 0
+                },
+                "organizationalEntity": "urn:li:organization:105029503",
+                "timeRange": {
+                    "start": 1741564800000,
+                    "end": 1741651200000
+                }
+            },
+            {
+                "totalShareStatistics": {
+                    "uniqueImpressionsCount": 19,
+                    "shareCount": 0,
+                    "engagement": 0.6216216216216216,
+                    "clickCount": 21,
+                    "likeCount": 2,
+                    "impressionCount": 37,
+                    "commentCount": 0
+                },
+                "organizationalEntity": "urn:li:organization:105029503",
+                "timeRange": {
+                    "start": 1741651200000,
+                    "end": 1741737600000
+                }
+            }
+        ]
+    },
+    "member_organization_roles_AQXZ8KD8KG1VIwnlMhhhi0LwTxoupIMDoz86CSpoQyxq3JSdWahqIju8jSsYVdL1gmsThd4-pGDF57WcF-uNwffFhUzbsxyHt_pP4EB12QFNSCsk-kHPhL6hwtcnoXvb0sz5Ozv5jHC6LF-qtQAXyK3556uqY3BwQ0XON9IHog4eZ3Ha2T9RICc9vVftFtFjGMdnUwuBH9AA2Kpy28pYuVX2cTueOO-KJwnVhrWb-nfTUXvXgZhPYkvCUAw147K6O7f-M45kpJfR5sEpRsbG_t_Dfd4av6UThFq3WPU4Q08UEBqUAXOO8HUFPSrG67AoQo6wLdkxM2r0thl6_ww3G9PY-5eP_Q": {
+        "elements": [
+            {
+                "roleAssignee": "urn:li:person:qUvas1UvE2",
+                "state": "APPROVED",
+                "lastModified": {
+                    "actor": "urn:li:person:qUvas1UvE2",
+                    "impersonator": "urn:li:servicePrincipal:organization",
+                    "time": 1717180709782
+                },
+                "role": "ADMINISTRATOR",
+                "created": {
+                    "actor": "urn:li:person:qUvas1UvE2",
+                    "impersonator": "urn:li:servicePrincipal:organization",
+                    "time": 1717180709782
+                },
+                "organization": "urn:li:organization:102995539"
+            },
+            {
+                "roleAssignee": "urn:li:person:qUvas1UvE2",
+                "state": "APPROVED",
+                "lastModified": {
+                    "actor": "urn:li:person:qUvas1UvE2",
+                    "impersonator": "urn:li:servicePrincipal:organization",
+                    "time": 1731526104252
+                },
+                "role": "ADMINISTRATOR",
+                "created": {
+                    "actor": "urn:li:person:qUvas1UvE2",
+                    "impersonator": "urn:li:servicePrincipal:organization",
+                    "time": 1731526104252
+                },
+                "organization": "urn:li:organization:105029503"
+            }
+        ]
+    },
+    "posts_urn:li:person:qUvas1UvE2_50_None_None_None": [],
+    "member_profile_AQXZ8KD8KG1VIwnlMhhhi0LwTxoupIMDoz86CSpoQyxq3JSdWahqIju8jSsYVdL1gmsThd4-pGDF57WcF-uNwffFhUzbsxyHt_pP4EB12QFNSCsk-kHPhL6hwtcnoXvb0sz5Ozv5jHC6LF-qtQAXyK3556uqY3BwQ0XON9IHog4eZ3Ha2T9RICc9vVftFtFjGMdnUwuBH9AA2Kpy28pYuVX2cTueOO-KJwnVhrWb-nfTUXvXgZhPYkvCUAw147K6O7f-M45kpJfR5sEpRsbG_t_Dfd4av6UThFq3WPU4Q08UEBqUAXOO8HUFPSrG67AoQo6wLdkxM2r0thl6_ww3G9PY-5eP_Q": {
+        "localizedLastName": "Bharadwaj",
+        "profilePicture": {
+            "displayImage": "urn:li:digitalmediaAsset:C4D03AQF8g70B8ezIHA"
+        },
+        "vanityName": "example-user",
+        "lastName": {
+            "localized": {
+                "en_US": "Bharadwaj"
+            },
+            "preferredLocale": {
+                "country": "US",
+                "language": "en"
+            }
+        },
+        "firstName": {
+            "localized": {
+                "en_US": "Founder B"
+            },
+            "preferredLocale": {
+                "country": "US",
+                "language": "en"
+            }
+        },
+        "localizedHeadline": "Founder at KiwiQ AI | Building AI Agents for Marketing Intelligence",
+        "id": "qUvas1UvE2",
+        "headline": {
+            "localized": {
+                "en_US": "Founder at KiwiQ AI | Building AI Agents for Marketing Intelligence"
+            },
+            "preferredLocale": {
+                "country": "US",
+                "language": "en"
+            }
+        },
+        "localizedFirstName": "Founder B"
+    },
+    "org_details_urn:li:organization:102995539": {
+        "message": "Key value 'urn%3Ali%3Aorganization%3A102995539' must be of type 'java.lang.Long'",
+        "status": 400
+    },
+    "org_details_urn:li:organization:105029503": {
+        "message": "Key value 'urn%3Ali%3Aorganization%3A105029503' must be of type 'java.lang.Long'",
+        "status": 400
+    },
+    "org_details_102995539": {
+        "vanityName": "stealth-mode-ai-startup-2",
+        "localizedName": "Stealth Mode AI Startup",
+        "created": {
+            "actor": "urn:li:person:qUvas1UvE2",
+            "time": 1717180709654
+        },
+        "groups": [],
+        "versionTag": "85624841",
+        "coverPhotoV2": {
+            "cropped": "urn:li:digitalmediaAsset:D563DAQEHbnjAvk78Pw",
+            "original": "urn:li:digitalmediaAsset:D561BAQEn1IJlnDhCsA",
+            "cropInfo": {
+                "x": 0,
+                "width": 1128,
+                "y": 0,
+                "height": 191
+            }
+        },
+        "defaultLocale": {
+            "country": "US",
+            "language": "en"
+        },
+        "organizationType": "PRIVATELY_HELD",
+        "alternativeNames": [],
+        "specialties": [],
+        "staffCountRange": "SIZE_2_TO_10",
+        "localizedSpecialties": [],
+        "name": {
+            "localized": {
+                "en_US": "Stealth Mode AI Startup"
+            },
+            "preferredLocale": {
+                "country": "US",
+                "language": "en"
+            }
+        },
+        "primaryOrganizationType": "NONE",
+        "locations": [],
+        "lastModified": {
+            "actor": "urn:li:person:qUvas1UvE2",
+            "time": 1717281670039
+        },
+        "id": 102995539,
+        "autoCreated": false
+    },
+    "org_details_105029503": {
+        "vanityName": "kiwiq-ai",
+        "localizedName": "KiwiQ AI",
+        "website": {
+            "localized": {
+                "en_US": "https://kiwiq.ai/pilot"
+            },
+            "preferredLocale": {
+                "country": "US",
+                "language": "en"
+            }
+        },
+        "foundedOn": {
+            "year": 2024
+        },
+        "created": {
+            "actor": "urn:li:person:qUvas1UvE2",
+            "time": 1731526104166
+        },
+        "groups": [],
+        "description": {
+            "localized": {
+                "en_US": "KiwiQ.ai is building the intelligence layer for modern marketing teams. In a world where marketers juggle a bazillion tools, our AI Agents seamlessly integrate with your existing marketing stack to deliver high-context intelligence you can take action on. \n\nFounded by ex-BigTech alumni with 20 years combined experience in AI, Marketing and Product leadership, we are backed by top-tier marketing leaders from LinkedIn, Canva, and Kantar. \n\nLaunching soon. Get in touch with us on hello@kiwiq.ai."
+            },
+            "preferredLocale": {
+                "country": "US",
+                "language": "en"
+            }
+        },
+        "versionTag": "2580975559",
+        "coverPhotoV2": {
+            "cropped": "urn:li:digitalmediaAsset:D563DAQHyeKkUuOPUWw",
+            "original": "urn:li:digitalmediaAsset:D561BAQHmzyaUsYctyA",
+            "cropInfo": {
+                "x": 0,
+                "width": 1128,
+                "y": 0,
+                "height": 191
+            }
+        },
+        "defaultLocale": {
+            "country": "US",
+            "language": "en"
+        },
+        "organizationType": "PRIVATELY_HELD",
+        "alternativeNames": [],
+        "specialties": [],
+        "staffCountRange": "SIZE_2_TO_10",
+        "localizedSpecialties": [],
+        "name": {
+            "localized": {
+                "en_US": "KiwiQ AI"
+            },
+            "preferredLocale": {
+                "country": "US",
+                "language": "en"
+            }
+        },
+        "primaryOrganizationType": "NONE",
+        "locations": [],
+        "id": 105029503,
+        "lastModified": {
+            "actor": "urn:li:person:H5Arsrp8KM",
+            "time": 1737489845664
+        },
+        "localizedDescription": "KiwiQ.ai is building the intelligence layer for modern marketing teams. In a world where marketers juggle a bazillion tools, our AI Agents seamlessly integrate with your existing marketing stack to deliver high-context intelligence you can take action on. \n\nFounded by ex-BigTech alumni with 20 years combined experience in AI, Marketing and Product leadership, we are backed by top-tier marketing leaders from LinkedIn, Canva, and Kantar. \n\nLaunching soon. Get in touch with us on hello@kiwiq.ai.",
+        "autoCreated": false,
+        "localizedWebsite": "https://kiwiq.ai/pilot",
+        "logoV2": {
+            "cropped": "urn:li:digitalmediaAsset:D560BAQF5aTZ-8_5klA",
+            "original": "urn:li:digitalmediaAsset:D560BAQF5aTZ-8_5klA",
+            "cropInfo": {
+                "x": 0,
+                "width": 0,
+                "y": 0,
+                "height": 0
+            }
+        }
+    },
+    "member_profile_AQWH5v-V15F1tQQlPzAf7bFmAKKazuC17ZUfpyJrheBVxkZIacaMvri7RlQmo7mFsKY_RlXzO9fQCYRvr28VXhDR_-AlgDZWZXrInRrV2x00dqRAzIFkxRFagEwoZ1JUkqD_taX4D6vhy2tXag-e0WStTxpnw_N_B4m3A2DmGFUXFJUHzNFZ4FxXFx3VFQG3VoH55CVqPkxYhVVWdQeeePP8oUyMzRH4wsMHUmF-u9qxD8BWqc5ou9kUIzeN0ic-kuLRWDPXhoLZ8Em_59zeYZW6WntDPNnoOe_vWjYc3lKb3PHXQzJPXIuD2qfkAzrlRHlMbEUdzH3lFxfoZhM1571SNQEMaw": {
+        "localizedLastName": "Bhandari",
+        "profilePicture": {
+            "displayImage": "urn:li:digitalmediaAsset:D5603AQHCmEqtcVhv-w"
+        },
+        "vanityName": "example-user",
+        "lastName": {
+            "localized": {
+                "en_US": "Bhandari"
+            },
+            "preferredLocale": {
+                "country": "US",
+                "language": "en"
+            }
+        },
+        "firstName": {
+            "localized": {
+                "en_US": "Founder A"
+            },
+            "preferredLocale": {
+                "country": "US",
+                "language": "en"
+            }
+        },
+        "localizedHeadline": "Startup, Ex-ML Lead at Google (Search Ranking, Gemini, Knowledge Graphs)",
+        "id": "NxwL-IvR2n",
+        "headline": {
+            "localized": {
+                "en_US": "Startup, Ex-ML Lead at Google (Search Ranking, Gemini, Knowledge Graphs)"
+            },
+            "preferredLocale": {
+                "country": "US",
+                "language": "en"
+            }
+        },
+        "localizedFirstName": "Founder A"
+    },
+    "member_organization_roles_AQVXs6gllozpYFB3U84e1pFNJPz3CF7i0CErO90nnfkG9MtYzqgg5U_CMbNsa4YMPIDsmSvFFpDc8K33K94JibR9n6h8d-Asu-o3ox1pwKGCXf1oPHiW80Fpx7S6fr0O8CFgLFy5nF54Yh4Ku3z6YjBRQXVWNRQI1VjAPTYDT_hBn9dfv46XSxKjZ6amcEfUpA4yQI3iBc9CQXZzxN5pZj0Y_Hh2adtjytwRye3Jxj4LegPyov0q5sV1MHOazAj2jKRSmRNzcUPTEmZN3Hdhd4Hl_K6_gX9EUcT9VntBS9B_pSjwNwGzcpFKamr7zIxdS0t5R7JjVyAioC28qI8XRxRwsARClQ": {
+        "elements": [
+            {
+                "roleAssignee": "urn:li:person:NxwL-IvR2n",
+                "state": "APPROVED",
+                "lastModified": {
+                    "actor": "urn:li:person:qUvas1UvE2",
+                    "impersonator": "urn:li:servicePrincipal:organization",
+                    "time": 1736235714339
+                },
+                "role": "ADMINISTRATOR",
+                "created": {
+                    "actor": "urn:li:person:qUvas1UvE2",
+                    "impersonator": "urn:li:servicePrincipal:organization",
+                    "time": 1736235714339
+                },
+                "organization": "urn:li:organization:105029503"
+            },
+            {
+                "roleAssignee": "urn:li:person:NxwL-IvR2n",
+                "state": "APPROVED",
+                "lastModified": {
+                    "actor": "urn:li:person:qUvas1UvE2",
+                    "impersonator": "urn:li:servicePrincipal:organization",
+                    "time": 1729669208781
+                },
+                "role": "ADMINISTRATOR",
+                "created": {
+                    "actor": "urn:li:person:qUvas1UvE2",
+                    "impersonator": "urn:li:servicePrincipal:organization",
+                    "time": 1729669208781
+                },
+                "organization": "urn:li:organization:102995539"
+            }
+        ]
+    },
+    "member_profile_AQVXs6gllozpYFB3U84e1pFNJPz3CF7i0CErO90nnfkG9MtYzqgg5U_CMbNsa4YMPIDsmSvFFpDc8K33K94JibR9n6h8d-Asu-o3ox1pwKGCXf1oPHiW80Fpx7S6fr0O8CFgLFy5nF54Yh4Ku3z6YjBRQXVWNRQI1VjAPTYDT_hBn9dfv46XSxKjZ6amcEfUpA4yQI3iBc9CQXZzxN5pZj0Y_Hh2adtjytwRye3Jxj4LegPyov0q5sV1MHOazAj2jKRSmRNzcUPTEmZN3Hdhd4Hl_K6_gX9EUcT9VntBS9B_pSjwNwGzcpFKamr7zIxdS0t5R7JjVyAioC28qI8XRxRwsARClQ": {
+        "localizedLastName": "Bhandari",
+        "profilePicture": {
+            "displayImage": "urn:li:digitalmediaAsset:D5603AQHCmEqtcVhv-w"
+        },
+        "vanityName": "example-user",
+        "lastName": {
+            "localized": {
+                "en_US": "Bhandari"
+            },
+            "preferredLocale": {
+                "country": "US",
+                "language": "en"
+            }
+        },
+        "firstName": {
+            "localized": {
+                "en_US": "Founder A"
+            },
+            "preferredLocale": {
+                "country": "US",
+                "language": "en"
+            }
+        },
+        "localizedHeadline": "Startup, Ex-ML Lead at Google (Search Ranking, Gemini, Knowledge Graphs)",
+        "id": "NxwL-IvR2n",
+        "headline": {
+            "localized": {
+                "en_US": "Startup, Ex-ML Lead at Google (Search Ranking, Gemini, Knowledge Graphs)"
+            },
+            "preferredLocale": {
+                "country": "US",
+                "language": "en"
+            }
+        },
+        "localizedFirstName": "Founder A"
+    },
+    "posts_urn:li:organization:102995539_50_None_None_None": [
+        {
+            "id": "urn:li:share:7294874686780235776",
+            "content_text": "We're {hashtag|\\#|hiring} a new Founding Staff Engineer \\(Backend/Infra\\) in India. Apply today or share this post with your network.",
+            "created_at": "2025-02-11T05:57:37.633000",
+            "account_id": "urn:li:organization:102995539",
+            "media_urls": [
+                "[]"
+            ],
+            "is_published": true
+        },
+        {
+            "id": "urn:li:share:7294696999075889153",
+            "content_text": "We're {hashtag|\\#|hiring} a new Founding Staff Engineer \\(Backend/Infra\\) in India. Apply today or share this post with your network.",
+            "created_at": "2025-02-10T18:11:33.603000",
+            "account_id": "urn:li:organization:102995539",
+            "media_urls": [
+                "[]"
+            ],
+            "is_published": true
+        },
+        {
+            "id": "urn:li:share:7291794817494179840",
+            "content_text": "We're {hashtag|\\#|hiring} a new Founding Engineer \\(Backend/Infra\\) in India. Apply today or share this post with your network.",
+            "created_at": "2025-02-02T17:59:19.578000",
+            "account_id": "urn:li:organization:102995539",
+            "media_urls": [
+                "[]"
+            ],
+            "is_published": true
+        },
+        {
+            "id": "urn:li:share:7291431130300362752",
+            "content_text": "We're {hashtag|\\#|hiring} a new Founding Staff Engineer \\(Backend/Infra\\) in India. Apply today or share this post with your network.",
+            "created_at": "2025-02-01T17:54:09.792000",
+            "account_id": "urn:li:organization:102995539",
+            "media_urls": [
+                "[]"
+            ],
+            "is_published": true
+        },
+        {
+            "id": "urn:li:share:7277301547036770304",
+            "content_text": "We're {hashtag|\\#|hiring} a new Founder's Office \\(Part-time, Remote\\) in India. Apply today or share this post with your network.",
+            "created_at": "2024-12-24T18:08:14.612000",
+            "account_id": "urn:li:organization:102995539",
+            "media_urls": [
+                "[]"
+            ],
+            "is_published": true
+        },
+        {
+            "id": "urn:li:share:7272246953999060994",
+            "content_text": "We're {hashtag|\\#|hiring} a new Founding Marketing Generalist \\(Part-Time\\) in India. Apply today or share this post with your network.",
+            "created_at": "2024-12-10T19:23:05.737000",
+            "account_id": "urn:li:organization:102995539",
+            "media_urls": [
+                "[]"
+            ],
+            "is_published": true
+        },
+        {
+            "id": "urn:li:share:7258816831400951808",
+            "content_text": "We're {hashtag|\\#|hiring} a new Founding Engineer \\(Applied AI/Backend\\) - Silicon Valley startup in India. Apply today or share this post with your network.",
+            "created_at": "2024-11-03T17:56:34.972000",
+            "account_id": "urn:li:organization:102995539",
+            "media_urls": [
+                "[]"
+            ],
+            "is_published": true
+        },
+        {
+            "id": "urn:li:share:7255901124270997504",
+            "content_text": "We're {hashtag|\\#|hiring} a new Full Stack Engineer Intern in India. Apply today or share this post with your network.",
+            "created_at": "2024-10-26T16:50:36.234000",
+            "account_id": "urn:li:organization:102995539",
+            "media_urls": [
+                "[]"
+            ],
+            "is_published": true
+        },
+        {
+            "id": "urn:li:share:7255538552367673344",
+            "content_text": "We're {hashtag|\\#|hiring} a new Back End Engineer Intern in India. Apply today or share this post with your network.",
+            "created_at": "2024-10-25T16:49:52.344000",
+            "account_id": "urn:li:organization:102995539",
+            "media_urls": [
+                "[]"
+            ],
+            "is_published": true
+        }
+    ],
+    "post_social_actions_urn:li:ugcPost:7304968765245411329": {
+        "status": 401,
+        "serviceErrorCode": 65601,
+        "code": "REVOKED_ACCESS_TOKEN",
+        "message": "The token used in the request has been revoked by the user",
+        "target": "urn:li:ugcPost:7304968765245411329"
+    },
+    "member_organization_roles_AQW83YoAG6to4ylpP0MWdLDJKKPEhoCCr-Q0bktMJbqoFO48_OlWAQba-fxqZDuBx5J38CHOktSST16bmw2tVk2l_dck5t34P1aKdMcaiD2JkqOajjXlyNLYtRvitXnyELNwaibI63Z5sRONaSpG5EbNQHzFISlb-FLYm_qpxn21s2jBu-tizlc6_UGLWRPLpmb_-F0BmMUrPDeDbKQu-UqTZPaRFcWeVVUXXLXgMKqg7Tz0QSm3O6EqWYScYU__v52Gmy2K_kP6wUBUuxN6FcZSIBafXpH8ieHdQOpEgs7E1I5RwzRowIVVuMO2XA0ETf3VK17iWLIxqbBBu69b8rXtz0qe7A": {
+        "elements": [
+            {
+                "roleAssignee": "urn:li:person:NxwL-IvR2n",
+                "state": "APPROVED",
+                "lastModified": {
+                    "actor": "urn:li:person:qUvas1UvE2",
+                    "impersonator": "urn:li:servicePrincipal:organization",
+                    "time": 1729669208781
+                },
+                "role": "ADMINISTRATOR",
+                "created": {
+                    "actor": "urn:li:person:qUvas1UvE2",
+                    "impersonator": "urn:li:servicePrincipal:organization",
+                    "time": 1729669208781
+                },
+                "organization": "urn:li:organization:102995539"
+            },
+            {
+                "roleAssignee": "urn:li:person:NxwL-IvR2n",
+                "state": "APPROVED",
+                "lastModified": {
+                    "actor": "urn:li:person:qUvas1UvE2",
+                    "impersonator": "urn:li:servicePrincipal:organization",
+                    "time": 1736235714339
+                },
+                "role": "ADMINISTRATOR",
+                "created": {
+                    "actor": "urn:li:person:qUvas1UvE2",
+                    "impersonator": "urn:li:servicePrincipal:organization",
+                    "time": 1736235714339
+                },
+                "organization": "urn:li:organization:105029503"
+            }
+        ]
+    },
+    "member_profile_AQW83YoAG6to4ylpP0MWdLDJKKPEhoCCr-Q0bktMJbqoFO48_OlWAQba-fxqZDuBx5J38CHOktSST16bmw2tVk2l_dck5t34P1aKdMcaiD2JkqOajjXlyNLYtRvitXnyELNwaibI63Z5sRONaSpG5EbNQHzFISlb-FLYm_qpxn21s2jBu-tizlc6_UGLWRPLpmb_-F0BmMUrPDeDbKQu-UqTZPaRFcWeVVUXXLXgMKqg7Tz0QSm3O6EqWYScYU__v52Gmy2K_kP6wUBUuxN6FcZSIBafXpH8ieHdQOpEgs7E1I5RwzRowIVVuMO2XA0ETf3VK17iWLIxqbBBu69b8rXtz0qe7A": {
+        "localizedLastName": "Bhandari",
+        "profilePicture": {
+            "displayImage": "urn:li:digitalmediaAsset:D5603AQHCmEqtcVhv-w"
+        },
+        "vanityName": "example-user",
+        "lastName": {
+            "localized": {
+                "en_US": "Bhandari"
+            },
+            "preferredLocale": {
+                "country": "US",
+                "language": "en"
+            }
+        },
+        "firstName": {
+            "localized": {
+                "en_US": "Founder A"
+            },
+            "preferredLocale": {
+                "country": "US",
+                "language": "en"
+            }
+        },
+        "localizedHeadline": "Startup, Ex-ML Lead at Google (Search Ranking, Gemini, Knowledge Graphs)",
+        "id": "NxwL-IvR2n",
+        "headline": {
+            "localized": {
+                "en_US": "Startup, Ex-ML Lead at Google (Search Ranking, Gemini, Knowledge Graphs)"
+            },
+            "preferredLocale": {
+                "country": "US",
+                "language": "en"
+            }
+        },
+        "localizedFirstName": "Founder A"
+    },
+    "post_social_actions_urn:li:ugcPost:7302440618364915712": {
+        "likesSummary": {
+            "selectedLikes": [
+                "urn:li:like:(urn:li:person:rrREsTCKC4,urn:li:ugcPost:7302440618364915712)",
+                "urn:li:like:(urn:li:person:Y9Ack78Y9e,urn:li:ugcPost:7302440618364915712)",
+                "urn:li:like:(urn:li:person:dCgSj6leY8,urn:li:ugcPost:7302440618364915712)",
+                "urn:li:like:(urn:li:person:1h57O_YA4P,urn:li:ugcPost:7302440618364915712)",
+                "urn:li:like:(urn:li:person:NakPzyluYJ,urn:li:ugcPost:7302440618364915712)",
+                "urn:li:like:(urn:li:person:jh9ODDqV6c,urn:li:ugcPost:7302440618364915712)",
+                "urn:li:like:(urn:li:person:y9P1-tT89e,urn:li:ugcPost:7302440618364915712)",
+                "urn:li:like:(urn:li:company:102995539,urn:li:ugcPost:7302440618364915712)",
+                "urn:li:like:(urn:li:person:iJmowlppel,urn:li:ugcPost:7302440618364915712)",
+                "urn:li:like:(urn:li:person:qUvas1UvE2,urn:li:ugcPost:7302440618364915712)"
+            ],
+            "aggregatedTotalLikes": 10,
+            "likedByCurrentUser": false,
+            "totalLikes": 10
+        },
+        "commentsSummary": {
+            "selectedComments": [
+                "urn:li:comment:(urn:li:ugcPost:7302440618364915712,7302444574881263616)"
+            ],
+            "totalFirstLevelComments": 1,
+            "commentsState": "OPEN",
+            "aggregatedTotalComments": 1
+        },
+        "target": "urn:li:ugcPost:7302440618364915712"
+    },
+    "post_social_actions_urn:li:share:7300938514823618560": {
+        "likesSummary": {
+            "selectedLikes": [
+                "urn:li:like:(urn:li:person:Nu5vEt7Ldt,urn:li:activity:7300938515473649665)",
+                "urn:li:like:(urn:li:person:dCgSj6leY8,urn:li:activity:7300938515473649665)",
+                "urn:li:like:(urn:li:person:qUvas1UvE2,urn:li:activity:7300938515473649665)"
+            ],
+            "aggregatedTotalLikes": 3,
+            "likedByCurrentUser": false,
+            "totalLikes": 3
+        },
+        "commentsSummary": {
+            "selectedComments": [],
+            "totalFirstLevelComments": 0,
+            "commentsState": "OPEN",
+            "aggregatedTotalComments": 0
+        },
+        "target": "urn:li:activity:7300938515473649665"
+    },
+    "post_social_actions_urn:li:ugcPost:7299881440480022528": {
+        "likesSummary": {
+            "selectedLikes": [
+                "urn:li:like:(urn:li:person:UPV9MhVHZy,urn:li:ugcPost:7299881440480022528)",
+                "urn:li:like:(urn:li:person:2i1nE2ptoJ,urn:li:ugcPost:7299881440480022528)",
+                "urn:li:like:(urn:li:person:0JuU8cQgai,urn:li:ugcPost:7299881440480022528)",
+                "urn:li:like:(urn:li:person:1h57O_YA4P,urn:li:ugcPost:7299881440480022528)",
+                "urn:li:like:(urn:li:person:fNT9nIStHG,urn:li:ugcPost:7299881440480022528)",
+                "urn:li:like:(urn:li:person:smfz4Da4oq,urn:li:ugcPost:7299881440480022528)",
+                "urn:li:like:(urn:li:person:a3dHpy5BzW,urn:li:ugcPost:7299881440480022528)",
+                "urn:li:like:(urn:li:person:qV50gMbMC7,urn:li:ugcPost:7299881440480022528)",
+                "urn:li:like:(urn:li:person:KbbcSW8Uxf,urn:li:ugcPost:7299881440480022528)",
+                "urn:li:like:(urn:li:company:105029503,urn:li:ugcPost:7299881440480022528)",
+                "urn:li:like:(urn:li:company:102995539,urn:li:ugcPost:7299881440480022528)",
+                "urn:li:like:(urn:li:person:qUvas1UvE2,urn:li:ugcPost:7299881440480022528)",
+                "urn:li:like:(urn:li:person:Nu5vEt7Ldt,urn:li:ugcPost:7299881440480022528)",
+                "urn:li:like:(urn:li:person:iJmowlppel,urn:li:ugcPost:7299881440480022528)",
+                "urn:li:like:(urn:li:person:dCgSj6leY8,urn:li:ugcPost:7299881440480022528)"
+            ],
+            "aggregatedTotalLikes": 15,
+            "likedByCurrentUser": false,
+            "totalLikes": 15
+        },
+        "commentsSummary": {
+            "selectedComments": [
+                "urn:li:comment:(urn:li:ugcPost:7299881440480022528,7299883621920727040)"
+            ],
+            "totalFirstLevelComments": 1,
+            "commentsState": "OPEN",
+            "aggregatedTotalComments": 2
+        },
+        "target": "urn:li:ugcPost:7299881440480022528"
+    },
+    "post_social_actions_urn:li:share:7298782983010889729": {
+        "likesSummary": {
+            "selectedLikes": [
+                "urn:li:like:(urn:li:person:Nu5vEt7Ldt,urn:li:activity:7298782983648419841)",
+                "urn:li:like:(urn:li:person:dCgSj6leY8,urn:li:activity:7298782983648419841)",
+                "urn:li:like:(urn:li:person:iJmowlppel,urn:li:activity:7298782983648419841)",
+                "urn:li:like:(urn:li:person:qUvas1UvE2,urn:li:activity:7298782983648419841)"
+            ],
+            "aggregatedTotalLikes": 4,
+            "likedByCurrentUser": false,
+            "totalLikes": 4
+        },
+        "commentsSummary": {
+            "selectedComments": [],
+            "totalFirstLevelComments": 0,
+            "commentsState": "OPEN",
+            "aggregatedTotalComments": 0
+        },
+        "target": "urn:li:activity:7298782983648419841"
+    },
+    "post_social_actions_urn:li:share:7295545337803354112": {
+        "likesSummary": {
+            "selectedLikes": [
+                "urn:li:like:(urn:li:company:102995539,urn:li:activity:7295545338889740288)",
+                "urn:li:like:(urn:li:person:idwsVg_nuS,urn:li:activity:7295545338889740288)",
+                "urn:li:like:(urn:li:person:Nu5vEt7Ldt,urn:li:activity:7295545338889740288)",
+                "urn:li:like:(urn:li:person:UPV9MhVHZy,urn:li:activity:7295545338889740288)",
+                "urn:li:like:(urn:li:person:dCgSj6leY8,urn:li:activity:7295545338889740288)",
+                "urn:li:like:(urn:li:person:qUvas1UvE2,urn:li:activity:7295545338889740288)"
+            ],
+            "aggregatedTotalLikes": 6,
+            "likedByCurrentUser": false,
+            "totalLikes": 6
+        },
+        "commentsSummary": {
+            "selectedComments": [],
+            "totalFirstLevelComments": 0,
+            "commentsState": "OPEN",
+            "aggregatedTotalComments": 0
+        },
+        "target": "urn:li:activity:7295545338889740288"
+    },
+    "post_social_actions_urn:li:share:7294797456192520192": {
+        "likesSummary": {
+            "selectedLikes": [
+                "urn:li:like:(urn:li:person:qUvas1UvE2,urn:li:activity:7294797457165561858)",
+                "urn:li:like:(urn:li:person:ymXuyWZcjV,urn:li:activity:7294797457165561858)",
+                "urn:li:like:(urn:li:company:102995539,urn:li:activity:7294797457165561858)"
+            ],
+            "aggregatedTotalLikes": 3,
+            "likedByCurrentUser": false,
+            "totalLikes": 3
+        },
+        "commentsSummary": {
+            "selectedComments": [],
+            "totalFirstLevelComments": 0,
+            "commentsState": "OPEN",
+            "aggregatedTotalComments": 0
+        },
+        "target": "urn:li:activity:7294797457165561858"
+    },
+    "post_social_actions_urn:li:share:7289735722838700032": {
+        "likesSummary": {
+            "selectedLikes": [
+                "urn:li:like:(urn:li:person:idwsVg_nuS,urn:li:activity:7289735724281516032)",
+                "urn:li:like:(urn:li:person:UPV9MhVHZy,urn:li:activity:7289735724281516032)",
+                "urn:li:like:(urn:li:company:105029503,urn:li:activity:7289735724281516032)",
+                "urn:li:like:(urn:li:person:Nu5vEt7Ldt,urn:li:activity:7289735724281516032)",
+                "urn:li:like:(urn:li:person:NxwL-IvR2n,urn:li:activity:7289735724281516032)",
+                "urn:li:like:(urn:li:person:T-U7NTgL8O,urn:li:activity:7289735724281516032)",
+                "urn:li:like:(urn:li:person:1mYDuNSivT,urn:li:activity:7289735724281516032)",
+                "urn:li:like:(urn:li:person:f8M2CJfWpo,urn:li:activity:7289735724281516032)",
+                "urn:li:like:(urn:li:person:smfz4Da4oq,urn:li:activity:7289735724281516032)",
+                "urn:li:like:(urn:li:person:gWbqSDVcSF,urn:li:activity:7289735724281516032)",
+                "urn:li:like:(urn:li:person:NakPzyluYJ,urn:li:activity:7289735724281516032)",
+                "urn:li:like:(urn:li:person:dCgSj6leY8,urn:li:activity:7289735724281516032)",
+                "urn:li:like:(urn:li:person:fNT9nIStHG,urn:li:activity:7289735724281516032)",
+                "urn:li:like:(urn:li:person:iJmowlppel,urn:li:activity:7289735724281516032)",
+                "urn:li:like:(urn:li:person:qUvas1UvE2,urn:li:activity:7289735724281516032)",
+                "urn:li:like:(urn:li:person:Aozs8B4IN7,urn:li:activity:7289735724281516032)",
+                "urn:li:like:(urn:li:person:WYiDbQIUzy,urn:li:activity:7289735724281516032)"
+            ],
+            "aggregatedTotalLikes": 17,
+            "likedByCurrentUser": true,
+            "totalLikes": 17
+        },
+        "commentsSummary": {
+            "selectedComments": [],
+            "totalFirstLevelComments": 0,
+            "commentsState": "OPEN",
+            "aggregatedTotalComments": 0
+        },
+        "target": "urn:li:activity:7289735724281516032"
+    },
+    "post_social_actions_urn:li:ugcPost:7287556299427393536": {
+        "likesSummary": {
+            "selectedLikes": [
+                "urn:li:like:(urn:li:person:gV8v0rGMCe,urn:li:ugcPost:7287556299427393536)",
+                "urn:li:like:(urn:li:person:dCgSj6leY8,urn:li:ugcPost:7287556299427393536)",
+                "urn:li:like:(urn:li:person:Nu5vEt7Ldt,urn:li:ugcPost:7287556299427393536)",
+                "urn:li:like:(urn:li:person:WLj-GBAcUB,urn:li:ugcPost:7287556299427393536)",
+                "urn:li:like:(urn:li:person:zDKbz58qPR,urn:li:ugcPost:7287556299427393536)",
+                "urn:li:like:(urn:li:person:xNFkoItxEa,urn:li:ugcPost:7287556299427393536)",
+                "urn:li:like:(urn:li:person:fNT9nIStHG,urn:li:ugcPost:7287556299427393536)",
+                "urn:li:like:(urn:li:person:2mZqAh5276,urn:li:ugcPost:7287556299427393536)",
+                "urn:li:like:(urn:li:person:AGtsfbgtpv,urn:li:ugcPost:7287556299427393536)",
+                "urn:li:like:(urn:li:person:rOlckLpH2o,urn:li:ugcPost:7287556299427393536)",
+                "urn:li:like:(urn:li:person:gWbqSDVcSF,urn:li:ugcPost:7287556299427393536)",
+                "urn:li:like:(urn:li:person:jgoRE9izu1,urn:li:ugcPost:7287556299427393536)",
+                "urn:li:like:(urn:li:person:TUnm3ITmAL,urn:li:ugcPost:7287556299427393536)",
+                "urn:li:like:(urn:li:person:1mYDuNSivT,urn:li:ugcPost:7287556299427393536)",
+                "urn:li:like:(urn:li:person:iL8pe9qvuR,urn:li:ugcPost:7287556299427393536)",
+                "urn:li:like:(urn:li:person:1h57O_YA4P,urn:li:ugcPost:7287556299427393536)",
+                "urn:li:like:(urn:li:person:KbqCefxnh3,urn:li:ugcPost:7287556299427393536)",
+                "urn:li:like:(urn:li:person:NakPzyluYJ,urn:li:ugcPost:7287556299427393536)",
+                "urn:li:like:(urn:li:person:NxwL-IvR2n,urn:li:ugcPost:7287556299427393536)",
+                "urn:li:like:(urn:li:person:lmR2LjuuO8,urn:li:ugcPost:7287556299427393536)",
+                "urn:li:like:(urn:li:person:2FgsFOTMz-,urn:li:ugcPost:7287556299427393536)",
+                "urn:li:like:(urn:li:person:Lmlb3YZFJg,urn:li:ugcPost:7287556299427393536)",
+                "urn:li:like:(urn:li:person:UPV9MhVHZy,urn:li:ugcPost:7287556299427393536)",
+                "urn:li:like:(urn:li:person:qUvas1UvE2,urn:li:ugcPost:7287556299427393536)",
+                "urn:li:like:(urn:li:person:ehtu-Y16Vg,urn:li:ugcPost:7287556299427393536)",
+                "urn:li:like:(urn:li:person:atT8vBjZPK,urn:li:ugcPost:7287556299427393536)",
+                "urn:li:like:(urn:li:company:105029503,urn:li:ugcPost:7287556299427393536)"
+            ],
+            "aggregatedTotalLikes": 30,
+            "likedByCurrentUser": true,
+            "totalLikes": 30
+        },
+        "commentsSummary": {
+            "selectedComments": [
+                "urn:li:comment:(urn:li:ugcPost:7287556299427393536,7287674565969821697)",
+                "urn:li:comment:(urn:li:ugcPost:7287556299427393536,7287601649383088128)"
+            ],
+            "totalFirstLevelComments": 2,
+            "commentsState": "OPEN",
+            "aggregatedTotalComments": 2
+        },
+        "target": "urn:li:ugcPost:7287556299427393536"
+    },
+    "post_social_actions_urn:li:share:7285727238841409540": {
+        "likesSummary": {
+            "selectedLikes": [
+                "urn:li:like:(urn:li:person:Nu5vEt7Ldt,urn:li:activity:7285727239466270720)",
+                "urn:li:like:(urn:li:person:fNT9nIStHG,urn:li:activity:7285727239466270720)",
+                "urn:li:like:(urn:li:person:1mYDuNSivT,urn:li:activity:7285727239466270720)",
+                "urn:li:like:(urn:li:person:1h57O_YA4P,urn:li:activity:7285727239466270720)",
+                "urn:li:like:(urn:li:person:wXAj09mBnD,urn:li:activity:7285727239466270720)",
+                "urn:li:like:(urn:li:person:4nxY8Zz3j8,urn:li:activity:7285727239466270720)",
+                "urn:li:like:(urn:li:person:NxwL-IvR2n,urn:li:activity:7285727239466270720)",
+                "urn:li:like:(urn:li:person:NakPzyluYJ,urn:li:activity:7285727239466270720)",
+                "urn:li:like:(urn:li:person:2i1nE2ptoJ,urn:li:activity:7285727239466270720)",
+                "urn:li:like:(urn:li:person:ta85mHxu1x,urn:li:activity:7285727239466270720)",
+                "urn:li:like:(urn:li:company:102995539,urn:li:activity:7285727239466270720)",
+                "urn:li:like:(urn:li:person:dCgSj6leY8,urn:li:activity:7285727239466270720)",
+                "urn:li:like:(urn:li:person:LQJtkRTNmr,urn:li:activity:7285727239466270720)",
+                "urn:li:like:(urn:li:person:qUvas1UvE2,urn:li:activity:7285727239466270720)",
+                "urn:li:like:(urn:li:person:Slgrz0Yxt5,urn:li:activity:7285727239466270720)",
+                "urn:li:like:(urn:li:company:105029503,urn:li:activity:7285727239466270720)"
+            ],
+            "aggregatedTotalLikes": 16,
+            "likedByCurrentUser": true,
+            "totalLikes": 16
+        },
+        "commentsSummary": {
+            "selectedComments": [
+                "urn:li:comment:(urn:li:activity:7285727239466270720,7286502265417281536)",
+                "urn:li:comment:(urn:li:activity:7285727239466270720,7285727837314019328)"
+            ],
+            "totalFirstLevelComments": 2,
+            "commentsState": "OPEN",
+            "aggregatedTotalComments": 2
+        },
+        "target": "urn:li:activity:7285727239466270720"
+    },
+    "org_timebound_share_stats_urn:li:organization:105029503_2025-03-10T07:01:26.564065+00:00_2025-03-17T07:01:26.564065+00:00_DAY": {
+        "elements": [
+            {
+                "totalShareStatistics": {
+                    "uniqueImpressionsCount": 24,
+                    "shareCount": 1,
+                    "engagement": 0.16901408450704225,
+                    "clickCount": 9,
+                    "likeCount": 2,
+                    "impressionCount": 71,
+                    "commentCount": 0
+                },
+                "organizationalEntity": "urn:li:organization:105029503",
+                "timeRange": {
+                    "start": 1741564800000,
+                    "end": 1741651200000
+                }
+            },
+            {
+                "totalShareStatistics": {
+                    "uniqueImpressionsCount": 19,
+                    "shareCount": 0,
+                    "engagement": 0.6216216216216216,
+                    "clickCount": 21,
+                    "likeCount": 2,
+                    "impressionCount": 37,
+                    "commentCount": 0
+                },
+                "organizationalEntity": "urn:li:organization:105029503",
+                "timeRange": {
+                    "start": 1741651200000,
+                    "end": 1741737600000
+                }
+            },
+            {
+                "totalShareStatistics": {
+                    "uniqueImpressionsCount": 12,
+                    "shareCount": 0,
+                    "engagement": 0.0,
+                    "clickCount": 0,
+                    "likeCount": 0,
+                    "impressionCount": 41,
+                    "commentCount": 0
+                },
+                "organizationalEntity": "urn:li:organization:105029503",
+                "timeRange": {
+                    "start": 1741737600000,
+                    "end": 1741824000000
+                }
+            },
+            {
+                "totalShareStatistics": {
+                    "uniqueImpressionsCount": 10,
+                    "shareCount": 0,
+                    "engagement": 0.0,
+                    "clickCount": 0,
+                    "likeCount": 0,
+                    "impressionCount": 19,
+                    "commentCount": 0
+                },
+                "organizationalEntity": "urn:li:organization:105029503",
+                "timeRange": {
+                    "start": 1741824000000,
+                    "end": 1741910400000
+                }
+            },
+            {
+                "totalShareStatistics": {
+                    "uniqueImpressionsCount": 16,
+                    "shareCount": 0,
+                    "engagement": 0.02,
+                    "clickCount": 1,
+                    "likeCount": 1,
+                    "impressionCount": 100,
+                    "commentCount": 0
+                },
+                "organizationalEntity": "urn:li:organization:105029503",
+                "timeRange": {
+                    "start": 1741910400000,
+                    "end": 1741996800000
+                }
+            },
+            {
+                "totalShareStatistics": {
+                    "uniqueImpressionsCount": 7,
+                    "shareCount": 0,
+                    "engagement": 0.0,
+                    "clickCount": 0,
+                    "likeCount": 0,
+                    "impressionCount": 28,
+                    "commentCount": 0
+                },
+                "organizationalEntity": "urn:li:organization:105029503",
+                "timeRange": {
+                    "start": 1741996800000,
+                    "end": 1742083200000
+                }
+            },
+            {
+                "totalShareStatistics": {
+                    "uniqueImpressionsCount": 13,
+                    "shareCount": 0,
+                    "engagement": 0.16666666666666666,
+                    "clickCount": 10,
+                    "likeCount": 0,
+                    "impressionCount": 60,
+                    "commentCount": 0
+                },
+                "organizationalEntity": "urn:li:organization:105029503",
+                "timeRange": {
+                    "start": 1742083200000,
+                    "end": 1742169600000
+                }
+            }
+        ]
+    },
+    "post_social_actions_urn:li:share:7294874686780235776": {
+        "likesSummary": {
+            "selectedLikes": [],
+            "aggregatedTotalLikes": 0,
+            "likedByCurrentUser": false,
+            "totalLikes": 0
+        },
+        "commentsSummary": {
+            "selectedComments": [],
+            "totalFirstLevelComments": 0,
+            "commentsState": "OPEN",
+            "aggregatedTotalComments": 0
+        },
+        "target": "urn:li:activity:7294874687266828289"
+    },
+    "post_social_actions_urn:li:share:7294696999075889153": {
+        "likesSummary": {
+            "selectedLikes": [],
+            "aggregatedTotalLikes": 0,
+            "likedByCurrentUser": false,
+            "totalLikes": 0
+        },
+        "commentsSummary": {
+            "selectedComments": [],
+            "totalFirstLevelComments": 0,
+            "commentsState": "OPEN",
+            "aggregatedTotalComments": 0
+        },
+        "target": "urn:li:activity:7294696999646318594"
+    },
+    "post_social_actions_urn:li:share:7291794817494179840": {
+        "likesSummary": {
+            "selectedLikes": [],
+            "aggregatedTotalLikes": 0,
+            "likedByCurrentUser": false,
+            "totalLikes": 0
+        },
+        "commentsSummary": {
+            "selectedComments": [],
+            "totalFirstLevelComments": 0,
+            "commentsState": "OPEN",
+            "aggregatedTotalComments": 0
+        },
+        "target": "urn:li:activity:7291794817993330688"
+    },
+    "post_social_actions_urn:li:share:7291431130300362752": {
+        "likesSummary": {
+            "selectedLikes": [],
+            "aggregatedTotalLikes": 0,
+            "likedByCurrentUser": false,
+            "totalLikes": 0
+        },
+        "commentsSummary": {
+            "selectedComments": [],
+            "totalFirstLevelComments": 0,
+            "commentsState": "OPEN",
+            "aggregatedTotalComments": 0
+        },
+        "target": "urn:li:activity:7291431130761756674"
+    },
+    "post_social_actions_urn:li:share:7277301547036770304": {
+        "likesSummary": {
+            "selectedLikes": [],
+            "aggregatedTotalLikes": 0,
+            "likedByCurrentUser": false,
+            "totalLikes": 0
+        },
+        "commentsSummary": {
+            "selectedComments": [],
+            "totalFirstLevelComments": 0,
+            "commentsState": "OPEN",
+            "aggregatedTotalComments": 0
+        },
+        "target": "urn:li:activity:7277301547477131264"
+    },
+    "post_social_actions_urn:li:share:7272246953999060994": {
+        "likesSummary": {
+            "selectedLikes": [],
+            "aggregatedTotalLikes": 0,
+            "likedByCurrentUser": false,
+            "totalLikes": 0
+        },
+        "commentsSummary": {
+            "selectedComments": [],
+            "totalFirstLevelComments": 0,
+            "commentsState": "OPEN",
+            "aggregatedTotalComments": 0
+        },
+        "target": "urn:li:activity:7272246954473013248"
+    },
+    "post_social_actions_urn:li:share:7258816831400951808": {
+        "likesSummary": {
+            "selectedLikes": [],
+            "aggregatedTotalLikes": 0,
+            "likedByCurrentUser": false,
+            "totalLikes": 0
+        },
+        "commentsSummary": {
+            "selectedComments": [
+                "urn:li:comment:(urn:li:activity:7258816831824576512,7259176288886628352)"
+            ],
+            "totalFirstLevelComments": 1,
+            "commentsState": "OPEN",
+            "aggregatedTotalComments": 1
+        },
+        "target": "urn:li:activity:7258816831824576512"
+    },
+    "post_social_actions_urn:li:share:7255901124270997504": {
+        "likesSummary": {
+            "selectedLikes": [
+                "urn:li:like:(urn:li:person:6vEkFUMmav,urn:li:activity:7255901124728172544)",
+                "urn:li:like:(urn:li:person:AvzS9vcIoL,urn:li:activity:7255901124728172544)"
+            ],
+            "aggregatedTotalLikes": 2,
+            "likedByCurrentUser": false,
+            "totalLikes": 2
+        },
+        "commentsSummary": {
+            "selectedComments": [
+                "urn:li:comment:(urn:li:activity:7255901124728172544,7255955081391390720)"
+            ],
+            "totalFirstLevelComments": 1,
+            "commentsState": "OPEN",
+            "aggregatedTotalComments": 1
+        },
+        "target": "urn:li:activity:7255901124728172544"
+    },
+    "post_social_actions_urn:li:share:7255538552367673344": {
+        "likesSummary": {
+            "selectedLikes": [],
+            "aggregatedTotalLikes": 0,
+            "likedByCurrentUser": false,
+            "totalLikes": 0
+        },
+        "commentsSummary": {
+            "selectedComments": [],
+            "totalFirstLevelComments": 0,
+            "commentsState": "OPEN",
+            "aggregatedTotalComments": 0
+        },
+        "target": "urn:li:activity:7255538552799662080"
+    },
+    "org_lifetime_share_stats_urn:li:organization:102995539": {
+        "elements": [
+            {
+                "totalShareStatistics": {
+                    "uniqueImpressionsCount": 616,
+                    "shareCount": 0,
+                    "engagement": 0.12741859367626238,
+                    "clickCount": 265,
+                    "likeCount": 2,
+                    "impressionCount": 2119,
+                    "commentCount": 3
+                },
+                "organizationalEntity": "urn:li:organization:102995539"
+            }
+        ]
+    },
+    "org_follower_count_urn:li:organization:102995539": null,
+    "org_timebound_share_stats_urn:li:organization:102995539_2025-03-10T07:01:47.888269+00:00_2025-03-17T07:01:47.888269+00:00_DAY": {
+        "elements": [
+            {
+                "totalShareStatistics": {
+                    "uniqueImpressionsCount": 0,
+                    "shareCount": 0,
+                    "engagement": 0.0,
+                    "clickCount": 0,
+                    "likeCount": 0,
+                    "impressionCount": 0,
+                    "commentCount": 0
+                },
+                "organizationalEntity": "urn:li:organization:102995539",
+                "timeRange": {
+                    "start": 1741564800000,
+                    "end": 1741651200000
+                }
+            },
+            {
+                "totalShareStatistics": {
+                    "uniqueImpressionsCount": 0,
+                    "shareCount": 0,
+                    "engagement": 0.0,
+                    "clickCount": 0,
+                    "likeCount": 0,
+                    "impressionCount": 0,
+                    "commentCount": 0
+                },
+                "organizationalEntity": "urn:li:organization:102995539",
+                "timeRange": {
+                    "start": 1741651200000,
+                    "end": 1741737600000
+                }
+            },
+            {
+                "totalShareStatistics": {
+                    "uniqueImpressionsCount": 1,
+                    "shareCount": 0,
+                    "engagement": 0.0,
+                    "clickCount": 0,
+                    "likeCount": 0,
+                    "impressionCount": 5,
+                    "commentCount": 0
+                },
+                "organizationalEntity": "urn:li:organization:102995539",
+                "timeRange": {
+                    "start": 1741737600000,
+                    "end": 1741824000000
+                }
+            },
+            {
+                "totalShareStatistics": {
+                    "uniqueImpressionsCount": 0,
+                    "shareCount": 0,
+                    "engagement": 0.0,
+                    "clickCount": 0,
+                    "likeCount": 0,
+                    "impressionCount": 0,
+                    "commentCount": 0
+                },
+                "organizationalEntity": "urn:li:organization:102995539",
+                "timeRange": {
+                    "start": 1741824000000,
+                    "end": 1741910400000
+                }
+            },
+            {
+                "totalShareStatistics": {
+                    "uniqueImpressionsCount": 1,
+                    "shareCount": 0,
+                    "engagement": 0.0,
+                    "clickCount": 0,
+                    "likeCount": 0,
+                    "impressionCount": 5,
+                    "commentCount": 0
+                },
+                "organizationalEntity": "urn:li:organization:102995539",
+                "timeRange": {
+                    "start": 1741910400000,
+                    "end": 1741996800000
+                }
+            },
+            {
+                "totalShareStatistics": {
+                    "uniqueImpressionsCount": 1,
+                    "shareCount": 0,
+                    "engagement": 0.25,
+                    "clickCount": 1,
+                    "likeCount": 0,
+                    "impressionCount": 4,
+                    "commentCount": 0
+                },
+                "organizationalEntity": "urn:li:organization:102995539",
+                "timeRange": {
+                    "start": 1741996800000,
+                    "end": 1742083200000
+                }
+            },
+            {
+                "totalShareStatistics": {
+                    "uniqueImpressionsCount": 1,
+                    "shareCount": 0,
+                    "engagement": 0.0,
+                    "clickCount": 0,
+                    "likeCount": 0,
+                    "impressionCount": 1,
+                    "commentCount": 0
+                },
+                "organizationalEntity": "urn:li:organization:102995539",
+                "timeRange": {
+                    "start": 1742083200000,
+                    "end": 1742169600000
+                }
+            }
+        ]
+    }
+}

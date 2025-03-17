@@ -411,6 +411,8 @@ This section covers change management, versioning of nodes and workflows, and th
 3. **Configuration Changes:**
     - Any new config fields must be propagated to all workflow instances.
     - Removal should mark a field as deprecated before complete deletion.
+3.b. Validation schema changes -> previous objects won't be valid anymore, in that case -> ask user to refill all the invalid configs while forking!
+    How to handle this for input / output etc? If parent node output and child node input have diff validations; it may cause errors. In that case they should have same validations and devs handle this (valid edges)
 4. **Default Value Changes:**
     - These are backward compatible, but for UX purposes, users should be notified (and possibly given a side-by-side comparison on the UI).
 5. **Node Deletion:**
@@ -423,6 +425,8 @@ This section covers change management, versioning of nodes and workflows, and th
     - **Approaches:**
         - Supply a changelist in code.
         - Or automatically deduce atomic changes by reconciling code with DB versions.
+
+TODO: what to do about subclasses in versioning when parent version change??
 
 ## Workflow Versioning
 
@@ -589,6 +593,10 @@ This section addresses the design for continuous, “agentful” workflows that 
 > 
 
 ---
+
+# FUTURE
+## TODO: request ID by user to track user's request across the system and multiple services!
+
 
 # Conclusion
 

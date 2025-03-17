@@ -90,4 +90,22 @@ PYTHONPATH=./libs:./services
 PYTHONPATH=./services
 ```
 
+## Imports
+Since we add `services` to the python path, we can directly import from the individual services rather than `services.workflow_service....` do `workflow_service.sub_module...` during import
+
+## Run code
+```bash
+PYTHONPATH=.:./services poetry run path/to/file.py
+```
+
+## NOTE: IDE (VS Code / Cursor) will automatically load PYTHONPATH from .env file
+FOLLOW instructions from docs/README.md!
+
+## Tests
+
+```bash
+PYTHONPATH=.:./services poetry run pytest
+```
+
 ## DB
+
