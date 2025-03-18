@@ -436,14 +436,22 @@ class BaseSchema(BaseModel):
                         
     #     return editable_fields
 
-    def model_dump_json_only_user_editable(self, include_deprecated: bool = True) -> str:
+    def model_dump_only_user_editable(self, include_deprecated: bool = True, serialize_values: bool = False, *args, **kwargs) -> str:
         """
         Serialize the model instance to a JSON string, including only user-editable fields.
 
         NOTE: use the dumped JSON schema if dump needs additional field metadata, eg: alias, name ,descriptions etc!
+
+        NOTE: model_dump from pydantic can be used with *args, **kwargs to achive things such as dumping in JSON serializable format, include/exclude fields etc!
+        https://docs.pydantic.dev/latest/api/base_model/#pydantic.BaseModel.model_dump
         """
         model_dump = {}
-        for field_name, field in self.model_fields.items():
+        if serialize_values:
+            dump_str = self.model_dump_json(*args, **kwargs)
+            full_model_dump = json.loads(dump_str)
+        else:
+            full_model_dump = self.model_dump(*args, **kwargs)
+        for (field_name, field), (_, field_dump) in zip(self.model_fields.items(), full_model_dump.items()):
             # Check if field is marked as user_editable
             if (BaseSchema._is_field_deprecated(field) and not include_deprecated) or \
                 (not BaseSchema._is_field_user_editable(field)):
@@ -455,22 +463,21 @@ class BaseSchema(BaseModel):
             # 3. Dict - Process each value
             # 4. Enum - Get the value
             # 5. Primitive types - Use directly
-            def _process_value(value: Any) -> Any:
+            def _process_value(value: Any, value_dump: Any) -> Any:
                 """Helper function to process individual values based on their type"""
-                if value is None:
-                    return None
-                elif isinstance(value, BaseSchema):
-                    return value.model_dump_json_only_user_editable(include_deprecated=include_deprecated)
-                elif isinstance(value, Enum):
-                    return value.value
+                if isinstance(value, BaseSchema):
+                    return value.model_dump_only_user_editable(include_deprecated=include_deprecated, serialize_values=serialize_values, *args, **kwargs)
                 elif isinstance(value, list):
-                    return [_process_value(item) for item in value]
+                    return [_process_value(item, item_dump) for item, item_dump in zip(value, value_dump)]
                 elif isinstance(value, dict):
-                    return {k: _process_value(val) for k, val in value.items()}
+                    return {k: _process_value(val, val_dump) for (k, val), (_, val_dump) in zip(value.items(), value_dump.items())}
+                # elif value is None:
+                #     return value_dump
+                # elif isinstance(value, Enum):
+                #     return value_dump  # value.value
                 else:
-                    return value
-
-            model_dump[field_name] = _process_value(value)
+                    return value_dump
+            model_dump[field_name] = _process_value(value, field_dump)
         return model_dump
     
     # @model_validator(mode='before')

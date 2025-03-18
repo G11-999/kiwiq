@@ -344,13 +344,233 @@ class TestEdgeCases(unittest.TestCase):
         
         # Get diff
         diff = ComplexTypesSchema.diff_from_provided_schema(modified, self_is_base_for_diff=True)
-        print(json.dumps(diff, indent=4))
         
         # Check changes
         self.assertIn("new_field", diff["added"])
         self.assertIn("enum_list", diff["removed"])
         self.assertIn("str_dict._type", diff["modified_type"])
         self.assertIn("int_dict._default", diff["modified_default"])
+
+    def test_model_dump_only_user_editable_nested(self):
+        """Test model_dump_only_user_editable with complex nested BaseSchema scenarios.
+        
+        Tests all dump modes and serialization options:
+        1. model_dump_only_user_editable() in Python mode - retains Python objects
+        2. model_dump_only_user_editable() in JSON mode - serializes to JSON-compatible values 
+        3. model_dump_only_user_editable() with include_deprecated=True/False
+        4. model_dump_only_user_editable() with serialize_values=True/False
+        5. Regular model_dump() - includes all fields including SkipJsonSchema ones
+        """
+        # Define nested schemas with mix of user editable and non-editable fields
+        deprecated_field_key = BaseSchema.DEPRECATED_FIELD_KEY
+        class InnerSchema(BaseSchema):
+            """Inner schema with mix of editable and non-editable fields."""
+            editable_str: str = Field(default="test")
+            editable_int: int = Field(default=42)
+            editable_date: datetime = Field(default_factory=datetime.now)
+            deprecated_field: str = Field(default="old", **{deprecated_field_key: True})
+            internal_id: SkipJsonSchema[str] = Field(default="id123") 
+            internal_metadata: SkipJsonSchema[Dict[str, str]] = Field(default_factory=dict)
+            # Added list and dict fields
+            str_list: List[str] = Field(default_factory=list)
+            int_dict: Dict[str, int] = Field(default_factory=dict)
+
+        class MiddleSchema(BaseSchema):
+            """Middle schema with nested inner schema."""
+            name: str = Field(default="middle")
+            inner: InnerSchema = Field(default_factory=InnerSchema)
+            deprecated_count: int = Field(default=0, **{deprecated_field_key: True})
+            internal_status: SkipJsonSchema[str] = Field(default="active")
+            inner_list: List[InnerSchema] = Field(default_factory=list)
+            # Added list and dict fields with BaseSchema values
+            schema_dict: Dict[str, InnerSchema] = Field(default_factory=dict)
+            nested_list_dict: Dict[str, List[InnerSchema]] = Field(default_factory=dict)
+
+        class OuterSchema(BaseSchema):
+            """Outer schema with multiple levels of nesting."""
+            title: str = Field(default="outer")
+            middle: MiddleSchema = Field(default_factory=MiddleSchema)
+            middle_list: List[MiddleSchema] = Field(default_factory=list)
+            deprecated_flag: bool = Field(default=False, **{deprecated_field_key: True})
+            internal_created_at: SkipJsonSchema[datetime] = Field(default_factory=datetime.now)
+            # Added list and dict fields
+            str_int_dict: Dict[str, int] = Field(default_factory=dict)
+            middle_dict: Dict[str, MiddleSchema] = Field(default_factory=dict)
+
+        test_date = datetime(2024, 1, 1, 12, 30, 45)
+
+        # Create test instances with nested data
+        inner1 = InnerSchema(
+            editable_str="inner1",
+            editable_int=100,
+            editable_date=test_date,
+            deprecated_field="legacy1",
+            internal_id="id1",
+            internal_metadata={"key": "value"},
+            str_list=["a", "b", "c"],
+            int_dict={"x": 1, "y": 2}
+        )
+
+        inner2 = InnerSchema(
+            editable_str="inner2", 
+            editable_int=200,
+            editable_date=test_date,
+            deprecated_field="legacy2",
+            internal_id="id2",
+            str_list=["d", "e"],
+            int_dict={"z": 3}
+        )
+
+        middle1 = MiddleSchema(
+            name="middle1",
+            inner=inner1,
+            deprecated_count=5,
+            internal_status="pending",
+            inner_list=[inner1, inner2],
+            schema_dict={"first": inner1, "second": inner2},
+            nested_list_dict={"group1": [inner1, inner2]}
+        )
+
+        middle2 = MiddleSchema(
+            name="middle2",
+            inner=inner2,
+            deprecated_count=3,
+            inner_list=[inner2],
+            schema_dict={"third": inner2},
+            nested_list_dict={"group2": [inner2]}
+        )
+
+        outer = OuterSchema(
+            title="test_outer",
+            middle=middle1,
+            middle_list=[middle1, middle2],
+            deprecated_flag=True,
+            internal_created_at=test_date,
+            str_int_dict={"a": 1, "b": 2},
+            middle_dict={"m1": middle1, "m2": middle2}
+        )
+
+        # Test 1: Python mode with include_deprecated=True (default)
+        python_dump = outer.model_dump_only_user_editable()
+
+        # Verify Python objects and deprecated fields are preserved
+        self.assertIsInstance(python_dump["middle"]["inner"]["editable_date"], datetime)
+        self.assertEqual(python_dump["middle"]["inner"]["editable_date"], test_date)
+        self.assertEqual(python_dump["middle"]["inner"]["deprecated_field"], "legacy1")
+        self.assertEqual(python_dump["middle"]["deprecated_count"], 5)
+        self.assertEqual(python_dump["deprecated_flag"], True)
+
+        # Verify new list and dict fields
+        self.assertEqual(python_dump["middle"]["inner"]["str_list"], ["a", "b", "c"])
+        self.assertEqual(python_dump["middle"]["inner"]["int_dict"], {"x": 1, "y": 2})
+        self.assertEqual(len(python_dump["middle"]["schema_dict"]), 2)
+        self.assertEqual(python_dump["str_int_dict"], {"a": 1, "b": 2})
+        self.assertEqual(len(python_dump["middle_dict"]), 2)
+
+        # Test 2: Python mode with include_deprecated=False
+        python_dump_no_deprecated = outer.model_dump_only_user_editable(include_deprecated=False)
+
+        # Verify deprecated fields are excluded
+        self.assertNotIn("deprecated_field", python_dump_no_deprecated["middle"]["inner"])
+        self.assertNotIn("deprecated_count", python_dump_no_deprecated["middle"])
+        self.assertNotIn("deprecated_flag", python_dump_no_deprecated)
+
+        # Test 3: JSON mode with serialize_values=True
+        json_dump = outer.model_dump_only_user_editable(serialize_values=True)
+
+        # Verify values are JSON serialized
+        self.assertIsInstance(json_dump["middle"]["inner"]["editable_date"], str)
+        self.assertEqual(json_dump["middle"]["inner"]["editable_date"], test_date.isoformat())
+
+        # Verify complex collections are properly serialized
+        self.assertEqual(json_dump["middle"]["schema_dict"]["first"]["str_list"], ["a", "b", "c"])
+        self.assertEqual(json_dump["middle_dict"]["m1"]["inner"]["int_dict"], {"x": 1, "y": 2})
+
+        # Test 4: JSON mode with serialize_values=True and include_deprecated=False
+        json_dump_no_deprecated = outer.model_dump_only_user_editable(
+            serialize_values=True,
+            include_deprecated=False
+        )
+
+        # Verify JSON serialization and deprecated field exclusion
+        self.assertIsInstance(json_dump_no_deprecated["middle"]["inner"]["editable_date"], str)
+        self.assertNotIn("deprecated_field", json_dump_no_deprecated["middle"]["inner"])
+
+        # Common verification for all user editable dumps
+        for dump in [python_dump, python_dump_no_deprecated, json_dump, json_dump_no_deprecated]:
+            # Verify outer level
+            self.assertEqual(dump["title"], "test_outer")
+            self.assertNotIn("internal_created_at", dump)
+            self.assertEqual(dump["str_int_dict"], {"a": 1, "b": 2})
+
+            # Verify middle level
+            middle_dump = dump["middle"]
+            self.assertEqual(middle_dump["name"], "middle1")
+            self.assertNotIn("internal_status", middle_dump)
+            self.assertEqual(len(middle_dump["schema_dict"]), 2)
+            self.assertEqual(len(middle_dump["nested_list_dict"]["group1"]), 2)
+
+            # Verify inner level
+            inner_dump = middle_dump["inner"]
+            self.assertEqual(inner_dump["editable_str"], "inner1")
+            self.assertEqual(inner_dump["editable_int"], 100)
+            self.assertEqual(inner_dump["str_list"], ["a", "b", "c"])
+            self.assertEqual(inner_dump["int_dict"], {"x": 1, "y": 2})
+            self.assertNotIn("internal_id", inner_dump)
+            self.assertNotIn("internal_metadata", inner_dump)
+
+            # Verify lists
+            self.assertEqual(len(dump["middle_list"]), 2)
+            self.assertEqual(dump["middle_list"][0]["name"], "middle1")
+            self.assertEqual(dump["middle_list"][1]["name"], "middle2")
+
+            # Verify dicts
+            self.assertEqual(len(dump["middle_dict"]), 2)
+            self.assertEqual(dump["middle_dict"]["m1"]["name"], "middle1")
+            self.assertEqual(dump["middle_dict"]["m2"]["name"], "middle2")
+
+        # Test 5: Regular model_dump should include all fields
+        full_dump = outer.model_dump()
+        
+        # Verify all fields are present including SkipJsonSchema and deprecated
+        self.assertIn("internal_created_at", full_dump)
+        self.assertEqual(full_dump["internal_created_at"], test_date)
+        self.assertIn("deprecated_flag", full_dump)
+        self.assertTrue(full_dump["deprecated_flag"])
+        
+        self.assertIn("internal_status", full_dump["middle"])
+        self.assertEqual(full_dump["middle"]["internal_status"], "pending")
+        self.assertIn("deprecated_count", full_dump["middle"])
+        self.assertEqual(full_dump["middle"]["deprecated_count"], 5)
+        
+        self.assertIn("internal_id", full_dump["middle"]["inner"])
+        self.assertEqual(full_dump["middle"]["inner"]["internal_id"], "id1")
+        self.assertIn("internal_metadata", full_dump["middle"]["inner"])
+        self.assertEqual(full_dump["middle"]["inner"]["internal_metadata"], {"key": "value"})
+        self.assertIn("deprecated_field", full_dump["middle"]["inner"])
+        self.assertEqual(full_dump["middle"]["inner"]["deprecated_field"], "legacy1")
+
+        # Verify new fields in full dump
+        self.assertEqual(full_dump["str_int_dict"], {"a": 1, "b": 2})
+        self.assertEqual(len(full_dump["middle_dict"]), 2)
+        self.assertEqual(full_dump["middle"]["inner"]["str_list"], ["a", "b", "c"])
+        self.assertEqual(full_dump["middle"]["inner"]["int_dict"], {"x": 1, "y": 2})
+        self.assertEqual(len(full_dump["middle"]["schema_dict"]), 2)
+        self.assertEqual(len(full_dump["middle"]["nested_list_dict"]["group1"]), 2)
+
+        # Verify JSON serializability
+        try:
+            json.dumps(json_dump)
+            json.dumps(json_dump_no_deprecated)
+        except Exception as e:
+            self.fail(f"Failed to JSON serialize dumps: {e}")
+
+        # Verify Python dumps are NOT JSON serializable due to datetime objects
+        with self.assertRaises(TypeError):
+            json.dumps(python_dump)
+        with self.assertRaises(TypeError):
+            json.dumps(python_dump_no_deprecated)
+
 
 if __name__ == '__main__':
     unittest.main() 

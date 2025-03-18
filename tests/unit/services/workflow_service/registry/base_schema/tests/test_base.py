@@ -10,6 +10,11 @@ This module contains tests for:
 6. Caching mechanism
 """
 
+# import pytest
+# pytestmark = pytest.mark.unit
+
+
+
 import unittest
 from enum import Enum, IntEnum
 from typing import Dict, List, Optional
@@ -193,7 +198,7 @@ class TestBaseSchema(unittest.TestCase):
         # self.assertNotIn("optional_internal", editable_fields)
 
         # Test model_dump_json_only_user_editable
-        user_visible = schema.model_dump_json_only_user_editable()
+        user_visible = schema.model_dump_only_user_editable()
         self.assertIn("public_field", user_visible)
         self.assertIn("optional_public", user_visible)
         self.assertNotIn("internal_field", user_visible)
