@@ -16,7 +16,7 @@ from workflow_service.config.constants import (
     GRAPH_STATE_SPECIAL_NODE_NAME, TEMP_STATE_UPDATE_KEY, ROUTER_CHOICE_KEY
 )
 from workflow_service.registry.schemas.base import BaseSchema
-from workflow_service.registry.nodes.base import BaseNode
+from workflow_service.registry.nodes.core.base import BaseNode
 from workflow_service.graph.graph import EdgeSchema, GraphSchema, NodeConfig, EdgeMapping
 from workflow_service.registry.registry import MockRegistry
 from workflow_service.graph.builder import GraphBuilder

@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Type
 from pydantic import BaseModel
 
 from workflow_service.config.constants import GRAPH_STATE_SPECIAL_NODE_NAME, HITL_NODE_NAME_PREFIX
-from workflow_service.registry.nodes.base import BaseNode
+from workflow_service.registry.nodes.core.base import BaseNode
 from workflow_service.registry.nodes.core.dynamic_nodes import InputNode, OutputNode, DynamicRouterNode, HITLNode
 # from workflow_service.registry.nodes.core.hitl_node import HITLNode
 # from workflow_service.registry.nodes.core.flow_nodes import FilterNode, IfElseNode

@@ -39,7 +39,7 @@ from workflow_service.graph.graph import (
     ConstructDynamicSchema
 )
 from workflow_service.graph.builder import GraphBuilder
-from workflow_service.registry.nodes.base import BaseNode, BaseSchema
+from workflow_service.registry.nodes.core.base import BaseNode, BaseSchema
 from workflow_service.registry.nodes.core.dynamic_nodes import DynamicRouterNode, HITLNode, DynamicSchema, DynamicSchemaFieldConfig, InputNode, OutputNode, RouterSchema, BaseDynamicNode
 from workflow_service.registry.registry import MockRegistry
 from workflow_service.graph.runtime.adapter import LangGraphRuntimeAdapter

@@ -11,7 +11,7 @@ from datetime import datetime, date
 from enum import Enum
 
 from workflow_service.registry.schemas.base import BaseSchema
-from workflow_service.registry.nodes.base import BaseNode
+from workflow_service.registry.nodes.core.base import BaseNode
 from workflow_service.config.constants import INPUT_NODE_NAME, OUTPUT_NODE_NAME, HITL_NODE_NAME_PREFIX, TEMP_STATE_UPDATE_KEY, ROUTER_CHOICE_KEY
 from global_config.constants import EnvFlag
 from abc import ABC, abstractmethod

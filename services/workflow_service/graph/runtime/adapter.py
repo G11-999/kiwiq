@@ -25,7 +25,7 @@ from langchain_core.runnables.config import RunnableConfig
 from workflow_service.registry.schemas.base import BaseSchema
 from workflow_service.utils.utils import get_central_state_field_key
 
-from workflow_service.registry.nodes.base import BaseNode
+from workflow_service.registry.nodes.core.base import BaseNode
 from workflow_service.registry.registry import MockRegistry
 from workflow_service.utils.utils import get_node_output_state_key
 

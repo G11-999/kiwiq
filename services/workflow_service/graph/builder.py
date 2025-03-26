@@ -19,7 +19,7 @@ from langchain_core.runnables import RunnableConfig
 # from workflow_service.graph.runtime.adapter import GraphRuntimeAdapter
 from workflow_service.registry.schemas.reducers import ReducerRegistry, ReducerType
 from workflow_service.graph.graph import EdgeSchema, GraphSchema
-from workflow_service.registry.nodes.base import BaseNode
+from workflow_service.registry.nodes.core.base import BaseNode
 from workflow_service.registry.nodes.core.dynamic_nodes import BaseDynamicNode
 from workflow_service.config.constants import GRAPH_STATE_SPECIAL_NODE_NAME, CONFIG_REDUCER_KEY, NODE_EXECUTION_ORDER_KEY
 from workflow_service.utils.utils import get_central_state_field_key, get_node_output_state_key

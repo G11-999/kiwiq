@@ -18,7 +18,7 @@ from workflow_service.graph import graph
 from workflow_service.graph.builder import GraphBuilder
 from workflow_service.graph.graph import GraphSchema, EdgeSchema, NodeConfig, EdgeMapping
 from workflow_service.graph.runtime.adapter import LangGraphRuntimeAdapter
-from workflow_service.registry.nodes.base import BaseNode
+from workflow_service.registry.nodes.core.base import BaseNode
 from workflow_service.registry.schemas.base import BaseSchema
 from workflow_service.registry.nodes.core.dynamic_nodes import (
     DynamicSchema, BaseDynamicNode, InputNode, OutputNode, ConstructDynamicSchema, DynamicSchemaFieldConfig
