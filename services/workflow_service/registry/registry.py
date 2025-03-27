@@ -17,25 +17,9 @@ from workflow_service.registry.nodes.core.dynamic_nodes import InputNode, Output
 # from workflow_service.registry.nodes.core.join_node import JoinNode
 # from workflow_service.registry.nodes.ai.openai_node import OpenAINode
 
+from workflow_service.utils.utils import is_central_state_special_node
 
-def is_central_state_special_node(node_name_or_id: str) -> bool:
-    """
-    Check if a node is the central state special node.
-    
-    Args:
-        node_name_or_id (str): Name or ID of the node to check
-        
-    Returns:
-        bool: True if the node is the central state special node, False otherwise
-    """
-    return node_name_or_id == GRAPH_STATE_SPECIAL_NODE_NAME
 
-def is_dynamic_schema_node(schema_cls: Type[BaseModel]) -> bool:
-    """
-    Check if a node is a dynamic schema node.
-    """
-    return (hasattr(schema_cls, 'IS_DYNAMIC_SCHEMA') and 
-            getattr(schema_cls, 'IS_DYNAMIC_SCHEMA', False))
 
 
 class MockRegistry:

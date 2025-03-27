@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 
 from workflow_service.config.constants import NODE_EXECUTION_ORDER_KEY
 from workflow_service.registry.schemas.base import BaseSchema
-from workflow_service.utils.utils import get_central_state_field_key
+from workflow_service.utils.utils import get_central_state_field_key, is_dynamic_schema_node
 
 # Define type variables for input, output, and config schemas
 InputSchemaT = TypeVar('InputSchemaT', bound=BaseSchema)
@@ -443,7 +443,10 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
             "version": cls.node_version,
             "input_schema": cls.input_schema_cls.get_schema_for_db() if cls.input_schema_cls else None,
             "output_schema": cls.output_schema_cls.get_schema_for_db() if cls.output_schema_cls else None,
-            "config_schema": cls.config_schema_cls.get_schema_for_db() if cls.config_schema_cls else None
+            "config_schema": cls.config_schema_cls.get_schema_for_db() if cls.config_schema_cls else None,
+            "input_schema_is_dynamic": is_dynamic_schema_node(cls.input_schema_cls),
+            "output_schema_is_dynamic": is_dynamic_schema_node(cls.output_schema_cls),
+            "config_schema_is_dynamic": is_dynamic_schema_node(cls.config_schema_cls),
         }
         
         return signature
@@ -484,14 +487,18 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
             "schema_added": [],
             "schema_removed": [],
             "schema_diffs": {},
+            "dynamic_schema_changes": {},
         }
         if self_is_base_for_diff:
             current_added_key = "schema_removed"
             provided_added_key = "schema_added"
+            provided_dynamic_change_key = "changed_to_dynamic"
+            current_dynamic_change_key = "changed_to_static"
         else:
             current_added_key = "schema_added"
             provided_added_key = "schema_removed"
-
+            provided_dynamic_change_key = "changed_to_static"
+            current_dynamic_change_key = "changed_to_dynamic"
         for schema_type, current_schema_cls in zip(signature_schema_types, current_schema_types):
             provided_schema = provided_signature.get(schema_type)
             
@@ -507,8 +514,18 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
                     diff[provided_added_key].append(schema_type)
                 continue
             
+            # Check for dynamic schema changes
+            dynamic_schema_key = f"{schema_type}_is_dynamic"
+            current_is_dynamic = is_dynamic_schema_node(current_schema_cls)
+            provided_is_dynamic = provided_signature.get(dynamic_schema_key, False)
+            
+            if current_is_dynamic != provided_is_dynamic:
+                diff["dynamic_schema_changes"][schema_type] = {
+                    provided_dynamic_change_key: provided_is_dynamic,
+                    current_dynamic_change_key: current_is_dynamic
+                }
+            
             if current_schema_cls is not None:
                 # Use BaseSchema diff to compare schemas
                 diff["schema_diffs"][schema_type] = current_schema_cls.diff_from_provided_schema(provided_schema, self_is_base_for_diff=self_is_base_for_diff)
-        
         return diff

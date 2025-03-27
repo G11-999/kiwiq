@@ -7,7 +7,7 @@ Edges connect nodes in the workflow graph and define how data flows between them
 from typing import Any, Dict, List, Optional, Union, Self, Set
 from pydantic import Field, BaseModel, model_validator
 from workflow_service.config.constants import INPUT_NODE_NAME, OUTPUT_NODE_NAME
-from workflow_service.registry.registry import is_central_state_special_node
+from workflow_service.utils.utils import is_central_state_special_node
 from workflow_service.registry.nodes.core.dynamic_nodes import ConstructDynamicSchema
 
 class EdgeMapping(BaseModel):
