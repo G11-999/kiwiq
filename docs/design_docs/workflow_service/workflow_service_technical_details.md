@@ -496,4 +496,6 @@ Central state must overwrite if it exists!
 
 #### TODO: node debug / verbose modes via runtime configs
 
-
+TODO: remove psycopg2 and other dependencies like: 
+fastapi-users = { extras = ["sqlalchemy"], version = "^14.0.1" }
+fastapi-users-db-sqlalchemy = ">=7.0.0"

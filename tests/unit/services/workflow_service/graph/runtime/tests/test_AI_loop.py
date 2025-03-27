@@ -45,8 +45,11 @@ from workflow_service.registry.registry import MockRegistry
 from workflow_service.graph.runtime.adapter import LangGraphRuntimeAdapter
 from workflow_service.registry.schemas.reducers import ReducerRegistry
 
+from db.session import get_pool
+
 from langchain_core.messages import AnyMessage, HumanMessage, AIMessage, SystemMessage
 from langgraph.graph.message import add_messages
+from langgraph.checkpoint.postgres import PostgresSaver
 
 # ===============================
 # Schema Definitions
@@ -602,12 +605,76 @@ def setup_registry() -> MockRegistry:
     return registry
 
 
-def run_ai_loop_test() -> Dict[str, Any]:
+# Define human review interrupt handler
+def human_review_handler(interrupt_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Build and run the AI-Human feedback loop graph.
+    Handle human review interrupts.
     
+    This function simulates human feedback by alternating between approval
+    and requesting changes for demonstration purposes.
+    
+    Args:
+        interrupt_data: Dictionary containing the user prompt and schema
+        
     Returns:
-        Dict[str, Any]: The output of the graph execution
+        Dict[str, Any]: Simulated human response
+    """
+    user_prompt_data = interrupt_data[HITL_USER_PROMPT_KEY]
+    user_schema = interrupt_data[HITL_USER_SCHEMA_KEY]
+    print(user_prompt_data)
+    # Print debug information
+    print("\n#### HUMAN REVIEW INTERRUPT ####")
+    # print(f"User prompt: {user_prompt_data.get('user_prompt', '')}")
+    # print(f"Latest AI content: {user_prompt_data.get('latest_ai_content', '')}")
+    # print(f"Current iteration: {user_prompt_data.get('iteration', 0)}")
+    if isinstance(user_prompt_data, dict):
+        last_messages = user_prompt_data.get('last_messages', [])
+    elif hasattr(user_prompt_data, "last_messages"):
+        last_messages = user_prompt_data.model_dump().get('last_messages', [])
+        # last_messages = user_prompt_data.last_messages
+    else:
+        last_messages = []
+    
+    if isinstance(user_prompt_data, dict):
+        all_messages = user_prompt_data.get('all_messages', [])
+    elif hasattr(user_prompt_data, "all_messages"):
+        all_messages = user_prompt_data.model_dump().get('all_messages', [])
+        # user_prompt_data.all_messages
+    else:
+        all_messages = []
+    
+    from langchain_core.load import dumpd, dumps, load, loads
+
+    print(f"Last messages: {dumps(last_messages, pretty=True)}")
+    print(f"All messages: {dumps(all_messages, pretty=True)}")
+
+    print(f"User schema: {json.dumps(user_schema, indent=4)}")
+    
+    # For demo purposes, approve on the 3rd iteration, request changes otherwise
+    # last_messages = user_prompt_data.get('last_messages', [])
+    iteration = [l["metadata"]["iteration"] for l in last_messages][0]
+    if iteration >= 3:
+        approved = "yes"
+        review_comments = "Content looks good now, approved!"
+    else:
+        approved = "no"
+        review_comments = f"Please improve iteration {iteration}. Make it more concise."
+    
+    print(f"Human decision: {'Approved' if approved == 'true' else 'Needs revision'}")
+    print(f"Comments: {review_comments}")
+    print("############################\n")
+    
+    # Return simulated human feedback
+    return {
+        # "user_prompt": user_prompt_data.get("user_prompt", ""),
+        "approved": approved,
+        "review_comments": review_comments
+    }
+
+
+def build_graph_entities(thread_id) -> Dict[str, Any]:
+    """
+    Build the graph entities for the AI-Human feedback loop.
     """
     # Setup registry and create graph schema
     registry = setup_registry()
@@ -619,110 +686,97 @@ def run_ai_loop_test() -> Dict[str, Any]:
     # Build graph entities
     graph_entities = builder.build_graph_entities(graph_schema)
 
+    # Configure runtime
+    runtime_config = graph_entities["runtime_config"]
+    runtime_config["thread_id"] = thread_id or 1
+    runtime_config["use_checkpointing"] = True
+
+    return graph_entities, runtime_config
+
+
+def run_ai_loop_test(use_db_checkpointer=False, thread_id=None) -> Dict[str, Any]:
+    """
+    Build and run the AI-Human feedback loop graph.
+    
+    Returns:
+        Dict[str, Any]: The output of the graph execution
+    """
+    def build_and_execute_langgraph(adapter: LangGraphRuntimeAdapter, graph_entities, execute_graph_kwargs):
+        graph = adapter.build_graph(graph_entities)
+        execute_graph_kwargs["graph"] = graph
+        
+        result = adapter.execute_graph(  # execute_graph  execute_graph_stream
+            **execute_graph_kwargs
+        )
+        return graph, result
+
+    graph_entities, runtime_config = build_graph_entities(thread_id)
+
     print(f"Graph input input schema: {json.dumps(graph_entities['node_instances'][INPUT_NODE_NAME].input_schema_cls.model_json_schema(), indent=4)}")
     print(f"Graph input output schema: {json.dumps(graph_entities['node_instances'][INPUT_NODE_NAME].output_schema_cls.model_json_schema(), indent=4)}")
     print(f"Graph central state: {graph_entities['central_state'].__annotations__}\n\n")
     print(f"Graph graph state: {graph_entities['graph_state'].__annotations__}\n\n")
     
+    
     # Create runtime adapter
     adapter = LangGraphRuntimeAdapter()
     
-    # Configure runtime
-    runtime_config = graph_entities["runtime_config"]
-    runtime_config["thread_id"] = 1
-    runtime_config["use_checkpointing"] = True
+    
+    execute_graph_kwargs = {
+        "input_data": {"user_prompt": "Generate creative content about AI workflows"}, 
+        "config": runtime_config, 
+        "output_node_id": graph_entities["output_node_id"],
+        "interrupt_handler": human_review_handler
+    }
+
+    
+
+    if use_db_checkpointer:
+        with get_pool() as pool:
+            checkpointer = PostgresSaver(pool)
+            runtime_config["checkpointer"] = checkpointer
+            
+            graph, result = build_and_execute_langgraph(adapter, graph_entities, execute_graph_kwargs)
+    else:
+        graph, result = build_and_execute_langgraph(adapter, graph_entities, execute_graph_kwargs)
+
     
     # Build graph
-    graph = adapter.build_graph(graph_entities)
+    # graph = adapter.build_graph(graph_entities)
+    # execute_graph_kwargs["graph"] = graph
     
-    # Define human review interrupt handler
-    def human_review_handler(interrupt_data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Handle human review interrupts.
-        
-        This function simulates human feedback by alternating between approval
-        and requesting changes for demonstration purposes.
-        
-        Args:
-            interrupt_data: Dictionary containing the user prompt and schema
-            
-        Returns:
-            Dict[str, Any]: Simulated human response
-        """
-        user_prompt_data = interrupt_data[HITL_USER_PROMPT_KEY]
-        user_schema = interrupt_data[HITL_USER_SCHEMA_KEY]
-        print(user_prompt_data)
-        # Print debug information
-        print("\n#### HUMAN REVIEW INTERRUPT ####")
-        # print(f"User prompt: {user_prompt_data.get('user_prompt', '')}")
-        # print(f"Latest AI content: {user_prompt_data.get('latest_ai_content', '')}")
-        # print(f"Current iteration: {user_prompt_data.get('iteration', 0)}")
-        if isinstance(user_prompt_data, dict):
-            last_messages = user_prompt_data.get('last_messages', [])
-        elif hasattr(user_prompt_data, "last_messages"):
-            last_messages = user_prompt_data.model_dump().get('last_messages', [])
-            # last_messages = user_prompt_data.last_messages
-        else:
-            last_messages = []
-        
-        if isinstance(user_prompt_data, dict):
-            all_messages = user_prompt_data.get('all_messages', [])
-        elif hasattr(user_prompt_data, "all_messages"):
-            all_messages = user_prompt_data.model_dump().get('all_messages', [])
-            # user_prompt_data.all_messages
-        else:
-            all_messages = []
-        
-        from langchain_core.load import dumpd, dumps, load, loads
-
-        print(f"Last messages: {dumps(last_messages, pretty=True)}")
-        print(f"All messages: {dumps(all_messages, pretty=True)}")
-
-        print(f"User schema: {json.dumps(user_schema, indent=4)}")
-        
-        # For demo purposes, approve on the 3rd iteration, request changes otherwise
-        # last_messages = user_prompt_data.get('last_messages', [])
-        iteration = [l["metadata"]["iteration"] for l in last_messages][0]
-        if iteration >= 3:
-            approved = "yes"
-            review_comments = "Content looks good now, approved!"
-        else:
-            approved = "no"
-            review_comments = f"Please improve iteration {iteration}. Make it more concise."
-        
-        print(f"Human decision: {'Approved' if approved == 'true' else 'Needs revision'}")
-        print(f"Comments: {review_comments}")
-        print("############################\n")
-        
-        # Return simulated human feedback
-        return {
-            # "user_prompt": user_prompt_data.get("user_prompt", ""),
-            "approved": approved,
-            "review_comments": review_comments
-        }
-    
-    # Execute graph
-    # result = adapter.execute_graph(
-    #     graph, 
-    #     input_data={"user_prompt": "Generate creative content about AI workflows"}, 
-    #     config=runtime_config, 
-    #     output_node_id=graph_entities["output_node_id"],
-    #     interrupt_handler=human_review_handler
+    # result = adapter.execute_graph(  # execute_graph  execute_graph_stream
+    #     **execute_graph_kwargs
     # )
-
-    result = adapter.execute_graph(  # execute_graph  execute_graph_stream
-        graph, 
-        input_data={"user_prompt": "Generate creative content about AI workflows"}, 
-        config=runtime_config, 
-        output_node_id=graph_entities["output_node_id"],
-        interrupt_handler=human_review_handler
-    )
 
     lg_config = {
         "configurable": runtime_config,
     }
     
-    return graph, lg_config, result
+    return graph_entities, graph, lg_config, result
+
+
+def run_ai_loop_test_with_db_checkpointer(thread_id="test_DB_ID") -> Dict[str, Any]:
+    adapter = LangGraphRuntimeAdapter()
+    graph_entities, runtime_config = build_graph_entities(thread_id)
+    graph_entities, graph, lg_config, result = run_ai_loop_test(use_db_checkpointer=True, thread_id=thread_id)
+    return graph_entities, graph, lg_config, result
+
+
+def get_graph_state_from_db(thread_id="test_DB_ID") -> Dict[str, Any]:
+    adapter = LangGraphRuntimeAdapter()
+    graph_entities, runtime_config = build_graph_entities(thread_id)
+
+    with get_pool() as pool:
+        checkpointer = PostgresSaver(pool)
+        runtime_config["checkpointer"] = checkpointer
+        graph = adapter.build_graph(graph_entities)
+        lg_config = {
+            "configurable": runtime_config,
+        }
+        final_state = graph.get_state(lg_config)
+        print(f"Final state: {dumps(final_state, pretty=True)}")
+    return final_state
 
 
 class TestAILoopWorkflow(unittest.TestCase):
@@ -733,7 +787,7 @@ class TestAILoopWorkflow(unittest.TestCase):
         This test verifies that the workflow correctly implements the AI-Human feedback loop pattern,
         with appropriate routing based on human approval/rejection.
         """
-        graph, config, result = run_ai_loop_test()
+        graph_entities, graph, config, result = run_ai_loop_test()
         
         # Check that result has the expected structure
         self.assertIsInstance(result, FinalOutputSchema, "Result should be a FinalOutputSchema instance")
@@ -766,7 +820,7 @@ class TestAILoopWorkflow(unittest.TestCase):
         This test verifies that each node in the workflow produces the expected outputs
         and that the final state of the workflow is correct.
         """
-        graph, config, result = run_ai_loop_test()
+        graph_entities, graph, config, result = run_ai_loop_test()
         
         # Get the LangGraph adapter instance
         adapter = LangGraphRuntimeAdapter()
@@ -806,7 +860,7 @@ class TestAILoopWorkflow(unittest.TestCase):
         This test verifies that the messages passed between nodes in the workflow
         have the expected content and structure.
         """
-        graph, config, result = run_ai_loop_test()
+        graph_entities, graph, config, result = run_ai_loop_test()
         
         # Check message content in result
         self.assertTrue(hasattr(result, 'messages'), "Result should have messages field")
@@ -843,7 +897,7 @@ class TestAILoopWorkflow(unittest.TestCase):
         This test verifies that the central state of the workflow has the expected structure
         and that it correctly tracks the state of the workflow across multiple iterations.
         """
-        graph, config, result = run_ai_loop_test()
+        graph_entities, graph, config, result = run_ai_loop_test()
         
         # Get the LangGraph adapter instance
         adapter = LangGraphRuntimeAdapter()
@@ -883,9 +937,13 @@ class TestAILoopWorkflow(unittest.TestCase):
 
 
 if __name__ == "__main__":
+    # Graph persistence DB test!
+    # run_ai_loop_test_with_db_checkpointer(thread_id="test_DB_ID")
+    # get_graph_state_from_db(thread_id="test_DB_ID")
+
     unittest.main()
     # Run the AI loop test
-    # graph, runtime_config, graph_output = run_ai_loop_test()
+    # graph_entities, graph, runtime_config, graph_output = run_ai_loop_test()
 
     # final_state = graph.get_state(runtime_config)
     

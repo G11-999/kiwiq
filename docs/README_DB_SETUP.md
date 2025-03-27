@@ -23,7 +23,7 @@ source ~/.zshrc
 ```
 
 
-4. Start postgres
+##### 4. Start postgres
 
 ```bash
 sudo -u postgres pg_ctl -D /Library/PostgreSQL/17/data start

@@ -7,9 +7,12 @@ It handles connection pooling and session creation.
 from contextlib import asynccontextmanager, contextmanager
 from typing import Generator, AsyncGenerator
 
+from psycopg.rows import dict_row
+from psycopg_pool import AsyncConnectionPool, ConnectionPool
+
+
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy import create_engine  # Added this import
-
 from sqlalchemy.orm import Session, sessionmaker
 from sqlmodel import SQLModel
 
@@ -20,7 +23,7 @@ from global_config.settings import settings
 
 # Create async database engine with connection pooling
 async_engine = create_async_engine(
-    settings.DATABASE_URL.replace('postgresql://', 'postgresql+asyncpg://'),
+    settings.DATABASE_URL.replace('postgresql://', 'postgresql+psycopg://'),
     echo=settings.DB_ECHO,
     pool_size=settings.DB_POOL_SIZE,
     max_overflow=settings.DB_MAX_OVERFLOW,
@@ -28,11 +31,84 @@ async_engine = create_async_engine(
 
 # Create sync engine for migrations and sync operations
 sync_engine = create_engine(
-    settings.DATABASE_URL,
+    settings.DATABASE_URL.replace('postgresql://', 'postgresql+psycopg://'),
     echo=settings.DB_ECHO,
     pool_size=settings.DB_POOL_SIZE,
     max_overflow=settings.DB_MAX_OVERFLOW,
 )
+
+
+pool_connection_kwargs = {
+    "autocommit": True,
+    "prepare_threshold": 0,
+    "row_factory": dict_row,
+}
+
+@contextmanager
+def get_pool() -> Generator[ConnectionPool, None, None]:
+    """
+    Get an asynchronous connection pool as a context manager.
+    
+    This function provides a properly configured AsyncConnectionPool that will be
+    automatically closed when the context is exited.
+    
+    Yields:
+        AsyncConnectionPool: A connection pool for PostgreSQL database access.
+        
+    Example:
+        async with get_async_pool() as pool:
+            async with pool.connection() as conn:
+                # Use the connection
+    """
+    
+    # Create and yield the pool
+    pool = ConnectionPool(
+        conninfo=settings.DATABASE_URL,
+        min_size=settings.DB_POOL_SIZE,
+        max_size=settings.DB_MAX_OVERFLOW,
+        kwargs=pool_connection_kwargs,
+    )
+    
+    try:
+        pool.open()
+        yield pool
+    finally:
+        pool.close()
+
+
+@asynccontextmanager
+async def get_async_pool() -> AsyncGenerator[AsyncConnectionPool, None]:
+    """
+    Get an asynchronous connection pool as a context manager.
+    
+    This function provides a properly configured AsyncConnectionPool that will be
+    automatically closed when the context is exited.
+    
+    Yields:
+        AsyncConnectionPool: A connection pool for PostgreSQL database access.
+        
+    Example:
+        async with get_async_pool() as pool:
+            async with pool.connection() as conn:
+                # Use the connection
+    """
+    # Define connection parameters
+    
+    
+    # Create and yield the pool
+    pool = AsyncConnectionPool(
+        conninfo=settings.DATABASE_URL,
+        min_size=settings.DB_POOL_SIZE,
+        max_size=settings.DB_MAX_OVERFLOW,
+        kwargs=pool_connection_kwargs,
+    )
+    
+    try:
+        await pool.open()
+        yield pool
+    finally:
+        await pool.close()
+
 
 # Session factories
 AsyncSessionLocal = async_sessionmaker(

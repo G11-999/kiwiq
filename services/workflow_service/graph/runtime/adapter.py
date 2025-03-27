@@ -150,6 +150,13 @@ class LangGraphRuntimeAdapter(GraphRuntimeAdapter):
             
         Returns:
             Tuple[Any, Dict[str, Any]]: The built StateGraph and initial state.
+        
+        Notes about LangGraph Checkpointing:
+        https://github.com/langchain-ai/langgraph/tree/main/libs/checkpoint-postgres
+
+        For passing raw Postgres connections directly rather than passing connection string to Langgraph checkpointer:
+        set autocommit=True and row_factor = dict_row (from psycopg.rows import dict_row)
+        Full guide: https://langchain-ai.github.io/langgraph/how-tos/persistence_postgres/
         """
         from langgraph.graph import StateGraph, END
         from typing import get_origin, get_args, get_type_hints
@@ -322,13 +329,16 @@ class LangGraphRuntimeAdapter(GraphRuntimeAdapter):
         
         # Get checkpointing config
         use_checkpointing = runtime_config.get("use_checkpointing", False)
-        checkpointer_type = runtime_config.get("checkpointer_type", "memory")
         thread_id = runtime_config.get("thread_id", None)
+        checkpointer = runtime_config.get("checkpointer", None)
         
         # Compile the graph with appropriate settings
+        
         compiled_kwargs = {}
         
-        if use_checkpointing and thread_id:  #  and self.checkpoint_dir
+        
+        if (not checkpointer) and use_checkpointing and thread_id:  #  and self.checkpoint_dir
+            checkpointer_type = runtime_config.get("checkpointer_type", "memory")
             # from langgraph.checkpoint import JsonCheckpoint
             # checkpoint_path = Path(self.checkpoint_dir) / f"{checkpoint_id}.json"
             # JsonCheckpoint(checkpoint_path)
@@ -336,6 +346,8 @@ class LangGraphRuntimeAdapter(GraphRuntimeAdapter):
                 checkpointer = MemorySaver()
             else:
                 raise NotImplementedError(f"Checkpointer type {checkpointer_type} not implemented")
+            compiled_kwargs["checkpointer"] = checkpointer
+        elif checkpointer is not None:
             compiled_kwargs["checkpointer"] = checkpointer
         
         # TODO: debug streaming!
@@ -710,6 +722,116 @@ class LangGraphRuntimeAdapter(GraphRuntimeAdapter):
         # import ipdb; ipdb.set_trace()
         
         return graph_output
+
+    # async def aexecute_graph(
+    #     self,
+    #     graph: Any,
+    #     input_data: Dict[str, Any],
+    #     config: Dict[str, Any],
+    #     output_node_id: str = None,
+    #     interrupt_handler: Callable = None
+    # ) -> Dict[str, Any]:
+    #     """
+    #     Execute a LangGraph with input data.
+        
+    #     Args:
+    #         graph (Any): The LangGraph to execute.
+    #         input_data (Dict[str, Any]): Input data for the graph.
+    #         config (Dict[str, Any]): Runtime configuration for execution.
+            
+    #     Returns:
+    #         Dict[str, Any]: Output data from the graph.
+    #     """
+    #     # TODO: FIXME: MUST TEST NESTED INPUT FIELDS AND DATA!
+    #     input_data = {get_central_state_field_key(k): v for k, v in input_data.items()}
+        
+    #     if interrupt_handler is None:
+    #         interrupt_handler = LangGraphRuntimeAdapter.get_value_from_human
+        
+    #     # Create a LangGraph config dict
+    #     lg_config = {
+    #         "configurable": config,  # config may have thread_id
+    #         # "metadata": {
+    #         #     "workflow_id": config.get("workflow_id", ""),
+    #         #     "run_id": config.get("run_id", ""),
+    #         #     "user_id": config.get("user_id"),
+    #         #     "configurable": config.get("configurable", {})
+    #         # }
+    #     }
+        
+    #     # Add callbacks if provided
+    #     # if "callbacks" in config:
+    #     #     lg_config["callbacks"] = config["callbacks"]
+        
+    #     # Execute the graph
+    #     # input_data can be None
+    #     has_interrupts = True
+    #     interrupt_data = None
+
+    #     print("\n\n\n\n#### INPUT DATA SENT TO GRAPH INVOKE", input_data, "\n\n\n\n")
+
+    #     while has_interrupts:
+    #         # https://langchain-ai.github.io/langgraph/concepts/human_in_the_loop/#interrupt
+    #         if interrupt_data:
+    #             value_from_human = interrupt_handler(interrupt_data)
+    #             result = graph.invoke(Command(resume=value_from_human), config=lg_config)
+    #         else:
+    #             result = graph.invoke(input_data, config=lg_config)
+    #         print("\n\n\n\n#### GRAPH RUN PHASE FINISHED (Interrupted or Final Finished)! result", result, "\n\n\n\n")
+    #         last_state = graph.get_state(lg_config)
+    #         has_interrupts = False
+    #         # final_state.tasks[0].interrupts  # check for keys as set in interrupt pre-processor below!
+    #         interrupt_data = None
+    #         if last_state.tasks:
+    #             for task in last_state.tasks:
+    #                 if task.interrupts:
+    #                     has_interrupts = True
+    #                     interrupt_data = task.interrupts[0].value
+    #                     break
+        
+    #     # central states
+    #     # looped over node outputs and fields were replaced
+    #     # final output
+        
+    #     # result = graph.invoke(input_data, config=lg_config)
+    #     final_state = graph.get_state(lg_config)
+    #     # final_state.tasks[0].interrupts  # check for keys as set in interrupt pre-processor below!
+
+    #     graph_output = None
+    #     if output_node_id:
+    #         graph_output = final_state.values.get(get_node_output_state_key(output_node_id), {})
+        
+        
+    #     # final_state.values.get(get_node_output_state_key(output_node_id), {})
+    #     central_state_keys = [k for k in final_state.values.keys() if k.startswith(GRAPH_STATE_SPECIAL_NODE_NAME)]
+    #     central_state = {k: final_state.values[k] for k in central_state_keys}
+
+    #     from langchain_core.load import dumpd, dumps, load, loads
+
+    #     print("\n\n\n\n#### final_state", dumps(final_state, pretty=True), "\n\n\n\n")
+
+    #     print("\n\n\n\n#### central_state", dumps(central_state, pretty=True), "\n\n\n\n")
+
+    #     # print("\n\n\n\n#### graph_output", json.dumps(graph_output, indent=4), "\n\n\n\n")
+
+    #     # node_id = "human_review"
+    #     # print(dumps(final_state.values.get(get_node_output_state_key(node_id), {}), pretty=True))
+    #     # Since this BaseModel / BaseSchema, it dumps well!
+    #     # print(final_state.values.get(get_node_output_state_key(node_id), {}).model_dump_json(indent=4))
+
+        
+    #     # print(result)
+    #     # print(final_state)
+    #     print("\n\n\n\n#### graph_output")
+    #     # print(dumps(graph_output, pretty=True))
+    #     if isinstance(graph_output, BaseSchema):
+    #         print(graph_output.model_dump_json(indent=4))
+    #     else:
+    #         print(json.dumps(graph_output, indent=4))
+    #     print("\n\n\n\n")
+    #     # import ipdb; ipdb.set_trace()
+        
+    #     return graph_output
 
     def execute_graph_stream(
         self,
