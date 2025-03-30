@@ -1,5 +1,9 @@
 name: Pytest PR Labeler with Test Results (Poetry)
 
+permissions:
+  pull-requests: write
+  issues: write
+
 on:
   pull_request:
     branches:
