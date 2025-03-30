@@ -1,0 +1,72 @@
+name: Pytest PR Labeler with Test Results (Poetry)
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test-and-label:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.12]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Poetry and Dependencies
+        run: |
+          pip install poetry
+          poetry install
+
+      - name: Run Pytest Custom Command
+        id: run_tests
+        run: |
+          PYTHONPATH=.:./services poetry run pytest -m unit 2>&1 | tee pytest.log
+        continue-on-error: true
+
+      - name: Tag PR as Fail if Tests Fail
+        if: steps.run_tests.outcome == 'failure'
+        uses: actions/github-script@v3
+        with:
+          script: |
+            github.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['fail']
+            })
+
+      - name: Comment Test Results on PR
+        if: steps.run_tests.outcome == 'failure'
+        uses: actions/github-script@v3
+        with:
+          script: |
+            const fs = require('fs');
+            const result = fs.readFileSync('pytest.log', 'utf8');
+            const commentBody = "### Test Results\n```\n" + result.substring(0, 6000) + "\n```";
+            github.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: commentBody
+            });
+
+      - name: Tag PR as Pass if Tests Succeed
+        if: steps.run_tests.outcome == 'success'
+        uses: actions/github-script@v3
+        with:
+          script: |
+            github.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['pass']
+            })
