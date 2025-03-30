@@ -1,4 +1,4 @@
-name: Pytest PR Labeler with Test Results (Poetry)
+name: Pytest Unit testing Results and Pass / Fail Label
 
 permissions: write-all
 
@@ -13,7 +13,8 @@ jobs:
     strategy:
       matrix:
         python-version: [3.12]
-
+    outputs:
+      outcome: ${{ steps.run_tests.outputs.outcome }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
@@ -28,26 +29,22 @@ jobs:
           pip install poetry
           poetry install
 
-      - name: Run Pytest Custom Command
+      - name: Run Pytest Custom Command and Capture Outcome
         id: run_tests
         run: |
+          set +e
           PYTHONPATH=.:./services poetry run pytest -m unit 2>&1 | tee pytest.log
-        continue-on-error: true
+          exit_code=${PIPESTATUS[0]}
+          if [ $exit_code -eq 0 ]; then
+            echo "outcome=pass" >> $GITHUB_OUTPUT
+          else
+            echo "outcome=fail" >> $GITHUB_OUTPUT
+          fi
+          # Exit 0 so that subsequent steps run even if tests fail.
+          exit 0
+        shell: bash
 
-      - name: Tag PR as Fail if Tests Fail
-        if: steps.run_tests.outcome == 'failure'
-        uses: actions/github-script@v3
-        with:
-          script: |
-            github.issues.addLabels({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              labels: ['fail']
-            })
-
-      - name: Comment Test Results on PR
-        if: steps.run_tests.outcome == 'failure'
+      - name: Post Test Results Comment on PR
         uses: actions/github-script@v3
         with:
           script: |
@@ -61,14 +58,24 @@ jobs:
               body: commentBody
             });
 
-      - name: Tag PR as Pass if Tests Succeed
-        if: steps.run_tests.outcome == 'success'
+      - name: Tag PR as Pass or Fail Based on Test Outcome
         uses: actions/github-script@v3
+        env:
+          OUTCOME: ${{ steps.run_tests.outputs.outcome }}
         with:
           script: |
+            const label = (process.env.OUTCOME === 'fail') ? 'fail' : 'pass';
             github.issues.addLabels({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              labels: ['pass']
-            })
+              labels: [label]
+            });
+
+      - name: Fail the Job if Tests Fail
+        if: steps.run_tests.outputs.outcome == 'fail'
+        uses: actions/github-script@v3
+        with:
+          script: |
+            const core = require('@actions/core');
+            core.setFailed('Test failures detected.');
