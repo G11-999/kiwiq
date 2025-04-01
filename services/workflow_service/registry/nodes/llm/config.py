@@ -33,7 +33,6 @@ class LLMModelProvider(str, Enum):
     PERPLEXITY = "perplexity"
 
 
-
 class ModelMetadata(BaseModel):
     """Model metadata.
 

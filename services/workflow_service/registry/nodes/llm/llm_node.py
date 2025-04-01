@@ -664,6 +664,8 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
         # Use node config for thinking message handling
         messages = self._filter_thinking_messages(messages, keep=self.config.thinking_tokens_in_prompt)
 
+      # import ipdb; ipdb.set_trace()
+
         return messages, current_messages
     
     def _get_structured_output_schema(self, registry: MockRegistry) -> Any:
@@ -788,7 +790,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                 invoke_kwargs["extra_body"] = {
                     "web_search_options": web_search_options
                 }
-
+      # import ipdb; ipdb.set_trace()
         return model.invoke(messages, **invoke_kwargs)
     
     def filter_tool_calls(self, tool_calls: Any, output_schema: Any) -> LLMNodeOutputSchema:

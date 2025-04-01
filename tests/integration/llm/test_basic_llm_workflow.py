@@ -146,9 +146,9 @@ def create_basic_llm_graph(
             src_node_id=INPUT_NODE_NAME,
             dst_node_id="llm_node",
             mappings=[
-                EdgeMapping(src_field="user_prompt", dst_field="user_prompt")
-                # messages_history
-                # system_prompt --> check if this will override default!
+                EdgeMapping(src_field="user_prompt", dst_field="user_prompt"),
+                EdgeMapping(src_field="messages_history", dst_field="messages_history"),
+                EdgeMapping(src_field="system_prompt", dst_field="system_prompt"),
             ]
         ),
         
@@ -219,6 +219,20 @@ def run_llm_test(
     # import ipdb; ipdb.set_trace()
     # Setup registry
     registry = setup_registry()
+
+    message_history = [
+        {"role": "system", "type": "system", "content": "You are pretending to be a bad assistant that can answer questions and help with tasks. You have to get every answer wrong in this case since you're a bad assistant!"},
+        {"role": "user", "type": "human", "content": "What is 2+2? Answer in one word."},
+        {"role": "assistant", "type": "ai", "content": "1! Though I'm not sure why you'd ask me that."},
+    ] if "message_history" in kwargs else None
+    input_system_prompt = "You are pretending to be a bad assistant that can answer questions and help with tasks. You have to get every answer wrong in this case since you're a bad assistant!"
+    input_system_prompt = (input_system_prompt if "input_system_prompt" in kwargs else None)
+    
+    input_kwargs = {}
+    if message_history:
+        input_kwargs["messages_history"] = message_history
+    if input_system_prompt:
+        input_kwargs["system_prompt"] = input_system_prompt
     
     # Create graph schema
     graph_schema = create_basic_llm_graph(
@@ -250,7 +264,7 @@ def run_llm_test(
     # Execute graph
     result = adapter.execute_graph(
         graph=graph,
-        input_data={"user_prompt": user_prompt},
+        input_data={"user_prompt": user_prompt, **input_kwargs},
         config=runtime_config,
         output_node_id=graph_entities["output_node_id"]
     )
@@ -273,35 +287,6 @@ class TestBasicLLMWorkflow(unittest.TestCase):
         self.assertIn("metadata", result)
         self.assertIsInstance(result["content"], str)
         self.assertGreater(len(result["content"]), 0)
-    
-    def test_anthropic_text_output_non_reasoning_model(self):
-        """Test Anthropic Claude 3.5 Sonnet with text output."""
-        result = run_llm_test(
-            model_provider=LLMModelProvider.ANTHROPIC,
-            model_name=AnthropicModels.CLAUDE_3_5_SONNET.value,
-            output_type="text"
-        )
-        self.assertIsInstance(result, dict)
-        self.assertIn("content", result)
-        self.assertIn("metadata", result)
-        self.assertIsInstance(result["content"], str)
-        self.assertGreater(len(result["content"]), 0)
-
-    def test_anthropic_structured_output_non_reasoning_model(self):
-        """Test Anthropic Claude 3.5 Sonnet with structured output."""
-        result = run_llm_test(
-            model_provider=LLMModelProvider.ANTHROPIC,
-            model_name=AnthropicModels.CLAUDE_3_5_SONNET.value,
-            output_type="structured",
-            # reasoning_config={
-            #     "reasoning_tokens_budget": 1024  # Claude 3.7 supports reasoning tokens budget
-            # }
-        )
-        self.assertIsInstance(result, dict)
-        self.assertIn("structured_output", result)
-        self.assertIn("metadata", result)
-        self.assertIsInstance(result["structured_output"], dict)
-        self.assertIn("content", result["structured_output"])
     
     def test_anthropic_structured_output_with_schema_from_registry_and_defined_dynamic_fields_non_reasoning_model(self):
         """Test Anthropic Claude 3.5 Sonnet with structured output."""
@@ -341,8 +326,39 @@ class TestBasicLLMWorkflow(unittest.TestCase):
         self.assertIn("metadata", result)
         self.assertIsInstance(result["structured_output"], dict)
         self.assertIn("int_value", result["structured_output"])
+    
+    
+
+    def test_anthropic_structured_output_non_reasoning_model(self):
+        """Test Anthropic Claude 3.5 Sonnet with structured output."""
+        result = run_llm_test(
+            model_provider=LLMModelProvider.ANTHROPIC,
+            model_name=AnthropicModels.CLAUDE_3_5_SONNET.value,
+            output_type="structured",
+            # reasoning_config={
+            #     "reasoning_tokens_budget": 1024  # Claude 3.7 supports reasoning tokens budget
+            # }
+        )
+        self.assertIsInstance(result, dict)
+        self.assertIn("structured_output", result)
+        self.assertIn("metadata", result)
+        self.assertIsInstance(result["structured_output"], dict)
+        self.assertIn("content", result["structured_output"])
+    
+    def test_anthropic_text_output_non_reasoning_model(self):
+        """Test Anthropic Claude 3.5 Sonnet with text output."""
+        result = run_llm_test(
+            model_provider=LLMModelProvider.ANTHROPIC,
+            model_name=AnthropicModels.CLAUDE_3_5_SONNET.value,
+            output_type="text"
+        )
+        self.assertIsInstance(result, dict)
+        self.assertIn("content", result)
+        self.assertIn("metadata", result)
+        self.assertIsInstance(result["content"], str)
+        self.assertGreater(len(result["content"]), 0)
         
-    def test_anthropic_structured_output(self):
+    def test_anthropic_structured_output_reasoning(self):
         """Test Anthropic Claude 3.7 Sonnet with structured output and reasoning."""
         result = run_llm_test(
             model_provider=LLMModelProvider.ANTHROPIC,
@@ -350,8 +366,27 @@ class TestBasicLLMWorkflow(unittest.TestCase):
             output_type="structured",
             reasoning_config={
                 "reasoning_tokens_budget": 1024  # Claude 3.7 supports reasoning tokens budget
-            }
+            },
+            input_system_prompt=True,
+            # message_history=True,
         )
+        self.assertIsInstance(result, dict)
+        self.assertIn("structured_output", result)
+        self.assertIn("metadata", result)
+        self.assertIsInstance(result["structured_output"], dict)
+        self.assertIn("content", result["structured_output"])
+
+        result = run_llm_test(
+            model_provider=LLMModelProvider.ANTHROPIC,
+            model_name=AnthropicModels.CLAUDE_3_7_SONNET.value,
+            output_type="structured",
+            reasoning_config={
+                "reasoning_tokens_budget": 1024  # Claude 3.7 supports reasoning tokens budget
+            },
+            # input_system_prompt=True,
+            message_history=True,
+        )
+
         self.assertIsInstance(result, dict)
         self.assertIn("structured_output", result)
         self.assertIn("metadata", result)
@@ -774,37 +809,3 @@ class TestBasicLLMWorkflow(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main() 
-
-    # from langchain.chat_models import init_chat_model
-    # model = init_chat_model("gemini-2.5-pro-exp-03-25", model_provider="google_genai")
-    # response = model.invoke("Hello, world!")
-    # """
-    # AIMessage(content='Hello there! "Hello, world!" - the classic greeting. 😊\n\nHow can I help you today?', additional_kwargs={}, response_metadata={'prompt_feedback': {'block_reason': 0, 'safety_ratings': []}, 'finish_reason': 'STOP', 'model_name': 'gemini-2.5-pro-exp-03-25', 'safety_ratings': []}, id='run-c91059d9-3e46-4dda-9d7c-8a3efea60315-0', usage_metadata={'input_tokens': 5, 'output_tokens': 22, 'total_tokens': 27, 'input_token_details': {'cache_read': 0}})
-    # """
-    # print(response.content)
-    # import ipdb; ipdb.set_trace()
-
-
-    # from google import genai
-
-    # client = genai.Client(api_key=settings.GOOGLE_API_KEY)
-    # prompt = "Explain the concept of Occam's Razor and provide a simple, everyday example."
-    # response = client.models.generate_content(
-    #     model="gemini-2.5-pro-exp-03-25",  # or gemini-2.0-flash-thinking-exp
-    #     contents=prompt
-    # )
-
-    # print(response.text)
-    # import ipdb; ipdb.set_trace()
-    # x = ConstructDynamicSchema(
-    #     schema_name="TestSchema",
-    #     schema_description="Test schema",
-    #     fields={
-    #         # try Any or Dict field!
-    #         "content": DynamicSchemaFieldConfig(type="str", required=True, description="Content of the response"),
-    #         # "metadata": DynamicSchemaFieldConfig(type="dict", required=True, description="Metadata of the response"),
-    #         "metadata": DynamicSchemaFieldConfig(type="dict",  required=True, description="Metadata of the response", keys_type="str", values_type="str"),
-    #     }
-    # )
-    # y = x.build_schema()
-    # print(json.dumps(y.model_json_schema(), indent=2))
