@@ -63,3 +63,5 @@ kubeconfig
 
 .backup/
 backup/
+secrets/
+data/

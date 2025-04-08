@@ -4,8 +4,10 @@ Configuration settings for the KiwiQ Backend Service.
 This module contains all the configuration settings for the application, loaded from
 environment variables with sensible defaults.
 """
+import os
 from pathlib import Path
 from typing import Any, Dict, Optional, Literal
+from global_config.logger import setup_logging
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 
@@ -15,6 +17,7 @@ load_dotenv()
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 DATA_ROOT = PROJECT_ROOT / "data"
+LOG_ROOT = PROJECT_ROOT / "logs"
 
 # Ensure DATA_ROOT directory exists
 if not DATA_ROOT.exists():
@@ -26,6 +29,7 @@ if not DATA_ROOT.exists():
 
 
 ENV_FILE_PATH = PROJECT_ROOT / ".env"
+PROD_ENV_FILE_PATH = PROJECT_ROOT / ".env.prod"
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
@@ -35,13 +39,14 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "KiwiQ Backend"
     VERSION: str = "0.1.0"
 
-    APP_ENV: Literal["DEV", "PROD"] = "DEV"
+    APP_ENV: Literal["DEV", "STAGE", "PROD"] = "DEV"
     
     # Database settings
     DATABASE_URL: str = ""  # Default Postgres for development
-    DB_ECHO: bool = False  # SQL query logging
+    DB_ECHO: bool = True  # SQL query logging
     DB_POOL_SIZE: int = 5
     DB_MAX_OVERFLOW: int = 10
+    DB_TABLE_NAMESPACE_PREFIX: str = "kiwiq_"
     
     # API settings
     API_V1_PREFIX: str = "/api/v1"
@@ -70,9 +75,12 @@ class Settings(BaseSettings):
     LINKEDIN_ACCESS_TOKEN: str = ""
     LINKEDIN_API_VERSION: str = "202502"
     LINKEDIN_REDIRECT_URL: str = ""
+
+    LOG_LEVEL: str = "INFO"
+    LOG_FILE_NAME: str = "kiwiq_backend.log"
     
     model_config = SettingsConfigDict(
-        env_file=ENV_FILE_PATH,
+        env_file=(ENV_FILE_PATH if os.getenv("APP_ENV", "DEV") == "DEV" else PROD_ENV_FILE_PATH),
         env_file_encoding="utf-8",
         case_sensitive=True,
         extra="allow",
@@ -90,3 +98,12 @@ class Settings(BaseSettings):
 
 # Create a global settings instance
 settings = Settings() 
+
+# Setup up global logging for this module
+setup_logging(
+    log_level=settings.LOG_LEVEL,
+    log_to_console=settings.APP_ENV == "DEV",
+    log_to_file=True,  # settings.APP_ENV == "PROD",
+    log_dir=LOG_ROOT,
+    log_filename=settings.LOG_FILE_NAME
+)

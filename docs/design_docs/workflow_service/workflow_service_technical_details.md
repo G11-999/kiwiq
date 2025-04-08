@@ -557,3 +557,74 @@ TODO: log exception tracebacks!
 TODO: test LLM NOde / search with message history! + THINKING BLOCKS!
 
 
+
+# Pending tasks
+
+- DB layer
+- Auth, user/orgs, oauth; secure AUTH + CSRF!!! User roles --> assign same user roles in multiple orgs!
+- workflow service / registry DB layer; potential migration conflicts?
+- Worklfow Ops; how to pend / pause workflow and store in DB
+- Admins, perms
+- backend API; integrate auto API documentation
+- notifications, websockets
+- notifications of job completion, job triggered/started, job progress live events, tokens streaming, job failure, HITL notification / request!
+- HITL jobs table
+- user sends back HITL job done!
+
+- Key nodes / workflows with application context / external service context!
+    - Embeddings + RAG + Retrieval + hybrid retrieval + llamaindex
+
+- prefect setup!
+
+- linkedin integrations
+
+- billing and payments??
+
+- scraping integrations!!??
+
+- Deployment! External services packages / deployment! hosted vs managed!
+
+- security brainstorming: https://claude.ai/chat/b553f08f-fd40-490c-8504-5f98318ded7c
+
+- Scheduling?
+- Triggers?
+    - web hooks
+
+
+
+########################################################################
+
+Create a separate permissions table and create a constnats.py and auth_setup.py file which sets up the DB with default permissions, roles, a default KiwiQ AI org and a defaul user admin which is superuser and also has admin role for KiwiQ AI.
+
+LIst and plan 3 roles: admin (admin for the org, full acess, can add/remove users with roles + delete org / delete data + other perms), team member: can build, execute workflows and use platform normally without org admin access, and billing: has access to account billing and usage dashboards.
+
+Create oauth 2.0 scopes for roles.
+@https://fastapi.tiangolo.com/tutorial/security/oauth2-jwt/#check-it 
+
+Make the primary keys UUIDs.
+
+Don't create BaseModels eg UserBase unless multiple models inherit from it; directly create the core models.
+
+Use database async sessions/engine from created pool @session.py 
+
+Use pyjwt instead of jose 
+@https://fastapi.tiangolo.com/tutorial/security/oauth2-jwt/#handle-jwt-tokens 
+
+Create class based DAO classes for diff entities; for complex multi entity queries, create DAO classes with specified verbs which either access DAO or perform complex queries with joins.
+Don't just write functions; create classes which makes code reusable nad more generic and classes can share db session pool and properly handle commit / close etc
+
+Do not write DB queries directly in routers.py
+
+Create additional services.py to create core services interacting with the DAO layer (multiple DAO objects) and performing key business logic; don't make routers.py bulky.
+
+You have created LInkedinusermodel  in linkedin.py; instead move it to schemas.py
+
+Ensure that the routes have the correct permissions (eg, while adding users to org with role, user must be admin or superuser) setup.
+
+Also add ability for user to create new orgs and assign the user as the admin of new org by default
+
+The user is also able to remove users from an org (remove their role) if the user is admin / superuser
+
+So a user can be part of multiple orgs with diff roles.
+
+Create a default org whenever a user is created for the first time and make the user admin for it.

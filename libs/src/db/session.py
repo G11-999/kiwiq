@@ -1,7 +1,7 @@
 """
 Database session management module.
 
-This module provides database session management utilities using SQLAlchemy and SQLModel.
+This module provides database session management utilities using SQLModel.
 It handles connection pooling and session creation.
 """
 from contextlib import asynccontextmanager, contextmanager
@@ -10,110 +10,56 @@ from typing import Generator, AsyncGenerator
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool, ConnectionPool
 
+# --- SQLModel Imports ---
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy import create_engine
+from sqlmodel import SQLModel, Session
+from sqlmodel.ext.asyncio.session import AsyncSession
 
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy import create_engine  # Added this import
-from sqlalchemy.orm import Session, sessionmaker
-from sqlmodel import SQLModel
+# --- SQLAlchemy Core Imports (used by SQLModel) ---
+# We still need sessionmaker and async_sessionmaker
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from global_config.settings import settings
 
 # import services / libs models here for migrations discovery!
-# from services.linkedin_integration.models import LinkedInAccount, LinkedInPost, LinkedInComment, LinkedInReaction, LinkedInAnalytics, LinkedInPostAnalytics, EmployeeAdvocacy
+# e.g., from services.my_service.models import MyModel
 
-# Create async database engine with connection pooling
+# ========================================
+# Database URLs and Common Settings
+# ========================================
+
+DATABASE_URL_SYNC = settings.DATABASE_URL.replace('postgresql://', 'postgresql+psycopg://')
+DATABASE_URL_ASYNC = settings.DATABASE_URL.replace('postgresql://', 'postgresql+psycopg://')
+ENGINE_ECHO = settings.DB_ECHO
+POOL_SIZE = settings.DB_POOL_SIZE
+MAX_OVERFLOW = settings.DB_MAX_OVERFLOW
+
+# ========================================
+# SQLModel Engine and Session Setup
+# ========================================
+
+# Create SQLModel async database engine
 async_engine = create_async_engine(
-    settings.DATABASE_URL.replace('postgresql://', 'postgresql+psycopg://'),
-    echo=settings.DB_ECHO,
-    pool_size=settings.DB_POOL_SIZE,
-    max_overflow=settings.DB_MAX_OVERFLOW,
+    DATABASE_URL_ASYNC,
+    echo=ENGINE_ECHO,
+    pool_size=POOL_SIZE,
+    max_overflow=MAX_OVERFLOW, 
 )
 
-# Create sync engine for migrations and sync operations
+# Create SQLModel sync engine
 sync_engine = create_engine(
-    settings.DATABASE_URL.replace('postgresql://', 'postgresql+psycopg://'),
-    echo=settings.DB_ECHO,
-    pool_size=settings.DB_POOL_SIZE,
-    max_overflow=settings.DB_MAX_OVERFLOW,
+    DATABASE_URL_SYNC,
+    echo=ENGINE_ECHO,
+    pool_size=POOL_SIZE,
+    max_overflow=MAX_OVERFLOW,
 )
 
-
-pool_connection_kwargs = {
-    "autocommit": True,
-    "prepare_threshold": 0,
-    "row_factory": dict_row,
-}
-
-@contextmanager
-def get_pool() -> Generator[ConnectionPool, None, None]:
-    """
-    Get an asynchronous connection pool as a context manager.
-    
-    This function provides a properly configured AsyncConnectionPool that will be
-    automatically closed when the context is exited.
-    
-    Yields:
-        AsyncConnectionPool: A connection pool for PostgreSQL database access.
-        
-    Example:
-        async with get_async_pool() as pool:
-            async with pool.connection() as conn:
-                # Use the connection
-    """
-    
-    # Create and yield the pool
-    pool = ConnectionPool(
-        conninfo=settings.DATABASE_URL,
-        min_size=settings.DB_POOL_SIZE,
-        max_size=settings.DB_MAX_OVERFLOW,
-        kwargs=pool_connection_kwargs,
-    )
-    
-    try:
-        pool.open()
-        yield pool
-    finally:
-        pool.close()
-
-
-@asynccontextmanager
-async def get_async_pool() -> AsyncGenerator[AsyncConnectionPool, None]:
-    """
-    Get an asynchronous connection pool as a context manager.
-    
-    This function provides a properly configured AsyncConnectionPool that will be
-    automatically closed when the context is exited.
-    
-    Yields:
-        AsyncConnectionPool: A connection pool for PostgreSQL database access.
-        
-    Example:
-        async with get_async_pool() as pool:
-            async with pool.connection() as conn:
-                # Use the connection
-    """
-    # Define connection parameters
-    
-    
-    # Create and yield the pool
-    pool = AsyncConnectionPool(
-        conninfo=settings.DATABASE_URL,
-        min_size=settings.DB_POOL_SIZE,
-        max_size=settings.DB_MAX_OVERFLOW,
-        kwargs=pool_connection_kwargs,
-    )
-    
-    try:
-        await pool.open()
-        yield pool
-    finally:
-        await pool.close()
-
-
-# Session factories
+# SQLModel Session Factories
 AsyncSessionLocal = async_sessionmaker(
     async_engine,
-    class_=AsyncSession,
+    class_=AsyncSession, # Use SQLModel's AsyncSession
     expire_on_commit=False,
     autocommit=False,
     autoflush=False,
@@ -121,82 +67,177 @@ AsyncSessionLocal = async_sessionmaker(
 
 SyncSessionLocal = sessionmaker(
     sync_engine,
-    class_=Session,
+    class_=Session, # Use SQLModel's Session
     expire_on_commit=False,
     autocommit=False,
     autoflush=False,
 )
 
+
+# ========================================
+# Direct Psycopg Connection Pool Setup
+# ========================================
+
+pool_connection_kwargs = {
+    "autocommit": True, # Note: This is for raw psycopg connections, not ORM sessions
+    "prepare_threshold": 0,
+    "row_factory": dict_row,
+}
+
+@contextmanager
+def get_pool() -> Generator[ConnectionPool, None, None]:
+    """
+    Get a synchronous psycopg connection pool as a context manager.
+
+    Provides a ConnectionPool configured for synchronous PostgreSQL access.
+    The pool is automatically closed when the context is exited.
+
+    Yields:
+        ConnectionPool: A synchronous connection pool for PostgreSQL.
+
+    Example:
+        with get_pool() as pool:
+            with pool.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT 1")
+    """
+    pool = ConnectionPool(
+        conninfo=settings.DATABASE_URL, # Raw URL is fine for psycopg directly
+        min_size=POOL_SIZE,
+        max_size=MAX_OVERFLOW,
+        kwargs=pool_connection_kwargs,
+    )
+    try:
+        # Note: pool.open() might block, depending on implementation;
+        # consider if truly needed in sync context if pool manages connections lazily.
+        pool.open(wait=True)
+        yield pool
+    finally:
+        pool.close()
+
+@asynccontextmanager
+async def get_async_pool() -> AsyncGenerator[AsyncConnectionPool, None]:
+    """
+    Get an asynchronous psycopg connection pool as an async context manager.
+
+    Provides an AsyncConnectionPool configured for asynchronous PostgreSQL access.
+    The pool is automatically closed when the context is exited.
+
+    Yields:
+        AsyncConnectionPool: An asynchronous connection pool for PostgreSQL.
+
+    Example:
+        async with get_async_pool() as pool:
+            async with pool.connection() as aconn:
+                async with aconn.cursor() as acur:
+                    await acur.execute("SELECT 1")
+    """
+    pool = AsyncConnectionPool(
+        conninfo=settings.DATABASE_URL, # Raw URL is fine for psycopg directly
+        min_size=POOL_SIZE,
+        max_size=MAX_OVERFLOW,
+        kwargs=pool_connection_kwargs,
+    )
+    try:
+        # Open the pool asynchronously
+        await pool.open()
+        yield pool
+    finally:
+        await pool.close()
+
+# ========================================
+# Database Initialization
+# ========================================
+
 async def init_db() -> None:
-    """Initialize database by creating all tables."""
+    """
+    Initialize the database by creating all tables defined by SQLModel models.
+
+    Uses the SQLModel metadata and the async engine to create tables.
+    """
     async with async_engine.begin() as conn:
+        # SQLModel.metadata contains all tables defined using SQLModel
         await conn.run_sync(SQLModel.metadata.create_all)
 
+# ========================================
+# SQLModel Session Getters
+# ========================================
+
 def get_sync_session() -> Session:
-    """Get a new synchronous database session.
-    
+    """
+    Get a new synchronous SQLModel database session.
+
     Returns:
-        Session: A new SQLAlchemy session instance.
+        Session: A new SQLModel session instance.
+                 Caller is responsible for closing the session.
     """
     return SyncSessionLocal()
 
 async def get_async_session() -> AsyncSession:
-    """Get a new asynchronous database session.
-    
+    """
+    Get a new asynchronous SQLModel database session.
+
     Returns:
-        AsyncSession: A new SQLAlchemy async session instance.
+        AsyncSession: A new SQLModel async session instance.
+                      Caller is responsible for closing the session.
     """
     return AsyncSessionLocal()
 
+# ========================================
+# SQLModel Context Managers for Sessions
+# ========================================
+
 @contextmanager
-def get_db() -> Generator[Session, None, None]:
-    """Context manager for synchronous database sessions.
-    
-    This ensures proper handling of database sessions, including
-    automatic closing and rollback on exceptions.
-    
+def get_db_as_manager() -> Generator[Session, None, None]:
+    """
+    Context manager for synchronous SQLModel database sessions.
+
+    Provides a SQLModel Session, managing commit, rollback, and closing.
+
     Yields:
-        Session: Database session that will be automatically closed.
-    
+        Session: SQLModel session managed by the context.
+
     Example:
         ```python
-        with get_db() as db:
-            db.query(User).all()
+        with get_db() as session:
+            # session is a SQLModel Session
+            hero = session.get(Hero, 1)
         ```
     """
-    db = get_sync_session()
+    session = get_sync_session() # Uses the SQLModel session factory
     try:
-        yield db
-        db.commit()
+        yield session
+        session.commit()
     except Exception:
-        db.rollback()
+        session.rollback()
         raise
     finally:
-        db.close()
+        session.close()
 
 @asynccontextmanager
-async def get_async_db() -> AsyncGenerator[AsyncSession, None]:
-    """Async context manager for database sessions.
-    
-    This ensures proper handling of database sessions, including
-    automatic closing and rollback on exceptions.
-    
+async def get_async_db_as_manager() -> AsyncGenerator[AsyncSession, None]:
+    """
+    Async context manager for asynchronous SQLModel database sessions.
+
+    Provides a SQLModel AsyncSession, managing commit, rollback, and closing.
+
     Yields:
-        AsyncSession: Database session that will be automatically closed.
-    
+        AsyncSession: SQLModel async session managed by the context.
+
     Example:
         ```python
-        async with get_async_db() as db:
-            result = await db.execute(select(User))
-            users = result.scalars().all()
+        async with get_async_db() as session:
+            # session is a SQLModel AsyncSession
+            results = await session.exec(select(Hero))
+            heroes = results.all()
         ```
     """
-    db = await get_async_session()
+    session = await get_async_session() # Uses the SQLModel async session factory
     try:
-        yield db
-        await db.commit()
+        yield session
+        await session.commit()
     except Exception:
-        await db.rollback()
+        await session.rollback()
         raise
     finally:
-        await db.close()
+        await session.close()
