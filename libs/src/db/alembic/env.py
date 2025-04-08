@@ -10,7 +10,7 @@ from db.session import async_engine, sync_engine
 
 # import services / libs models here for migrations discovery!
 # from services.linkedin_integration.models import LinkedInAccount, LinkedInPost, LinkedInComment, LinkedInReaction, LinkedInAnalytics, LinkedInPostAnalytics, EmployeeAdvocacy
-
+from kiwi_app.auth.models import *
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
