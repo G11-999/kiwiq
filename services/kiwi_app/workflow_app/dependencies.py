@@ -1,13 +1,13 @@
 """Dependencies for the Workflow Service."""
 
 import uuid
-from typing import Optional, List
+from typing import Optional, List, AsyncGenerator
 
 from fastapi import Depends, HTTPException, status, Path
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from db.session import get_async_session
+from db.session import get_async_session, get_async_db_as_manager
 from kiwi_app.auth.models import User # Assuming auth models are accessible
 from kiwi_app.auth.dependencies import ( # Import relevant auth dependencies
     get_current_active_verified_user,
@@ -104,7 +104,7 @@ RequireTemplateDeleteActiveOrg = AuthPermissionChecker([WorkflowPermissions.TEMP
 async def get_workflow_for_org( # Renamed to be more specific
     workflow_id: uuid.UUID = Path(..., description="The ID of the workflow"),
     active_org_id: uuid.UUID = Depends(get_active_org_id),
-    db: AsyncSession = Depends(get_async_session),
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     workflow_dao: crud.WorkflowDAO = Depends(get_workflow_dao),
     # current_user: User = Depends(get_current_active_verified_user) # User fetched by perm checker
 ) -> models.Workflow:
@@ -116,15 +116,16 @@ async def get_workflow_for_org( # Renamed to be more specific
         # This should ideally be caught by permission checker if required
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="X-Active-Org header is required.")
 
-    workflow = await workflow_dao.get_by_id_and_org(db, workflow_id=workflow_id, org_id=active_org_id)
-    if not workflow:
-        raise WorkflowNotFoundException()
-    return workflow
+    async with db_manager as db:
+        workflow = await workflow_dao.get_by_id_and_org(db, workflow_id=workflow_id, org_id=active_org_id)
+        if not workflow:
+            raise WorkflowNotFoundException()
+        return workflow
 
 async def get_workflow_run_for_org(
     run_id: uuid.UUID = Path(..., description="The ID of the workflow run"),
     active_org_id: uuid.UUID = Depends(get_active_org_id),
-    db: AsyncSession = Depends(get_async_session),
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     run_dao: crud.WorkflowRunDAO = Depends(get_workflow_run_dao),
     # current_user: User = Depends(get_current_active_verified_user) # User fetched by perm checker
 ) -> models.WorkflowRun:
@@ -135,38 +136,40 @@ async def get_workflow_run_for_org(
     if active_org_id is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="X-Active-Org header is required.")
 
-    run = await run_dao.get_run_by_id_and_org(db, run_id=run_id, org_id=active_org_id)
-    if not run:
-        raise WorkflowRunNotFoundException()
-    return run
+    async with db_manager as db:
+        run = await run_dao.get_run_by_id_and_org(db, run_id=run_id, org_id=active_org_id)
+        if not run:
+            raise WorkflowRunNotFoundException()
+        return run
 
 async def get_notification_for_user(
     notification_id: uuid.UUID = Path(..., description="The ID of the notification"),
     current_user: User = Depends(get_current_active_verified_user),
-    db: AsyncSession = Depends(get_async_session),
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     notification_dao: crud.UserNotificationDAO = Depends(get_user_notification_dao),
 ) -> models.UserNotification:
     """
     Dependency to fetch a notification by ID, ensuring it belongs to the current user.
     """
-    result = await db.execute(
-        select(models.UserNotification).where(
-            models.UserNotification.id == notification_id,
-            models.UserNotification.user_id == current_user.id
+    async with db_manager as db:
+        result = await db.execute(
+            select(models.UserNotification).where(
+                models.UserNotification.id == notification_id,
+                models.UserNotification.user_id == current_user.id
+            )
         )
-    )
-    notification = result.scalars().first()
-    if not notification:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
-            detail="Notification not found or does not belong to the current user"
-        )
-    return notification
+        notification = result.scalars().first()
+        if not notification:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, 
+                detail="Notification not found or does not belong to the current user"
+            )
+        return notification
 
 async def get_hitl_job_for_org(
     job_id: uuid.UUID = Path(..., description="The ID of the HITL job"),
     active_org_id: uuid.UUID = Depends(get_active_org_id),
-    db: AsyncSession = Depends(get_async_session),
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     hitl_job_dao: crud.HITLJobDAO = Depends(get_hitl_job_dao),
 ) -> models.HITLJob:
     """
@@ -176,18 +179,19 @@ async def get_hitl_job_for_org(
     if active_org_id is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="X-Active-Org header is required.")
 
-    result = await db.execute(
-        select(models.HITLJob).where(
-            models.HITLJob.id == job_id,
-            models.HITLJob.org_id == active_org_id
+    async with db_manager as db:
+        result = await db.execute(
+            select(models.HITLJob).where(
+                models.HITLJob.id == job_id,
+                models.HITLJob.org_id == active_org_id
+            )
         )
-    )
-    job = result.scalars().first()
-    if not job:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
-            detail="HITL job not found or does not belong to the active organization"
-        )
-    return job
+        job = result.scalars().first()
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, 
+                detail="HITL job not found or does not belong to the active organization"
+            )
+        return job
 
 # Add similar dependencies for getting PromptTemplate and SchemaTemplate by ID + Org if needed 

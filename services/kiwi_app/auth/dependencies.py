@@ -1,5 +1,5 @@
 import uuid
-from typing import Set, List, Optional
+from typing import Set, List, Optional, AsyncGenerator
 import logging # Keep standard logging import if needed elsewhere
 
 from fastapi import Depends, HTTPException, status, Request, Security, Header, Path # Added Header, Path
@@ -7,7 +7,7 @@ from fastapi.security import OAuth2PasswordBearer, SecurityScopes
 from sqlalchemy.ext.asyncio import AsyncSession
 # from sqlalchemy import select, selectinload
 
-from libs.src.db.session import get_async_session # Adjust import path if necessary
+from libs.src.db.session import get_async_session, get_async_db_as_manager # Adjust import path if necessary
 from kiwi_app.auth import crud, models, schemas, security, services # Import services
 from kiwi_app.auth.utils import auth_logger # Import the specific logger
 from kiwi_app.auth.constants import Permissions # Import Permissions enum
@@ -65,7 +65,7 @@ def get_auth_service(
 
 # --- Shared Permission Check Logic --- #
 async def _check_permissions_for_org(
-    db: AsyncSession,
+    db_manager: AsyncGenerator[AsyncSession, None],
     user_dao: crud.UserDAO,
     user: models.User,
     org_id: uuid.UUID,
@@ -76,7 +76,7 @@ async def _check_permissions_for_org(
     Fetches necessary data efficiently and raises PermissionDeniedException if check fails.
 
     Args:
-        db: The database session.
+        db_manager: The database session manager.
         user_dao: Instance of UserDAO.
         user: The authenticated user model.
         org_id: The UUID of the organization to check permissions against.
@@ -90,7 +90,8 @@ async def _check_permissions_for_org(
 
     # Fetch the specific role link for this user and org
     # DAO method loads role and permissions efficiently
-    link = await user_dao.get_user_org_role(db, user_id=user.id, org_id=org_id)
+    async with db_manager as db:
+        link = await user_dao.get_user_org_role(db, user_id=user.id, org_id=org_id)
 
     if not link or not link.role or not link.role.permissions:
         # Handle cases where user is not in org, has no role, or role has no permissions defined
@@ -108,7 +109,7 @@ async def _check_permissions_for_org(
 # --- Authentication Dependencies --- #
 
 async def get_current_user(
-    db: AsyncSession = Depends(get_async_session),
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     token: str = Depends(security.oauth2_scheme),  # oauth2_authorization_code_scheme  oauth2_scheme
     user_dao: crud.UserDAO = Depends(get_user_dao)
 ) -> models.User:
@@ -124,7 +125,8 @@ async def get_current_user(
 
     # Fetch user by UUID using the injected DAO
     # Do not load relationships here by default for performance.
-    user = await user_dao.get(db, id=token_data.sub)
+    async with db_manager as db:
+        user = await user_dao.get(db, id=token_data.sub)
 
     # Explicit relationship loading removed - handled by permission checks if needed
 
@@ -134,7 +136,7 @@ async def get_current_user(
 
 
 async def get_current_active_user_with_orgs(
-    db: AsyncSession = Depends(get_async_session),
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     token: str = Depends(security.oauth2_scheme),  # oauth2_authorization_code_scheme  oauth2_scheme
     user_dao: crud.UserDAO = Depends(get_user_dao)
 ) -> models.User:
@@ -146,7 +148,7 @@ async def get_current_active_user_with_orgs(
     validation, user lookup, and relationship loading in a single function.
     
     Args:
-        db: Database session
+        db_manager: Database session manager
         token: JWT access token from the request
         user_dao: User data access object
         
@@ -164,16 +166,17 @@ async def get_current_active_user_with_orgs(
     except CredentialsException as e:
         raise e
     
-    user_with_orgs = await user_dao.get(
-        db, 
-        id=token_data.sub, 
-        load_relations=[
-            (models.User, "organization_links"), 
-            (models.UserOrganizationRole, "organization_links.organization"),   # UserOrganizationRole
-            (models.UserOrganizationRole, "organization_links.role"),
-            # "organization_links.role.permissions"
-        ]
-    )
+    async with db_manager as db:
+        user_with_orgs = await user_dao.get(
+            db, 
+            id=token_data.sub, 
+            load_relations=[
+                (models.User, "organization_links"), 
+                (models.UserOrganizationRole, "organization_links.organization"),   # UserOrganizationRole
+                (models.UserOrganizationRole, "organization_links.role"),
+                # "organization_links.role.permissions"
+            ]
+        )
     print(user_with_orgs.organization_links)
     # import ipdb; ipdb.set_trace()
     print("\n\n\n\nOrganization: ", user_with_orgs.organization_links[0].organization, "\n\n\n\n")
@@ -254,7 +257,7 @@ class PermissionChecker:
         self,
         user: models.User = Depends(get_current_active_verified_user),
         active_org_id: Optional[uuid.UUID] = Depends(get_active_org_id),
-        db: AsyncSession = Depends(get_async_session),
+        db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
         user_dao: crud.UserDAO = Depends(get_user_dao)
     ) -> models.User:
         """
@@ -271,7 +274,7 @@ class PermissionChecker:
         # Delegate the check to the shared function
         try:
             await _check_permissions_for_org(
-                db=db,
+                db_manager=db_manager,
                 user_dao=user_dao,
                 user=user,
                 org_id=active_org_id,
@@ -304,7 +307,7 @@ class SpecificOrgPermissionChecker:
         self,
         org_id: uuid.UUID = Path(..., description="The target organization ID"),
         user: models.User = Depends(get_current_active_verified_user),
-        db: AsyncSession = Depends(get_async_session),
+        db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
         user_dao: crud.UserDAO = Depends(get_user_dao)
     ) -> models.User:
         """
@@ -315,7 +318,7 @@ class SpecificOrgPermissionChecker:
         # Delegate the check to the shared function using org_id from path
         try:
             await _check_permissions_for_org(
-                db=db,
+                db_manager=db_manager,
                 user_dao=user_dao,
                 user=user,
                 org_id=org_id,
@@ -352,13 +355,14 @@ def require_permissions(required_permissions: List[str]):
     """
     async def _check_permissions(
         org_id: int, # Assuming org_id is available in the path/query
-        db: AsyncSession = Depends(get_async_session),
+        db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
         current_user: models.User = Depends(get_current_active_verified_user) # Or active_user if verification not needed
     ) -> models.User:
         """
         The actual dependency function that performs the permission check.
         """
-        user_role = await crud.get_user_roles_in_organization(db, user_id=current_user.id, org_id=org_id)
+        async with db_manager as db:
+            user_role = await crud.get_user_roles_in_organization(db, user_id=current_user.id, org_id=org_id)
 
         if not user_role:
             raise PermissionDeniedException(detail="User not part of this organization or no role assigned.")
@@ -374,4 +378,3 @@ def require_permissions(required_permissions: List[str]):
         return current_user # Return the user if permissions are sufficient
 
     return _check_permissions 
-

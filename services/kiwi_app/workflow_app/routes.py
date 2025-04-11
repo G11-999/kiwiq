@@ -1,6 +1,6 @@
 import asyncio
 import uuid
-from typing import List, Optional, Dict, Any, Annotated, Union
+from typing import List, Optional, Dict, Any, Annotated, Union, AsyncGenerator
 
 from fastapi import (
     APIRouter, Depends, HTTPException, status, Query, WebSocket,
@@ -60,7 +60,7 @@ notification_router.include_router(websocket_router, prefix="/ws", tags=["WebSoc
 async def list_node_templates(
     query_params: Annotated[schemas.NodeTemplateListQuery, Query()],
     user: User = Depends(get_current_active_verified_user),
-    db: AsyncSession = Depends(get_async_session),
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
 ):
     """
@@ -75,12 +75,13 @@ async def list_node_templates(
     if constants.LaunchStatus.EXPERIMENTAL in query_params.launch_status and not user.is_superuser:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Experimental templates are not accessible to regular users.")
 
-    return await workflow_service.list_node_templates(
-        db=db,
-        launch_statuses=query_params.launch_status,
-        skip=query_params.skip,
-        limit=query_params.limit
-    )
+    async with db_manager as db:
+        return await workflow_service.list_node_templates(
+            db=db,
+            launch_statuses=query_params.launch_status,
+            skip=query_params.skip,
+            limit=query_params.limit
+        )
 
 @template_router.get(
     "/nodes/{name}/{version}",
@@ -92,7 +93,7 @@ async def get_node_template(
     user: User = Depends(get_current_active_verified_user),
     name: str = Path(..., description="Name of the node template"),
     version: str = Path(..., description="Version of the node template"),
-    db: AsyncSession = Depends(get_async_session),
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
 ):
     """
@@ -100,12 +101,13 @@ async def get_node_template(
 
     - Requires `template:read` permission.
     """
-    template = await workflow_service.get_node_template(db=db, name=name, version=version)
-    if not template:
-        raise exceptions.TemplateNotFoundException(f"Node template '{name}' version '{version}' not found.")
-    if template.launch_status == constants.LaunchStatus.EXPERIMENTAL and not user.is_superuser:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Experimental templates are not accessible to regular users.")
-    return template
+    async with db_manager as db:
+        template = await workflow_service.get_node_template(db=db, name=name, version=version)
+        if not template:
+            raise exceptions.TemplateNotFoundException(f"Node template '{name}' version '{version}' not found.")
+        if template.launch_status == constants.LaunchStatus.EXPERIMENTAL and not user.is_superuser:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Experimental templates are not accessible to regular users.")
+        return template
 
 
 # -- Prompt Templates --
@@ -120,7 +122,7 @@ async def create_prompt_template(
     template_in: schemas.PromptTemplateCreate,
     active_org_id: uuid.UUID = Depends(get_active_org_id),
     current_user: User = Depends(wf_deps.RequireTemplateCreateActiveOrg),
-    db: AsyncSession = Depends(get_async_session),
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
 ):
     """
@@ -129,9 +131,10 @@ async def create_prompt_template(
     - Requires `template:create_org` permission on the active organization.
     """
     # Service layer handles potential name/version conflicts within the org
-    return await workflow_service.create_prompt_template(
-        db=db, template_in=template_in, owner_org_id=active_org_id, user=current_user
-    )
+    async with db_manager as db:
+        return await workflow_service.create_prompt_template(
+            db=db, template_in=template_in, owner_org_id=active_org_id, user=current_user
+        )
 
 @template_router.get(
     "/prompts/",
@@ -143,7 +146,7 @@ async def list_prompt_templates(
     query_params: Annotated[schemas.PromptTemplateListQuery, Query()],
     active_org_id: uuid.UUID = Depends(get_active_org_id),
     # current_user: User = Depends(wf_deps.RequireTemplateReadActiveOrg), # Needed only if superuser bypasses active_org_id
-    db: AsyncSession = Depends(get_async_session),
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
 ):
     """
@@ -157,13 +160,14 @@ async def list_prompt_templates(
     """
     # Superuser filtering by owner_org_id needs to be handled in the service layer
     # based on the current_user's is_superuser flag if needed.
-    return await workflow_service.list_prompt_templates(
-        db=db,
-        owner_org_id=active_org_id, # Pass active org as context
-        include_system=query_params.include_system,
-        skip=query_params.skip,
-        limit=query_params.limit
-    )
+    async with db_manager as db:
+        return await workflow_service.list_prompt_templates(
+            db=db,
+            owner_org_id=active_org_id, # Pass active org as context
+            include_system=query_params.include_system,
+            skip=query_params.skip,
+            limit=query_params.limit
+        )
 
 @template_router.get(
     "/prompts/{template_id}",
@@ -175,7 +179,7 @@ async def get_prompt_template(
     template_id: uuid.UUID = Path(..., description="The ID of the prompt template"),
     active_org_id: uuid.UUID = Depends(get_active_org_id), # For context if accessing org template
     # current_user: User = Depends(get_current_active_verified_user), # Needed if checking access to system templates differently
-    db: AsyncSession = Depends(get_async_session),
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
 ):
     """
@@ -185,13 +189,14 @@ async def get_prompt_template(
       and system-wide templates.
     - Requires `template:read` permission.
     """
-    try:
-         template = await workflow_service.get_prompt_template(
-             db=db, template_id=template_id, owner_org_id=active_org_id # Pass org context for check
-         )
-    except exceptions.TemplateNotFoundException as e:
-        raise e # Re-raise the specific 404 exception from the service layer
-    return template
+    async with db_manager as db:
+        try:
+            template = await workflow_service.get_prompt_template(
+                db=db, template_id=template_id, owner_org_id=active_org_id # Pass org context for check
+            )
+        except exceptions.TemplateNotFoundException as e:
+            raise e # Re-raise the specific 404 exception from the service layer
+        return template
 
 
 @template_router.put(
@@ -207,7 +212,7 @@ async def update_prompt_template(
     # Fetch the template ensuring it belongs to the active org using the specific dependency
     # template: models.PromptTemplate = Depends(wf_deps.get_prompt_template_for_active_org),
     current_user: User = Depends(wf_deps.RequireTemplateUpdateActiveOrg),
-    db: AsyncSession = Depends(get_async_session),
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
 ):
     """
@@ -216,16 +221,17 @@ async def update_prompt_template(
     - Only templates owned by the active organization can be updated.
     - Requires `template:update_org` permission on the active organization.
     """
-    try:
-         template = await workflow_service.get_prompt_template(
-             db=db, template_id=template_id, owner_org_id=active_org_id
-         )
-    except exceptions.TemplateNotFoundException as e:
-        raise e
-    # Dependency ensures template belongs to active org before calling service
-    return await workflow_service.update_prompt_template(
-        db=db, template=template, template_update=template_update, user=current_user
-    )
+    async with db_manager as db:
+        try:
+            template = await workflow_service.get_prompt_template(
+                db=db, template_id=template_id, owner_org_id=active_org_id
+            )
+        except exceptions.TemplateNotFoundException as e:
+            raise e
+        # Dependency ensures template belongs to active org before calling service
+        return await workflow_service.update_prompt_template(
+            db=db, template=template, template_update=template_update, user=current_user
+        )
 
 @template_router.delete(
     "/prompts/{template_id}",
@@ -238,7 +244,7 @@ async def delete_prompt_template(
     template_id: uuid.UUID = Path(..., description="The ID of the prompt template"),
     active_org_id: uuid.UUID = Depends(get_active_org_id), # For context if accessing org template
     current_user: User = Depends(wf_deps.RequireTemplateDeleteActiveOrg), # Pass user for audit/logging
-    db: AsyncSession = Depends(get_async_session),
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
 ):
     """
@@ -247,14 +253,15 @@ async def delete_prompt_template(
     - Only templates owned by the active organization can be deleted.
     - Requires `template:delete_org` permission on the active organization.
     """
-    try:
-         template = await workflow_service.get_prompt_template(
-             db=db, template_id=template_id, owner_org_id=active_org_id
-         )
-    except exceptions.TemplateNotFoundException as e:
-        raise e
-    await workflow_service.delete_prompt_template(db=db, template=template, user=current_user)
-    return Response(status_code=status.HTTP_204_NO_CONTENT) # Explicitly return 204
+    async with db_manager as db:
+        try:
+            template = await workflow_service.get_prompt_template(
+                db=db, template_id=template_id, owner_org_id=active_org_id
+            )
+        except exceptions.TemplateNotFoundException as e:
+            raise e
+        await workflow_service.delete_prompt_template(db=db, template=template, user=current_user)
+        return Response(status_code=status.HTTP_204_NO_CONTENT) # Explicitly return 204
 
 # TODO: FIXME: add custom validators to ensure every prompt variable exists in the prompt template
 #   and every placeholder variable `{...}` in template exists as variable
@@ -272,7 +279,7 @@ async def create_schema_template(
     template_in: schemas.SchemaTemplateCreate,
     active_org_id: uuid.UUID = Depends(get_active_org_id),
     current_user: User = Depends(wf_deps.RequireTemplateCreateActiveOrg),
-    db: AsyncSession = Depends(get_async_session),
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
 ):
     """
@@ -280,9 +287,10 @@ async def create_schema_template(
 
     - Requires `template:create_org` permission on the active organization.
     """
-    return await workflow_service.create_schema_template(
-        db=db, template_in=template_in, owner_org_id=active_org_id, user=current_user
-    )
+    async with db_manager as db:
+        return await workflow_service.create_schema_template(
+            db=db, template_in=template_in, owner_org_id=active_org_id, user=current_user
+        )
 
 @template_router.get(
     "/schemas/",
@@ -294,7 +302,7 @@ async def list_schema_templates(
     query_params: Annotated[schemas.SchemaTemplateListQuery, Query()],
     active_org_id: uuid.UUID = Depends(get_active_org_id),
     current_user: User = Depends(get_current_active_verified_user),
-    db: AsyncSession = Depends(get_async_session),
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
 ):
     """
@@ -302,13 +310,14 @@ async def list_schema_templates(
 
      - Requires `template:read` permission on the active organization.
     """
-    return await workflow_service.list_schema_templates(
-        db=db,
-        owner_org_id=(query_params.owner_org_id if current_user.is_superuser else None) or active_org_id,
-        include_system=query_params.include_system,
-        skip=query_params.skip,
-        limit=query_params.limit
-    )
+    async with db_manager as db:
+        return await workflow_service.list_schema_templates(
+            db=db,
+            owner_org_id=(query_params.owner_org_id if current_user.is_superuser else None) or active_org_id,
+            include_system=query_params.include_system,
+            skip=query_params.skip,
+            limit=query_params.limit
+        )
 
 @template_router.get(
     "/schemas/{template_id}",
@@ -320,7 +329,7 @@ async def get_schema_template(
     template_id: uuid.UUID = Path(..., description="The ID of the schema template"),
     active_org_id: uuid.UUID = Depends(get_active_org_id),
     # current_user: User = Depends(get_current_active_verified_user),
-    db: AsyncSession = Depends(get_async_session),
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
 ):
     """
@@ -329,13 +338,14 @@ async def get_schema_template(
     - Can fetch both organization-specific and system templates.
     - Requires `template:read` permission.
     """
-    try:
-         template = await workflow_service.get_schema_template(
-             db=db, template_id=template_id, owner_org_id=active_org_id
-         )
-    except exceptions.TemplateNotFoundException as e:
-        raise e
-    return template
+    async with db_manager as db:
+        try:
+            template = await workflow_service.get_schema_template(
+                db=db, template_id=template_id, owner_org_id=active_org_id
+            )
+        except exceptions.TemplateNotFoundException as e:
+            raise e
+        return template
 
 @template_router.put(
     "/schemas/{template_id}",
@@ -349,7 +359,7 @@ async def update_schema_template(
     active_org_id: uuid.UUID = Depends(get_active_org_id),
     # template: models.SchemaTemplate = Depends(wf_deps.get_schema_template_for_active_org),
     current_user: User = Depends(wf_deps.RequireTemplateUpdateActiveOrg),
-    db: AsyncSession = Depends(get_async_session),
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
 ):
     """
@@ -357,15 +367,16 @@ async def update_schema_template(
 
      - Requires `template:update_org` permission on the active organization.
     """
-    try:
-         template = await workflow_service.get_schema_template(
-             db=db, template_id=template_id, owner_org_id=active_org_id
-         )
-    except exceptions.TemplateNotFoundException as e:
-        raise e
-    return await workflow_service.update_schema_template(
-        db=db, template=template, template_update=template_update, user=current_user
-    )
+    async with db_manager as db:
+        try:
+            template = await workflow_service.get_schema_template(
+                db=db, template_id=template_id, owner_org_id=active_org_id
+            )
+        except exceptions.TemplateNotFoundException as e:
+            raise e
+        return await workflow_service.update_schema_template(
+            db=db, template=template, template_update=template_update, user=current_user
+        )
 
 @template_router.delete(
     "/schemas/{template_id}",
@@ -378,7 +389,7 @@ async def delete_schema_template(
     template_id: uuid.UUID = Path(..., description="The ID of the schema template"),
     active_org_id: uuid.UUID = Depends(get_active_org_id),
     current_user: User = Depends(wf_deps.RequireTemplateDeleteActiveOrg),
-    db: AsyncSession = Depends(get_async_session),
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
 ):
     """
@@ -386,14 +397,15 @@ async def delete_schema_template(
 
      - Requires `template:delete_org` permission on the active organization.
     """
-    try:
-         template = await workflow_service.get_schema_template(
-             db=db, template_id=template_id, owner_org_id=active_org_id
-         )
-    except exceptions.TemplateNotFoundException as e:
-        raise e
-    await workflow_service.delete_schema_template(db=db, template=template, user=current_user)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    async with db_manager as db:
+        try:
+            template = await workflow_service.get_schema_template(
+                db=db, template_id=template_id, owner_org_id=active_org_id
+            )
+        except exceptions.TemplateNotFoundException as e:
+            raise e
+        await workflow_service.delete_schema_template(db=db, template=template, user=current_user)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 # === Workflow Endpoints ===
@@ -409,7 +421,7 @@ async def create_workflow(
     workflow_in: schemas.WorkflowCreate,
     active_org_id: Optional[uuid.UUID] = Depends(get_active_org_id),
     current_user: User = Depends(wf_deps.RequireWorkflowCreateActiveOrg),
-    db: AsyncSession = Depends(get_async_session),
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
 ):
     """
@@ -419,9 +431,10 @@ async def create_workflow(
     - Requires `workflow:create` permission on the active organization.
     """
     # Service layer handles potential name conflicts within the org
-    return await workflow_service.create_workflow(
-        db=db, workflow_in=workflow_in, owner_org_id=active_org_id, user=current_user
-    )
+    async with db_manager as db:
+        return await workflow_service.create_workflow(
+            db=db, workflow_in=workflow_in, owner_org_id=active_org_id, user=current_user
+        )
 
 @workflow_router.get(
     "/",
@@ -433,7 +446,7 @@ async def list_workflows(
     query_params: Annotated[schemas.WorkflowListQuery, Query()],
     active_org_id: uuid.UUID = Depends(get_active_org_id),
     current_user: User = Depends(wf_deps.RequireWorkflowReadActiveOrg),
-    db_manager: AsyncSession = Depends(get_async_db_as_manager),  # get_async_db_as_manager  get_async_session
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
 ):
     """
@@ -479,7 +492,7 @@ async def get_workflow(
     # Use dependency to fetch workflow and ensure it belongs to active org
     # Dependency raises 404 if not found in active org
     current_user: User = Depends(wf_deps.RequireWorkflowReadActiveOrg),
-    db: AsyncSession = Depends(get_async_session),  # get_async_db_as_manager  get_async_session
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
 ):
     """
@@ -488,12 +501,13 @@ async def get_workflow(
     - Ensures the workflow belongs to the user's active organization.
     - Requires `workflow:read` permission on the active organization.
     """
-    return await workflow_service.get_workflow(
-        db=db,
-        user=current_user,
-        workflow_id=workflow_id,
-        owner_org_id=active_org_id
-    )
+    async with db_manager as db:
+        return await workflow_service.get_workflow(
+            db=db,
+            user=current_user,
+            workflow_id=workflow_id,
+            owner_org_id=active_org_id
+        )
 
 @workflow_router.put(
     "/{workflow_id}",
@@ -509,7 +523,7 @@ async def update_workflow(
     # workflow: models.Workflow = Depends(wf_deps.get_workflow_for_active_org),
     workflow_dao: wf_crud.WorkflowDAO = Depends(wf_deps.get_workflow_dao),
     current_user: User = Depends(wf_deps.RequireWorkflowUpdateActiveOrg),
-    db: AsyncSession = Depends(get_async_session),
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
 ):
     """
@@ -518,11 +532,12 @@ async def update_workflow(
     - Only workflows belonging to the active organization can be updated.
     - Requires `workflow:update` permission on the active organization.
     """
-    workflow = await workflow_dao.get_by_id_and_org(db, workflow_id=workflow_id, org_id=active_org_id)
-    # Dependency handles fetch and ensures it's in the active org
-    return await workflow_service.update_workflow(
-        db=db, workflow=workflow, workflow_update=workflow_update, user=current_user
-    )
+    async with db_manager as db:
+        workflow = await workflow_dao.get_by_id_and_org(db, workflow_id=workflow_id, org_id=active_org_id)
+        # Dependency handles fetch and ensures it's in the active org
+        return await workflow_service.update_workflow(
+            db=db, workflow=workflow, workflow_update=workflow_update, user=current_user
+        )
 @workflow_router.delete(
     "/{workflow_id}",
     response_model=schemas.WorkflowRead,
@@ -534,7 +549,7 @@ async def delete_workflow(
     active_org_id: uuid.UUID = Depends(get_active_org_id),
     workflow_dao: wf_crud.WorkflowDAO = Depends(wf_deps.get_workflow_dao),
     current_user: User = Depends(wf_deps.RequireWorkflowDeleteActiveOrg),
-    db: AsyncSession = Depends(get_async_session),
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
 ):
     """
@@ -544,10 +559,11 @@ async def delete_workflow(
     - Note: Associated workflow runs are typically *not* deleted by default (check FK constraints).
     - Requires `workflow:delete` permission on the active organization.
     """
-    workflow = await workflow_dao.get_by_id_and_org(db, workflow_id=workflow_id, org_id=active_org_id)
-    # Dependency handles fetch and ensures it's in the active org
-    await workflow_service.delete_workflow(db=db, workflow=workflow, user=current_user)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    async with db_manager as db:
+        workflow = await workflow_dao.get_by_id_and_org(db, workflow_id=workflow_id, org_id=active_org_id)
+        # Dependency handles fetch and ensures it's in the active org
+        await workflow_service.delete_workflow(db=db, workflow=workflow, user=current_user)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 # === Workflow Run Endpoints ===
@@ -563,7 +579,7 @@ async def submit_workflow_run(
     run_submit: schemas.WorkflowRunCreate,
     active_org_id: uuid.UUID = Depends(get_active_org_id),
     current_user: User = Depends(wf_deps.RequireWorkflowExecuteActiveOrg),
-    db: AsyncSession = Depends(get_async_session),  # get_async_db_as_manager  get_async_session
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
 ):
     """
@@ -579,9 +595,10 @@ async def submit_workflow_run(
     if not active_org_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Active organization not found")
     # Service layer handles creating ad-hoc workflow if needed and triggering execution
-    return await workflow_service.submit_workflow_run(
-        db=db, run_submit=run_submit, owner_org_id=active_org_id, user=current_user
-    )
+    async with db_manager as db:
+        return await workflow_service.submit_workflow_run(
+            db=db, run_submit=run_submit, owner_org_id=active_org_id, user=current_user
+        )
 
 
 @run_router.get(
@@ -594,7 +611,7 @@ async def list_runs(
     query_params: Annotated[schemas.WorkflowRunListQuery, Query()],
     active_org_id: uuid.UUID = Depends(get_active_org_id),
     current_user: User = Depends(wf_deps.RequireRunReadActiveOrg), # Needed for superuser check
-    db: AsyncSession = Depends(get_async_session),
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
 ):
     """
@@ -636,13 +653,14 @@ async def list_runs(
         # Pagination handled separately
     )
 
-    return await workflow_service.list_runs(
-        db=db,
-        owner_org_id=list_org_id, # Pass final org id for main query scope
-        filters=service_filters, # Pass filters object
-        skip=query_params.skip,
-        limit=query_params.limit
-    )
+    async with db_manager as db:
+        return await workflow_service.list_runs(
+            db=db,
+            owner_org_id=list_org_id, # Pass final org id for main query scope
+            filters=service_filters, # Pass filters object
+            skip=query_params.skip,
+            limit=query_params.limit
+        )
 
 @run_router.get(
     "/{run_id}",
@@ -655,7 +673,7 @@ async def get_run_status(
     run: models.WorkflowRun = Depends(wf_deps.get_workflow_run_for_org),
     # Re-inject active_org_id for service call if needed, though run object has it
     # current_user: User = Depends(wf_deps.RequireRunReadActiveOrg),
-    # db: AsyncSession = Depends(get_async_session), # Needed by service method
+    # db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     # workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
 ):
     """
@@ -667,9 +685,10 @@ async def get_run_status(
     """
     # Dependency handles fetch and access check against active org
     # Call service method that might augment with Mongo status
-    # return await workflow_service.get_run_summary_with_mongo_status(
-    #     db=db, run_id=run.id, owner_org_id=run.owner_org_id, user=current_user # Use org_id from fetched run
-    # )
+    # async with db_manager as db:
+    #     return await workflow_service.get_run_summary_with_mongo_status(
+    #         db=db, run_id=run.id, owner_org_id=run.owner_org_id, user=current_user # Use org_id from fetched run
+    #     )
     return run
 
 @run_router.get(
@@ -680,7 +699,7 @@ async def get_run_status(
 )
 async def get_run_details(
     run: models.WorkflowRun = Depends(wf_deps.get_workflow_run_for_org),
-    db: AsyncSession = Depends(get_async_session), # Needed by service method
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     current_user: User = Depends(wf_deps.RequireRunReadActiveOrg),
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
 ):
@@ -693,7 +712,8 @@ async def get_run_details(
     - Requires `run:read` permission on the active organization.
     """
     # Dependency handles fetch and access check
-    return await workflow_service.get_run_details(db=db, run=run, user=current_user)
+    async with db_manager as db:
+        return await workflow_service.get_run_details(db=db, run=run, user=current_user)
 
 @run_router.get(
     "/{run_id}/stream",
@@ -703,7 +723,7 @@ async def get_run_details(
 )
 async def get_run_stream(
     run: models.WorkflowRun = Depends(wf_deps.get_workflow_run_for_org),
-    db: AsyncSession = Depends(get_async_session), # Needed by service method
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     current_user: User = Depends(wf_deps.RequireRunReadActiveOrg),
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
     # skip: int = Query(0, ge=0, description="Number of events to skip"),
@@ -717,9 +737,10 @@ async def get_run_stream(
     - Requires `run:read` permission on the active organization.
     """
     # Dependency handles fetch and access check
-    return await workflow_service.get_run_stream(db=db, run=run,
-                                                  # skip=skip, limit=limit,
-                                                  user=current_user)
+    async with db_manager as db:
+        return await workflow_service.get_run_stream(db=db, run=run,
+                                                    # skip=skip, limit=limit,
+                                                    user=current_user)
 
 
 # @run_router.post(
@@ -731,7 +752,7 @@ async def get_run_stream(
 # async def cancel_run(
 #     run: models.WorkflowRun = Depends(wf_deps.get_workflow_run_for_active_org), # Ensures run is in active org
 #     current_user: User = Depends(get_current_active_verified_user),
-#     db: AsyncSession = Depends(get_async_session),
+#     db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
 #     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
 # ):
 #     """
@@ -741,7 +762,8 @@ async def get_run_stream(
 #     - Updates the run status to `CANCELLED` in the database.
 #     - Requires `run:manage` permission on the active organization.
 #     """
-#     return await workflow_service.cancel_run(db=db, run=run, user=current_user)
+#     async with db_manager as db:
+#         return await workflow_service.cancel_run(db=db, run=run, user=current_user)
 
 # TODO: Add endpoints for Pause / Resume Run if needed
 
@@ -758,7 +780,7 @@ async def list_user_notifications(
     query_params: schemas.NotificationListQuery = Depends(),
     active_org_id: uuid.UUID = Depends(get_active_org_id),
     current_user: User = Depends(get_current_active_verified_user),
-    db: AsyncSession = Depends(get_async_session),
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
 ):
     """
@@ -768,14 +790,15 @@ async def list_user_notifications(
     - Supports sorting by `created_at` (default: descending).
     - Supports pagination via `skip` and `limit`.
     """
-    return await workflow_service.list_user_notifications(
-        db=db,
-        user_id=current_user.id,
-        org_id=active_org_id,
-        filters=query_params,
-        skip=query_params.skip,
-        limit=query_params.limit
-    )
+    async with db_manager as db:
+        return await workflow_service.list_user_notifications(
+            db=db,
+            user_id=current_user.id,
+            org_id=active_org_id,
+            filters=query_params,
+            skip=query_params.skip,
+            limit=query_params.limit
+        )
 
 @notification_router.post(
     "/{notification_id}/read",
@@ -788,7 +811,7 @@ async def mark_notification_read(
     # Fetch notification ensuring it belongs to the current user using the dependency
     notification: models.UserNotification = Depends(wf_deps.get_notification_for_user),
     current_user: User = Depends(get_current_active_verified_user), # For service call context consistency
-    db: AsyncSession = Depends(get_async_session),
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
 ):
     """
@@ -797,11 +820,12 @@ async def mark_notification_read(
     - Raises 404 if the notification does not exist or does not belong to the user.
     """
     # Dependency fetched and verified ownership
-    return await workflow_service.mark_notification_read(
-        db=db,
-        notification_id=notification.id,
-        user_id=current_user.id
-    )
+    async with db_manager as db:
+        return await workflow_service.mark_notification_read(
+            db=db,
+            notification_id=notification.id,
+            user_id=current_user.id
+        )
 
 @notification_router.post(
     "/read-all",
@@ -812,18 +836,19 @@ async def mark_notification_read(
 async def mark_all_notifications_read(
     active_org_id: uuid.UUID = Depends(get_active_org_id),
     current_user: User = Depends(get_current_active_verified_user),
-    db: AsyncSession = Depends(get_async_session),
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
 ):
     """
     Marks all currently unread notifications as read for the current user
     within their active organization.
     """
-    count = await workflow_service.mark_all_notifications_read(
-        db=db,
-        user_id=current_user.id,
-        org_id=active_org_id
-    )
+    async with db_manager as db:
+        count = await workflow_service.mark_all_notifications_read(
+            db=db,
+            user_id=current_user.id,
+            org_id=active_org_id
+        )
     return {"message": f"{count} notifications marked as read"}
 
 @notification_router.get(
@@ -835,16 +860,17 @@ async def mark_all_notifications_read(
 async def get_unread_notification_count(
     active_org_id: uuid.UUID = Depends(get_active_org_id),
     current_user: User = Depends(get_current_active_verified_user),
-    db: AsyncSession = Depends(get_async_session),
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
 ):
     """
     Gets the count of unread notifications for the current user
     in their active organization.
     """
-    return await workflow_service.count_unread_notifications(
-        db=db, user_id=current_user.id, org_id=active_org_id
-    )
+    async with db_manager as db:
+        return await workflow_service.count_unread_notifications(
+            db=db, user_id=current_user.id, org_id=active_org_id
+        )
 
 
 # === HITL Job Endpoints ===
@@ -859,7 +885,7 @@ async def list_hitl_jobs(
     query_params: schemas.HITLJobListQuery = Depends(),
     active_org_id: uuid.UUID = Depends(get_active_org_id),
     current_user: User = Depends(get_current_active_verified_user),
-    db: AsyncSession = Depends(get_async_session),
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
 ):
     """
@@ -877,14 +903,15 @@ async def list_hitl_jobs(
     - Supports pagination via `skip` and `limit`.
     """
     # Service layer handles complex filtering logic, including 'me' translation and superuser checks
-    return await workflow_service.list_hitl_jobs(
-        db=db,
-        owner_org_id=active_org_id, # Pass active org as context
-        user=current_user,
-        filters=query_params,
-        skip=query_params.skip,
-        limit=query_params.limit
-    )
+    async with db_manager as db:
+        return await workflow_service.list_hitl_jobs(
+            db=db,
+            owner_org_id=active_org_id, # Pass active org as context
+            user=current_user,
+            filters=query_params,
+            skip=query_params.skip,
+            limit=query_params.limit
+        )
 
 @hitl_router.get(
     "/{job_id}",
@@ -897,7 +924,7 @@ async def get_hitl_job(
     job: models.HITLJob = Depends(wf_deps.get_hitl_job_for_org),
     # Re-inject dependencies needed by the service method (if any beyond db)
     # current_user: User = Depends(get_current_active_verified_user), # Already injected by get_hitl_job_for_user
-    db: AsyncSession = Depends(get_async_session),
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
 ):
     """
@@ -908,7 +935,8 @@ async def get_hitl_job(
     """
     # Dependency handles fetch and access checks
     # Service method might add extra processing if needed, but here just return job
-    # return await workflow_service.get_hitl_job(db=db, job=job, user=current_user) # Service method just returns job
+    # async with db_manager as db:
+    #     return await workflow_service.get_hitl_job(db=db, job=job, user=current_user) # Service method just returns job
     return job
 
 # @hitl_router.post(
@@ -921,7 +949,7 @@ async def get_hitl_job(
 #     response_in: schemas.HITLJobRespond,
 #     job: models.HITLJob = Depends(wf_deps.get_hitl_job_for_user), # Fetch job ensuring access
 #     current_user: User = Depends(get_current_active_verified_user),
-#     db: AsyncSession = Depends(get_async_session),
+#     db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
 #     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
 # ):
 #     """
@@ -934,12 +962,13 @@ async def get_hitl_job(
 #     """
 #     # Dependency handles fetch and access checks
 #     # Service handles validation, DB update, and triggering resumption
-#     return await workflow_service.respond_to_hitl_job(
-#         db=db,
-#         job=job,
-#         response_data=response_in.response_data,
-#         user=current_user
-#     )
+#     async with db_manager as db:
+#         return await workflow_service.respond_to_hitl_job(
+#             db=db,
+#             job=job,
+#             response_data=response_in.response_data,
+#             user=current_user
+#         )
 
 @hitl_router.post(
     "/{job_id}/cancel",
@@ -951,7 +980,7 @@ async def get_hitl_job(
 async def cancel_hitl_job(
     job: models.HITLJob = Depends(wf_deps.get_hitl_job_for_org), # Fetch job ensuring access
     current_user: User = Depends(get_current_active_verified_user),
-    db: AsyncSession = Depends(get_async_session),
+    db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
 ):
     """
@@ -962,5 +991,6 @@ async def cancel_hitl_job(
     - Note: This may or may not automatically fail the associated workflow run,
       depending on the workflow's design.
     """
-    return await workflow_service.cancel_hitl_job(db=db, job=job, user=current_user)
+    async with db_manager as db:
+        return await workflow_service.cancel_hitl_job(db=db, job=job, user=current_user)
 
