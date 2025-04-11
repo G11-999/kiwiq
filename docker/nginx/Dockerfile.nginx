@@ -1,0 +1,90 @@
+# docker/nginx/Dockerfile.nginx
+# Dockerfile for the production Nginx service with Certbot for SSL.
+
+# Use the official Nginx image (latest stable) as the base.
+# Using a specific version tag (e.g., nginx:1.25-alpine) is often recommended for production stability.
+FROM nginx:latest
+
+# --- Install Dependencies ---
+# Update package lists and install necessary packages:
+# - certbot: The Let's Encrypt client.
+# - python3-certbot-nginx: The Certbot plugin for Nginx integration.
+# - cron: To schedule automatic certificate renewals.
+# - bash: Often useful for shell scripting within the container.
+# - openssl: Might be needed for generating DH parameters (though Certbot might handle this).
+# - ca-certificates: Ensure system has up-to-date certificate authorities.
+# - curl: Useful for health checks or downloading things if needed.
+# - gnupg: Often a dependency for adding package repositories (though not strictly needed here).
+# - envsubst: Utility from gettext package used in entrypoint to substitute env vars in config.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    certbot \
+    python3-certbot-nginx \
+    cron \
+    bash \
+    openssl \
+    ca-certificates \
+    curl \
+    gettext \
+    # Clean up apt cache to reduce image size
+    && apt-get clean \
+    # Remove package lists
+    && rm -rf /var/lib/apt/lists/*
+
+# --- Copy Configuration Files ---
+# Copy the Nginx configuration *template* into the container.
+# The .template extension signifies it needs processing (by envsubst).
+COPY docker/nginx/nginx.prod.conf /etc/nginx/templates/default.conf.template
+
+# Copy the custom entrypoint script into the container.
+COPY docker/nginx/entrypoint.sh /entrypoint.sh
+# Make the entrypoint script executable.
+RUN chmod +x /entrypoint.sh
+
+# --- Prepare for Certbot ---
+# Create the directory where Certbot will place ACME challenge files
+# when using the webroot method (though --nginx plugin is the primary method here,
+# this directory is standard practice and might be used by the plugin).
+RUN mkdir -p /var/www/certbot/.well-known/acme-challenge
+RUN chown nginx:nginx /var/www/certbot -R # Ensure nginx user can write if needed
+
+# --- Optional: Pre-seed Let's Encrypt Data ---
+# If you have existing certificates and account info, you can copy them here.
+# This avoids hitting Let's Encrypt rate limits on rebuilds/transfers.
+# Ensure the permissions are correct after copying.
+# Example:
+# COPY --chown=root:root ./path/to/existing/letsencrypt /etc/letsencrypt
+
+# --- Configure Certbot Auto-Renewal --- 
+# Create a cron job file to run Certbot renew twice daily (e.g., 00:00 and 12:00).
+# `--nginx` tells Certbot to use the Nginx plugin for renewal.
+# `--quiet` suppresses most output unless there's an error.
+# `--deploy-hook 'nginx -s reload'` reloads Nginx gracefully only if a certificate was actually renewed.
+RUN echo "0 */12 * * * root certbot renew --nginx --quiet --deploy-hook 'nginx -s reload'" > /etc/cron.d/certbot_renew \
+    # Set appropriate permissions for the cron job file.
+    && chmod 0644 /etc/cron.d/certbot_renew \
+    # Apply the cron job file so cron recognizes it.
+    && crontab /etc/cron.d/certbot_renew
+
+# --- Healthcheck (Optional but Recommended) ---
+# Defines how Docker can check if the container is healthy.
+# Here, it tries to access the default Nginx page via localhost.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD curl --fail http://localhost:80 || exit 1
+# Use HTTPS check if you redirect all HTTP immediately and want to verify SSL:
+# CMD curl --fail https://localhost:443 --insecure || exit 1 # --insecure needed for self-signed/initial setup
+
+# --- Expose Ports ---
+# Inform Docker that the container listens on ports 80 (HTTP) and 443 (HTTPS).
+EXPOSE 80
+EXPOSE 443
+
+# --- Define Container Entrypoint ---
+# Specify the custom entrypoint script to run when the container starts.
+# This script handles configuration templating and initial Certbot setup.
+ENTRYPOINT ["/entrypoint.sh"]
+
+# --- Default Command ---
+# The command passed to the entrypoint script.
+# `nginx -g 'daemon off;'` starts Nginx in the foreground, which is standard
+# practice for containerized applications so Docker can manage the process.
+CMD ["nginx", "-g", "daemon off;"] 

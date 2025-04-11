@@ -170,6 +170,10 @@ services:
     depends_on:
       - prefect-server # Wait for the server API to be available
       - app
+      - postgres
+      - mongo
+      - rabbitmq
+      - redis
     environment:
       # Point agent to the server API URL (using service name)
       PREFECT_API_URL: "http://prefect-server:4200/api"
