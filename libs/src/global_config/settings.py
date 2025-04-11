@@ -80,6 +80,7 @@ class Settings(BaseSettings):
 
     LOG_LEVEL: str = "WARNING"
     LOG_FILE_NAME: str = "kiwiq_backend.log"
+    LOG_PREFECT_FILE_NAME: str = "prefect_worker.log"
     
     model_config = SettingsConfigDict(
         env_file=(ENV_FILE_PATH if os.getenv("APP_ENV", "DEV") == "DEV" else PROD_ENV_FILE_PATH),

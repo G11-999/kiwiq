@@ -162,7 +162,14 @@ def setup_logging(
     logging.getLogger(__name__).info("Asynchronous logging setup complete.")
 
 
-def get_logger(name: str) -> logging.Logger:
+def get_logger(
+        name: str, 
+        log_level: str = global_settings.LOG_LEVEL, 
+        log_filename: str = global_settings.LOG_FILE_NAME,
+        log_dir: str = LOG_ROOT,
+        log_to_console: bool = global_settings.APP_ENV == "DEV",
+        log_to_file: bool = True,
+    ) -> logging.Logger:
     """
     Retrieves a logger instance with the specified name.
 
@@ -179,11 +186,11 @@ def get_logger(name: str) -> logging.Logger:
         logging.Logger: The logger instance.
     """
     setup_logging(
-        log_level=global_settings.LOG_LEVEL,
-        log_to_console=global_settings.APP_ENV == "DEV",
-        log_to_file=True,  # APP_ENV == "PROD",
-        log_dir=LOG_ROOT,
-        log_filename=global_settings.LOG_FILE_NAME
+        log_level=log_level,
+        log_to_console=log_to_console,
+        log_to_file=log_to_file,
+        log_dir=log_dir,
+        log_filename=log_filename
     )
     # Simply return the logger. Configuration is handled at the root level.
     return logging.getLogger(name)
