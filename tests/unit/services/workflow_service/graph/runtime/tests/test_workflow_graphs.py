@@ -18,7 +18,7 @@ from workflow_service.config.constants import (
 from workflow_service.registry.schemas.base import BaseSchema
 from workflow_service.registry.nodes.core.base import BaseNode
 from workflow_service.graph.graph import EdgeSchema, GraphSchema, NodeConfig, EdgeMapping
-from workflow_service.registry.registry import MockRegistry
+from workflow_service.registry.registry import DBRegistry
 from workflow_service.graph.builder import GraphBuilder
 from workflow_service.registry.nodes.core.dynamic_nodes import (
     BaseDynamicNode, InputNode, OutputNode, HITLNode, 
@@ -1260,14 +1260,14 @@ def create_complex_graph() -> GraphSchema:
 # Test Execution Functions
 # ===============================
 
-def setup_registry() -> MockRegistry:
+def setup_registry() -> DBRegistry:
     """
     Set up a MockRegistry with all test nodes registered.
     
     Returns:
         MockRegistry: The configured registry
     """
-    registry = MockRegistry()
+    registry = DBRegistry()
     
     # Register built-in dynamic nodes
     registry.register_node(InputNode)

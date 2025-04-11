@@ -4,9 +4,15 @@ from typing import Any, Callable, ClassVar, Dict, Generic, Optional, Type, TypeV
 import inspect
 from abc import ABC, abstractmethod
 
+# FIXME: DEBUG: Prefect test!
+from prefect import flow, task
+from prefect.cache_policies import NO_CACHE
+
 from workflow_service.config.constants import NODE_EXECUTION_ORDER_KEY
 from workflow_service.registry.schemas.base import BaseSchema
 from workflow_service.utils.utils import get_central_state_field_key, is_dynamic_schema_node
+
+from kiwi_app.workflow_app.constants import LaunchStatus
 
 # Define type variables for input, output, and config schemas
 InputSchemaT = TypeVar('InputSchemaT', bound=BaseSchema)
@@ -19,6 +25,14 @@ from pydantic import BaseModel
 from global_config.constants import EnvFlag
 from workflow_service.utils.utils import get_node_output_state_key
 # from workflow_service.config.constants import GRAPH_STATE_SPECIAL_NODE_NAME, STATE_KEY_DELIMITER
+
+from typing import TYPE_CHECKING # Import ClassVar
+
+# TYPE_CHECKING helps avoid runtime circular dependencies if Task hints itself
+if TYPE_CHECKING:
+    from prefect.tasks import Task
+
+
 class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], ABC):
     """
     Abstract base class for workflow nodes.
@@ -51,7 +65,7 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
     node_name: ClassVar[str]  # Required unique identifier
     # node_description: # Comes from the docstring available via `__doc__`!
     node_version: ClassVar[str]  # Required version
-    env_flag: ClassVar[str] = EnvFlag.EXPERIMENTAL  # Default to experimental
+    env_flag: ClassVar[LaunchStatus] = LaunchStatus.EXPERIMENTAL  # Default to experimental
     # error_codes: ClassVar[Dict[str, str]] = {}  # Error code registry
     # custom_events: ClassVar[Dict[str, str]] = {}  # Custom event registry
     has_subnodes: ClassVar[bool] = False  # Subnode flag
@@ -66,9 +80,17 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
     runtime_postprocessor: ClassVar[Optional[Callable[[Dict[str, Any]], Dict[str, Any]]]] = None
     runtime_preprocessor: ClassVar[Optional[Callable[[Dict[str, Any]], Dict[str, Any]]]] = None
 
+    # FIXME: DEBUG: Prefect test!
+    # --- The Fix ---
+    # Annotate the task method attribute as ClassVar
+    # Optionally, provide a more specific type hint for the Task object itself
+    # run: ClassVar['Task[..., str]']
+
     # Instance configuration
     node_id: str  # Required unique identifier in the context of a graph run
     config: Optional[Union[ConfigSchemaT, Dict[str, Any]]] = None
+    # Whether to run the node in Prefect mode for logging and tracking flow/tasks
+    prefect_mode: bool = True
 
     @classmethod
     def __pydantic_init_subclass__(cls, *args, **kwargs):
@@ -142,13 +164,13 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
         """
         Build the input state for the node.
         """
-        print(f"\n\n\n\n#### build_input_state --  > #############################  {self.node_id} --> {self.node_name}  ###############################\n\n\n\n")
+        # print(f"\n\n\n\n#### build_input_state --  > #############################  {self.node_id} --> {self.node_name}  ###############################\n\n\n\n")
         # print("\n\n\n\n#### build_input_state")
-        print("\n\n\n\n#### state (in build input state)", state, "\n\n\n\n")
+        # print("\n\n\n\n#### state (in build input state)", state, "\n\n\n\n")
         
         # import ipdb; ipdb.set_trace()
         configurable = config.get("configurable", {})
-        print("\n\n\n\n#### configurable (in build input state)", configurable, "\n\n\n\n")  # json.dumps(configurable, indent=4))
+        # print("\n\n\n\n#### configurable (in build input state)", configurable, "\n\n\n\n")  # json.dumps(configurable, indent=4))
         if configurable is None:
             # TODO: raise exceptions in standard ways while maintaining debugability! 
             raise ValueError("No config provided to node!")
@@ -158,7 +180,7 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
         if self.input_schema_cls.get_required_fields() and (("inputs" not in configurable) or (self.node_id not in configurable["inputs"])):
             raise ValueError("No inputs provided in config for building input state!")
         field_mappings = configurable["inputs"][self.node_id]
-        print("\n\n\n\n#### field_mappings", field_mappings, "\n\n\n\n")
+        # print("\n\n\n\n#### field_mappings", field_mappings, "\n\n\n\n")
         parents_run_status = {}
         
         node_execution_order = {}
@@ -220,7 +242,7 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
                 # break
         # if self.node_id == "review":
         #     import ipdb; ipdb.set_trace()
-        print("\n\n\n\n#### input_dict (in build input state)", input_dict, "\n\n\n\n")
+        # print("\n\n\n\n#### input_dict (in build input state)", input_dict, "\n\n\n\n")
         
         # This generates a weird error in Langgraph!
         # Best to block multiple incoming edges on frontend -> use central state for data passing from multiple edges, use edges as part of a loop or explicitly handled FAN IN!
@@ -231,7 +253,7 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
         #             print(f"fname: {fname} is required but not found in input_dict: {input_dict}")
         #             return None
         input_obj = self.input_schema_cls(**input_dict)
-        print("\n\n\n\n#### input_dict (in build input state)", input_obj.model_dump_json(indent=4), "\n\n\n\n")
+        # print("\n\n\n\n#### input_dict (in build input state)", input_obj.model_dump_json(indent=4), "\n\n\n\n")
         return input_obj
 
     def build_output_state_update(self, output_data: OutputSchemaT, config: Dict[str, Any]) -> Dict[str, Any]:
@@ -265,6 +287,8 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
 
         return state_update
     
+    # FIXME: DEBUG: Prefect test!
+    # @task
     def run(self, state: StateT, config: Dict[str, Any], *args: Any, **kwargs: Any) -> Dict[str, Any]:
         """
         LangGraph-compatible execution method.
@@ -286,14 +310,14 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
             Exception: For any unregistered error codes encountered during processing
         """
         try:
-            print("\n\n\n\n NODE ENTRY: ", "="*100, "\n\n\n\n")
-            print("\n\n\n\n#### RUN ", self.node_id, " --> ", self.node_name, "\n\n\n\n")
-            print("\n\n\n\n#### state (in run) START!", state, "\n\n\n\n")
+            # print("\n\n\n\n NODE ENTRY: ", "="*100, "\n\n\n\n")
+            # print("\n\n\n\n#### RUN ", self.node_id, " --> ", self.node_name, "\n\n\n\n")
+            # print("\n\n\n\n#### state (in run) START!", state, "\n\n\n\n")
             # Extract input data from state based on runtime config mapping
             # config format: - {"inputs": node_id: {<input_field_key> : ["source_node", "field_key_in_source_node"] | OR | graph_state_key_source_of_input }}
             input_data = self.build_input_state(state, config)
             if input_data is None:
-                print("\n\n\n\n NODE EARLY EXIT -> REQUIRED NOT FULFILLED!!!!!: ", "="*100, "\n\n\n\n")
+                # print("\n\n\n\n NODE EARLY EXIT -> REQUIRED NOT FULFILLED!!!!!: ", "="*100, "\n\n\n\n")
                 # TODO: FIXME:
                 # This is exceptional case when not all required fields were found in input!
                 #     It could either be a bug or the node is prematurely called due to FAN IN bug!
@@ -310,20 +334,41 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
             #     config_dict.update(config)
             #     effective_config = self.config_schema_cls.model_validate(config_dict)
 
-            print("\n\n\n\n#### input_data (in run)", input_data, "\n\n\n\n")
+            # print("\n\n\n\n#### input_data (in run)", input_data, "\n\n\n\n")
             if self.__class__.runtime_preprocessor:
                 # Generally used for interupts to get HITL!
-                print("\n\n\n\n#### self.__class__.runtime_preprocessor (in run)", "\n\n\n\n")
+                # print("\n\n\n\n#### self.__class__.runtime_preprocessor (in run)", "\n\n\n\n")
                 preprocessed_input_data = self.__class__.runtime_preprocessor(self, input_data, config, *args, **kwargs)
                 input_data = preprocessed_input_data
             
+            ###### Test SENDING COMPLEX OBJECTS inputs to prefect!
+            # from workflow_service.registry.registry import DBRegistry
+            # from kiwi_app.workflow_app.crud import NodeTemplateDAO, SchemaTemplateDAO, PromptTemplateDAO, WorkflowDAO
+            # node_template_dao = NodeTemplateDAO()
+            # schema_template_dao = SchemaTemplateDAO()
+            # prompt_template_dao = PromptTemplateDAO()
+            # workflow_dao = WorkflowDAO()
+            # db_registry = DBRegistry(node_template_dao, schema_template_dao, prompt_template_dao, workflow_dao)
+            # from db.session import get_async_session
+            # async_session = get_async_session()
+
+            # obj = {
+            #     "db_registry": db_registry,
+            #     "async_session": async_session,
+            # }
+            # , db_obj=obj
+            ######
+
             # Process the input data
-            output_data = self.process(input_data, config, *args, **kwargs)
-            print("\n\n\n\n#### output_data (in run)", output_data, "\n\n\n\n")
+            if self.prefect_mode:
+                output_data = task(name=f"Node Name: `{self.node_name}` - Node ID: `{self.node_id}`", cache_policy=NO_CACHE)(self.process)(input_data, config, *args, **kwargs)
+            else:
+                output_data = self.process(input_data, config, *args, **kwargs)
+            # print("\n\n\n\n#### output_data (in run)", output_data, "\n\n\n\n")
             
             # Convert output to dict and return as state update
             state_update = self.build_output_state_update(output_data, config)
-            print(f"\n\n\n\n#### state_update (in run) --> {state_update.__class__}", state_update, "\n\n\n\n")
+            # print(f"\n\n\n\n#### state_update (in run) --> {state_update.__class__}", state_update, "\n\n\n\n")
             # if self.node_id == "join":
             #     import ipdb; ipdb.set_trace()
             # import ipdb; ipdb.set_trace()
@@ -333,8 +378,8 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
             if self.__class__.runtime_postprocessor:
                 state_update = self.__class__.runtime_postprocessor(self, state_update, config, *args, **kwargs)
 
-            print("\n\n\n\n#### state_update (in run)", state_update, "\n\n\n\n")
-            print("\n\n\n\n NODE EXIT: ", "="*100, "\n\n\n\n")
+            # print("\n\n\n\n#### state_update (in run)", state_update, "\n\n\n\n")
+            # print("\n\n\n\n NODE EXIT: ", "="*100, "\n\n\n\n")
             return state_update
         except Exception as e:
             # TODO: raise custom error codes which are registered!

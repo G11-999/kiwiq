@@ -57,6 +57,11 @@ CREATE DATABASE workflow_service;
 CREATE DATABASE prefect_db;
 ```
 
+`NOTE: Create separate Langgraph DB since during migrations, its created tables get dropped leading to loss of data! Make sure to update .env var DATABASE_URL_LANGGRAPH`
+```sql
+CREATE DATABASE langgraph_db;
+```
+
 Drop existing database
 
 ```sql
@@ -124,7 +129,20 @@ script_location = libs/src/db/alembic
 6. generate migration script
 
 ```bash
+# migration #1
 PYTHONPATH=$(pwd):$(pwd)/services poetry run alembic -c libs/src/db/alembic.ini revision --autogenerate -m "Initial revision: Auth"
+
+# migration #2
+PYTHONPATH=$(pwd):$(pwd)/services poetry run alembic -c libs/src/db/alembic.ini revision --autogenerate -m "Add template, workflow and User notifications/HITL models"
+
+# migration #3
+PYTHONPATH=$(pwd):$(pwd)/services poetry run alembic -c libs/src/db/alembic.ini revision --autogenerate -m "Make Workflow Run model not require workflow reference and store config"
+
+# migration #4
+PYTHONPATH=$(pwd):$(pwd)/services poetry run alembic -c libs/src/db/alembic.ini revision --autogenerate -m "Add is_public field to Workflow Model and add template/run permissions"
+
+# migration #5
+PYTHONPATH=$(pwd):$(pwd)/services poetry run alembic -c libs/src/db/alembic.ini revision --autogenerate -m "Add cascade delete to org/user roles when org or user is deleted and cascade delete for access tokens if user is deleted"
 ```
 
 7. apply migration script

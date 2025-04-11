@@ -24,7 +24,7 @@ from workflow_service.registry.nodes.core.dynamic_nodes import (
     DynamicSchema, BaseDynamicNode, InputNode, OutputNode, ConstructDynamicSchema, DynamicSchemaFieldConfig
 )
 from workflow_service.config.constants import INPUT_NODE_NAME, OUTPUT_NODE_NAME, GRAPH_STATE_SPECIAL_NODE_NAME
-from workflow_service.registry.registry import MockRegistry
+from workflow_service.registry.registry import DBRegistry
 from workflow_service.utils.utils import get_central_state_field_key, get_node_output_state_key
 
 
@@ -81,9 +81,9 @@ class AnotherTestNode(BaseDynamicNode):  # [SimpleOutputSchema, SimpleOutputSche
         return self.output_schema_cls(result=input_data.result + "_processed")
 
 
-def setup_registry() -> MockRegistry:
+def setup_registry() -> DBRegistry:
     """Set up a mock registry with test nodes for testing."""
-    registry = MockRegistry()
+    registry = DBRegistry()
     
     # Register test nodes
     registry.register_node(TestNode)

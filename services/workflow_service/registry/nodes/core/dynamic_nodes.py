@@ -11,6 +11,7 @@ from pydantic import Field, create_model, field_validator
 from datetime import datetime, date
 from enum import Enum
 
+from kiwi_app.workflow_app.constants import LaunchStatus
 from workflow_service.registry.schemas.base import BaseSchema
 from workflow_service.registry.nodes.core.base import BaseNode
 from workflow_service.config.constants import INPUT_NODE_NAME, OUTPUT_NODE_NAME, HITL_NODE_NAME_PREFIX, TEMP_STATE_UPDATE_KEY, ROUTER_CHOICE_KEY
@@ -452,7 +453,7 @@ class InputNode(BaseDynamicNode):
     #    there's no input / output data but still need these nodes for dependency edges to starter nodes!
     node_name: ClassVar[str] = INPUT_NODE_NAME
     node_version: ClassVar[str] = "0.1.0"
-    env_flag: ClassVar[str] = EnvFlag.PROD
+    env_flag: ClassVar[LaunchStatus] = LaunchStatus.PRODUCTION
     
     # Schema classes will be dynamically created at runtime
     # input_schema_cls = DynamicSchema
@@ -478,109 +479,6 @@ class InputNode(BaseDynamicNode):
             return self.__class__.output_schema_cls(**input_data.model_dump()) if self.__class__.output_schema_cls is not None else input_data
         return self.__class__.output_schema_cls() if self.__class__.output_schema_cls is not None else input_data
 
-    # NOTE: input node can just have input configs with source input keys as flat and not list!
-    # def run(self, input_data: DynamicSchema) -> DynamicSchema:
-    #     """
-    #     LangGraph-compatible execution method.
-    #     """
-    #     # Simply pass through the validated input data
-    #     return self.process(input_data)
-
-    # def set_run_annotations(
-    #     self, 
-    #     input_state: Type[Any]
-    # ) -> None:
-    #     """
-    #     Set the run method's type annotations.
-    #     """
-    #     self.run.__annotations__ = {
-    #         'input_state': input_state,
-    #         'return': Dict[str, Any]
-    #     }
-        
-    # def with_typed_signature(
-    #     self, 
-    #     input_state: Type[Any]
-    # ) -> Callable[[Dict[str, Any]], Dict[str, DynamicSchema]]:
-    #     """
-    #     Create a version of the run method with specific type annotations.
-
-    #     This helper method allows for more precise type hints when integrating with
-    #     LangGraph or other systems that rely on type annotations for validation.
-
-    #     Args:
-    #         input_state (Type[Any]): The type to use for the input state parameter.
-                
-    #     Returns:
-    #         Callable: A function with the same behavior as run but with updated type annotations.
-        
-    #     # TODO: can't the input state just be input_schema_cls? diff btw supplying pydantic model vs dict as input in langgraph?
-
-    #     """
-        
-    #     # Create a new function with the same implementation but different annotations
-    #     def typed_run(
-    #         state: input_state, 
-    #     ) -> Dict[str, DynamicSchema]:
-    #         return self.run(state)
-        
-    #     # Update the function's signature to reflect the new types
-    #     # typed_run.__annotations__ = {
-    #     #     'state': input_state,
-    #     #     'return': Dict[str, Any]
-    #     # }
-        
-    #     return typed_run
-    
-    # @classmethod
-    # def create_node(cls, output_fields: Dict[str, Any]) -> Type['InputNode']:
-    #     """
-    #     Create a new InputNode with dynamically created schemas.
-        
-    #     Args:
-    #         output_fields (Dict[str, Any]): Mapping of field names to field definitions
-    #                                        for the output schema.
-                                           
-    #     Returns:
-    #         Type[InputNode]: A new InputNode class with dynamic schemas.
-    #     """
-    #     # Create dynamic schemas
-    #     dynamic_input_schema = create_model(
-    #         'DynamicInputSchema',
-    #         __base__=BaseSchema,
-    #         **output_fields
-    #     )
-        
-    #     # Output schema is the same as input for the input node
-    #     dynamic_output_schema = dynamic_input_schema
-        
-    #     # Create empty config schema
-    #     dynamic_config_schema = create_model(
-    #         'DynamicConfigSchema',
-    #         __base__=BaseSchema
-    #     )
-        
-    #     # Create a new class with these schemas
-    #     new_node_class = create_model(
-    #         f"Dynamic{cls.__name__}",
-    #         __base__=cls,
-    #         __module__=cls.__module__,
-    #         input_schema_cls=dynamic_input_schema,
-    #         output_schema_cls=dynamic_output_schema,
-    #         # config_schema_cls=dynamic_config_schema
-    #     )
-    #     # new_node_class = cast(Type[InputNode], ModelMetaclass(
-    #     #     'DynamicInputNode',
-    #     #     (InputNode,),
-    #     #     {
-    #     #         'input_schema_cls': dynamic_input_schema,
-    #     #         'output_schema_cls': dynamic_output_schema,
-    #     #         'config_schema_cls': dynamic_config_schema,
-    #     #     }
-    #     # ))
-        
-    #     return new_node_class
-
 
 class OutputNode(BaseDynamicNode):
     """
@@ -597,7 +495,7 @@ class OutputNode(BaseDynamicNode):
     """
     node_name: ClassVar[str] = OUTPUT_NODE_NAME
     node_version: ClassVar[str] = "0.1.0"
-    env_flag: ClassVar[str] = EnvFlag.PROD
+    env_flag: ClassVar[LaunchStatus] = LaunchStatus.PRODUCTION
     
     # Schema classes will be dynamically created at runtime
     # input_schema_cls = DynamicSchema
@@ -620,135 +518,6 @@ class OutputNode(BaseDynamicNode):
         if input_data:
             return self.__class__.output_schema_cls(**input_data.model_dump()) if self.__class__.output_schema_cls is not None else input_data
         return self.__class__.output_schema_cls() if self.__class__.output_schema_cls is not None else input_data
-
-    # @classmethod
-    # def create_node(cls, input_fields: Dict[str, Any]) -> Type['OutputNode']:
-    #     """
-    #     Create a new OutputNode with dynamically created schemas.
-        
-    #     Args:
-    #         input_fields (Dict[str, Any]): Mapping of field names to field definitions
-    #                                       for the input schema.
-                                          
-    #     Returns:
-    #         Type[OutputNode]: A new OutputNode class with dynamic schemas.
-    #     """
-    #     # Create dynamic schemas
-    #     dynamic_input_schema = create_model(
-    #         'DynamicOutputNodeInputSchema',
-    #         __base__=BaseSchema,
-    #         **input_fields
-    #     )
-        
-    #     # Output schema is the same as input for the output node
-    #     # dynamic_output_schema = dynamic_input_schema
-        
-    #     # Create empty config schema
-    #     # dynamic_config_schema = create_model(
-    #     #     'DynamicOutputNodeConfigSchema',
-    #     #     __base__=BaseSchema
-    #     # )
-        
-    #     # Create a new class with these schemas
-    #     new_node_class = create_model(
-    #         f"Dynamic{cls.__name__}",
-    #         __base__=cls,
-    #         __module__=cls.__module__,
-    #         input_schema_cls=dynamic_input_schema,
-    #         output_schema_cls=dynamic_input_schema,
-    #         # config_schema_cls=dynamic_config_schema
-    #     )
-        
-    #     return new_node_class
-
-
-
-# class InputOutputNode(BaseDynamicNode, ABC):
-#     """
-#     Dynamic Input/Output node for workflows.
-    
-#     The Input/Output node enables dynamic input and output schemas based on the fields that need 
-#     input and output.
-    
-#     Its input and output schemas are dynamically created based on the fields that need 
-#     input and output.
-    
-#     Features:
-#     - Dynamic schema creation for input and output based on fields requiring input and output
-#     - Pass-through of validated data after input and output
-#     """
-
-#     # Schema classes will be dynamically created at runtime
-#     # input_schema_cls = DynamicSchema
-#     # output_schema_cls = DynamicSchema
-#     config_schema_cls = None
-
-#     @abstractmethod
-#     def process(self, input_data: DynamicSchema, config: Dict[str, Any], *args: Any, **kwargs: Any) -> DynamicSchema:
-#         """
-#         Process the input data through human review.
-        
-#         For the HITL node, this validates the input, presents it for human review,
-#         and validates the human modifications before output.
-        
-#         Args:
-#             input_data (DynamicSchema): The data from upstream nodes for human review.
-            
-#         Returns:
-#             DynamicSchema: The human reviewed/modified data.
-#         """
-#         # TODO: Implement actual HITL review logic here
-#         # For now, simply pass through the data
-#         return {self.node_name: input_data}
-
-#     @classmethod
-#     def create_node(
-#         cls, 
-#         input_fields: Dict[str, Any],
-#         output_fields: Optional[Dict[str, Any]] = None
-#     ) -> Type['InputOutputNode']:
-#         """
-#         Create a new InputOutputNode with dynamically created schemas.
-        
-#         Args:
-#             input_fields (Dict[str, Any]): Mapping of field names to field definitions
-#                                           for the input schema.
-#             output_fields (Optional[Dict[str, Any]]): Optional mapping of field names 
-#                                                      to field definitions for the output schema.
-#                                                      If None, uses same schema as input.
-
-#         Returns:
-#             Type[InputOutputNode]: A new InputOutputNode class with dynamic schemas.
-#         """
-#         class_name = f"Dynamic{cls.__name__}"
-#         # Create dynamic input schema
-#         dynamic_input_schema = create_model(
-#             class_name + "InputSchema",
-#             __base__=BaseSchema,
-#             **input_fields
-#         )
-        
-#         # Create dynamic output schema (same as input if not specified)
-#         if output_fields is None:
-#             output_fields = input_fields
-            
-#         dynamic_output_schema = create_model(
-#             class_name + "OutputSchema",
-#             __base__=BaseSchema,
-#             **output_fields
-#         )
-        
-#         # Create a new class with these schemas
-#         new_node_class = create_model(
-#             class_name,
-#             __base__=cls,
-#             __module__=cls.__module__,
-#             input_schema_cls=dynamic_input_schema,
-#             output_schema_cls=dynamic_output_schema
-#         )
-        
-#         return new_node_class
-
 
 
 # TODO: FIXME
@@ -781,7 +550,7 @@ class HITLNode(BaseDynamicNode):
     """
     node_name: ClassVar[str] = f"{HITL_NODE_NAME_PREFIX}default"
     node_version: ClassVar[str] = "0.1.0"
-    env_flag: ClassVar[str] = EnvFlag.PROD
+    env_flag: ClassVar[LaunchStatus] = LaunchStatus.PRODUCTION
 
     # input_key: ClassVar[str] = "input"
     # hitl_key: ClassVar[str] = "hitl"
@@ -811,55 +580,6 @@ class HITLNode(BaseDynamicNode):
         # For now, simply pass through the data
         return self.output_schema_cls(**input_data)
 
-    # @classmethod
-    # def create_node(
-    #     cls, 
-    #     input_fields: Dict[str, Any],
-    #     output_fields: Optional[Dict[str, Any]] = None
-    # ) -> Type['HITLNode']:
-    #     """
-    #     Create a new HITLNode with dynamically created schemas.
-        
-    #     Args:
-    #         input_fields (Dict[str, Any]): Mapping of field names to field definitions
-    #                                       for the input schema.
-    #         output_fields (Optional[Dict[str, Any]]): Optional mapping of field names 
-    #                                                  to field definitions for the output schema.
-    #                                                  If None, uses same schema as input.
-                                          
-    #     Returns:
-    #         Type[HITLNode]: A new HITLNode class with dynamic schemas.
-    #     """
-    #     # Create dynamic input schema
-    #     dynamic_input_schema = create_model(
-    #         'DynamicHITLNodeInputSchema',
-    #         __base__=BaseSchema,
-    #         **input_fields
-    #     )
-        
-    #     # Create dynamic output schema (same as input if not specified)
-    #     if output_fields is None:
-    #         output_fields = input_fields
-            
-    #     dynamic_output_schema = create_model(
-    #         'DynamicHITLNodeOutputSchema',
-    #         __base__=BaseSchema,
-    #         **output_fields
-    #     )
-        
-    #     # Create a new class with these schemas
-    #     new_node_class = create_model(
-    #         f"Dynamic{cls.__name__}",
-    #         __base__=cls,
-    #         __module__=cls.__module__,
-    #         input_schema_cls=dynamic_input_schema,
-    #         output_schema_cls=dynamic_output_schema
-    #     )
-        
-    #     return new_node_class
-
-from typing import List, Optional, Dict, Any, Type, ClassVar
-from pydantic import Field, create_model
 
 class RouterSchema(BaseSchema):
     """
@@ -926,61 +646,3 @@ class DynamicRouterNode(BaseDynamicNode, ABC):
             output_data =  self.__class__.output_schema_cls() if self.__class__.output_schema_cls is not None else input_data
 
         return {TEMP_STATE_UPDATE_KEY: output_data, ROUTER_CHOICE_KEY: "routed_node_id"}
-    
-    # @classmethod
-    # def create_router_node(
-    #     cls,
-    #     input_fields: Dict[str, Any],
-    #     output_fields: Optional[Dict[str, Any]] = None,
-    #     choices: List[str] = None,
-    #     allow_multiple: bool = False
-    # ) -> Type['DynamicRouterNode']:
-    #     """
-    #     Create a new router node with dynamically created schemas.
-        
-    #     Args:
-    #         input_fields (Dict[str, Any]): Mapping of field names to field definitions
-    #                                      for the input schema.
-    #         output_fields (Optional[Dict[str, Any]]): Optional mapping of field names 
-    #                                                 to field definitions for the output schema.
-    #                                                 If None, uses same schema as input.
-    #         choices (List[str]): List of node IDs that can be selected as routing destinations.
-    #         allow_multiple (bool): Whether multiple nodes can be selected for routing.
-                                
-    #     Returns:
-    #         Type[DynamicRouterNode]: A new DynamicRouterNode class with dynamic schemas.
-    #     """
-    #     # Create dynamic input schema
-    #     dynamic_input_schema = create_model(
-    #         'DynamicRouterNodeInputSchema',
-    #         __base__=BaseSchema,
-    #         **input_fields
-    #     )
-        
-    #     # Create dynamic output schema (same as input if not specified)
-    #     if output_fields is None:
-    #         output_fields = input_fields
-            
-    #     dynamic_output_schema = create_model(
-    #         'DynamicRouterNodeOutputSchema',
-    #         __base__=BaseSchema,
-    #         **output_fields
-    #     )
-        
-    #     # Create router config with provided choices
-    #     router_config = RouterSchema(
-    #         choices=choices or [],
-    #         allow_multiple=allow_multiple
-    #     )
-        
-    #     # Create a new class with these schemas
-    #     new_node_class = create_model(
-    #         f"Dynamic{cls.__name__}",
-    #         __base__=cls,
-    #         __module__=cls.__module__,
-    #         input_schema_cls=(ClassVar[Type[BaseSchema]], dynamic_input_schema),
-    #         output_schema_cls=(ClassVar[Type[BaseSchema]], dynamic_output_schema),
-    #         config=(Optional[RouterSchema], router_config)
-    #     )
-        
-    #     return new_node_class

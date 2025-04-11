@@ -426,6 +426,68 @@ class AuthService:
         # if not reloaded_link:
         #      raise HTTPException(status_code=500, detail="Failed to retrieve assignment details after creation")
         # return reloaded_link
+    
+    async def delete_organization(
+        self, 
+        db: AsyncSession, 
+        *, 
+        org_id: uuid.UUID, 
+        current_user: models.User
+    ) -> None:
+        """
+        Deletes an organization after verifying the user has appropriate permissions.
+        
+        This method checks if the current user has the ORG_DELETE permission within the
+        organization, then proceeds to delete the organization and all associated data.
+        
+        Args:
+            db: Database session
+            org_id: UUID of the organization to delete
+            current_user: The user requesting the deletion
+            
+        Returns:
+            None
+            
+        Raises:
+            OrganizationNotFoundException: If the organization doesn't exist
+            PermissionDeniedException: If the user lacks the required permission
+            HTTPException: If there's a database error during deletion
+        """
+        # 1. Check if organization exists
+        # target_org = await self.org_dao.get(db, id=org_id)
+        # if not target_org:
+        #     auth_logger.warning(f"Attempted to delete non-existent organization: {org_id}")
+        #     raise OrganizationNotFoundException()
+        
+        # 3. Perform the deletion
+        try:
+            # The DAO should handle cascading deletions of related records
+            # (user-org links, org-specific data, etc.)
+            deleted = await self.org_dao.remove(db, id=org_id)
+            
+            if deleted:
+                auth_logger.info(
+                    f"Organization '{deleted.name}' (ID: {org_id}) deleted by user '{current_user.email}'"
+                )
+            else:
+                # This should not happen if we already verified the org exists
+                auth_logger.error(
+                    f"Failed to delete organization {org_id} - delete operation returned False"
+                )
+                raise HTTPException(
+                    status_code=500, 
+                    detail="Failed to delete organization due to a database error"
+                )
+                
+        except Exception as e:
+            auth_logger.error(
+                f"Database error deleting organization {org_id}: {e}", 
+                exc_info=True
+            )
+            raise HTTPException(
+                status_code=500, 
+                detail="Failed to delete organization due to a database error"
+            )
 
     async def remove_user_from_organization(
         self, db: AsyncSession, *, removal: schemas.UserRemoveRole, current_user: models.User

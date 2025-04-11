@@ -64,6 +64,8 @@ class NodeConfig(BaseModel):
     node_name: str = Field(..., description="Name of the node type. There may be multiple nodes with same name / type!")
     node_version: Optional[str] = Field(None, description="Version of the node implementation") 
     node_config: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Node-specific configuration parameters")
+    # TODO: implement support for JSON Schema which can be converted to Pydantic models using: https://github.com/koxudaxi/datamodel-code-generator
+    #     https://koxudaxi.github.io/datamodel-code-generator/using_as_module/
     dynamic_input_schema: Optional[ConstructDynamicSchema] = Field(None, description="Dynamic schema for the node input")
     dynamic_output_schema: Optional[ConstructDynamicSchema] = Field(None, description="Dynamic schema for the node output")
     dynamic_config_schema: Optional[ConstructDynamicSchema] = Field(None, description="Dynamic schema for the node config")
@@ -104,6 +106,7 @@ class GraphSchema(BaseModel):
     # TODO: test if langgraph allows nodes to not generate any output or have empty schemas, in case where
     #    there's no input / output data but still need these nodes for dependency edges to starter nodes!
     
+    # workflow_id: str = Field(..., description="ID of the workflow")
     nodes: Dict[str, NodeConfig] = Field(..., description="Map of node IDs to node configurations")
     edges: Optional[List[EdgeSchema]] = Field(default_factory=list, description="List of edges connecting the nodes")
     input_node_id: str = Field(default=INPUT_NODE_NAME, description="ID of the input node")
@@ -276,63 +279,63 @@ class GraphSchema(BaseModel):
                     
     #     return False
 
-def validate_edge_schema_compatibility(
-    source_output_schema: Dict[str, Any],
-    target_input_schema: Dict[str, Any],
-    edge: EdgeSchema
-) -> List[str]:
-    """
-    Validate that the edge mappings are compatible with the source and target schemas.
+# def validate_edge_schema_compatibility(
+#     source_output_schema: Dict[str, Any],
+#     target_input_schema: Dict[str, Any],
+#     edge: EdgeSchema
+# ) -> List[str]:
+#     """
+#     Validate that the edge mappings are compatible with the source and target schemas.
     
-    Args:
-        source_output_schema (Dict[str, Any]): Output schema of the source node
-        target_input_schema (Dict[str, Any]): Input schema of the target node
-        edge (EdgeSchema): Edge to validate
+#     Args:
+#         source_output_schema (Dict[str, Any]): Output schema of the source node
+#         target_input_schema (Dict[str, Any]): Input schema of the target node
+#         edge (EdgeSchema): Edge to validate
         
-    Returns:
-        List[str]: List of validation errors, empty if valid
-    """
-    errors = []
+#     Returns:
+#         List[str]: List of validation errors, empty if valid
+#     """
+#     errors = []
     
-    # Get the properties from both schemas
-    source_properties = source_output_schema.get("properties", {})
-    target_properties = target_input_schema.get("properties", {})
+#     # Get the properties from both schemas
+#     source_properties = source_output_schema.get("properties", {})
+#     target_properties = target_input_schema.get("properties", {})
     
-    # Check mappings
-    for mapping in edge.mappings:
-        # Check if source field exists in source output schema
-        src_field_parts = mapping.src_field.split('.')
-        current_source_schema = source_properties
+#     # Check mappings
+#     for mapping in edge.mappings:
+#         # Check if source field exists in source output schema
+#         src_field_parts = mapping.src_field.split('.')
+#         current_source_schema = source_properties
         
-        for part in src_field_parts:
-            if part not in current_source_schema:
-                errors.append(f"Source field '{mapping.src_field}' does not exist in source output schema")
-                break
-            if isinstance(current_source_schema[part], dict) and "properties" in current_source_schema[part]:
-                current_source_schema = current_source_schema[part]["properties"]
-            else:
-                # We've reached a leaf field, so we're done with this path
-                break
+#         for part in src_field_parts:
+#             if part not in current_source_schema:
+#                 errors.append(f"Source field '{mapping.src_field}' does not exist in source output schema")
+#                 break
+#             if isinstance(current_source_schema[part], dict) and "properties" in current_source_schema[part]:
+#                 current_source_schema = current_source_schema[part]["properties"]
+#             else:
+#                 # We've reached a leaf field, so we're done with this path
+#                 break
         
-        # Check if target field exists in target input schema
-        dst_field_parts = mapping.dst_field.split('.')
-        current_target_schema = target_properties
+#         # Check if target field exists in target input schema
+#         dst_field_parts = mapping.dst_field.split('.')
+#         current_target_schema = target_properties
         
-        for part in dst_field_parts:
-            if part not in current_target_schema:
-                errors.append(f"Target field '{mapping.dst_field}' does not exist in target input schema")
-                break
-            if isinstance(current_target_schema[part], dict) and "properties" in current_target_schema[part]:
-                current_target_schema = current_target_schema[part]["properties"]
-            else:
-                # We've reached a leaf field, so we're done with this path
-                break
+#         for part in dst_field_parts:
+#             if part not in current_target_schema:
+#                 errors.append(f"Target field '{mapping.dst_field}' does not exist in target input schema")
+#                 break
+#             if isinstance(current_target_schema[part], dict) and "properties" in current_target_schema[part]:
+#                 current_target_schema = current_target_schema[part]["properties"]
+#             else:
+#                 # We've reached a leaf field, so we're done with this path
+#                 break
         
-        # TODO: Add type compatibility checking here
-        # This would involve comparing the types of the source and target fields
-        # and ensuring they are compatible
+#         # TODO: Add type compatibility checking here
+#         # This would involve comparing the types of the source and target fields
+#         # and ensuring they are compatible
         
-    return errors
+#     return errors
 
         
 

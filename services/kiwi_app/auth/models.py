@@ -81,7 +81,7 @@ class Organization(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=datetime_now_utc, nullable=False, sa_column_kwargs={"onupdate": datetime_now_utc})
 
     # Relationships
-    user_links: List[UserOrganizationRole] = Relationship(back_populates="organization")
+    user_links: List[UserOrganizationRole] = Relationship(back_populates="organization", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
 
 # --- User Model --- #
 class User(SQLModel, table=True):
@@ -99,7 +99,7 @@ class User(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime_now_utc, nullable=False)
     updated_at: datetime = Field(default_factory=datetime_now_utc, nullable=False, sa_column_kwargs={"onupdate": datetime_now_utc})
 
-    organization_links: List[UserOrganizationRole] = Relationship(back_populates="user")
+    organization_links: List[UserOrganizationRole] = Relationship(back_populates="user", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
     refresh_tokens: List["RefreshToken"] = Relationship(back_populates="user", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
 
 # --- NEW: Refresh Token Model --- #

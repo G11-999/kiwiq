@@ -17,7 +17,7 @@ from workflow_service.registry.nodes.llm.prompt import PromptConstructorNode, PR
 
 from workflow_service.graph.builder import GraphBuilder
 from workflow_service.graph.runtime.adapter import LangGraphRuntimeAdapter
-from workflow_service.registry.registry import MockRegistry
+from workflow_service.registry.registry import DBRegistry
 from workflow_service.registry.nodes.core.dynamic_nodes import InputNode, OutputNode
 
 
@@ -142,7 +142,7 @@ def build_and_run_prompt_constructor_graph(input_data: Dict[str, Any]) -> Dict[s
         Dict[str, Any]: The output of the graph execution containing constructed prompts
     """
 
-    registry = MockRegistry()
+    registry = DBRegistry()
     registry.register_node(PromptConstructorNode)
     registry.register_node(InputNode)
     registry.register_node(OutputNode)

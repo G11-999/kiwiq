@@ -10,6 +10,9 @@ from aio_pika import ExchangeType, Message, connect_robust
 from aio_pika.abc import AbstractIncomingMessage, AbstractRobustChannel, AbstractRobustConnection
 from aio_pika.exceptions import MessageProcessError
 
+from global_config.logger import get_logger
+logger = get_logger(__name__)
+
 T = TypeVar('T')
 
 class RabbitMQClient:
@@ -44,7 +47,7 @@ class RabbitMQClient:
             heartbeat: Heartbeat interval in seconds
             **kwargs: Additional connection parameters
         """
-        self.logger = logging.getLogger(__name__)
+        self.logger = logger
         self.url = url
         self.connection_name = connection_name
         self.reconnect_delay = reconnect_delay

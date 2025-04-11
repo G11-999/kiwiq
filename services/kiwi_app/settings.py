@@ -1,9 +1,10 @@
 from pydantic_settings import BaseSettings
-from typing import Optional
+from typing import Optional, List
+from pydantic import Field
 
-from libs.src.global_config.settings import ENV_FILE_PATH, Settings, settings as global_settings
+from global_config.settings import ENV_FILE_PATH, Settings as GlobalSettings, global_settings as global_settings
 
-class Settings(Settings):
+class Settings(GlobalSettings):
     # --- Auth Settings --- #
     SECRET_KEY: Optional[str] = None
     JWT_ALGORITHM: str = "HS256"
@@ -17,6 +18,8 @@ class Settings(Settings):
     DEFAULT_SUPERUSER_PASSWORD: Optional[str] = None
 
     DB_TABLE_AUTH_PREFIX: str = "auth_"
+
+    DB_TABLE_WORKFLOW_PREFIX: str = "kw_wf_" # Added prefix for workflow tables
 
     # --- LinkedIn Settings --- #
     LINKEDIN_CLIENT_ID: Optional[str] = None
@@ -55,7 +58,7 @@ class Settings(Settings):
 
     Lax (default): Cookies are sent on top-level navigations (e.g., clicking a link) but are withheld on less safe cross-site requests (like iframes or AJAX calls), helping mitigate CSRF (Cross-Site Request Forgery) attacks.
 
-    Strict: Cookies are only sent in a first-party context (i.e., when the site for the cookie’s domain is currently being visited).
+    Strict: Cookies are only sent in a first-party context (i.e., when the site for the cookie's domain is currently being visited).
 
     None: Cookies are sent with all requests, including cross-origin requests—but this requires cookie_secure to be True.
     """
@@ -76,4 +79,41 @@ class Settings(Settings):
     # NOTE: also used in verify email url!
     API_V1_PREFIX: str = "/api/v1"
 
+    # --- Workflow Service Settings (Merged from config.py) --- #
+
+    # --- RabbitMQ Settings --- #
+    # Name for the persistent workflow event stream
+    WORKFLOW_EVENTS_STREAM: str = Field(default="kiwiq_workflow_events_stream")
+    # Consumer group name for the FastAPI backend consumer
+    WORKFLOW_EVENTS_CONSUMER_GROUP: str = Field(default="kiwiq_backend_consumer_group")
+    # --- Workflow Stream Queue Settings --- #
+    WORKFLOW_STREAM_EVENTS_EXPIRATION: int = Field(default=60 * 60 * 24 * 30) # 30 days default
+    WORKFLOW_STREAM_EVENTS_MAX_LENGTH_BYTES: int = Field(default=1024 * 1024 * 1024 * 10) # 10 GB default
+    WORKFLOW_STREAM_EVENTS_MAX_AGE: str = Field(default="30D") # 30 days default; after which stream messages will be deleted!
+    # --- Workflow Notifications Queue Settings (Standard Queue) --- #
+    WORKFLOW_NOTIFICATIONS_QUEUE: str = Field(default="kiwiq_workflow_notifications_queue")
+    WORKFLOW_NOTIFICATIONS_TTL_MS: int = Field(default=60 * 60 * 24 * 7 * 1000) # 7 days in milliseconds
+    WORKFLOW_NOTIFICATIONS_MAX_LENGTH_BYTES: int = Field(default=1024 * 1024 * 512) # 512 MB default
+
+    # --- MongoDB Settings --- #
+    # URL coming from global settings
+    # MONGO_URL: str = Field(..., env="MONGO_URI") # Make URI required
+    # --- Workflow Database Settings --- #
+    MONGO_WORKFLOW_DATABASE: str = Field(default="kiwiq_workflow_db", env="MONGO_WORKFLOW_DATABASE")
+    MONGO_WORKFLOW_STREAM_COLLECTION: str = Field(default="workflow_stream_data", env="MONGO_WORKFLOW_STREAM_COLLECTION")
+    MONGO_WORKFLOW_STREAM_SEGMENTS: List[str] = Field(default=["org_id", "user_id", "run_id", "event_id"])
+    MONGO_WORKFLOW_STREAM_SEGMENTS_VALUE_FILTER_FIELDS: Optional[List[str]] = Field(default=["event_type"])
+    # --- Customer Database Settings --- #
+    MONGO_CUSTOMER_DATABASE: str = Field(default="kiwiq_customer_db", env="MONGO_CUSTOMER_DATABASE")
+    MONGO_CUSTOMER_COLLECTION: str = Field(default="customer_data", env="MONGO_CUSTOMER_COLLECTION")
+    MONGO_CUSTOMER_SEGMENTS: List[str] = Field(default=["org_id", "user_id", "namespace", "docname"])
+    
+    # --- WebSocket Settings --- #
+    # Secret for potentially encoding/decoding WebSocket auth tokens
+    WEBSOCKET_AUTH_SECRET: str = Field(default="super-secret-websocket-key", env="WEBSOCKET_AUTH_SECRET")
+    WEBSOCKET_TOKEN_EXPIRE_MINUTES: int = Field(default=60 * 24 * 7) # 1 week default
+
+    
+
 settings = Settings()
+print(settings.MONGO_WORKFLOW_STREAM_SEGMENTS)

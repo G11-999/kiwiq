@@ -5,7 +5,7 @@ This module contains base class and implementations for runtime adapters that ha
 actual execution of workflow graphs using different underlying frameworks.
 """
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Tuple, Type, Union, AsyncIterator, cast, Literal, Callable
+from typing import Any, Dict, List, Optional, Tuple, Type, Union, AsyncIterator, cast, Literal, Callable, Awaitable, Iterator
 from pathlib import Path
 import os
 import json
@@ -21,12 +21,13 @@ from langgraph.graph import START
 from langgraph.types import Command, interrupt
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.runnables.config import RunnableConfig
+from langchain_core.load import dumps
 
 from workflow_service.registry.schemas.base import BaseSchema
 from workflow_service.utils.utils import get_central_state_field_key
 
 from workflow_service.registry.nodes.core.base import BaseNode
-from workflow_service.registry.registry import MockRegistry
+from workflow_service.registry.registry import DBRegistry
 from workflow_service.utils.utils import get_node_output_state_key
 
 
@@ -206,7 +207,7 @@ class LangGraphRuntimeAdapter(GraphRuntimeAdapter):
             input_schema = renamed_input_schema
         if output_schema:
             kwargs["output"] = output_schema
-        print(f"kwargs GRAPH STATE INPUT SCHEMA!: {kwargs["input"].model_fields}")
+        # print(f"kwargs GRAPH STATE INPUT SCHEMA!: {kwargs["input"].model_fields}")
         # import ipdb; ipdb.set_trace()
         state_graph = StateGraph(graph_state_cls, **kwargs)
         
@@ -242,10 +243,10 @@ class LangGraphRuntimeAdapter(GraphRuntimeAdapter):
             #         node_instance.run.__func__.__annotations__.update({
             #             'input': input_schema
             #         })
-            if MockRegistry.is_node_instance_hitl(node_instance) or MockRegistry.is_node_instance_router(node_instance):
-                if MockRegistry.is_node_instance_hitl(node_instance):
+            if DBRegistry.is_node_instance_hitl(node_instance) or DBRegistry.is_node_instance_router(node_instance):
+                if DBRegistry.is_node_instance_hitl(node_instance):
                     node_instance.__class__.runtime_preprocessor = LangGraphRuntimeAdapter.interrupt_node_pre_processor
-                elif MockRegistry.is_node_instance_router(node_instance):
+                elif DBRegistry.is_node_instance_router(node_instance):
                     router_instances[node_id] = node_instance
                     # NOTE: routing node config will be part of regular node configs! choices will be in dict from graph schema
                     node_instance.__class__.runtime_postprocessor = LangGraphRuntimeAdapter.routing_node_post_processor
@@ -354,7 +355,7 @@ class LangGraphRuntimeAdapter(GraphRuntimeAdapter):
         # Add debug option if specified
         # if runtime_config.get("debug", False):
         #     compiled_kwargs["debug"] = True
-        print("\n\n\n\n#### compiled_kwargs", compiled_kwargs, "\n\n\n\n")
+        # print("\n\n\n\n#### compiled_kwargs", compiled_kwargs, "\n\n\n\n")
         # Compile the graph
         # print(f"compiled_kwargs: {compiled_kwargs}")
         compiled_graph = state_graph.compile(**compiled_kwargs)
@@ -412,8 +413,10 @@ class LangGraphRuntimeAdapter(GraphRuntimeAdapter):
             HITL_USER_PROMPT_KEY: input_data,
             HITL_USER_SCHEMA_KEY: output_schema,
         }
-        print("\n\n\n\n#### interrupt_data", interrupt_data, "\n\n\n\n")
+        print("\n\nnode interrupted!\n\n")
+        # print("\n\n\n\n#### interrupt_data", interrupt_data, "\n\n\n\n")
         hitl_data = interrupt(interrupt_data)
+        print("\n\n --> hitl_data from interrupt_node_pre_processor NODE CONTINUING!: \n", hitl_data, "\n\n")
         # if RESUME_KEY not in config:
         #     config[RESUME_KEY] = {}
         # config[RESUME_KEY][node_instance.node_id] = hitl_data
@@ -442,163 +445,7 @@ class LangGraphRuntimeAdapter(GraphRuntimeAdapter):
             # control flow
             goto=state_update.get(ROUTER_CHOICE_KEY, None)
         )
-    
-    # def _prepare_node_inputs(self, state: Dict[str, Any], node_id: str, runtime_config: Dict[str, Any]) -> Dict[str, Any]:
-    #     """
-    #     Prepare inputs for a node based on the current state and runtime config.
-        
-    #     Args:
-    #         state (Dict[str, Any]): Current graph state.
-    #         node_id (str): ID of the node being executed.
-    #         runtime_config (Dict[str, Any]): Runtime configuration.
-            
-    #     Returns:
-    #         Dict[str, Any]: Prepared inputs for the node.
-    #     """
-    #     node_inputs = {}
-    #     input_mappings = runtime_config.get("inputs", {}).get(node_id, {})
-        
-    #     # Handle the special case for input nodes that might use the initial input directly
-    #     is_input_node = runtime_config.get("input_node_id") == node_id
-    #     if is_input_node and "input" in state:
-    #         # For input nodes, we can also extract values from the initial input
-    #         initial_input = state.get("input", {})
-    #         for field_name, field_value in initial_input.items():
-    #             if field_name not in node_inputs:
-    #                 node_inputs[field_name] = field_value
-        
-    #     # Process regular input mappings
-    #     for input_field, source in input_mappings.items():
-    #         if isinstance(source, list):
-    #             # Source is [node_id, field_name]
-    #             source_node_id, source_field = source
-    #             if source_node_id in state:
-    #                 node_state = state.get(source_node_id, {})
-    #                 if hasattr(node_state, source_field):
-    #                     # Access attribute if it's an object
-    #                     node_inputs[input_field] = getattr(node_state, source_field)
-    #                 elif isinstance(node_state, dict) and source_field in node_state:
-    #                     # Access dictionary key if it's a dict
-    #                     node_inputs[input_field] = node_state[source_field]
-    #         elif isinstance(source, dict) and "path" in source:
-    #             # Source is a path specification for deep accessing
-    #             path = source["path"]
-    #             current = state
-    #             valid_path = True
-                
-    #             for path_part in path:
-    #                 if isinstance(current, dict) and path_part in current:
-    #                     current = current[path_part]
-    #                 elif hasattr(current, path_part):
-    #                     current = getattr(current, path_part)
-    #                 else:
-    #                     valid_path = False
-    #                     break
-                
-    #             if valid_path:
-    #                 node_inputs[input_field] = current
-    #         else:
-    #             # Source is a central state field
-    #             if source in state:
-    #                 node_inputs[input_field] = state[source]
-        
-    #     return node_inputs
-    
-    # def _prepare_state_updates(self, node_outputs: Dict[str, Any], node_id: str, runtime_config: Dict[str, Any]) -> Dict[str, Any]:
-    #     """
-    #     Prepare state updates based on node outputs and runtime config.
-        
-    #     Args:
-    #         node_outputs (Dict[str, Any]): Outputs from the node execution.
-    #         node_id (str): ID of the node that was executed.
-    #         runtime_config (Dict[str, Any]): Runtime configuration.
-            
-    #     Returns:
-    #         Dict[str, Any]: State updates to apply.
-    #     """
-    #     state_updates = {}
-    #     output_mappings = runtime_config.get("outputs", {}).get(node_id, {})
-        
-    #     # Handle output node specially
-    #     is_output_node = runtime_config.get("output_node_id") == node_id
-        
-    #     # Add node output to state under the node's ID
-    #     # For objects with a model_dump method (like BaseSchema instances), use it
-    #     if hasattr(node_outputs, "model_dump"):
-    #         state_updates[node_id] = node_outputs.model_dump()
-    #     else:
-    #         state_updates[node_id] = node_outputs
-        
-    #     # For output nodes, also update the final output state
-    #     if is_output_node:
-    #         if hasattr(node_outputs, "model_dump"):
-    #             state_updates["output"] = node_outputs.model_dump()
-    #         else:
-    #             state_updates["output"] = node_outputs
-        
-    #     # Map specific output fields to central state fields
-    #     for output_field, central_field in output_mappings.items():
-    #         # Handle nested path updates with dot notation (e.g., "messages.system")
-    #         if isinstance(central_field, str) and "." in central_field:
-    #             parts = central_field.split(".")
-                
-    #             # Create nested dictionaries for the path
-    #             current_dict = state_updates
-    #             for i, part in enumerate(parts[:-1]):
-    #                 if part not in current_dict:
-    #                     current_dict[part] = {}
-    #                 current_dict = current_dict[part]
-                
-    #             # Set the value at the final path location
-    #             if hasattr(node_outputs, output_field):
-    #                 # If node_outputs is an object with attributes
-    #                 value = getattr(node_outputs, output_field)
-    #                 # Convert to dict if it's a schema object
-    #                 if hasattr(value, "model_dump"):
-    #                     value = value.model_dump()
-    #                 current_dict[parts[-1]] = value
-    #             elif isinstance(node_outputs, dict) and output_field in node_outputs:
-    #                 # If node_outputs is a dictionary
-    #                 value = node_outputs[output_field]
-    #                 # Convert to dict if it's a schema object
-    #                 if hasattr(value, "model_dump"):
-    #                     value = value.model_dump()
-    #                 current_dict[parts[-1]] = value
-    #         else:
-    #             # Direct field mapping
-    #             if hasattr(node_outputs, output_field):
-    #                 # If node_outputs is an object with attributes
-    #                 value = getattr(node_outputs, output_field)
-    #                 # Convert to dict if it's a schema object
-    #                 if hasattr(value, "model_dump"):
-    #                     value = value.model_dump()
-    #                 state_updates[central_field] = value
-    #             elif isinstance(node_outputs, dict) and output_field in node_outputs:
-    #                 # If node_outputs is a dictionary
-    #                 value = node_outputs[output_field]
-    #                 # Convert to dict if it's a schema object
-    #                 if hasattr(value, "model_dump"):
-    #                     value = value.model_dump()
-    #                 state_updates[central_field] = value
-        
-    #     return state_updates
-    
-    # def _create_condition_function(self, condition_config: Dict[str, Any]):
-    #     """
-    #     Create a condition function from a condition configuration.
-        
-    #     Args:
-    #         condition_config (Dict[str, Any]): Condition configuration.
-            
-    #     Returns:
-    #         Callable: A function that evaluates the condition.
-    #     """
-    #     def condition_function(state):
-    #         # Implement condition evaluation based on condition_config
-    #         # This is a placeholder for actual condition evaluation logic
-    #         return True
-        
-    #     return condition_function
+
     @staticmethod
     def get_value_from_human(
         interrupt_data: Dict[str, Any]
@@ -608,8 +455,8 @@ class LangGraphRuntimeAdapter(GraphRuntimeAdapter):
         """
         user_prompt = interrupt_data[HITL_USER_PROMPT_KEY]
         user_schema = interrupt_data[HITL_USER_SCHEMA_KEY]
-        print("\n\n\n\n#### user prompt for interrupt", json.dumps(user_prompt, indent=4), "\n\n\n\n")
-        print("\n\n\n\n#### user input required schema", json.dumps(user_schema, indent=4), "\n\n\n\n")
+        # print("\n\n\n\n#### user prompt for interrupt", json.dumps(user_prompt, indent=4), "\n\n\n\n")
+        # print("\n\n\n\n#### user input required schema", json.dumps(user_schema, indent=4), "\n\n\n\n")
         response = input()
         return response
 
@@ -667,7 +514,8 @@ class LangGraphRuntimeAdapter(GraphRuntimeAdapter):
                 result = graph.invoke(Command(resume=value_from_human), config=lg_config)
             else:
                 result = graph.invoke(input_data, config=lg_config)
-            print("\n\n\n\n#### GRAPH RUN PHASE FINISHED (Interrupted or Final Finished)! result", result, "\n\n\n\n")
+            print("graph run finished!")
+            # print("\n\n\n\n#### GRAPH RUN PHASE FINISHED (Interrupted or Final Finished)! result", result, "\n\n\n\n")
             last_state = graph.get_state(lg_config)
             has_interrupts = False
             # final_state.tasks[0].interrupts  # check for keys as set in interrupt pre-processor below!
@@ -696,11 +544,11 @@ class LangGraphRuntimeAdapter(GraphRuntimeAdapter):
         central_state_keys = [k for k in final_state.values.keys() if k.startswith(GRAPH_STATE_SPECIAL_NODE_NAME)]
         central_state = {k: final_state.values[k] for k in central_state_keys}
 
-        from langchain_core.load import dumpd, dumps, load, loads
+        # from langchain_core.load import dumpd, dumps, load, loads
 
-        print("\n\n\n\n#### final_state", dumps(final_state, pretty=True), "\n\n\n\n")
+        # print("\n\n\n\n#### final_state", dumps(final_state, pretty=True), "\n\n\n\n")
 
-        print("\n\n\n\n#### central_state", dumps(central_state, pretty=True), "\n\n\n\n")
+        # print("\n\n\n\n#### central_state", dumps(central_state, pretty=True), "\n\n\n\n")
 
         # print("\n\n\n\n#### graph_output", json.dumps(graph_output, indent=4), "\n\n\n\n")
 
@@ -714,124 +562,14 @@ class LangGraphRuntimeAdapter(GraphRuntimeAdapter):
         # print(final_state)
         print("\n\n\n\n#### graph_output")
         # print(dumps(graph_output, pretty=True))
-        if isinstance(graph_output, BaseSchema):
-            print(graph_output.model_dump_json(indent=4))
-        else:
-            print(json.dumps(graph_output, indent=4))
-        print("\n\n\n\n")
+        # if isinstance(graph_output, BaseSchema):
+        #     print(graph_output.model_dump_json(indent=4))
+        # else:
+        #     print(json.dumps(graph_output, indent=4))
+        # print("\n\n\n\n")
         # import ipdb; ipdb.set_trace()
         
         return graph_output
-
-    # async def aexecute_graph(
-    #     self,
-    #     graph: Any,
-    #     input_data: Dict[str, Any],
-    #     config: Dict[str, Any],
-    #     output_node_id: str = None,
-    #     interrupt_handler: Callable = None
-    # ) -> Dict[str, Any]:
-    #     """
-    #     Execute a LangGraph with input data.
-        
-    #     Args:
-    #         graph (Any): The LangGraph to execute.
-    #         input_data (Dict[str, Any]): Input data for the graph.
-    #         config (Dict[str, Any]): Runtime configuration for execution.
-            
-    #     Returns:
-    #         Dict[str, Any]: Output data from the graph.
-    #     """
-    #     # TODO: FIXME: MUST TEST NESTED INPUT FIELDS AND DATA!
-    #     input_data = {get_central_state_field_key(k): v for k, v in input_data.items()}
-        
-    #     if interrupt_handler is None:
-    #         interrupt_handler = LangGraphRuntimeAdapter.get_value_from_human
-        
-    #     # Create a LangGraph config dict
-    #     lg_config = {
-    #         "configurable": config,  # config may have thread_id
-    #         # "metadata": {
-    #         #     "workflow_id": config.get("workflow_id", ""),
-    #         #     "run_id": config.get("run_id", ""),
-    #         #     "user_id": config.get("user_id"),
-    #         #     "configurable": config.get("configurable", {})
-    #         # }
-    #     }
-        
-    #     # Add callbacks if provided
-    #     # if "callbacks" in config:
-    #     #     lg_config["callbacks"] = config["callbacks"]
-        
-    #     # Execute the graph
-    #     # input_data can be None
-    #     has_interrupts = True
-    #     interrupt_data = None
-
-    #     print("\n\n\n\n#### INPUT DATA SENT TO GRAPH INVOKE", input_data, "\n\n\n\n")
-
-    #     while has_interrupts:
-    #         # https://langchain-ai.github.io/langgraph/concepts/human_in_the_loop/#interrupt
-    #         if interrupt_data:
-    #             value_from_human = interrupt_handler(interrupt_data)
-    #             result = graph.invoke(Command(resume=value_from_human), config=lg_config)
-    #         else:
-    #             result = graph.invoke(input_data, config=lg_config)
-    #         print("\n\n\n\n#### GRAPH RUN PHASE FINISHED (Interrupted or Final Finished)! result", result, "\n\n\n\n")
-    #         last_state = graph.get_state(lg_config)
-    #         has_interrupts = False
-    #         # final_state.tasks[0].interrupts  # check for keys as set in interrupt pre-processor below!
-    #         interrupt_data = None
-    #         if last_state.tasks:
-    #             for task in last_state.tasks:
-    #                 if task.interrupts:
-    #                     has_interrupts = True
-    #                     interrupt_data = task.interrupts[0].value
-    #                     break
-        
-    #     # central states
-    #     # looped over node outputs and fields were replaced
-    #     # final output
-        
-    #     # result = graph.invoke(input_data, config=lg_config)
-    #     final_state = graph.get_state(lg_config)
-    #     # final_state.tasks[0].interrupts  # check for keys as set in interrupt pre-processor below!
-
-    #     graph_output = None
-    #     if output_node_id:
-    #         graph_output = final_state.values.get(get_node_output_state_key(output_node_id), {})
-        
-        
-    #     # final_state.values.get(get_node_output_state_key(output_node_id), {})
-    #     central_state_keys = [k for k in final_state.values.keys() if k.startswith(GRAPH_STATE_SPECIAL_NODE_NAME)]
-    #     central_state = {k: final_state.values[k] for k in central_state_keys}
-
-    #     from langchain_core.load import dumpd, dumps, load, loads
-
-    #     print("\n\n\n\n#### final_state", dumps(final_state, pretty=True), "\n\n\n\n")
-
-    #     print("\n\n\n\n#### central_state", dumps(central_state, pretty=True), "\n\n\n\n")
-
-    #     # print("\n\n\n\n#### graph_output", json.dumps(graph_output, indent=4), "\n\n\n\n")
-
-    #     # node_id = "human_review"
-    #     # print(dumps(final_state.values.get(get_node_output_state_key(node_id), {}), pretty=True))
-    #     # Since this BaseModel / BaseSchema, it dumps well!
-    #     # print(final_state.values.get(get_node_output_state_key(node_id), {}).model_dump_json(indent=4))
-
-        
-    #     # print(result)
-    #     # print(final_state)
-    #     print("\n\n\n\n#### graph_output")
-    #     # print(dumps(graph_output, pretty=True))
-    #     if isinstance(graph_output, BaseSchema):
-    #         print(graph_output.model_dump_json(indent=4))
-    #     else:
-    #         print(json.dumps(graph_output, indent=4))
-    #     print("\n\n\n\n")
-    #     # import ipdb; ipdb.set_trace()
-        
-    #     return graph_output
 
     def execute_graph_stream(
         self,
@@ -840,7 +578,7 @@ class LangGraphRuntimeAdapter(GraphRuntimeAdapter):
         config: Dict[str, Any],
         output_node_id: str = None,
         interrupt_handler: Callable = None
-    ) -> AsyncIterator[Dict[str, Any]]:
+    ) -> Iterator[Dict[str, Any]]:
         """
         Execute a LangGraph with input data and stream results.
         
@@ -905,20 +643,30 @@ class LangGraphRuntimeAdapter(GraphRuntimeAdapter):
         while has_interrupts:
             if interrupt_data:
                 value_from_human = interrupt_handler(interrupt_data)
+                interrupt_data = None
                 stream = graph.stream(Command(resume=value_from_human), config=lg_config, stream_mode=["updates", "messages"])
             else:
                 stream = graph.stream(input_data, config=lg_config, stream_mode=["updates", "messages"])
             has_interrupts = False
             for chunk in stream:
-                print("\n\n\n\n", "-"*100, "##### chunk\n", chunk, "\n", "-"*100, "\n\n\n\n")
+                # print("\n\n\n\n", "-"*100, "##### chunk\n")
+                # print(chunk)
+                # print("\n\n\n\n", "-"*100, "##### chunk\n")
+                # print(dumps(chunk, pretty=True), "\n", "-"*100, "\n\n\n\n")
+                # import ipdb; ipdb.set_trace()
+                # yield chunk
                 update_type, update_data = chunk
+                # print(" ---> update_type", update_type)
+                # import ipdb; ipdb.set_trace()
                 if update_type == "updates" and "__interrupt__" in update_data:
                     interrupt_data = update_data["__interrupt__"][0].value
                     has_interrupts = True
-                    print("\n\n\n\n#### INTERRUPT DATA", interrupt_data, "\n\n\n\n")
+                    # print("\n\n\n\n#### INTERRUPT DATA", dumps(interrupt_data, pretty=True), "\n\n\n\n")
                     # TODO: FIXME: MUST HANDLE INTERRUPT!
                 elif update_type == "messages":
-                    print("\n\n\n\n#### MESSAGE DATA", update_data, "\n\n\n\n")
+                    pass
+                    # print("\n\n\n\n#### MESSAGE DATA", dumps(update_data, pretty=True), "\n\n\n\n")
+                # print("\n\n\n\n#####", "-"*100, "#####\n\n\n\n")
                 # import ipdb; ipdb.set_trace()
             # print(chunk)
             # yield chunk
@@ -930,48 +678,246 @@ class LangGraphRuntimeAdapter(GraphRuntimeAdapter):
             graph_output = final_state.values.get(get_node_output_state_key(output_node_id), {})
         return graph_output
 
+    
+
+    # --- Graph Execution Methods ---
+
+    async def _handle_interrupts_async(
+        self,
+        graph: Any,
+        initial_input: Optional[Union[Dict[str, Any], Command]], # Can be initial input or resume command
+        lg_config: Dict[str, Any],
+        interrupt_handler: Callable[[Dict[str, Any]], Awaitable[Any]] # Handler must be async
+    ) -> Tuple[Optional[Any], Optional[Dict[str, Any]]]:
+        """
+        Asynchronously handles the execution loop with potential interrupts.
+
+        Args:
+            graph: The compiled LangGraph.
+            initial_input: The initial data or resume command for the graph.
+            lg_config: LangGraph configuration dictionary.
+            interrupt_handler: An async function to handle interrupts and get human input.
+
+        Returns:
+            Tuple containing the final result (if execution completes without interrupt)
+            and the last known state. Returns (None, state) if interrupted.
+        """
+        current_input = initial_input
+        while True:
+            result = await graph.ainvoke(current_input, config=lg_config)
+            # print("\n\n\n\n#### ASYNC GRAPH RUN PHASE FINISHED! result:", result, "\n\n\n\n")
+
+            # Check for interrupts by inspecting the latest state
+            last_state = await graph.aget_state(lg_config)
+            interrupt_payload = None
+            if last_state.tasks: # Check if tasks were run
+                 # Check the *last* task for interrupts, assuming sequential execution for now
+                 last_task = last_state.tasks[-1]
+                 if last_task.interrupts:
+                     # Get the value from the first interrupt object
+                     interrupt_payload = last_task.interrupts[0].value
+                    #  print("\n\n#### INTERRUPT DETECTED (ainvoke) ####\nPayload:", interrupt_payload, "\n\n")
+
+
+            if interrupt_payload:
+                # Interrupt occurred, get human input
+                print("--- Handling Interrupt Async ---")
+                value_from_human = await interrupt_handler(interrupt_payload)
+                # print("--- Resume Value Received:", value_from_human, "---")
+                # Prepare the resume command for the next loop iteration
+                current_input = Command(resume=value_from_human)
+                # Continue the loop to resume execution
+            else:
+                # No interrupt, execution finished successfully for this invoke cycle
+                return result, last_state # Return final result and state
+
+    async def aexecute_graph(
+        self,
+        graph: Any,
+        input_data: Dict[str, Any],
+        config: Dict[str, Any],
+        output_node_id: str = None,
+        interrupt_handler: Optional[Callable[[Dict[str, Any]], Awaitable[Any]]] = None # Expects async handler
+    ) -> Dict[str, Any]:
+        """
+        Asynchronously execute a LangGraph with input data, handling interrupts.
+
+        Args:
+            graph (Any): The compiled LangGraph to execute.
+            input_data (Dict[str, Any]): Input data for the graph.
+            config (Dict[str, Any]): Runtime configuration for execution (includes thread_id, etc.).
+            output_node_id (str, optional): The ID of the node whose output should be returned.
+            interrupt_handler (Callable, optional): An async function to handle HITL prompts.
+                                                   Defaults to a simple async console input handler.
+
+        Returns:
+            Dict[str, Any]: Output data from the designated output node or the final state values.
+        """
+        # Rename input keys for central state compatibility
+        processed_input_data = {get_central_state_field_key(k): v for k, v in input_data.items()}
+
+        # Default async interrupt handler (simple console input)
+        async def default_async_interrupt_handler(interrupt_payload: Dict[str, Any]) -> Any:
+             # Use the synchronous handler wrapped in run_in_executor for non-blocking console input
+             loop = asyncio.get_running_loop()
+             return await loop.run_in_executor(None, self.get_value_from_human, interrupt_payload)
+
+        handler = interrupt_handler or default_async_interrupt_handler
+
+        # Create LangGraph config
+        lg_config = {"configurable": config} # Pass user config under 'configurable'
+
+        print("\n\n\n\n#### ASYNC INPUT DATA SENT TO GRAPH INVOKE", processed_input_data, "\n\n\n\n")
+
+        # Handle execution and interrupts
+        final_result, final_state = await self._handle_interrupts_async(
+             graph,
+             processed_input_data, # Initial input
+             lg_config,
+             handler
+        )
+
+        # --- Process final state ---
+        from langchain_core.load import dumpd, dumps
+
+        print("\n\n\n\n#### ASYNC FINAL STATE:", dumps(final_state, pretty=True), "\n\n\n\n")
+
+        # Extract central state and graph output
+        graph_output_data = None
+        if output_node_id and final_state:
+            output_key = get_node_output_state_key(output_node_id)
+            graph_output_data = final_state.values.get(output_key) # Extract specific node output
+
+        central_state = {}
+        if final_state:
+             central_state_keys = [k for k in final_state.values.keys() if k.startswith(GRAPH_STATE_SPECIAL_NODE_NAME)]
+             central_state = {k: final_state.values[k] for k in central_state_keys}
+
+        print("\n\n\n\n#### ASYNC CENTRAL STATE:", dumps(central_state, pretty=True), "\n\n\n\n")
+
+        print("\n\n\n\n#### ASYNC FINAL GRAPH OUTPUT:")
+        if isinstance(graph_output_data, BaseSchema):
+            print(graph_output_data.model_dump_json(indent=2))
+        elif graph_output_data is not None:
+            print(dumps(graph_output_data, pretty=True)) # Use dumps for richer LangChain object representation
+        else:
+            print("None")
+        print("\n\n\n\n")
+
+        # Return the specific node's output if requested, otherwise return the whole final result dict
+        # The 'final_result' from ainvoke usually contains the full final state dictionary.
+        # If output_node_id is specified, prioritize extracting that specific part.
+        return graph_output_data if output_node_id else final_result if final_result else {}
+
+
     async def aexecute_graph_stream(
         self,
         graph: Any,
         input_data: Dict[str, Any],
-        config: Dict[str, Any]
-    ) -> AsyncIterator[Dict[str, Any]]:
+        config: Dict[str, Any],
+        output_node_id: Optional[str] = None, # Added optional output_node_id
+        resume_with_hitl: bool = False,
+        interrupt_handler: Optional[Callable[[Dict[str, Any]], Awaitable[Any]]] = None # Expects async handler
+    ) -> AsyncIterator[Union[Dict[str, Any], Tuple[str, Any]]]: # Yields stream chunks or final output
         """
-        Execute a LangGraph with input data and stream results.
-        
+        Asynchronously execute a LangGraph with input data and stream results, handling interrupts.
+
         Args:
-            graph (Any): The LangGraph to execute.
+            graph (Any): The compiled LangGraph to execute.
             input_data (Dict[str, Any]): Input data for the graph.
             config (Dict[str, Any]): Runtime configuration for execution.
-            
+            output_node_id (str, optional): If provided, the final yielded item will be the output of this node.
+            interrupt_handler (Callable, optional): An async function to handle HITL prompts.
+
         Yields:
-            Dict[str, Any]: Streaming outputs from the graph.
-        
-        https://langchain-ai.github.io/langgraph/concepts/human_in_the_loop/#interrupt
+            Union[Dict[str, Any], Tuple[str, Any]]: Streaming chunks from the graph execution
+                                                   (format depends on stream_mode). May yield the
+                                                   final output of `output_node_id` at the end if specified.
         """
         from langchain_core.runnables import RunnableConfig
-        
-        # Create a LangGraph config dict
-        lg_config = {
-            "configurable": config,  # config may have thread_id
-            # "metadata": {
-            #     "workflow_id": config.get("workflow_id", ""),
-            #     "run_id": config.get("run_id", ""),
-            #     "user_id": config.get("user_id"),
-            #     "configurable": config.get("configurable", {})
-            # }
-        }
-        
-        # Add callbacks if provided
-        # if "callbacks" in config:
-        #     lg_config["callbacks"] = config["callbacks"]
-        
-        # Set up streaming config
-        stream_config = dict(lg_config)
-        
-        # Execute the graph with streaming
-        async for chunk in graph.astream(input_data, config=stream_config, stream_mode=["updates", "messages"]):
 
-            import ipdb; ipdb.set_trace()
-            print(chunk)
-            # yield chunk
+        # Rename input keys for central state compatibility
+        processed_input_data = {get_central_state_field_key(k): v for k, v in input_data.items()}
+
+        # Default async interrupt handler
+        async def default_async_interrupt_handler(interrupt_payload: Dict[str, Any]) -> Any:
+             loop = asyncio.get_running_loop()
+             return await loop.run_in_executor(None, self.get_value_from_human, interrupt_payload)
+
+        handler = interrupt_handler or default_async_interrupt_handler
+
+        # Create LangGraph config
+        lg_config: RunnableConfig = {"configurable": config}
+
+        print("\n\n\n\n#### ASYNC INPUT DATA SENT TO GRAPH STREAM", processed_input_data, f" --> RESUME: {resume_with_hitl} \n\n\n\n")
+
+        current_input: Union[Dict[str, Any], Command] = processed_input_data
+        stream_modes = ["updates", "messages", 
+                        # "debug"
+                        ] # Request multiple stream types
+        if resume_with_hitl:
+            print("\n\n\n\n--- Resuming with HITL ---\n\n\n\n")
+            current_input = Command(resume=input_data)
+        async for chunk in graph.astream(current_input, config=lg_config, stream_mode=stream_modes):
+            yield chunk
+        # while True:
+        #     interrupt_payload = None
+        #     # Start or resume the stream
+        #     stream = graph.astream(current_input, config=lg_config, stream_mode=stream_modes)
+
+        #     async for chunk in stream:
+        #         # Yield the raw chunk to the caller
+        #         yield chunk
+        #         print("\n--- ASYNC STREAM CHUNK:", chunk, "\n")
+
+        #         # Check for interrupts within the chunk data
+        #         # Interrupts might appear in 'updates' or potentially other parts depending on LangGraph version/structure
+        #         # Check common structure: chunk is dict with op='update', path includes '__interrupt__'
+        #         # Or check if chunk itself is the interrupt payload (less common)
+        #         # Let's check 'updates' type specifically based on observed behavior
+        #         # if isinstance(chunk, dict) and chunk.get('op') == 'replace' and chunk.get('path') == '/streamed_output/-':
+        #         #      # Example: Check if the streamed output itself is an interrupt
+        #         #      # This structure might vary. Adapt based on actual LangGraph output.
+        #         #      # if isinstance(chunk['value'], dict) and '__interrupt__' in chunk['value']: # hypothetical check
+        #         #      #     interrupt_payload = chunk['value']['__interrupt__'][0].value # Example extraction
+        #         #      pass # Requires precise knowledge of interrupt structure in stream
+
+        #         # More reliable: Check 'updates' stream_mode if LangGraph puts interrupts there
+        #         # Example assumes chunk format like ('updates', {'__interrupt__': [...]})
+        #         # The current example implementation yields a tuple (stream_mode, data)
+        #         if isinstance(chunk, tuple) and len(chunk) == 2:
+        #              stream_type, data = chunk
+        #              if stream_type == "updates" and isinstance(data, dict) and "__interrupt__" in data:
+        #                   # Extract interrupt payload
+        #                   interrupts = data["__interrupt__"]
+        #                   if interrupts and isinstance(interrupts, list):
+        #                        interrupt_payload = interrupts[0].value # Get value from first interrupt
+        #                        print("\n\n#### INTERRUPT DETECTED (astream) ####\nPayload:", interrupt_payload, "\n\n")
+        #                        break # Exit inner async for loop to handle interrupt
+
+        #     # After iterating through the stream (or breaking due to interrupt)
+        #     if interrupt_payload:
+        #         print("--- Handling Interrupt Async (Stream) ---")
+        #         value_from_human = await handler(interrupt_payload)
+        #         print("--- Resume Value Received:", value_from_human, "---")
+        #         # Prepare resume command for the next iteration of the while loop
+        #         current_input = Command(resume=value_from_human)
+        #         # Continue the outer while loop to resume streaming
+        #     else:
+        #         # Stream finished without interrupts
+        #         print("--- ASYNC STREAM FINISHED ---")
+        #         break # Exit the while loop
+
+        # # After the loop (stream finished or fully handled interrupts)
+        # # Optionally retrieve and yield final state/output
+        # if output_node_id:
+        #     try:
+        #         final_state = await graph.aget_state(lg_config)
+        #         if final_state:
+        #             output_key = get_node_output_state_key(output_node_id)
+        #             final_output_data = final_state.values.get(output_key)
+        #             if final_output_data:
+        #                  print(f"\n--- Yielding final output from node {output_node_id} ---\n")
+        #                  yield {"final_output": final_output_data} # Yield final output in a structured way
+        #     except Exception as e:
+        #          print(f"Error retrieving final state after stream: {e}")

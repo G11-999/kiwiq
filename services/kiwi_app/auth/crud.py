@@ -80,6 +80,27 @@ class BaseDAO(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         await db.commit()
         await db.refresh(db_obj)
         return db_obj
+    
+    async def delete(self, db: AsyncSession, *, db_obj: ModelType) -> bool:
+        """
+        Delete a record by ID.
+        
+        Args:
+            db: Database session
+            id: UUID of the record to delete
+            
+        Returns:
+            bool: True if the record was found and deleted, False otherwise
+            
+        Note:
+            This is similar to remove() but returns a boolean instead of the object.
+            Useful when you only need to know if deletion succeeded but don't need the object.
+        """
+        if db_obj is not None and isinstance(db_obj, self.model):
+            await db.delete(db_obj)
+            await db.commit()
+            return True
+        return False
 
     async def remove(self, db: AsyncSession, *, id: uuid.UUID) -> Optional[ModelType]:
         """Delete a record by ID."""

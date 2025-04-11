@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 # Keep external/absolute imports
 from libs.src.db.session import get_async_db_as_manager, async_engine, init_db
-from global_config.settings import settings
+from global_config.settings import global_settings
 
 # Change imports for this module to absolute
 from kiwi_app.auth.crud import UserDAO, OrganizationDAO, RoleDAO, PermissionDAO

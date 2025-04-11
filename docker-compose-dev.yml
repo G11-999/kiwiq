@@ -106,6 +106,8 @@ services:
       # Database connection URL using other service names (requires postgres service)
       # Format: postgresql+driver://user:password@host:port/database
       PREFECT_API_DATABASE_CONNECTION_URL: "postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${PREFECT_DB}"
+      # Note: this is in ~/.prefect/storage directory by default! https://docs.prefect.io/v3/develop/results
+      PREFECT_TASKS_DEFAULT_PERSIST_RESULT: ${PREFECT_TASKS_DEFAULT_PERSIST_RESULT}
       # Optional: Set UI API URL if needed explicitly
       # PREFECT_UI_API_URL: "http://prefect-server-dev:4200/api" # Example using container name
     ports:

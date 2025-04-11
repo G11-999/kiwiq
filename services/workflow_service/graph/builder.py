@@ -23,7 +23,7 @@ from workflow_service.registry.nodes.core.base import BaseNode
 from workflow_service.registry.nodes.core.dynamic_nodes import BaseDynamicNode
 from workflow_service.config.constants import GRAPH_STATE_SPECIAL_NODE_NAME, CONFIG_REDUCER_KEY, NODE_EXECUTION_ORDER_KEY
 from workflow_service.utils.utils import get_central_state_field_key, get_node_output_state_key, is_central_state_special_node, is_dynamic_schema_node
-from workflow_service.registry.registry import MockRegistry
+from workflow_service.registry.registry import DBRegistry
 
 
 class GraphEntities(TypedDict):
@@ -61,7 +61,7 @@ class GraphBuilder:
     
     def __init__(
         self, 
-        registry: MockRegistry, 
+        registry: DBRegistry, 
         # runtime_adapter: Optional[GraphRuntimeAdapter] = None
     ):
         """
@@ -644,7 +644,7 @@ class GraphBuilder:
             if node_id in [graph_schema.input_node_id, graph_schema.output_node_id]:
                 continue
 
-            if MockRegistry.is_node_instance_hitl(node_instance) or MockRegistry.is_node_instance_router(node_instance):
+            if DBRegistry.is_node_instance_hitl(node_instance) or DBRegistry.is_node_instance_router(node_instance):
                 assert len(edge_out_from_src[node_id]) > 0, f"HITL or routing node '{node_id}' must have outgoing edges!"
                 
             # Check if node has input schema
@@ -668,6 +668,7 @@ class GraphBuilder:
         self, 
         graph_schema: GraphSchema,
         allow_non_user_editable_fields: bool = True,
+        prefect_mode: bool = False
     ) -> GraphEntities:
         """
         Build all graph entities from a graph schema.
@@ -717,6 +718,10 @@ class GraphBuilder:
         if not runtime_config.get("external"):
             runtime_config["external"] = {}
         runtime_config["external"]["registry"] = self.registry
+
+        if prefect_mode:
+            for node_id, node_instance in node_instances.items():
+                node_instance.prefect_mode = True
         
         # Instantiate the GraphEntities with all components
         graph_entities = GraphEntities(

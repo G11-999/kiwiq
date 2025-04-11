@@ -18,8 +18,8 @@ class TestAsyncRedisClient(unittest.IsolatedAsyncioTestCase):
     
     async def asyncSetUp(self):
         """Set up test environment before each test method."""
-        from global_config.settings import settings
-        self.redis_url = settings.REDIS_URL
+        from global_config.settings import global_settings
+        self.redis_url = global_settings.REDIS_URL
         if not self.redis_url:
             self.fail("REDIS_URL environment variable not set.")
         
@@ -232,6 +232,53 @@ class TestAsyncRedisClient(unittest.IsolatedAsyncioTestCase):
         
         # Only the 5s window should be rate limited (limit 3, actual 5)
         # The other windows should not be rate limited (limits 10, 20; actual 5)
+    async def test_cache_with_primitive_types(self):
+        """Test setting and retrieving cache entries with integer, float, and boolean values."""
+        # Create unique test keys for each type
+        int_key = f"{self.TEST_PREFIX}int_value"
+        float_key = f"{self.TEST_PREFIX}float_value"
+        bool_key = f"{self.TEST_PREFIX}bool_value"
+        
+        # Define test values for each primitive type
+        original_int = 42
+        original_float = 3.14159
+        original_bool = True
+        
+        # Set values in cache with a short TTL
+        await self.client.set_cache(int_key, original_int, ttl=60)
+        await self.client.set_cache(float_key, original_float, ttl=60)
+        await self.client.set_cache(bool_key, original_bool, ttl=60)
+        
+        # Retrieve values from cache
+        retrieved_int = await self.client.get_cache(int_key)
+        retrieved_float = await self.client.get_cache(float_key)
+        retrieved_bool = await self.client.get_cache(bool_key)
+        
+        # Verify the retrieved values match the originals and have correct types
+        self.assertEqual(retrieved_int, original_int, "Retrieved integer should match original")
+        self.assertIsInstance(retrieved_int, int, "Retrieved value should be an integer")
+        
+        self.assertEqual(retrieved_float, original_float, "Retrieved float should match original")
+        self.assertIsInstance(retrieved_float, float, "Retrieved value should be a float")
+        
+        self.assertEqual(retrieved_bool, original_bool, "Retrieved boolean should match original")
+        self.assertIsInstance(retrieved_bool, bool, "Retrieved value should be a boolean")
+        
+        # Test with extreme values
+        max_int = 9223372036854775807  # Max 64-bit signed integer
+        min_float = 2.2250738585072014e-308  # Min positive normalized float (64-bit)
+        
+        # Set extreme values
+        await self.client.set_cache(f"{int_key}_extreme", max_int)
+        await self.client.set_cache(f"{float_key}_extreme", min_float)
+        
+        # Retrieve extreme values
+        retrieved_max_int = await self.client.get_cache(f"{int_key}_extreme")
+        retrieved_min_float = await self.client.get_cache(f"{float_key}_extreme")
+        
+        # Verify extreme values
+        self.assertEqual(retrieved_max_int, max_int, "Retrieved extreme integer should match original")
+        self.assertEqual(retrieved_min_float, min_float, "Retrieved extreme float should match original")
 
     async def test_multi_window_sliding_behavior(self):
         """Test that multi-window rate limiting properly implements sliding windows."""

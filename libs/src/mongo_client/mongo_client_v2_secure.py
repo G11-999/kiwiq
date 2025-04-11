@@ -6,9 +6,10 @@ from typing import List, Dict, Any, Optional, Tuple, Union, Set, Iterable, TypeV
 from bson import ObjectId
 import uuid
 
+from global_config.logger import get_logger
+
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Type variables for generic return types
 T = TypeVar('T')
@@ -42,6 +43,7 @@ class AsyncMongoDBClient:
         collection: str,
         segment_names: Optional[List[str]] = None,
         text_search_fields: Optional[List[str]] = None,
+        value_filter_fields: Optional[List[str]] = None,  # fields within document such as `xyz` which will be stored under `data.xyz`; only specify xyz!
         **kwargs
     ):
         """
@@ -61,6 +63,7 @@ class AsyncMongoDBClient:
         self.collection_name = collection
         self.segment_names = segment_names or []
         self.text_search_fields = text_search_fields or []
+        self.value_filter_fields = value_filter_fields or []
         self.connection_params = kwargs
         
         # Connection objects (initialized lazily)
@@ -315,9 +318,9 @@ class AsyncMongoDBClient:
             return True
             
         for prefix in allowed_prefixes:
-            # Skip if prefix has more segments than path
-            if len(prefix) > len(path):
-                continue
+            # # Skip if prefix has more segments than path
+            # if len(prefix) > len(path):
+            #     continue
                 
             # Check if each segment matches (accounting for wildcards)
             matches = True
@@ -595,7 +598,7 @@ class AsyncMongoDBClient:
             
             # Create compound index on all segment fields
             if self.segment_names:
-                compound_index_name = "segment_compound_idx"
+                compound_index_name = f"segment_compound_idx_{'__'.join(self.segment_names)}"
                 compound_index_key = [(field, 1) for field in self.segment_names]  # 1 = ASCENDING
                 
                 # Get current indexes
@@ -631,6 +634,25 @@ class AsyncMongoDBClient:
                     logger.info("Text index created.")
                 else:
                     logger.info(f"Text index '{text_index_name}' already exists.")
+            
+            # Create indexes on value filter fields if configured
+            if self.value_filter_fields:
+                for field in self.value_filter_fields:
+                    value_index_name = f"data_{field}_idx"
+                    
+                    # Get current indexes if we haven't already
+                    indexes = await collection.index_information()
+                    
+                    if value_index_name not in indexes:
+                        logger.info(f"Creating index on value filter field: data.{field}")
+                        await collection.create_index(
+                            [(f"data.{field}", 1)],
+                            name=value_index_name,
+                            background=True
+                        )
+                        logger.info(f"Value filter index '{value_index_name}' created.")
+                    else:
+                        logger.info(f"Value filter index '{value_index_name}' already exists.")
             
             # Make sure _id field is indexed (should be by default)
             await collection.create_index([("_id", 1)])
@@ -1040,8 +1062,8 @@ class AsyncMongoDBClient:
                             path_segments[field] = doc[field]
                     
                     # Skip documents that don't have expected segments
-                    if len(path_segments) < len(pattern):
-                        continue
+                    # if len(path_segments) < len(pattern):
+                    #     continue
                     
                     # Return paths as lists
                     path_list = self._segments_to_path(path_segments)
@@ -1061,7 +1083,8 @@ class AsyncMongoDBClient:
         key_pattern: List[str] = ["*", "*"],
         text_search_query: Optional[str] = None,
         value_filter: Optional[Dict[str, Any]] = None,
-        allowed_prefixes: Optional[List[List[str]]] = None
+        allowed_prefixes: Optional[List[List[str]]] = None,
+        value_sort_by: Optional[List[Tuple[str, int]]] = None
     ) -> List[Dict[str, Any]]:
         """
         Searches objects by pattern, text search, and value filters.
@@ -1074,7 +1097,7 @@ class AsyncMongoDBClient:
             text_search_query: Optional text search query
             value_filter: Optional data field filters
             allowed_prefixes: Optional list of allowed path prefixes as lists
-            
+            sort_by: Optional list of sort fields and directions
         Returns:
             List of matching documents
             
@@ -1119,8 +1142,13 @@ class AsyncMongoDBClient:
             cursor = collection.find(final_query)
             
             # Add sort for text search relevance if needed
+            value_sort_by = value_sort_by or []
+            value_sort_by = [(f"data.{field}", _order) for field, _order in value_sort_by]
             if text_query:
-                cursor = cursor.sort([("score", {"$meta": "textScore"})])
+                value_sort_by.append(("score", {"$meta": "textScore"}))
+            
+            if value_sort_by:
+                cursor = cursor.sort(value_sort_by)
             
             results = []
             async for doc in cursor:
@@ -1303,16 +1331,18 @@ class AsyncMongoDBClient:
             id_query = {"_id": {"$in": ids}}
             
             try:
+                # Create a mapping from document ID to path for O(1) lookups
+                id_to_path_set = {self._path_to_id(path): str(path) for path in allowed_paths}
+                
                 # Fetch all matching documents in one query
                 async for doc in collection.find(id_query):
-                    # Match document to path
+                    # Get the document ID
                     doc_id = doc["_id"]
                     
-                    # Find original path by ID
-                    for path in allowed_paths:
-                        if self._path_to_id(path) == doc_id:
-                            results[str(path)] = doc
-                            break
+                    # Use the mapping for O(1) lookup instead of iterating through paths
+                    allowed_path_str = id_to_path_set.get(doc_id, None)
+                    if allowed_path_str is not None:
+                        results[allowed_path_str] = doc
             except Exception as e:
                 logger.error(f"Error in batch fetch operation: {e}")
         

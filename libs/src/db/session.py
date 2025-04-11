@@ -21,7 +21,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from global_config.settings import settings
+from global_config.settings import global_settings
 
 # import services / libs models here for migrations discovery!
 # e.g., from services.my_service.models import MyModel
@@ -30,11 +30,11 @@ from global_config.settings import settings
 # Database URLs and Common Settings
 # ========================================
 
-DATABASE_URL_SYNC = settings.DATABASE_URL.replace('postgresql://', 'postgresql+psycopg://')
-DATABASE_URL_ASYNC = settings.DATABASE_URL.replace('postgresql://', 'postgresql+psycopg://')
-ENGINE_ECHO = settings.DB_ECHO
-POOL_SIZE = settings.DB_POOL_SIZE
-MAX_OVERFLOW = settings.DB_MAX_OVERFLOW
+DATABASE_URL_SYNC = global_settings.DATABASE_URL.replace('postgresql://', 'postgresql+psycopg://')
+DATABASE_URL_ASYNC = global_settings.DATABASE_URL.replace('postgresql://', 'postgresql+psycopg://')
+ENGINE_ECHO = global_settings.DB_ECHO
+POOL_SIZE = global_settings.DB_POOL_SIZE
+MAX_OVERFLOW = global_settings.DB_MAX_OVERFLOW
 
 # ========================================
 # SQLModel Engine and Session Setup
@@ -87,6 +87,7 @@ pool_connection_kwargs = {
 @contextmanager
 def get_pool() -> Generator[ConnectionPool, None, None]:
     """
+    NOTE: this uses global_settings.LANGGRAPH_DATABASE_URL and meant to be used for LangGraph checkpointer
     Get a synchronous psycopg connection pool as a context manager.
 
     Provides a ConnectionPool configured for synchronous PostgreSQL access.
@@ -102,7 +103,7 @@ def get_pool() -> Generator[ConnectionPool, None, None]:
                     cur.execute("SELECT 1")
     """
     pool = ConnectionPool(
-        conninfo=settings.DATABASE_URL, # Raw URL is fine for psycopg directly
+        conninfo=global_settings.LANGGRAPH_DATABASE_URL, # Raw URL is fine for psycopg directly
         min_size=POOL_SIZE,
         max_size=MAX_OVERFLOW,
         kwargs=pool_connection_kwargs,
@@ -118,6 +119,7 @@ def get_pool() -> Generator[ConnectionPool, None, None]:
 @asynccontextmanager
 async def get_async_pool() -> AsyncGenerator[AsyncConnectionPool, None]:
     """
+    NOTE: this uses global_settings.LANGGRAPH_DATABASE_URL and meant to be used for LangGraph checkpointer
     Get an asynchronous psycopg connection pool as an async context manager.
 
     Provides an AsyncConnectionPool configured for asynchronous PostgreSQL access.
@@ -133,7 +135,7 @@ async def get_async_pool() -> AsyncGenerator[AsyncConnectionPool, None]:
                     await acur.execute("SELECT 1")
     """
     pool = AsyncConnectionPool(
-        conninfo=settings.DATABASE_URL, # Raw URL is fine for psycopg directly
+        conninfo=global_settings.LANGGRAPH_DATABASE_URL, # Raw URL is fine for psycopg directly
         min_size=POOL_SIZE,
         max_size=MAX_OVERFLOW,
         kwargs=pool_connection_kwargs,

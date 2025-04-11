@@ -6,6 +6,8 @@ import os
 import atexit
 from typing import List, Optional, Union
 
+from global_config.settings import global_settings, LOG_ROOT
+
 # --- Global Queue and Listener ---
 # Using a single global queue simplifies setup.
 # The listener is also global to manage its lifecycle (start/stop).
@@ -176,6 +178,13 @@ def get_logger(name: str) -> logging.Logger:
     Returns:
         logging.Logger: The logger instance.
     """
+    setup_logging(
+        log_level=global_settings.LOG_LEVEL,
+        log_to_console=global_settings.APP_ENV == "DEV",
+        log_to_file=True,  # APP_ENV == "PROD",
+        log_dir=LOG_ROOT,
+        log_filename=global_settings.LOG_FILE_NAME
+    )
     # Simply return the logger. Configuration is handled at the root level.
     return logging.getLogger(name)
 

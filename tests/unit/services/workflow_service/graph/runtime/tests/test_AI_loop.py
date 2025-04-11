@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field, model_validator
 from typing import Dict, List, Any, Set
 import json
 from langchain_core.load import dumpd, dumps, load, loads
+from kiwi_app.workflow_app.constants import LaunchStatus
 from workflow_service.config.constants import GRAPH_STATE_SPECIAL_NODE_NAME
 from workflow_service.utils.utils import get_node_output_state_key
 
@@ -41,7 +42,7 @@ from workflow_service.graph.graph import (
 from workflow_service.graph.builder import GraphBuilder
 from workflow_service.registry.nodes.core.base import BaseNode, BaseSchema
 from workflow_service.registry.nodes.core.dynamic_nodes import DynamicRouterNode, HITLNode, DynamicSchema, DynamicSchemaFieldConfig, InputNode, OutputNode, RouterSchema, BaseDynamicNode
-from workflow_service.registry.registry import MockRegistry
+from workflow_service.registry.registry import DBRegistry
 from workflow_service.graph.runtime.adapter import LangGraphRuntimeAdapter
 from workflow_service.registry.schemas.reducers import ReducerRegistry
 
@@ -114,6 +115,7 @@ class AIGeneratorNode(BaseNode[MessagesWithUserPromptSchema, MessagesSchema, Non
     """
     node_name: ClassVar[str] = "ai_generator"
     node_version: ClassVar[str] = "1.0.0"
+    env_flag: ClassVar[LaunchStatus] = LaunchStatus.EXPERIMENTAL
     
     input_schema_cls: ClassVar[Type[MessagesWithUserPromptSchema]] = MessagesWithUserPromptSchema
     output_schema_cls: ClassVar[Type[MessagesSchema]] = MessagesSchema
@@ -194,6 +196,8 @@ class HumanReviewNode(HITLNode):
     """
     node_name: ClassVar[str] = f"{HITL_NODE_NAME_PREFIX}review"
     node_version: ClassVar[str] = "1.0.0"
+
+    env_flag: ClassVar[LaunchStatus] = LaunchStatus.EXPERIMENTAL
     
     output_schema_cls: ClassVar[Type[UserInputSchema]] = UserInputSchema
     # config_schema_cls: ClassVar[Type[None]] = None
@@ -270,6 +274,7 @@ class ApprovalRouterNode(DynamicRouterNode):
     """
     node_name: ClassVar[str] = "approval_router"
     node_version: ClassVar[str] = "1.0.0"
+    env_flag: ClassVar[LaunchStatus] = LaunchStatus.EXPERIMENTAL
 
     config_schema_cls: ClassVar[Type[ApprovalRouterConfigSchema]] = ApprovalRouterConfigSchema
     output_schema_cls: ClassVar[Type[ApprovalRouterChoiceOutputSchema]] = ApprovalRouterChoiceOutputDynamicSchema  # ApprovalRouterChoiceOutputSchema  ApprovalRouterChoiceOutputDynamicSchema
@@ -288,6 +293,7 @@ class ApprovalRouterNode(DynamicRouterNode):
         Returns:
             Dict: Contains the routing decision
         """
+        # print(f"\n\n\n\n--------->?ApprovalRouterNode.process() called with \n\n\n\n--------->?input_data: \n{input_data.model_dump_json(indent=4)} and \n\n\n\n--------->?config: \n{self.config.model_dump_json(indent=4)}")
         # Get data from central state
         check_value = getattr(input_data, self.config.field_name)
         route_if_true = self.config.route_if_true
@@ -323,6 +329,7 @@ class FinalProcessorNode(BaseDynamicNode):
     """
     node_name: ClassVar[str] = "final_processor"
     node_version: ClassVar[str] = "1.0.0"
+    env_flag: ClassVar[LaunchStatus] = LaunchStatus.EXPERIMENTAL
     
     input_schema_cls = DynamicSchema
     output_schema_cls = FinalOutputSchema
@@ -580,14 +587,14 @@ def create_ai_loop_graph() -> GraphSchema:
 # Test Execution Functions
 # ===============================
 
-def setup_registry() -> MockRegistry:
+def setup_registry() -> DBRegistry:
     """
     Set up a MockRegistry with all test nodes registered.
     
     Returns:
         MockRegistry: The configured registry
     """
-    registry = MockRegistry()
+    registry = DBRegistry()
     
     # Register built-in nodes
     registry.register_node(HITLNode)
@@ -595,7 +602,7 @@ def setup_registry() -> MockRegistry:
     registry.register_node(OutputNode)
     
     # Register custom nodes
-    registry.register_node(HumanReviewNode)
+    registry.register_node(HumanReviewNode) 
     registry.register_node(AIGeneratorNode)
     registry.register_node(ApprovalRouterNode)
     registry.register_node(FinalProcessorNode)

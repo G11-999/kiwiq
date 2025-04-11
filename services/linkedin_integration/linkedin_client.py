@@ -23,7 +23,7 @@ from linkedin_integration.models import (
     LinkedInComment,
     LinkedInReaction, LinkedInAnalytics, LinkedInPostAnalytics
 )
-from global_config.settings import settings
+from global_config.settings import global_settings
 
 logger = logging.getLogger(__name__)
 
@@ -189,7 +189,7 @@ class LinkedInClient:
         client_id: str,
         client_secret: str,
         access_token: Optional[str] = None,
-        version: str = settings.LINKEDIN_API_VERSION,
+        version: str = global_settings.LINKEDIN_API_VERSION,
         enable_caching: bool = True
     ):
         """

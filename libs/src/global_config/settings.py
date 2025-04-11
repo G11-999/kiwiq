@@ -7,7 +7,7 @@ environment variables with sensible defaults.
 import os
 from pathlib import Path
 from typing import Any, Dict, Optional, Literal
-from global_config.logger import setup_logging
+# from global_config.logger import setup_logging
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 
@@ -43,7 +43,9 @@ class Settings(BaseSettings):
     
     # Database settings
     DATABASE_URL: str = ""  # Default Postgres for development
-    DB_ECHO: bool = True  # SQL query logging
+    LANGGRAPH_DATABASE_NAME: str = "langgraph_db"
+    LANGGRAPH_DATABASE_URL: Optional[str] = None
+    DB_ECHO: bool = os.getenv("DB_ECHO_STR", "false").lower() == "true"  # SQL query logging
     DB_POOL_SIZE: int = 5
     DB_MAX_OVERFLOW: int = 10
     DB_TABLE_NAMESPACE_PREFIX: str = "kiwiq_"
@@ -76,7 +78,7 @@ class Settings(BaseSettings):
     LINKEDIN_API_VERSION: str = "202502"
     LINKEDIN_REDIRECT_URL: str = ""
 
-    LOG_LEVEL: str = "INFO"
+    LOG_LEVEL: str = "WARNING"
     LOG_FILE_NAME: str = "kiwiq_backend.log"
     
     model_config = SettingsConfigDict(
@@ -97,13 +99,9 @@ class Settings(BaseSettings):
 
 
 # Create a global settings instance
-settings = Settings() 
-
+global_settings = Settings() 
+if not global_settings.LANGGRAPH_DATABASE_URL:
+    global_settings.LANGGRAPH_DATABASE_URL = "/".join(global_settings.DATABASE_URL.split("/")[:-1] + [global_settings.LANGGRAPH_DATABASE_NAME])
+# print(global_settings.DATABASE_URL)
 # Setup up global logging for this module
-setup_logging(
-    log_level=settings.LOG_LEVEL,
-    log_to_console=settings.APP_ENV == "DEV",
-    log_to_file=True,  # settings.APP_ENV == "PROD",
-    log_dir=LOG_ROOT,
-    log_filename=settings.LOG_FILE_NAME
-)
+

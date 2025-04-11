@@ -10,6 +10,7 @@ from typing import Any, ClassVar, Dict, List, Optional, Type, Union
 import re
 from pydantic import Field
 
+from kiwi_app.workflow_app.constants import LaunchStatus
 from workflow_service.config.constants import PROMPT_CONSTRUCTOR_DELIMITER
 from workflow_service.registry.nodes.core.base import BaseNode, BaseSchema
 from workflow_service.registry.nodes.core.dynamic_nodes import DynamicSchema, BaseDynamicNode
@@ -44,6 +45,7 @@ class PromptConstructorNode(BaseDynamicNode):
     """
     node_name: ClassVar[str] = "prompt_constructor"
     node_version: ClassVar[str] = "0.1.0"
+    env_flag: ClassVar[LaunchStatus] = LaunchStatus.DEVELOPMENT
     
     input_schema_cls: ClassVar[Type[DynamicSchema]] = DynamicSchema
     output_schema_cls: ClassVar[Type[DynamicSchema]] = DynamicSchema

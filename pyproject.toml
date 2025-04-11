@@ -8,7 +8,7 @@ package-mode = false
 # packages = [{include = "global_config", from = "libs"}]
 
 [tool.poetry.dependencies]
-python = "^3.12"
+python = ">=3.12,<3.14"
 fastapi = "^0.115.12"
 uvicorn = "^0.27.0"
 pydantic = "^2.11.1"
@@ -54,6 +54,10 @@ passlib = "^1.7.4"
 fastapi-sso = "^0.18.0"
 bcrypt = "^4.3.0"
 argon2-cffi = "^23.1.0"
+faststream = {extras = ["rabbit"], version = "^0.5.37"}
+datamodel-code-generator = "^0.28.5"
+prefect = "^3.3.3"
+jsonschema = "^4.23.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^25.1.0"

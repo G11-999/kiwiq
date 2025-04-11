@@ -8,17 +8,16 @@ from bson import ObjectId
 # Import the AsyncMongoDBClient
 from mongo_client import AsyncMongoDBClient
 
-# Configure logging - set to higher level to reduce test noise
-logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+from global_config.logger import get_logger
+logger = get_logger(__name__)
 
 class TestOptimizedMongoDBClient(unittest.IsolatedAsyncioTestCase):
     """Comprehensive test case for the optimized AsyncMongoDBClient."""
     
     async def asyncSetUp(self):
         """Set up test environment before each test method."""
-        from global_config.settings import settings
-        self.mongo_uri = settings.MONGO_URL
+        from global_config.settings import global_settings
+        self.mongo_uri = global_settings.MONGO_URL
         
         # Use a test database and collection
         self.database = "test_db"
@@ -43,6 +42,7 @@ class TestOptimizedMongoDBClient(unittest.IsolatedAsyncioTestCase):
         )
         
         # Setup indexes and verify connection
+        setup_success = await self.client.drop_collection(confirm=True)
         setup_success = await self.client.setup()
         if not setup_success:
             self.fail("Failed to set up MongoDB client and indexes.")
@@ -71,7 +71,76 @@ class TestOptimizedMongoDBClient(unittest.IsolatedAsyncioTestCase):
     # =========================================================================
     # PATH-BASED ID TESTS
     # =========================================================================
-    
+    async def test_shorter_path_than_segments(self):
+        """Test creating and accessing objects with paths shorter than defined segment names."""
+        # Create test objects with shorter paths than the defined segment names
+        short_paths_data = [
+            ([self.TEST_PREFIX], {"level": "root"}),
+            ([self.TEST_PREFIX, "level1"], {"level": "one"}),
+            ([self.TEST_PREFIX, "level1", "level2"], {"level": "two"})
+        ]
+        
+        # Create each object
+        for path, data in short_paths_data:
+            doc_id = await self.client.create_object(path, data)
+            self.assertIsInstance(doc_id, str, f"create_object should return a string ID for path {path}")
+            
+            # Fetch and verify
+            obj = await self.client.fetch_object(path)
+            self.assertIsNotNone(obj, f"Failed to fetch object with path {path}")
+            self.assertEqual(obj["data"]["level"], data["level"], f"Data mismatch for path {path}")
+        
+        # Test listing objects with wildcard permissions
+        # Using ["*"] should allow access to all objects regardless of path length
+        all_objects = await self.client.list_objects(
+            [self.TEST_PREFIX, "*", "*", "*"],
+            allowed_prefixes=[["*"]]
+        )
+        # import ipdb; ipdb.set_trace()
+        self.assertEqual(len(all_objects), 3, "Should list all 3 objects with wildcard permission")
+        
+        # Test fetching specific objects with wildcard permissions
+        for path, data in short_paths_data:
+            obj = await self.client.fetch_object(
+                path,
+                allowed_prefixes=[["*"]]
+            )
+            self.assertIsNotNone(obj, f"Failed to fetch object with path {path} using wildcard permission")
+            self.assertEqual(obj["data"]["level"], data["level"], f"Data mismatch for path {path}")
+        
+        # Test updating with wildcard permissions
+        root_path = [self.TEST_PREFIX]
+        updated_data = {"level": "root-updated", "new_field": True}
+        updated_id = await self.client.update_object(
+            root_path,
+            updated_data,
+            allowed_prefixes=[["*"]]
+        )
+        self.assertIsNotNone(updated_id, "Update with wildcard permission should succeed")
+        
+        # Verify update
+        updated_obj = await self.client.fetch_object(root_path)
+        self.assertEqual(updated_obj["data"]["level"], "root-updated", "Object not updated correctly")
+        self.assertTrue(updated_obj["data"]["new_field"], "New field not added correctly")
+        
+        # Test deleting with wildcard permissions
+        deleted = await self.client.delete_object(
+            root_path,
+            allowed_prefixes=[["*"]]
+        )
+        self.assertTrue(deleted, "Delete with wildcard permission should succeed")
+        
+        # Verify deletion
+        deleted_obj = await self.client.fetch_object(root_path)
+        self.assertIsNone(deleted_obj, "Object should be deleted")
+        
+        # Count remaining objects
+        count = await self.client.count_objects(
+            [self.TEST_PREFIX, "*", "*", "*"],
+            allowed_prefixes=[["*"]]
+        )
+        self.assertEqual(count, 2, "Should have 2 objects remaining")
+
     async def test_path_based_id(self):
         """Test that document IDs are generated from paths and are consistent."""
         # Create test paths
@@ -754,7 +823,7 @@ class TestOptimizedMongoDBClient(unittest.IsolatedAsyncioTestCase):
         
         # Perform batch fetch
         results = await self.client.batch_fetch_objects(fetch_paths)
-        
+        # import ipdb; ipdb.set_trace()
         # Verify results
         self.assertEqual(len(results), 4, "Should return 4 results")
         

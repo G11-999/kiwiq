@@ -6,15 +6,15 @@ from fastapi_sso.sso.linkedin import LinkedInSSO
 from pydantic import BaseModel, HttpUrl, Field, EmailStr
 
 from urllib.parse import urlencode
-from global_config.settings import settings
+from global_config.settings import global_settings
 from kiwi_app.settings import settings
 from kiwi_app.auth.utils import auth_logger
 from kiwi_app.auth.schemas import LinkedInUser
 
 # Load configuration from settings
-LINKEDIN_CLIENT_ID = settings.LINKEDIN_CLIENT_ID
-LINKEDIN_CLIENT_SECRET = settings.LINKEDIN_CLIENT_SECRET
-LINKEDIN_REDIRECT_URI = settings.LINKEDIN_REDIRECT_URI
+LINKEDIN_CLIENT_ID = global_settings.LINKEDIN_CLIENT_ID
+LINKEDIN_CLIENT_SECRET = global_settings.LINKEDIN_CLIENT_SECRET
+LINKEDIN_REDIRECT_URL = global_settings.LINKEDIN_REDIRECT_URL
 # LINKEDIN_AUTHORIZATION_URL = "https://www.linkedin.com/oauth/v2/authorization"
 # LINKEDIN_ACCESS_TOKEN_URL = "https://www.linkedin.com/oauth/v2/accessToken"
 # LINKEDIN_USER_INFO_URL = "https://api.linkedin.com/v2/userinfo"
@@ -26,7 +26,7 @@ LINKEDIN_REDIRECT_URI = settings.LINKEDIN_REDIRECT_URI
 allow_insecure = os.getenv("OAUTHLIB_INSECURE_TRANSPORT") == "1"
 
 # Basic validation
-if not all([LINKEDIN_CLIENT_ID, LINKEDIN_CLIENT_SECRET, LINKEDIN_REDIRECT_URI]):
+if not all([LINKEDIN_CLIENT_ID, LINKEDIN_CLIENT_SECRET, LINKEDIN_REDIRECT_URL]):
     # You might want to raise a more specific configuration error or log a warning
     print("Warning: LinkedIn OAuth2 credentials or redirect URI not fully configured.")
     # Depending on your setup, you might want to disable LinkedIn login if not configured.
@@ -36,7 +36,7 @@ else:
     linkedin_sso = LinkedInSSO(
         client_id=LINKEDIN_CLIENT_ID,
         client_secret=LINKEDIN_CLIENT_SECRET,
-        redirect_uri=LINKEDIN_REDIRECT_URI,
+        redirect_uri=LINKEDIN_REDIRECT_URL,
         allow_insecure_http=allow_insecure,
         # Specify required scopes. 'openid', 'profile', 'email' are common for user info.
         # Check LinkedIn documentation for available scopes: https://learn.microsoft.com/en-us/linkedin/shared/integrations/people/profile-api?context=linkedin/consumer/context#scopes

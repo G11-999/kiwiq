@@ -2,6 +2,7 @@
 Constants for the authentication and authorization module.
 """
 from enum import Enum
+from kiwi_app.workflow_app.constants import WorkflowPermissions
 
 # --- Default Role Names ---
 class DefaultRoles(str, Enum):
@@ -21,12 +22,12 @@ class Permissions(str, Enum):
     ORG_MANAGE_ROLES = "org:manage_roles" # Create/update/delete custom roles within the org
     ORG_MANAGE_BILLING = "org:manage_billing"
 
-    # Workflow Management (within the org)
-    WORKFLOW_CREATE = "workflow:create"
-    WORKFLOW_READ = "workflow:read"
-    WORKFLOW_EXECUTE = "workflow:execute"
-    WORKFLOW_UPDATE = "workflow:update"
-    WORKFLOW_DELETE = "workflow:delete"
+    # # Workflow Management (within the org)
+    # WORKFLOW_CREATE = "workflow:create"
+    # WORKFLOW_READ = "workflow:read"
+    # WORKFLOW_EXECUTE = "workflow:execute"
+    # WORKFLOW_UPDATE = "workflow:update"
+    # WORKFLOW_DELETE = "workflow:delete"
 
     # Add other org-specific permissions as needed...
 
@@ -39,22 +40,32 @@ def get_permission_description(permission: Permissions) -> str:
 # This defines the initial permissions for the default roles within an organization.
 DEFAULT_ROLE_PERMISSIONS = {
     DefaultRoles.ADMIN: [
-        *list(Permissions) # Grant all permissions
+        *list(Permissions), *list(WorkflowPermissions) # Grant all permissions
     ],
     DefaultRoles.TEAM_MEMBER: [
         Permissions.ORG_READ, # Can see org details
         # Permissions.ORG_VIEW_MEMBERS, # Can see org details
-        Permissions.WORKFLOW_CREATE,
-        Permissions.WORKFLOW_READ,
-        Permissions.WORKFLOW_EXECUTE,
-        Permissions.WORKFLOW_UPDATE,
-        Permissions.WORKFLOW_DELETE,
+        WorkflowPermissions.WORKFLOW_CREATE,
+        WorkflowPermissions.WORKFLOW_READ,
+        WorkflowPermissions.WORKFLOW_EXECUTE,
+        WorkflowPermissions.WORKFLOW_UPDATE,
+        WorkflowPermissions.WORKFLOW_DELETE,
+
+        WorkflowPermissions.RUN_READ,
+        WorkflowPermissions.RUN_MANAGE,
+
+        WorkflowPermissions.TEMPLATE_READ,
+        WorkflowPermissions.TEMPLATE_CREATE,
+        WorkflowPermissions.TEMPLATE_UPDATE,
+        WorkflowPermissions.TEMPLATE_DELETE,
     ],
     DefaultRoles.BILLING: [
         Permissions.ORG_READ,
         Permissions.ORG_MANAGE_BILLING,
     ],
 }
+
+# print(DEFAULT_ROLE_PERMISSIONS[DefaultRoles.ADMIN])
 
 # --- Default Org / User Info ---
 DEFAULT_ORG_NAME = "KiwiQ AI"

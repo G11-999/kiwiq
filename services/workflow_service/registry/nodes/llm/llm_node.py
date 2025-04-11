@@ -34,8 +34,9 @@ from langchain.chat_models import init_chat_model
 from langchain_community.chat_models import ChatPerplexity
 
 
+from kiwi_app.workflow_app.constants import LaunchStatus
 from workflow_service.config.settings import settings
-from workflow_service.registry.registry import MockRegistry
+from workflow_service.registry.registry import DBRegistry
 from workflow_service.registry.nodes.core.base import BaseNode, BaseSchema
 from workflow_service.registry.nodes.core.dynamic_nodes import ConstructDynamicSchema, DynamicSchema
 from workflow_service.registry.nodes.llm.config import LLMModelProvider, PROVIDER_MODEL_MAP, AnthropicModels, AWS_REGION, ModelMetadata, THINKING_MESSAGE_TYPES, REDACED_THINKING_MESSAGE_TYPES, GEMINI_PARAM_KEY_OVERRIDES, PARAM_KEY_OVERRIDES
@@ -244,7 +245,7 @@ class LLMStructuredOutputSchema(BaseSchema):
     def is_output_str(self):
         return self.schema_from_registry is None and self.dynamic_schema_spec is None
 
-    def get_schema(self, registry: MockRegistry = None, built_schema_name = None):
+    def get_schema(self, registry: DBRegistry = None, built_schema_name = None):
         """
         Get schema config from registry
 
@@ -462,6 +463,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
     """
     node_name: ClassVar[str] = "llm"
     node_version: ClassVar[str] = "1.0.0"
+    env_flag: ClassVar[LaunchStatus] = LaunchStatus.DEVELOPMENT
     
     input_schema_cls: ClassVar[Type[LLMNodeInputSchema]] = LLMNodeInputSchema
     output_schema_cls: ClassVar[Type[LLMNodeOutputSchema]] = LLMNodeOutputSchema
@@ -490,7 +492,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
         # Prepare messages using node config
         messages_for_model, current_messages = self._prepare_messages(input_data, model_metadata)
 
-        registry: MockRegistry = external_config.get('registry')
+        registry: DBRegistry = external_config.get('registry')
         
         # Configure structured output if specified in node config
         if self.config.output_schema and (not self.config.output_schema.is_output_str()):
@@ -668,13 +670,13 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
 
         return messages, current_messages
     
-    def _get_structured_output_schema(self, registry: MockRegistry) -> Any:
+    def _get_structured_output_schema(self, registry: DBRegistry) -> Any:
         """Get structured output schema from node config."""
         if self.config.output_schema:
             return self.config.output_schema.get_schema(registry, built_schema_name=f"{self.__class__.node_name}StructuredOutputSchema")
         return None
     
-    def _apply_structured_output(self, model: Any, registry: MockRegistry, model_metadata: ModelMetadata) -> Any:
+    def _apply_structured_output(self, model: Any, registry: DBRegistry, model_metadata: ModelMetadata) -> Any:
         """Apply structured output from node config."""
         try:
             output_schema = self._get_structured_output_schema(registry)
@@ -690,7 +692,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
         except Exception as e:
             raise ValueError(f"Structured output configuration failed: {str(e)}") from e
 
-    def _bind_tools(self, model: Any, model_metadata: ModelMetadata, registry: MockRegistry) -> Any:
+    def _bind_tools(self, model: Any, model_metadata: ModelMetadata, registry: DBRegistry) -> Any:
         """Bind tools from node config."""
         assert model_metadata.tool_use, f"Model {model_metadata.provider.value} -> `{model_metadata.model_name}` does not support tool use!"
         tools = []

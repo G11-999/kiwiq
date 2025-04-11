@@ -18,6 +18,15 @@ from kiwi_app.auth.models import (
     Organization,
     User,
 )
+from kiwi_app.workflow_app.models import (
+    NodeTemplate,
+    SchemaTemplate,
+    PromptTemplate,
+    Workflow,
+    WorkflowRun,
+    UserNotification,
+    HITLJob,
+)
 # Import the function to get a database session
 # This is a placeholder; replace with your project's actual session provider.
 # Common patterns include a context manager or a dependency injection function.
@@ -49,6 +58,17 @@ logger = logging.getLogger(__name__)
 #
 # If you add new models with relationships, carefully update this list.
 MODELS_TO_DELETE: List[Type[SQLModel]] = [
+    # NOTE: should be deleted in order to not trigger DB constraints on foreign keys!
+    # Workflow Models
+    HITLJob,
+    UserNotification,
+    WorkflowRun,
+    Workflow,
+    PromptTemplate,
+    SchemaTemplate,
+    NodeTemplate,
+    
+    # Auth Models
     RefreshToken,
     RolePermission,
     UserOrganizationRole,

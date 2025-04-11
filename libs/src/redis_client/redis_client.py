@@ -12,8 +12,8 @@ from urllib.parse import urlparse, urlunparse
 from redis.exceptions import ConnectionError, AuthenticationError, TimeoutError, ResponseError, RedisError
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+from global_config.logger import get_logger
+logger = get_logger(__name__)
 
 T = TypeVar('T')
 

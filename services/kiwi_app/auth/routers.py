@@ -2,7 +2,7 @@ from typing import List, Any, Optional
 import uuid
 import logging # Keep standard logging import if needed elsewhere
 
-from fastapi import APIRouter, Depends, HTTPException, status, Body, Query, Request, Security, BackgroundTasks, Cookie, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Body, Query, Request, Security, BackgroundTasks, Cookie, Response, Path
 from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm # Special form for username/password
 from sqlalchemy.exc import IntegrityError
@@ -500,6 +500,49 @@ async def get_organization_users_endpoint(
     except Exception as e:
         auth_logger.exception(f"Error retrieving users for org {org_id} by user {current_user.email}", exc_info=e)
         raise HTTPException(status_code=500, detail="An internal error occurred.")
+
+@router.delete("/organizations/{org_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["organizations"])
+async def delete_organization_endpoint(
+    org_id: uuid.UUID = Path(..., description="The ID of the organization to delete"),
+    db: AsyncSession = Depends(get_async_session),
+    active_org_id: uuid.UUID = Depends(dependencies.get_active_org_id),
+    # Only superusers can delete organizations
+    current_user: models.User = Depends(dependencies.SpecificOrgPermissionChecker([Permissions.ORG_DELETE])),
+    auth_service: services.AuthService = Depends(dependencies.get_auth_service)
+):
+    """
+    Delete an organization and all its associated data.
+    
+    This is a destructive operation that can only be performed by superusers.
+    It removes the organization, all user-organization links, and potentially
+    other associated data depending on the implementation in the service layer.
+    
+    Args:
+        org_id: UUID of the organization to delete
+        
+    Returns:
+        204 No Content on successful deletion
+        
+    Raises:
+        HTTPException: 
+            - 404 if organization not found
+            - 403 if user lacks permission (handled by dependency)
+            - 500 for unexpected errors
+    """
+    if active_org_id == org_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete the active organization.")
+    if active_org_id is None and (not current_user.is_superuser):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Active organization not set and user is not a superuser.")
+    try:
+        await auth_service.delete_organization(db=db, org_id=org_id, current_user=current_user)
+        auth_logger.info(f"Organization {org_id} deleted by superuser '{current_user.email}'")
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    except OrganizationNotFoundException as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=e.detail)
+    except Exception as e:
+        auth_logger.exception(f"Error deleting organization {org_id} by superuser {current_user.email}", exc_info=e)
+        raise HTTPException(status_code=500, detail="An internal error occurred while deleting the organization.")
+
 
 
 @router.post("/organizations/{org_id}/users", response_model=schemas.UserOrganizationRoleReadWithUser, status_code=status.HTTP_201_CREATED, tags=["organizations"])
