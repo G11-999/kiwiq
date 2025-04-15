@@ -14,7 +14,7 @@ from kiwi_app.auth.crud import UserDAO, OrganizationDAO, RoleDAO, PermissionDAO
 from kiwi_app.auth import models, schemas, security
 from kiwi_app.auth.utils import auth_logger
 from kiwi_app.auth.constants import (
-    Permissions,
+    ALL_PERMISSIONS,
     DefaultRoles,
     DEFAULT_ROLE_PERMISSIONS,
     DEFAULT_ORG_NAME,
@@ -50,7 +50,7 @@ async def setup_auth_defaults():
             auth_logger.info("1. Ensuring default permissions exist...")
             permission_inputs = [
                 schemas.PermissionCreate(name=p.value, description=p.name.replace("_", " ").title())
-                for p in Permissions
+                for p in ALL_PERMISSIONS
             ]
             # Use DAO class directly for script context
             permissions_map = {p.name: p for p in await PermissionDAO().get_or_create_multi(db, permissions=permission_inputs)}

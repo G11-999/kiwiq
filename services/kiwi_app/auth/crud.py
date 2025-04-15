@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload, joinedload
 from sqlmodel import SQLModel
 
 from kiwi_app.auth.security import get_password_hash, verify_password
-from kiwi_app.auth.constants import Permissions, DefaultRoles
+from kiwi_app.auth.constants import Permissions, DefaultRoles, ALL_PERMISSIONS
 from kiwi_app.auth import models, schemas
 from kiwi_app.auth.utils import auth_logger, datetime_now_utc # Import the auth_logger and datetime_now_utc
 from kiwi_app.auth.crud_util import build_load_options
@@ -270,7 +270,7 @@ class UserDAO(BaseDAO[models.User, schemas.UserCreate, schemas.UserAdminUpdate])
         all_permissions: Set[str] = set()
         if user.is_superuser:
             # Superusers implicitly have all permissions
-            return {p.value for p in Permissions}
+            return {p.value for p in ALL_PERMISSIONS}
 
         if user.organization_links:
             for link in user.organization_links:

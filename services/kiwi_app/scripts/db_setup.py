@@ -14,7 +14,7 @@ from kiwi_app.auth.crud import UserDAO, OrganizationDAO, RoleDAO, PermissionDAO
 from kiwi_app.auth import models, schemas, security
 from kiwi_app.auth.utils import auth_logger
 from kiwi_app.auth.constants import (
-    Permissions,
+    ALL_PERMISSIONS,
     DefaultRoles,
     DEFAULT_ROLE_PERMISSIONS,
     DEFAULT_ORG_NAME,
@@ -50,7 +50,7 @@ async def setup_auth_defaults():
             auth_logger.info("1. Ensuring default permissions exist...")
             permission_inputs = [
                 schemas.PermissionCreate(name=p.value, description=p.name.replace("_", " ").title())
-                for p in Permissions
+                for p in ALL_PERMISSIONS
             ]
             # Use DAO class directly for script context
             permissions_map = {p.name: p for p in await PermissionDAO().get_or_create_multi(db, permissions=permission_inputs)}
@@ -78,7 +78,9 @@ async def setup_auth_defaults():
                 else:
                     auth_logger.debug(f"   Role '{role_name}' exists. Checking permissions...")
                     current_perms_set = {p.id for p in role.permissions}
+                    auth_logger.debug(f"   CURRENT PERMS SET:: "+ str(current_perms_set))
                     required_perms_set = {p.id for p in required_permissions}
+                    auth_logger.debug(f"   REQUIRED PERMS SET:: "+ str(required_perms_set))
                     if current_perms_set != required_perms_set:
                         auth_logger.info(f"   Updating permissions for role '{role_name}'")
                         role = await role_dao.update_permissions(

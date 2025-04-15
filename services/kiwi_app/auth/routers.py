@@ -16,7 +16,7 @@ from kiwi_app.utils import get_kiwi_logger
 
 auth_logger = get_kiwi_logger(name="kiwi_app.auth")
 
-from kiwi_app.auth.constants import Permissions
+from kiwi_app.auth.constants import Permissions, ALL_PERMISSIONS
 from kiwi_app.auth.exceptions import (
     EmailAlreadyExistsException,
     UserNotFoundException,
@@ -624,7 +624,7 @@ async def create_role_endpoint(
         # Fetch all existing permissions defined in the system
         permissions = await permission_dao.get_or_create_multi(db, permissions=[
             schemas.PermissionCreate(name=p.value, description="") # Create dummy PermissionCreate if needed
-            for p in Permissions # Iterate through all defined Permissions enum members
+            for p in ALL_PERMISSIONS # Iterate through all defined Permissions enum members
         ])
         permission_map = {p.name: p for p in permissions}
         linked_permissions = []

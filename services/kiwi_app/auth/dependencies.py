@@ -100,6 +100,8 @@ async def _check_permissions_for_org(
 
     # Check if the required permission name is present in the role's permissions
     user_permissions_in_org = {perm.name for perm in link.role.permissions}
+    # auth_logger.warning("\n\n\n\n USER PERMISSIONS IN ORG:: "+ str(user_permissions_in_org) + "\n\n\n\n")
+    # auth_logger.warning("\n\n\n\n REQUIRED PERMISSIONS:: "+ str(required_permissions) + "\n\n\n\n")
     if not any(required_permission.value in user_permissions_in_org for required_permission in required_permissions):
         detail = f"Missing required permissions '{', '.join([p.value for p in required_permissions])}' in organization {org_id}."
         auth_logger.warning(f"Permission check failed for user '{user.email}': {detail}")
@@ -174,10 +176,8 @@ async def get_current_active_user_with_orgs(
             # "organization_links.role.permissions"
         ]
     )
-    print(user_with_orgs.organization_links)
-    # import ipdb; ipdb.set_trace()
-    print("\n\n\n\nOrganization: ", user_with_orgs.organization_links[0].organization, "\n\n\n\n")
-    print("\n\n\n\nRole: ", user_with_orgs.organization_links[0].role, "\n\n\n\n")
+    # print("\n\n\n\nOrganization: ", user_with_orgs.organization_links[0].organization, "\n\n\n\n")
+    # print("\n\n\n\nRole: ", user_with_orgs.organization_links[0].role, "\n\n\n\n")
     # import ipdb; ipdb.set_trace()
     # print(user_with_orgs.organization_links[0].organization)
     # print(user_with_orgs.organization_links[0].role)

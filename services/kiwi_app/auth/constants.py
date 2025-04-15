@@ -31,6 +31,8 @@ class Permissions(str, Enum):
 
     # Add other org-specific permissions as needed...
 
+ALL_PERMISSIONS = list(Permissions) + list(WorkflowPermissions)
+
 # --- Helper Function for Enum Description --- #
 def get_permission_description(permission: Permissions) -> str:
     """Generates a human-readable description from a Permissions enum member."""
@@ -40,7 +42,7 @@ def get_permission_description(permission: Permissions) -> str:
 # This defines the initial permissions for the default roles within an organization.
 DEFAULT_ROLE_PERMISSIONS = {
     DefaultRoles.ADMIN: [
-        *list(Permissions), *list(WorkflowPermissions) # Grant all permissions
+        *ALL_PERMISSIONS # Grant all permissions
     ],
     DefaultRoles.TEAM_MEMBER: [
         Permissions.ORG_READ, # Can see org details
@@ -65,7 +67,7 @@ DEFAULT_ROLE_PERMISSIONS = {
     ],
 }
 
-# print(DEFAULT_ROLE_PERMISSIONS[DefaultRoles.ADMIN])
+print(DEFAULT_ROLE_PERMISSIONS[DefaultRoles.ADMIN])
 
 # --- Default Org / User Info ---
 DEFAULT_ORG_NAME = "KiwiQ AI"

@@ -15,7 +15,7 @@ from pydantic import ValidationError, EmailStr
 from kiwi_app.settings import settings
 from kiwi_app.auth.schemas import TokenData
 from kiwi_app.auth.exceptions import CredentialsException
-from kiwi_app.auth.constants import Permissions, get_permission_description
+# from kiwi_app.auth.constants import Permissions, get_permission_description
 from kiwi_app.auth.utils import auth_logger # Import the specific logger
 
 # Get a logger for this module
