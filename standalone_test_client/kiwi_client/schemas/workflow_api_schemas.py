@@ -82,6 +82,16 @@ class WorkflowRead(WorkflowBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+
+# -- Graph Validation --
+class WorkflowGraphValidationResult(BaseModel):
+    """Schema for graph validation results."""
+    is_valid: bool = Field(..., description="Whether the graph is valid overall")
+    graph_schema_valid: bool = Field(..., description="Whether the graph schema structure is valid")
+    node_configs_valid: bool = Field(..., description="Whether all node configurations are valid")
+    errors: Dict[str, List[str]] = Field(default_factory=dict, description="Validation errors by category/node")
+
+
 # --- WorkflowRun Schemas --- #
 
 class WorkflowRunBase(BaseModel):
@@ -181,7 +191,7 @@ class PromptTemplateRead(PromptTemplateBase):
     """Schema for reading a PromptTemplate."""
     id: uuid.UUID
     owner_org_id: Optional[uuid.UUID] = None
-    is_system_template: bool
+    is_system_entity: bool
     # parent_base_id: Optional[uuid.UUID] = None
     created_at: datetime
     updated_at: datetime
@@ -215,7 +225,7 @@ class SchemaTemplateRead(SchemaTemplateBase):
     """Schema for reading a SchemaTemplate."""
     id: uuid.UUID
     owner_org_id: Optional[uuid.UUID] = None
-    is_system_template: bool
+    is_system_entity: bool
     created_at: datetime
     updated_at: datetime
 

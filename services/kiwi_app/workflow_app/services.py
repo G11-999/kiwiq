@@ -19,6 +19,7 @@ from jsonschema import validate
 
 from global_utils import datetime_now_utc
 from global_config.logger import get_logger
+from sqlmodel import or_, select
 from kiwi_app.workflow_app import models, schemas, crud
 from kiwi_app.workflow_app.constants import WorkflowRunStatus, NotificationType, HITLJobStatus, LaunchStatus # Import LaunchStatus
 from kiwi_app.auth.models import User, Organization # For type hinting and context
@@ -122,14 +123,15 @@ class WorkflowService:
         *, 
         user: User,
         workflow_id: uuid.UUID, 
-        owner_org_id: uuid.UUID # Used for permission check
+        owner_org_id: uuid.UUID, # Used for permission check
+        include_system_entities: bool = True,
     ) -> models.Workflow:
         """
         Retrieves a workflow by ID, ensuring it belongs to the specified organization.
         Raises 404 if not found or ownership mismatch.
         """
         # DAO now handles the org check
-        workflow = await self.workflow_dao.get_by_id_and_org_or_public(db, workflow_id=workflow_id, user=user, org_id=owner_org_id)
+        workflow = await self.workflow_dao.get_by_id_and_org_or_public(db, workflow_id=workflow_id, user=user, org_id=owner_org_id, include_system_entities=include_system_entities)
         if not workflow:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workflow not found or access denied")
             # return workflow
@@ -141,6 +143,7 @@ class WorkflowService:
         *, 
         owner_org_id: uuid.UUID, 
         include_public: bool = True,
+        include_system_entities: bool = False,
         # launch_status: Optional[LaunchStatus] = None, # LaunchStatus not on Workflow model
         skip: int = 0, 
         limit: int = 100
@@ -148,7 +151,7 @@ class WorkflowService:
         """Lists workflows for a specific organization."""
         # Pass filters to DAO if they were available
         workflows = await self.workflow_dao.get_multi_by_org(
-            db, owner_org_id=owner_org_id, include_public=include_public, skip=skip, limit=limit
+            db, owner_org_id=owner_org_id, include_public=include_public, include_system_entities=include_system_entities, skip=skip, limit=limit
         )
         return list(workflows) # Ensure list return type
 
@@ -302,7 +305,8 @@ class WorkflowService:
                 # Keep graph_schema_dict for worker trigger
             elif workflow_id:
                 # Validate the provided workflow_id belongs to the organization
-                workflow = await self.get_workflow(db, workflow_id=workflow_id, user=user, owner_org_id=owner_org_id)
+                # NOTE: we want regular users to be able to execute system entity eg: workflows but which are marked public!
+                workflow = await self.get_workflow(db, workflow_id=workflow_id, user=user, owner_org_id=owner_org_id, include_system_entities=True)
                 # If not found, get_workflow raises 404
                 graph_schema_dict = workflow.graph_config # Get schema for worker trigger
             else:
@@ -333,7 +337,8 @@ class WorkflowService:
             # Ensure we have the graph schema to pass to the worker
             if not graph_schema_dict:
                  # This should only happen if workflow_id was provided but we failed to get the schema earlier
-                 workflow = await self.get_workflow(db, workflow_id=workflow_run.workflow_id, user=user, owner_org_id=owner_org_id)
+                 # NOTE: we want regular users to be able to execute system entity eg: workflows but which are marked public!
+                 workflow = await self.get_workflow(db, workflow_id=workflow_run.workflow_id, user=user, owner_org_id=owner_org_id, include_system_entities=True)
                  graph_schema_dict = workflow.graph_config
 
             # Trigger the workflow run via the helper function
@@ -452,6 +457,7 @@ class WorkflowService:
 
             # Construct path prefix for run events
             # Targets the specific run within the org.
+            # NOTE: TODO: FIXME: this is a compound index in mongo DB which is most efficient for hierarchical retrieval, so it may make sense for setting up the prefix keys too!
             mongo_runs_events_pattern = ["*", "*", str(run.id), "*"]
 
             # Find all events for this run, sorted by sequence number, respecting permissions
@@ -535,6 +541,7 @@ class WorkflowService:
 
             # Construct path prefix for run events
             # Targets the specific run within the org
+            # NOTE: TODO: FIXME: this is a compound index in mongo DB which is most efficient for hierarchical retrieval, so it may make sense for setting up the prefix keys too!
             mongo_runs_events_pattern = ["*", "*", str(run.id), "*"]
 
             # Find all events for this run, sorted by sequence number, respecting permissions
@@ -666,7 +673,7 @@ class WorkflowService:
 
         # If org context is provided, check ownership AND ensure it's not a system template
         if owner_org_id:
-             if template.owner_org_id != owner_org_id or template.is_system_template:
+             if template.owner_org_id != owner_org_id or template.is_system_entity:
                  raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Prompt Template {template_id} not found in organization {owner_org_id}.")
         # Else (no org context), need permission check if template is system or belongs to another org
 
@@ -712,7 +719,7 @@ class WorkflowService:
     ) -> models.PromptTemplate:
         """Updates an organization-specific prompt template."""
         # Ensure trying to update an org-specific template
-        if template.is_system_template:
+        if template.is_system_entity:
              raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="System prompt templates cannot be updated.")
 
         # Check for name/version collision if being changed
@@ -738,7 +745,7 @@ class WorkflowService:
         user: User # For audit/context
     ) -> bool:
         """Deletes an organization-specific prompt template."""
-        if template.is_system_template:
+        if template.is_system_entity:
              raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="System prompt templates cannot be deleted.")
 
         deleted = await self.prompt_template_dao.remove_by_id_and_org(db, id=template.id, owner_org_id=template.owner_org_id)
@@ -777,7 +784,7 @@ class WorkflowService:
         template = await self.schema_template_dao.get(db, id=template_id)
         if not template:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Schema Template {template_id} not found.")
-        if owner_org_id and (template.owner_org_id != owner_org_id or template.is_system_template):
+        if owner_org_id and (template.owner_org_id != owner_org_id or template.is_system_entity):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Schema Template {template_id} not found in organization {owner_org_id}.")
         return template
 
@@ -809,7 +816,7 @@ class WorkflowService:
         user: User
     ) -> models.SchemaTemplate:
         """Updates an organization-specific schema template."""
-        if template.is_system_template:
+        if template.is_system_entity:
              raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="System schema templates cannot be updated.")
 
         new_name = template_update.name or template.name
@@ -834,11 +841,174 @@ class WorkflowService:
         user: User  # TODO: maintain delete logs for auditing later!
     ) -> bool:
         """Deletes an organization-specific schema template."""
-        if template.is_system_template:
+        if template.is_system_entity:
              raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="System schema templates cannot be deleted.")
         deleted = await self.schema_template_dao.remove_by_id_and_org(db, id=template.id, owner_org_id=template.owner_org_id)
         return deleted is not None
 
+    async def search_workflows(
+        self,
+        db: AsyncSession,
+        *,
+        name: str,
+        version_tag: Optional[str] = None,
+        owner_org_id: uuid.UUID,
+        include_public: bool = True,
+        include_system_entities: bool = False,
+        include_public_system_entities: bool = False,
+        user: User
+    ) -> List[models.Workflow]:
+        """
+        Search for workflows by name and optional version_tag.
+        
+        Returns workflows from:
+        - The active organization matching name/version_tag
+        - Public workflows matching name/version_tag (if include_public=True)
+        - System workflows matching name/version_tag (if include_system_entities=True and user is superuser)
+        
+        Args:
+            db: Database session
+            name: Name of the workflow to search for
+            version_tag: Optional version tag to filter by
+            owner_org_id: Organization ID context for the search
+            include_public: Whether to include public workflows
+            include_system_entities: Whether to include system entities (superuser only)
+            user: User performing the search
+            
+        Returns:
+            List of matching workflow objects
+        """
+        # Check superuser permission for system entities
+        if include_system_entities and not user.is_superuser:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, 
+                detail="Only superusers can access non-public system workflows"
+            )
+        
+        # Use the generic search method from the DAO
+        results = await self.workflow_dao.search_by_name_version(
+            db=db,
+            name=name,
+            version=version_tag,
+            version_field="version_tag",
+            owner_org_id=owner_org_id,
+            include_public=include_public,
+            include_system_entities=include_system_entities,
+            include_public_system_entities=include_public_system_entities,
+            is_superuser=user.is_superuser
+        )
+        
+        return list(results)
+
+    async def search_prompt_templates(
+        self,
+        db: AsyncSession,
+        *,
+        name: str,
+        version: Optional[str] = None,
+        owner_org_id: uuid.UUID,
+        include_public: bool = True,
+        include_system_entities: bool = False,
+        include_public_system_entities: bool = False,
+        user: User
+    ) -> List[models.PromptTemplate]:
+        """
+        Search for prompt templates by name and optional version.
+        
+        Returns prompt templates from:
+        - The active organization matching name/version
+        - Public prompt templates matching name/version (if include_public=True)
+        - System prompt templates matching name/version (if include_system_entities=True and user is superuser)
+        
+        Args:
+            db: Database session
+            name: Name of the prompt template to search for
+            version: Optional version to filter by
+            owner_org_id: Organization ID context for the search
+            include_public: Whether to include public templates
+            include_system_entities: Whether to include system entities (superuser only)
+            include_public_system_entities: Whether to include public system entities (superuser only)
+            user: User performing the search
+            
+        Returns:
+            List of matching prompt template objects
+        """
+        # Check superuser permission for system entities
+        if include_system_entities and not user.is_superuser:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, 
+                detail="Only superusers can access non-public system prompt templates"
+            )
+        
+        # Use the generic search method from the DAO
+        results = await self.prompt_template_dao.search_by_name_version(
+            db=db,
+            name=name,
+            version=version,
+            version_field="version",
+            owner_org_id=owner_org_id,
+            include_public=include_public,
+            include_system_entities=include_system_entities,
+            include_public_system_entities=include_public_system_entities,
+            is_superuser=user.is_superuser
+        )
+        
+        return list(results)
+
+    async def search_schema_templates(
+        self,
+        db: AsyncSession,
+        *,
+        name: str,
+        version: Optional[str] = None,
+        owner_org_id: uuid.UUID,
+        include_public: bool = True,
+        include_system_entities: bool = False,
+        include_public_system_entities: bool = False,
+        user: User
+    ) -> List[models.SchemaTemplate]:
+        """
+        Search for schema templates by name and optional version.
+        
+        Returns schema templates from:
+        - The active organization matching name/version
+        - Public schema templates matching name/version (if include_public=True)
+        - System schema templates matching name/version (if include_system_entities=True and user is superuser)
+        
+        Args:
+            db: Database session
+            name: Name of the schema template to search for
+            version: Optional version to filter by
+            owner_org_id: Organization ID context for the search
+            include_public: Whether to include public templates
+            include_system_entities: Whether to include system entities (superuser only)
+            include_public_system_entities: Whether to include public system entities (superuser only)
+            user: User performing the search
+            
+        Returns:
+            List of matching schema template objects
+        """
+        # Check superuser permission for system entities
+        if include_system_entities and not user.is_superuser:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, 
+                detail="Only superusers can access non-public system schema templates directly."
+            )
+        
+        # Use the generic search method from the DAO
+        results = await self.schema_template_dao.search_by_name_version(
+            db=db,
+            name=name,
+            version=version,
+            version_field="version",
+            owner_org_id=owner_org_id,
+            include_public=include_public,
+            include_system_entities=include_system_entities,
+            include_public_system_entities=include_public_system_entities,
+            is_superuser=user.is_superuser
+        )
+        
+        return list(results)
 
     # --- User Notification Operations --- #
 
@@ -852,7 +1022,7 @@ class WorkflowService:
         message: Dict[str, Any],
         related_run_id: Optional[uuid.UUID] = None
     ) -> models.UserNotification:
-        """Creates and stores a user notification."""
+        """Creates a user notification."""
         # DAO handles creation
         notification = await self.user_notification_dao.create(
             db,

@@ -1,4 +1,5 @@
 import asyncio
+from collections import defaultdict
 import uuid
 import traceback
 from typing import List, Optional, Dict, Any, Annotated, Union, AsyncGenerator
@@ -7,6 +8,7 @@ from fastapi import (
     APIRouter, Depends, HTTPException, status, Query, WebSocket,
     WebSocketDisconnect, Body, Path, Response # Added Path, Response
 )
+from jsonschema import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 import jwt # For encoding/decoding tokens (requires python-jose)
 from datetime import datetime, timedelta
@@ -78,6 +80,9 @@ async def list_node_templates(
     - Supports pagination via `skip` and `limit`.
     - Requires `template:read` permission on the active organization.
     """
+    # NOTE: workflow builder is not available publically so only allow superusers to list node templates!
+    if not user.is_superuser:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Node templates are not accessible to regular users before workflow builder is released.")
     try:
         if constants.LaunchStatus.EXPERIMENTAL in query_params.launch_status and not user.is_superuser:
             workflow_logger.warning(f"User {user.id} attempted to access experimental templates without superuser privileges")
@@ -118,6 +123,10 @@ async def get_node_template(
 
     - Requires `template:read` permission.
     """
+    # NOTE: if we disallow this, non superusers will not be able to modify workflow configs since they won't know what to validate!
+    # # NOTE: workflow builder is not available publically so only allow superusers to list node templates!
+    # if not user.is_superuser:
+    #     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Node templates are not accessible to regular users before workflow builder is released.")
     try:
         # NOTE: this can only be implemented via the registry!
         if version == "latest":
@@ -148,7 +157,6 @@ async def get_node_template(
         workflow_logger.error(f"Error retrieving node template {name} v{version}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An error occurred while retrieving the node template")
 
-
 # -- Prompt Templates --
 @template_router.post(
     "/prompts/",
@@ -168,7 +176,11 @@ async def create_prompt_template(
     Creates a new organization-specific prompt template.
 
     - Requires `template:create_org` permission on the active organization.
+
+    NOTE: Only system admins can create system templates.
     """
+    if template_in.is_system_entity and not current_user.is_superuser:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only system admins can create system templates.")
     try:
         # Service layer handles potential name/version conflicts within the org
         template = await workflow_service.create_prompt_template(
@@ -206,6 +218,10 @@ async def list_prompt_templates(
     - Superusers can potentially filter by a different `owner_org_id` (requires service/checker support).
     - Requires `template:read` permission on the active organization.
     """
+    # NOTE: this is workflow builder prelaunch behaviour, since we don't want ordinary users to be able to list all system templates!
+    if not current_user.is_superuser:
+        if query_params.include_system:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only system admins can list system templates.")
     try:
         # Superuser filtering by owner_org_id needs to be handled in the service layer
         # based on the current_user's is_superuser flag if needed.
@@ -351,7 +367,12 @@ async def create_schema_template(
     Creates a new organization-specific schema template.
 
     - Requires `template:create_org` permission on the active organization.
+
+    NOTE: Only system admins can create system templates.
     """
+    if not current_user.is_superuser:
+        if template_in.is_system_entity:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only system admins can create system templates.")
     try:
         template = await workflow_service.create_schema_template(
             db=db, template_in=template_in, owner_org_id=active_org_id, user=current_user
@@ -382,6 +403,10 @@ async def list_schema_templates(
 
      - Requires `template:read` permission on the active organization.
     """
+    # NOTE: this is workflow builder prelaunch behaviour, since we don't want ordinary users to be able to list all system templates!
+    if not current_user.is_superuser:
+        if query_params.include_system:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only system admins can list system templates.")
     try:
         templates = await workflow_service.list_schema_templates(
             db=db,
@@ -497,8 +522,208 @@ async def delete_schema_template(
         workflow_logger.error(f"Error deleting schema template {template_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An error occurred while deleting the schema template")
 
+@template_router.post(
+    "/prompts/search",
+    response_model=List[schemas.PromptTemplateRead],
+    summary="Search for prompt templates by name and optional version (uses POST to support search params, including system entities); there are unique constaints to name/version within a specific org so you may receive unique results within an org.",
+    # dependencies=[Depends(wf_deps.RequireTemplateReadActiveOrg)]
+)
+async def search_prompt_templates(
+    search_params: schemas.PromptTemplateSearchQuery,
+    active_org_id: uuid.UUID = Depends(get_active_org_id),
+    current_user: User = Depends(wf_deps.RequireTemplateReadActiveOrg),  # Depends(get_current_active_verified_user),
+    db: AsyncSession = Depends(get_async_db_dependency),
+    workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
+):
+    """
+    Search for prompt templates by name and optional version.
+    
+    Returns prompt templates from:
+    - The active organization matching name/version
+    - Public prompt templates matching name/version (if include_public=True)
+    - System prompt templates matching name/version (if include_system_entities=True and user is superuser)
+    
+    Requires `template:read` permission on the active organization.
+    """
+    try:
+        templates = await workflow_service.search_prompt_templates(
+            db=db,
+            name=search_params.name,
+            version=search_params.version,
+            owner_org_id=active_org_id,
+            include_public=search_params.include_public,
+            include_system_entities=search_params.include_system_entities,
+            include_public_system_entities=search_params.include_public_system_entities,
+            user=current_user
+        )
+        workflow_logger.info(f"User {current_user.id} searched for prompt templates with name '{search_params.name}' in org {active_org_id}")
+        return templates
+    except Exception as e:
+        workflow_logger.error(f"Error searching prompt templates for org {active_org_id}: {str(e)}", exc_info=True)
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An error occurred while searching prompt templates")
+
+@template_router.post(
+    "/schemas/search",
+    response_model=List[schemas.SchemaTemplateRead],
+    summary="Search for schema templates by name and optional version (uses POST to support search params, including system entities); there are unique constaints to name/version within a specific org so you may receive unique results within an org.",
+    # dependencies=[Depends(wf_deps.RequireTemplateReadActiveOrg)]
+)
+async def search_schema_templates(
+    search_params: schemas.SchemaTemplateSearchQuery,
+    active_org_id: uuid.UUID = Depends(get_active_org_id),
+    current_user: User = Depends(wf_deps.RequireTemplateReadActiveOrg),  # Depends(get_current_active_verified_user),
+    db: AsyncSession = Depends(get_async_db_dependency),
+    workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
+):
+    """
+    Search for schema templates by name and optional version.
+    
+    Returns schema templates from:
+    - The active organization matching name/version
+    - Public schema templates matching name/version (if include_public=True)
+    - System schema templates matching name/version (if include_system_entities=True and user is superuser)
+    
+    Requires `template:read` permission on the active organization.
+    """
+    try:
+        templates = await workflow_service.search_schema_templates(
+            db=db,
+            name=search_params.name,
+            version=search_params.version,
+            owner_org_id=active_org_id,
+            include_public=search_params.include_public,
+            include_system_entities=search_params.include_system_entities,
+            include_public_system_entities=search_params.include_public_system_entities,
+            user=current_user
+        )
+        workflow_logger.info(f"User {current_user.id} searched for schema templates with name '{search_params.name}' in org {active_org_id}")
+        return templates
+    except Exception as e:
+        workflow_logger.error(f"Error searching schema templates for org {active_org_id}: {str(e)}", exc_info=True)
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An error occurred while searching schema templates")
 
 # === Workflow Endpoints ===
+
+@workflow_router.post(
+    "/validate/",
+    response_model=schemas.WorkflowGraphValidationResult,
+    summary="Validate a workflow graph configuration for structural integrity and node configuration validity",
+)
+async def validate_graph(
+    graph_config: Dict[str, Any] = Body(..., description="The graph configuration to validate"),
+    validate_nodes: bool = Query(True, description="Whether to validate node configurations against their templates"),
+    user: User = Depends(get_current_active_verified_user),
+    db_registry: registry.DBRegistry = Depends(wf_deps.get_node_template_registry),
+    # db: AsyncSession = Depends(get_async_db_dependency),
+):
+    """
+    Validates a workflow graph configuration for correctness and consistency.
+    
+    This endpoint performs two levels of validation:
+    1. Graph schema validation - ensures the graph structure is valid (nodes properly connected, etc.)
+    2. Node configuration validation - ensures each node's configuration is valid against its template
+    
+    Returns detailed validation results with specific errors if validation fails.
+    """
+    from workflow_service.graph.graph import GraphSchema
+    import jsonschema
+    
+    workflow_logger.info(f"User {user.id} requested graph validation")
+    all_errors: Dict[str, List[str]] = defaultdict(list)
+    
+    # First, validate the graph schema structure
+    try:
+        # Convert dict to GraphSchema for validation
+        graph_schema = GraphSchema.model_validate(graph_config)
+        graph_schema_valid = True
+    except Exception as e:
+        graph_schema_valid = False
+        # Extract error message
+        error_msg = str(e)
+        all_errors["graph_schema"] = [error_msg]
+        workflow_logger.warning(f"Graph schema validation failed: {error_msg}")
+        
+        # If the schema is invalid, we can't proceed with node validation
+        return schemas.WorkflowGraphValidationResult(
+            is_valid=False,
+            graph_schema_valid=False,
+            node_configs_valid=False,
+            errors=all_errors
+        )
+    
+    # If graph schema is valid and node validation is requested, validate node configs
+    node_configs_valid = True
+    if validate_nodes and graph_schema_valid:
+        workflow_logger.info("Validating node configurations...")
+        
+        for node_id, node_config in graph_schema.nodes.items():
+            # Skip special input/output nodes
+            if node_id in ["input_node", "output_node"]:
+                continue
+                
+            node_name = node_config.node_name
+            # Use 'latest' if no version specified
+            node_version = node_config.node_version or "latest"
+            
+            # Get node template with config schema
+            try:
+                node = db_registry.get_node(node_name=node_name, version=None if node_version == "latest" else node_version)
+                node_version = node.node_version
+            except ValueError as e:
+                node_configs_valid = False
+                all_errors[node_id].append(f"Could not find node template for {node_name} v:{node_version}")
+                continue
+            
+            # NOTE: this algo doesn't handle dynamic config schemas, since they should practically not exist!
+            config_schema = node.config_schema_cls
+            
+            # Skip validation if no config schema is defined
+            if not config_schema:
+                if not node_config.node_config:
+                    workflow_logger.info(f"Node {node_id} ({node_name}) has no config schema defined, skipping validation")
+                else:
+                    node_configs_valid = False
+                    all_errors[node_id] = ["Node has no config schema defined, but has a config in the graph schema"]
+                    workflow_logger.warning(f"Node {node_id} ({node_name}) has no config schema defined, but has a config in the graph schema")
+                continue
+            else:
+                config_schema = config_schema.model_json_schema()
+            
+            # Validate the node's configuration against its schema
+            try:
+                jsonschema.validate(instance=node_config.node_config, schema=config_schema)
+                workflow_logger.info(f"Node {node_id} ({node_name}) configuration validated successfully")
+            except ValidationError as e:
+                node_configs_valid = False
+                error_path = "/".join(str(part) for part in e.path)
+                error_msg = f"{error_path}: {e.message}" if error_path else e.message
+                all_errors[node_id].append(error_msg)
+                workflow_logger.warning(f"Node {node_id} ({node_name}) config validation failed: {error_msg}")
+            except Exception as e:
+                node_configs_valid = False
+                all_errors[node_id].append(f"Error validating node: {str(e)}")
+                workflow_logger.error(f"Error validating node {node_id} ({node_name}): {str(e)}", exc_info=True)
+    
+    # Overall validation result
+    is_valid = graph_schema_valid and (not validate_nodes or node_configs_valid)
+    
+    # Log validation result
+    if is_valid:
+        workflow_logger.info("Graph validation passed successfully")
+    else:
+        error_count = sum(len(errors) for errors in all_errors.values())
+        workflow_logger.warning(f"Graph validation failed with {error_count} errors")
+    
+    return schemas.WorkflowGraphValidationResult(
+        is_valid=is_valid,
+        graph_schema_valid=graph_schema_valid,
+        node_configs_valid=node_configs_valid,
+        errors=all_errors
+    )
 
 @workflow_router.post(
     "/",
@@ -519,7 +744,11 @@ async def create_workflow(
 
     - The `graph_config` defines the structure and nodes of the workflow.
     - Requires `workflow:create` permission on the active organization.
+
+    NOTE: Only system admins can create system workflows.
     """
+    if workflow_in.is_system_entity and not current_user.is_superuser:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only system admins can create system workflows.")
     try:
         # Service layer handles potential name conflicts within the org
         workflow = await workflow_service.create_workflow(
@@ -553,6 +782,8 @@ async def list_workflows(
     - **Superusers** can list workflows for any organization by providing the `owner_org_id` query parameter.
     - Supports pagination via `skip` and `limit`.
     - Requires `workflow:read` permission on the active organization (or superuser status for cross-org listing).
+
+    NOTE: when a user modifies configuration of a system workflow to execute it, it needs to be saved as a new workflow here!
     """
     try:
         list_org_id = active_org_id
@@ -565,6 +796,9 @@ async def list_workflows(
                  status_code=status.HTTP_403_FORBIDDEN,
                  detail="Insufficient permissions to list workflows for other organizations."
              )
+        include_system_entities = False
+        if current_user.is_superuser:
+            include_system_entities = True
 
         # Pass relevant filters (excluding pagination) to the service layer
         # launch_status filter is removed as it's not on the workflow model according to models.py
@@ -573,6 +807,7 @@ async def list_workflows(
             owner_org_id=list_org_id, # Use the determined org_id
             # launch_status=query_params.launch_status,
             include_public=query_params.include_public,
+            include_system_entities=include_system_entities,
             skip=query_params.skip,
             limit=query_params.limit
         )
@@ -584,6 +819,48 @@ async def list_workflows(
     except Exception as e:
         workflow_logger.error(f"Error listing workflows for org {active_org_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An error occurred while listing workflows")
+
+@workflow_router.post(
+    "/search",
+    response_model=List[schemas.WorkflowRead],
+    summary="Search for workflows by name and optional version_tag (uses POST to support search params, including system entities); there are unique constaints to name/version within a specific org so you may receive unique results within an org.",
+    # dependencies=[Depends(wf_deps.RequireWorkflowRead)]
+)
+async def search_workflows(
+    search_params: schemas.WorkflowSearchQuery,
+    active_org_id: uuid.UUID = Depends(get_active_org_id),
+    current_user: User = Depends(wf_deps.RequireWorkflowReadActiveOrg),
+    db: AsyncSession = Depends(get_async_db_dependency),
+    workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
+):
+    """
+    Search for workflows by name and optional version tag.
+    
+    Returns workflows from:
+    - The active organization matching name/version_tag
+    - Public workflows matching name/version_tag (if include_public=True)
+    - System workflows matching name/version_tag (if include_system_entities=True and user is superuser)
+    
+    Requires `workflow:read` permission on the active organization.
+    """
+    try:
+        workflows = await workflow_service.search_workflows(
+            db=db,
+            name=search_params.name,
+            version_tag=search_params.version_tag,
+            owner_org_id=active_org_id,
+            include_public=search_params.include_public,
+            include_system_entities=search_params.include_system_entities,
+            include_public_system_entities=search_params.include_public_system_entities,
+            user=current_user
+        )
+        workflow_logger.info(f"User {current_user.id} searched for workflows with name '{search_params.name}' in org {active_org_id}")
+        return workflows
+    except Exception as e:
+        workflow_logger.error(f"Error searching workflows for org {active_org_id}: {str(e)}", exc_info=True)
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An error occurred while searching workflows")
 
 @workflow_router.get(
     "/{workflow_id}",
@@ -606,12 +883,18 @@ async def get_workflow(
     - Ensures the workflow belongs to the user's active organization.
     - Requires `workflow:read` permission on the active organization.
     """
+    # The user won't be able to modify workflow configs if we disable fetching system workflows!
+    # include_system_entities = False
+    # if current_user.is_superuser:
+    #     include_system_entities = True
+    include_system_entities = True
     try:
         workflow = await workflow_service.get_workflow(
             db=db,
             user=current_user,
             workflow_id=workflow_id,
-            owner_org_id=active_org_id
+            owner_org_id=active_org_id,
+            include_system_entities=include_system_entities
         )
         workflow_logger.info(f"User {current_user.id} retrieved workflow {workflow_id} for org {active_org_id}")
         return workflow
@@ -961,7 +1244,7 @@ async def list_user_notifications(
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
 ):
     """
-    Lists notifications for the current authenticated user within their active organization.
+    Lists notifications for the current authenticated user within their active organization. Set `get_notifications_for_all_user_orgs=true` to get notifications for all user organizations.
 
     - Supports filtering by read status (`is_read=true` or `is_read=false`).
     - Supports sorting by `created_at` (default: descending).
@@ -971,7 +1254,7 @@ async def list_user_notifications(
         notifications = await workflow_service.list_user_notifications(
             db=db,
             user_id=current_user.id,
-            org_id=active_org_id,
+            org_id=None if query_params.get_notifications_for_all_user_orgs else active_org_id,
             filters=query_params,
             skip=query_params.skip,
             limit=query_params.limit

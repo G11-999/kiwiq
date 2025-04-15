@@ -61,6 +61,7 @@ class WorkflowBase(BaseModel):
 class WorkflowCreate(WorkflowBase):
     """Schema for creating a new Workflow."""
     parent_base_id: Optional[uuid.UUID] = None
+    is_system_entity: Optional[bool] = Field(default=False, description="Indicates if this workflow is a system entity. Only admins can create system workflows.")
 
 class WorkflowUpdate(WorkflowBase):
     """Schema for updating an existing Workflow. Allows partial updates."""
@@ -78,6 +79,15 @@ class WorkflowRead(WorkflowBase):
     parent_base_id: Optional[uuid.UUID] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# -- Graph Validation --
+class WorkflowGraphValidationResult(BaseModel):
+    """Schema for graph validation results."""
+    is_valid: bool = Field(..., description="Whether the graph is valid overall")
+    graph_schema_valid: bool = Field(..., description="Whether the graph schema structure is valid")
+    node_configs_valid: bool = Field(..., description="Whether all node configurations are valid")
+    errors: Dict[str, List[str]] = Field(default_factory=dict, description="Validation errors by category/node")
 
 
 # --- WorkflowRun Schemas --- #
@@ -164,7 +174,7 @@ class PromptTemplateBase(BaseModel):
 
 class PromptTemplateCreate(PromptTemplateBase):
     """Schema for creating an organization-specific PromptTemplate."""
-    pass
+    is_system_entity: Optional[bool] = Field(default=False, description="Indicates if this prompt template is a system entity. Only system admins can create system templates.")
 
 class PromptTemplateUpdate(BaseModel):
     """Schema for updating an organization-specific PromptTemplate."""
@@ -179,7 +189,7 @@ class PromptTemplateRead(PromptTemplateBase):
     """Schema for reading a PromptTemplate."""
     id: uuid.UUID
     owner_org_id: Optional[uuid.UUID] = None
-    is_system_template: bool
+    is_system_entity: bool
     # parent_base_id: Optional[uuid.UUID] = None
     created_at: datetime
     updated_at: datetime
@@ -199,7 +209,7 @@ class SchemaTemplateBase(BaseModel):
 
 class SchemaTemplateCreate(SchemaTemplateBase):
     """Schema for creating an organization-specific SchemaTemplate."""
-    pass
+    is_system_entity: Optional[bool] = Field(default=False, description="Indicates if this schema template is a system entity. Only system admins can create system templates.")
 
 class SchemaTemplateUpdate(BaseModel):
     """Schema for updating an organization-specific SchemaTemplate."""
@@ -213,7 +223,7 @@ class SchemaTemplateRead(SchemaTemplateBase):
     """Schema for reading a SchemaTemplate."""
     id: uuid.UUID
     owner_org_id: Optional[uuid.UUID] = None
-    is_system_template: bool
+    is_system_entity: bool
     created_at: datetime
     updated_at: datetime
 
@@ -319,6 +329,7 @@ class NotificationListQuery(CommonListQuery):
     is_read: Optional[bool] = Field(None, description="Filter by read status (true=read, false=unread, null=all)")
     sort_by: str = Field("created_at", description="Field to sort by")
     sort_order: str = Field("desc", description="Sort order ('asc' or 'desc')")
+    get_notifications_for_all_user_orgs: Optional[bool] = Field(False, description="If true, get notifications for all user organizations")
 
 
 class NodeTemplateListQuery(CommonListQuery):
@@ -332,10 +343,37 @@ class NodeTemplateListQuery(CommonListQuery):
 class PromptTemplateListQuery(CommonListQuery):
     """Query parameters for listing prompt templates."""
     owner_org_id: Optional[uuid.UUID] = Field(None, description="Filter by owning organization ID (Superuser only)")
-    include_system: bool = Field(True, description="Include system templates")
+    include_system: bool = Field(False, description="Include system templates.")
 
 
 class SchemaTemplateListQuery(CommonListQuery):
     """Query parameters for listing schema templates."""
     owner_org_id: Optional[uuid.UUID] = Field(None, description="Filter by owning organization ID (Superuser only)")
-    include_system: bool = Field(True, description="Include system templates")
+    include_system: bool = Field(False, description="Include system templates.")
+
+
+class WorkflowSearchQuery(BaseModel):
+    """Query parameters for searching workflows by name and version."""
+    name: str = Field(..., description="Name of the workflow to search for")
+    version_tag: Optional[str] = Field(None, description="Optional version tag to filter by")
+    include_public: bool = Field(True, description="Include public workflows in the results")
+    include_system_entities: bool = Field(False, description="Include system entities (superuser only)")
+    include_public_system_entities: bool = Field(False, description="Include public system entities")
+
+
+class PromptTemplateSearchQuery(BaseModel):
+    """Query parameters for searching prompt templates by name and version."""
+    name: str = Field(..., description="Name of the prompt template to search for")
+    version: Optional[str] = Field(None, description="Optional version to filter by")
+    include_public: bool = Field(True, description="Include public templates in the results")
+    include_system_entities: bool = Field(False, description="Include system entities (superuser only)")
+    include_public_system_entities: bool = Field(False, description="Include public system entities")
+
+
+class SchemaTemplateSearchQuery(BaseModel):
+    """Query parameters for searching schema templates by name and version."""
+    name: str = Field(..., description="Name of the schema template to search for")
+    version: Optional[str] = Field(None, description="Optional version to filter by")
+    include_public: bool = Field(True, description="Include public templates in the results")
+    include_system_entities: bool = Field(False, description="Include system entities (superuser only)")
+    include_public_system_entities: bool = Field(False, description="Include public system entities")

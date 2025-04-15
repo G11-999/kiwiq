@@ -13,7 +13,7 @@ from functools import lru_cache
 
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv()  # ".env.prod" WORKS!
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 DATA_ROOT = PROJECT_ROOT / "data"

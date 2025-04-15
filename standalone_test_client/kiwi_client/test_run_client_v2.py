@@ -1,6 +1,7 @@
 # poetry run python -m kiwi_client.test_run_client_v2
 
 import asyncio
+import json
 import httpx
 import logging
 import uuid
@@ -254,6 +255,8 @@ class WorkflowRunTestClient:
             response.raise_for_status()
             response_json = response.json()
 
+            # print("\n\n\n\n RUN DETAILS RESPONSE:: ", json.dumps(response_json, indent=4), "\n\n\n\n")
+
             # Validate the response against the WorkflowRunDetailRead schema
             validated_run_details = wf_schemas.WorkflowRunDetailRead.model_validate(response_json)
             event_count = len(validated_run_details.detailed_results) if validated_run_details.detailed_results else 0
@@ -297,6 +300,8 @@ class WorkflowRunTestClient:
             response = await self._client.get(url)
             response.raise_for_status()
             response_json = response.json()
+
+            # print("\n\n\n\n RUN STREAM RESPONSE:: ", json.dumps(response_json, indent=4), "\n\n\n\n")
 
             # Validate and parse the response events based on their event_type
             validated_stream = []
@@ -409,17 +414,32 @@ async def main():
             # --- Setup: Create a workflow to run ---
             print("\n--- Setup: Creating a workflow --- ")
 
-            print("\n1. Comprehensive workflow validation...")
-            valid_workflow, all_errors = await workflow_tester.validate_workflow(EXAMPLE_BASIC_LLM_GRAPH_CONFIG)
-            if valid_workflow:
-                print("   ✓ Workflow validation completed successfully!")
+            print("\n1. Comprehensive workflow validation using API...")
+            # Use the API-based validation method instead of the local validation
+            validation_result = await workflow_tester.validate_graph_api(EXAMPLE_BASIC_LLM_GRAPH_CONFIG)
+            if validation_result:
+                if validation_result.is_valid:
+                    print("   ✓ Workflow validation completed successfully!")
+                    print(f"   - Graph schema valid: {validation_result.graph_schema_valid}")
+                    print(f"   - Node configs valid: {validation_result.node_configs_valid}")
+                else:
+                    print("   ✗ Workflow validation failed:")
+                    for category, errors in validation_result.errors.items():
+                        print(f"     {category}:")
+                        for error in errors:
+                            print(f"       - {error}")
             else:
-                print("   ✗ Workflow validation failed:")
-                for category, errors in all_errors.items():
-                    print(f"     {category}:")
-                    for error in errors:
-                        print(f"       - {error}")
-
+                print("   ✗ Failed to perform API-based validation - falling back to local validation")
+                # Fallback to local validation if API validation fails
+                valid_workflow, all_errors = await workflow_tester.validate_workflow(EXAMPLE_BASIC_LLM_GRAPH_CONFIG)
+                if valid_workflow:
+                    print("   ✓ Workflow validation completed successfully!")
+                else:
+                    print("   ✗ Workflow validation failed:")
+                    for category, errors in all_errors.items():
+                        print(f"     {category}:")
+                        for error in errors:
+                            print(f"       - {error}")
 
             created_workflow = await workflow_tester.create_workflow(
                 name="Workflow For Run Test",

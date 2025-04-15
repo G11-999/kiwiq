@@ -635,7 +635,7 @@ class DBRegistry(MockRegistry):
         self,
         db: AsyncSession,
         schema_class: Type[BaseSchema],
-        is_system_template: bool = True,
+        is_system_entity: bool = True,
         owner_org_id: Optional[str] = None,
         # TODO: Add creator_user_id?
     ):  #  -> kiwi_models.SchemaTemplate:
@@ -647,7 +647,7 @@ class DBRegistry(MockRegistry):
         Args:
             db: The AsyncSession instance.
             schema_class: The BaseSchema subclass to register.
-            is_system_template: Flag indicating if it's a system template.
+            is_system_entity: Flag indicating if it's a system template.
             owner_org_id: The organization ID if it's not a system template.
 
         Returns:
@@ -662,12 +662,12 @@ class DBRegistry(MockRegistry):
         schema_name = schema_class.schema_name
         schema_version = getattr(schema_class, "schema_version", "latest") # Use 'latest' if no version
 
-        if not is_system_template and owner_org_id is None:
+        if not is_system_entity and owner_org_id is None:
             raise ValueError("owner_org_id must be provided for non-system schema templates.")
 
         # Check if schema template already exists
         existing_template = await self.schema_template_dao.get_by_name_version(
-            db, name=schema_name, version=schema_version, owner_org_id=owner_org_id if not is_system_template else None
+            db, name=schema_name, version=schema_version, owner_org_id=owner_org_id if not is_system_entity else None
         )
         if existing_template:
             self._register_schema_local(schema_class)
@@ -684,9 +684,9 @@ class DBRegistry(MockRegistry):
 
         # Create in DB
         try:
-            if is_system_template:
+            if is_system_entity:
                 # TODO: Need a separate DAO method for system templates or adjust create
-                # Example: Assuming BaseTemplateDAO.create handles is_system_template=True when owner_org_id=None
+                # Example: Assuming BaseTemplateDAO.create handles is_system_entity=True when owner_org_id=None
                 new_template = await self.schema_template_dao.create_system(db, obj_in=create_schema) # Requires create_system method in DAO
                 # raise NotImplementedError("System schema template creation via DAO needs implementation.")
             else:
@@ -706,7 +706,7 @@ class DBRegistry(MockRegistry):
         self,
         db: AsyncSession,
         prompt_template_schema,  # : kiwi_schemas.PromptTemplateCreate, # Use schema for input
-        is_system_template: bool = True, # Changed default to True
+        is_system_entity: bool = True, # Changed default to True
         owner_org_id: Optional[str] = None, # Kept Optional
     ):  #  -> kiwi_models.PromptTemplate:
         """
@@ -715,7 +715,7 @@ class DBRegistry(MockRegistry):
         Args:
             db: The AsyncSession instance.
             prompt_template_schema: Schema containing prompt template details.
-            is_system_template: Flag indicating if it's a system template.
+            is_system_entity: Flag indicating if it's a system template.
             owner_org_id: The organization ID if it's not a system template.
 
         Returns:
@@ -724,23 +724,23 @@ class DBRegistry(MockRegistry):
         Raises:
             ValueError: If org template lacks owner_org_id.
         """
-        if not is_system_template and owner_org_id is None:
+        if not is_system_entity and owner_org_id is None:
             raise ValueError("owner_org_id must be provided for non-system prompt templates.")
 
         # Check if prompt template already exists
         existing_template = await self.prompt_template_dao.get_by_name_version(
             db, name=prompt_template_schema.name,
             version=prompt_template_schema.version,
-            owner_org_id=owner_org_id if not is_system_template else None
+            owner_org_id=owner_org_id if not is_system_entity else None
         )
         if existing_template:
             return existing_template
 
         # Create in DB
         try:
-            if is_system_template:
+            if is_system_entity:
                 # TODO: Similar to schema template, need system creation logic
-                # Example: Assuming BaseTemplateDAO.create handles is_system_template=True when owner_org_id=None
+                # Example: Assuming BaseTemplateDAO.create handles is_system_entity=True when owner_org_id=None
                 new_template = await self.prompt_template_dao.create_system(db, obj_in=prompt_template_schema) # Requires create_system
                 # raise NotImplementedError("System prompt template creation via DAO needs implementation.")
             else:

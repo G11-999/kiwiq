@@ -56,6 +56,68 @@ class BaseDAO(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         result = await db.execute(stmt)
         return result.scalars().first()
 
+    async def search_by_name_version(
+        self,
+        db: AsyncSession,
+        *,
+        name: str,
+        version: Optional[str] = None,
+        version_field: str = "version",
+        owner_org_id: uuid.UUID,
+        include_public: bool = True,
+        include_system_entities: bool = False,
+        include_public_system_entities: bool = False,
+        is_superuser: bool = False
+    ) -> Sequence[ModelType]:
+        """
+        Generic method to search for templates/entities by name and optional version.
+        
+        Returns entities that:
+        - Match the name
+        - Match the version (if provided)
+        - Belong to the specified organization OR
+        - Are public (if include_public=True) OR
+        - Are system entities (if include_system_entities=True and is_superuser=True)
+        
+        Args:
+            db: Database session
+            name: Name to search for
+            version: Optional version to filter by
+            version_field: Field name for version ('version' or 'version_tag')
+            owner_org_id: Organization ID context for the search
+            include_public: Whether to include public entities
+            include_system_entities: Whether to include system entities (only applies for superusers)
+            is_superuser: Whether the user is a superuser (controls system entity access)
+            
+        Returns:
+            List of matching entity objects
+        """
+        # Start with name filter
+        stmt = select(self.model).where(getattr(self.model, "name") == name)
+        
+        # Add version filter if provided
+        if version:
+            stmt = stmt.where(getattr(self.model, version_field) == version)
+        
+        # Build filter for org-specific, public, and system entities
+        or_conditions = [self.model.owner_org_id == owner_org_id]
+
+        if include_public_system_entities and hasattr(self.model, "is_system_entity") and hasattr(self.model, "is_public"):
+            or_conditions.append(and_(self.model.is_system_entity == True, self.model.is_public == True))
+        
+        if include_public and hasattr(self.model, "is_public"):
+            or_conditions.append(self.model.is_public == True)
+        
+        # Add system entities filter if applicable and user is superuser
+        if include_system_entities and is_superuser and hasattr(self.model, "is_system_entity"):
+            or_conditions.append(self.model.is_system_entity == True)
+        
+        stmt = stmt.where(or_(*or_conditions))
+        
+        # Execute query
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
     async def get_multi(
         self, db: AsyncSession, *, skip: int = 0, limit: int = 100
     ) -> Sequence[ModelType]:
@@ -224,7 +286,7 @@ class WorkflowDAO(BaseDAO[models.Workflow, schemas.WorkflowCreate, schemas.Workf
         result = await db.execute(stmt)
         return result.scalars().first()
     
-    async def get_by_id_and_org_or_public(self, db: AsyncSession, *, user: User, workflow_id: uuid.UUID, org_id: uuid.UUID) -> Optional[models.Workflow]:
+    async def get_by_id_and_org_or_public(self, db: AsyncSession, *, user: User, workflow_id: uuid.UUID, org_id: uuid.UUID, include_system_entities: bool = False) -> Optional[models.Workflow]:
         """Get a workflow by ID, ensuring it belongs to the specified organization or is public."""
         or_clause = or_(
                 and_(self.model.owner_org_id == org_id, self.model.owner_org_id != None),
@@ -232,6 +294,8 @@ class WorkflowDAO(BaseDAO[models.Workflow, schemas.WorkflowCreate, schemas.Workf
             )
         if user.is_superuser:
             or_clause = or_(or_clause, self.model.owner_org_id == None)
+        if not include_system_entities:
+            or_clause = and_(or_clause, self.model.is_system_entity == False)
 
         stmt = select(self.model).where(
             self.model.id == workflow_id,
@@ -252,20 +316,20 @@ class WorkflowDAO(BaseDAO[models.Workflow, schemas.WorkflowCreate, schemas.Workf
         self, db: AsyncSession, *,
         owner_org_id: uuid.UUID,
         include_public: bool = True,
+        include_system_entities: bool = False,
         skip: int = 0,
         limit: int = 100
         ) -> Sequence[models.Workflow]:
         """Get multiple workflows for a specific organization."""
         stmt = select(self.model)
+        clause = or_(
+            self.model.owner_org_id == owner_org_id,
+        )
         if include_public:
-            stmt = stmt.where(
-                or_(
-                    self.model.owner_org_id == owner_org_id,
-                    self.model.is_public == True
-                )
-            )
-        else:
-            stmt = stmt.where(self.model.owner_org_id == owner_org_id)
+            clause = or_(clause, self.model.is_public == True)
+        if not include_system_entities:
+            clause = and_(clause, self.model.is_system_entity == False)
+        stmt = stmt.where(clause)
         
         stmt = stmt.order_by(self.model.updated_at.desc()).offset(skip).limit(limit)
         result = await db.execute(stmt)
@@ -564,7 +628,7 @@ class BaseTemplateDAO(BaseDAO[TemplateModelType, TemplateCreateSchemaType, Templ
                 self.model.name == name,
                 self.model.version == version,
                 self.model.owner_org_id == owner_org_id,
-                self.model.is_system_template == False
+                self.model.is_system_entity == False
             )
             result_org = await db.execute(stmt_org)
             template = result_org.scalars().first()
@@ -574,7 +638,7 @@ class BaseTemplateDAO(BaseDAO[TemplateModelType, TemplateCreateSchemaType, Templ
         stmt_sys = select(self.model).where(
             self.model.name == name,
             self.model.version == version,
-            self.model.is_system_template == True
+            self.model.is_system_entity == True
         )
         result_sys = await db.execute(stmt_sys)
         return result_sys.scalars().first()
@@ -585,7 +649,7 @@ class BaseTemplateDAO(BaseDAO[TemplateModelType, TemplateCreateSchemaType, Templ
         """Retrieves templates owned by a specific organization (non-system)."""
         stmt = select(self.model).where(
             self.model.owner_org_id == owner_org_id,
-            self.model.is_system_template == False
+            self.model.is_system_entity == False
         ).order_by(self.model.name, self.model.version).offset(skip).limit(limit)
         result = await db.execute(stmt)
         return result.scalars().all()
@@ -595,7 +659,7 @@ class BaseTemplateDAO(BaseDAO[TemplateModelType, TemplateCreateSchemaType, Templ
     ) -> Sequence[TemplateModelType]:
         """Retrieves system templates."""
         stmt = select(self.model).where(
-            self.model.is_system_template == True
+            self.model.is_system_entity == True
         ).order_by(self.model.name, self.model.version).offset(skip).limit(limit)
         result = await db.execute(stmt)
         return result.scalars().all()
@@ -616,7 +680,7 @@ class BaseTemplateDAO(BaseDAO[TemplateModelType, TemplateCreateSchemaType, Templ
         db_obj = self.model(
             **create_data,
             owner_org_id=owner_org_id,
-            is_system_template=False
+            is_system_entity=False
         )
         db.add(db_obj)
         await db.commit()
@@ -630,7 +694,7 @@ class BaseTemplateDAO(BaseDAO[TemplateModelType, TemplateCreateSchemaType, Templ
         stmt = select(self.model).where(
             self.model.id == id,
             self.model.owner_org_id == owner_org_id,
-            self.model.is_system_template == False
+            self.model.is_system_entity == False
         )
         result = await db.execute(stmt)
         db_obj = result.scalars().first()
@@ -649,7 +713,7 @@ class BaseTemplateDAO(BaseDAO[TemplateModelType, TemplateCreateSchemaType, Templ
     ) -> TemplateModelType:
         """
         Updates an organization-specific template.
-        Prevents modification of `owner_org_id` and `is_system_template`.
+        Prevents modification of `owner_org_id` and `is_system_entity`.
         """
         if isinstance(obj_in, dict):
             update_data = obj_in
@@ -660,7 +724,7 @@ class BaseTemplateDAO(BaseDAO[TemplateModelType, TemplateCreateSchemaType, Templ
                 update_data = obj_in.dict(exclude_unset=True)
 
         update_data.pop('owner_org_id', None)
-        update_data.pop('is_system_template', None)
+        update_data.pop('is_system_entity', None)
         update_data.pop('id', None)
         update_data.pop('created_at', None)
 
@@ -805,10 +869,13 @@ class UserNotificationDAO(BaseDAO[models.UserNotification, schemas.UserNotificat
         Returns:
             A sequence of UserNotification objects.
         """
-        stmt = select(self.model).where(
+        clause = and_(
             self.model.user_id == user_id,
-            self.model.org_id == org_id
         )
+        if org_id is not None:
+            clause = and_(clause, self.model.org_id == org_id)
+
+        stmt = select(self.model).where(clause)
 
         if is_read is not None:
             stmt = stmt.where(self.model.is_read == is_read)

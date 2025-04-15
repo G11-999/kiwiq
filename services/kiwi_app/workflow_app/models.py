@@ -51,6 +51,10 @@ class NodeTemplate(SQLModel, table=True):
 class Workflow(SQLModel, table=True):
     """Represents a user-defined workflow configuration owned by an organization."""
     __tablename__ = f"{table_prefix}workflow"
+    __table_args__ = (
+        # Ensure name/version is unique either for system templates OR within a specific org
+        Index(f'{table_prefix}workflow_org_name_version_idx', 'owner_org_id', 'name', 'version_tag', unique=True),
+    )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
     # Self-referential relationship to support workflow templates/inheritance
@@ -80,6 +84,7 @@ class Workflow(SQLModel, table=True):
     version_tag: Optional[str] = Field(default=None, nullable=True, index=True, description="User-defined tag for versioning (e.g., 'v1.2-stable')")
     is_template: bool = Field(default=False, index=True, description="Indicates if this workflow can be used as a template within the org")
     is_public: Optional[bool] = Field(default=False, index=True, nullable=True, description="Indicates if this workflow is publicly accessible")
+    is_system_entity: Optional[bool] = Field(default=False, index=True, nullable=True, description="True if this is a KiwiQ system Workflow, only meant to be used by KiwiQ application.")
 
     launch_status: LaunchStatus = Field(
         default=LaunchStatus.DEVELOPMENT,
@@ -179,8 +184,7 @@ class PromptTemplate(SQLModel, table=True):
     __tablename__ = f"{table_prefix}prompt_template"
     __table_args__ = (
         # Ensure name/version is unique either for system templates OR within a specific org
-        Index(f'{table_prefix}prompt_template_system_name_version_idx', 'name', 'version', unique=True, postgresql_where=Column('is_system_template')),
-        Index(f'{table_prefix}prompt_template_org_name_version_idx', 'owner_org_id', 'name', 'version', unique=True, postgresql_where=~Column('is_system_template')),
+        Index(f'{table_prefix}prompt_template_org_name_version_idx', 'owner_org_id', 'name', 'version', unique=True),
     )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
@@ -204,7 +208,8 @@ class PromptTemplate(SQLModel, table=True):
         index=True,
         description="Org owner if not a system template"
     )
-    is_system_template: bool = Field(default=False, index=True, description="True if this is a KiwiQ system template")
+    is_system_entity: Optional[bool] = Field(default=False, index=True, nullable=True, description="True if this is a KiwiQ system template, only meant to be used by KiwiQ application.")
+    is_public: Optional[bool] = Field(default=False, index=True, nullable=True, description="True if this is a public template, available to all users.")
 
     created_at: datetime = Field(default_factory=datetime_now_utc, nullable=False)
     updated_at: datetime = Field(default_factory=datetime_now_utc, nullable=False, sa_column_kwargs={"onupdate": datetime_now_utc})
@@ -226,13 +231,12 @@ class SchemaTemplate(SQLModel, table=True):
     __tablename__ = f"{table_prefix}schema_template"
     __table_args__ = (
         # Similar unique constraints as PromptTemplate
-        Index(f'{table_prefix}schema_template_system_name_version_idx', 'name', 'version', unique=True, postgresql_where=Column('is_system_template')),
-        Index(f'{table_prefix}schema_template_org_name_version_idx', 'owner_org_id', 'name', 'version', unique=True, postgresql_where=~Column('is_system_template')),
+        Index(f'{table_prefix}schema_template_org_name_version_idx', 'owner_org_id', 'name', 'version', unique=True),
     )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
     name: str = Field(index=True, description="Name of the schema template")
-    version: str = Field(index=True, description="Version string")
+    version: Optional[str] = Field(default=None, nullable=True, index=True, description="Version string")
     description: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
 
     schema_definition: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON, nullable=True), description="The JSON schema definition")
@@ -247,7 +251,8 @@ class SchemaTemplate(SQLModel, table=True):
         index=True,
         description="Org owner if not a system template"
     )
-    is_system_template: bool = Field(default=False, index=True, description="True if this is a KiwiQ system template")
+    is_system_entity: Optional[bool] = Field(default=False, index=True, nullable=True, description="True if this is a KiwiQ system template, only meant to be used by KiwiQ application.")
+    is_public: Optional[bool] = Field(default=False, index=True, nullable=True, description="True if this is a public template, available to all users.")
 
     created_at: datetime = Field(default_factory=datetime_now_utc, nullable=False)
     updated_at: datetime = Field(default_factory=datetime_now_utc, nullable=False, sa_column_kwargs={"onupdate": datetime_now_utc})

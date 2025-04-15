@@ -11,6 +11,7 @@ Tests:
 - Delete Workflow
 """
 import asyncio
+import json
 import httpx
 import logging
 import uuid
@@ -26,6 +27,7 @@ from kiwi_client.test_config import (
     NODE_TEMPLATE_DETAIL_URL,
     EXAMPLE_BASIC_LLM_GRAPH_CONFIG, # Use the example graph from config
     CLIENT_LOG_LEVEL,
+    VALIDATE_GRAPH_URL,  # Import validation URL
 )
 
 # Import pydantic for validation
@@ -417,9 +419,64 @@ class WorkflowTestClient:
         
         return None
     
+    async def validate_graph_api(self, 
+                              graph_config: Dict[str, Any], 
+                              validate_nodes: bool = True) -> Optional[wf_schemas.WorkflowGraphValidationResult]:
+        """
+        Validates a workflow graph configuration using the server API endpoint.
+        
+        This makes a POST request to the validation endpoint with the graph configuration,
+        and returns the validation results.
+        
+        Args:
+            graph_config (Dict[str, Any]): The graph configuration to validate.
+            validate_nodes (bool): Whether to validate node configurations against templates.
+                                  Defaults to True.
+                                  
+        Returns:
+            Optional[wf_schemas.WorkflowGraphValidationResult]: Validation results or None if request fails.
+        """
+        logger.info(f"Validating graph configuration via API (validate_nodes={validate_nodes})...")
+        
+        try:
+            # Prepare query parameters
+            params = {"validate_nodes": validate_nodes}
+            
+            # Make the API request
+            response = await self._client.post(VALIDATE_GRAPH_URL, json=graph_config, params=params)
+            response.raise_for_status()
+            response_json = response.json()
+            
+            # Parse the response into the WorkflowGraphValidationResult schema
+            validation_result = wf_schemas.WorkflowGraphValidationResult.model_validate(response_json)
+            
+            # Log the result
+            if validation_result.is_valid:
+                logger.info("Graph validation passed successfully!")
+            else:
+                error_count = sum(len(errors) for errors in validation_result.errors.values())
+                logger.warning(f"Graph validation failed with {error_count} errors")
+                
+            return validation_result
+            
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Error validating graph: {e.response.status_code} - {e.response.text}")
+        except httpx.RequestError as e:
+            logger.error(f"Request error validating graph: {e}")
+        except ValidationError as e:
+            logger.error(f"Response validation error: {e}")
+        except Exception as e:
+            logger.exception(f"Unexpected error validating graph: {e}")
+            
+        return None
+
     def validate_graph_schema(self, graph_config: Dict[str, Any]) -> Tuple[bool, List[str]]:
         """
         Validates a graph configuration against the GraphSchema model.
+        
+        This is a client-side method that performs basic schema validation
+        without requiring a server API call. For full validation including
+        node configurations, use validate_workflow().
         
         Args:
             graph_config (Dict[str, Any]): The graph configuration to validate.
@@ -429,13 +486,13 @@ class WorkflowTestClient:
                 - bool: True if validation passed, False otherwise
                 - List[str]: List of validation error messages, empty if validation passed
         """
-        logger.info("Validating graph schema structure...")
+        logger.info("Validating graph schema structure locally...")
         errors = []
         
         try:
             # Convert dict to GraphSchema for validation
             graph_schema = GraphSchema.model_validate(graph_config)
-            logger.info("Graph schema validation passed!")
+            logger.info("Graph schema local validation passed!")
             return True, []
         except ValidationError as e:
             logger.error(f"Graph schema validation failed: {e}")
@@ -450,85 +507,14 @@ class WorkflowTestClient:
             errors.append(f"Unexpected validation error: {str(e)}")
             return False, errors
     
-    async def validate_node_configs(self, graph_config: Dict[str, Any]) -> Tuple[bool, Dict[str, List[str]]]:
-        """
-        Validates node configurations in a graph schema against their respective config schemas.
-        
-        This method:
-        1. Fetches node templates for all nodes in the graph
-        2. Validates each node's configuration against its config_schema from the template
-        
-        Args:
-            graph_config (Dict[str, Any]): The graph configuration to validate.
-            
-        Returns:
-            Tuple[bool, Dict[str, List[str]]]: A tuple containing:
-                - bool: True if all nodes pass validation, False if any fail
-                - Dict[str, List[str]]: Dictionary mapping node IDs to lists of validation errors
-        """
-        logger.info("Validating node configurations...")
-        all_valid = True
-        validation_errors: Dict[str, List[str]] = {}
-        
-        # First validate overall graph structure
-        is_valid_schema, schema_errors = self.validate_graph_schema(graph_config)
-        if not is_valid_schema:
-            logger.error("Cannot validate node configs: Graph schema is invalid")
-            return False, {"graph_schema": schema_errors}
-        
-        # Convert to GraphSchema to have proper access to nodes
-        graph_schema = GraphSchema.model_validate(graph_config)
-        
-        # Fetch templates for all nodes in the graph
-        for node_id, node_config in graph_schema.nodes.items():
-            # Skip special input/output nodes
-            if node_id in ["input_node", "output_node"]:
-                continue
-                
-            node_name = node_config.node_name
-            # Use 'latest' if no version specified
-            node_version = node_config.node_version or "latest"
-            
-            # Get node template with config schema
-            template = await self.get_node_template(node_name, node_version)
-            if not template:
-                validation_errors[node_id] = [f"Could not find node template for {node_name} v:{node_version}"]
-                all_valid = False
-                continue
-                
-            # Skip validation if no config schema is defined
-            if not template.config_schema:
-                logger.info(f"Node {node_id} ({node_name}) has no config schema defined, skipping validation")
-                continue
-                
-            # Validate the node's configuration against its schema
-            try:
-                jsonschema.validate(instance=node_config.node_config, schema=template.config_schema)
-                logger.info(f"Node {node_id} ({node_name}) configuration validated successfully")
-            except ValidationError as e:
-                all_valid = False
-                error_path = "/".join(str(part) for part in e.path)
-                error_msg = f"{error_path}: {e.message}" if error_path else e.message
-                if node_id not in validation_errors:
-                    validation_errors[node_id] = []
-                validation_errors[node_id].append(error_msg)
-                logger.error(f"Node {node_id} ({node_name}) config validation failed: {error_msg}")
-        
-        if all_valid:
-            logger.info("All node configurations validated successfully")
-        else:
-            logger.error(f"Node configuration validation failed for {len(validation_errors)} nodes")
-            
-        return all_valid, validation_errors
-
     async def validate_workflow(self, 
                                graph_config: Dict[str, Any], 
                                validate_nodes: bool = True) -> Tuple[bool, Dict[str, List[str]]]:
         """
-        Performs comprehensive validation of a workflow graph configuration.
+        Performs comprehensive validation of a workflow graph configuration using the API endpoint.
         
-        This method performs both structural validation (GraphSchema) and
-        node-specific configuration validation if requested.
+        This method is a wrapper around the validate_graph_api method, which calls the server
+        to validate both the structure and node configurations in the workflow graph.
         
         Args:
             graph_config (Dict[str, Any]): The graph configuration to validate.
@@ -540,31 +526,19 @@ class WorkflowTestClient:
                 - bool: True if all validation passes, False otherwise
                 - Dict[str, List[str]]: Dictionary of validation errors by category/node
         """
-        logger.info("Starting comprehensive workflow validation...")
-        all_errors: Dict[str, List[str]] = {}
+        logger.info("Starting comprehensive workflow validation via API...")
         
-        # Validate graph schema structure
-        is_valid_schema, schema_errors = self.validate_graph_schema(graph_config)
-        if not is_valid_schema:
-            all_errors["graph_schema"] = schema_errors
-            logger.error("Graph schema validation failed, skipping node validation")
-            return False, all_errors
-            
-        # If schema is valid and node validation requested, validate all node configs
-        if validate_nodes:
-            is_valid_nodes, node_errors = await self.validate_node_configs(graph_config)
-            if not is_valid_nodes:
-                all_errors.update(node_errors)
-                
-        is_valid = is_valid_schema and (not validate_nodes or (validate_nodes and is_valid_nodes))
+        # Call the API to validate the graph
+        validation_result = await self.validate_graph_api(graph_config, validate_nodes)
         
-        if is_valid:
-            logger.info("Workflow validation passed successfully!")
-        else:
-            error_count = sum(len(errors) for errors in all_errors.values())
-            logger.error(f"Workflow validation failed with {error_count} errors")
-            
-        return is_valid, all_errors
+        if validation_result is None:
+            # If the API call failed, fall back to local validation
+            logger.warning("API validation failed, falling back to local schema validation...")
+            is_valid_schema, schema_errors = self.validate_graph_schema(graph_config)
+            return is_valid_schema, {"graph_schema": schema_errors} if not is_valid_schema else {}
+        
+        # Return validation results from the API
+        return validation_result.is_valid, validation_result.errors
 
     # --- Helper property --- 
     @property
@@ -574,7 +548,7 @@ class WorkflowTestClient:
 
 # --- Example Usage --- (for testing this module directly)
 async def main():
-    """Demonstrates using the updated WorkflowTestClient with schema validation."""
+    """Demonstrates using the updated WorkflowTestClient with API-based validation."""
     print("--- Starting Workflow API Test --- ")
     temp_workflow_id: Optional[uuid.UUID] = None
     try:
@@ -582,38 +556,36 @@ async def main():
             print("Authenticated.")
             workflow_tester = WorkflowTestClient(auth_client)
 
-            # Test workflow validation
-            print("\nTesting Workflow Validation...")
-            print("1. Validating example workflow graph schema...")
-            valid_schema, schema_errors = workflow_tester.validate_graph_schema(EXAMPLE_BASIC_LLM_GRAPH_CONFIG)
-            if valid_schema:
-                print("   ✓ Graph schema is valid!")
-            else:
-                print("   ✗ Graph schema validation failed:")
-                for error in schema_errors:
-                    print(f"     - {error}")
+            # Test workflow validation using the API
+            print("\nTesting Workflow Validation via API...")
             
-            print("\n2. Validating node configurations...")
-            valid_nodes, node_errors = await workflow_tester.validate_node_configs(EXAMPLE_BASIC_LLM_GRAPH_CONFIG)
-            if valid_nodes:
-                print("   ✓ All node configurations are valid!")
-            else:
-                print("   ✗ Node configuration validation failed:")
-                for node_id, errors in node_errors.items():
-                    print(f"     Node {node_id}:")
-                    for error in errors:
-                        print(f"       - {error}")
+            # Perform comprehensive validation via API
+            print("\nValidating workflow graph via API...")
+            validation_result = await workflow_tester.validate_graph_api(EXAMPLE_BASIC_LLM_GRAPH_CONFIG)
             
-            print("\n3. Comprehensive workflow validation...")
-            valid_workflow, all_errors = await workflow_tester.validate_workflow(EXAMPLE_BASIC_LLM_GRAPH_CONFIG)
-            if valid_workflow:
-                print("   ✓ Workflow validation completed successfully!")
+            if validation_result:
+                if validation_result.is_valid:
+                    print("   ✓ Workflow validation completed successfully!")
+                    print(f"   - Graph schema valid: {validation_result.graph_schema_valid}")
+                    print(f"   - Node configs valid: {validation_result.node_configs_valid}")
+                else:
+                    print("   ✗ Workflow validation failed:")
+                    for category, errors in validation_result.errors.items():
+                        print(f"     {category}:")
+                        for error in errors:
+                            print(f"       - {error}")
             else:
-                print("   ✗ Workflow validation failed:")
-                for category, errors in all_errors.items():
-                    print(f"     {category}:")
-                    for error in errors:
-                        print(f"       - {error}")
+                print("   ✗ API validation request failed")
+                
+                # Fall back to local validation
+                print("\nFalling back to local validation...")
+                valid_schema, schema_errors = workflow_tester.validate_graph_schema(EXAMPLE_BASIC_LLM_GRAPH_CONFIG)
+                if valid_schema:
+                    print("   ✓ Graph schema is valid! (local validation)")
+                else:
+                    print("   ✗ Graph schema validation failed (local validation):")
+                    for error in schema_errors:
+                        print(f"     - {error}")
 
             # Original workflow API tests
             print("\nTesting Workflow API...")

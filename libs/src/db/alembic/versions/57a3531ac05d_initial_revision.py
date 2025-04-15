@@ -1,8 +1,8 @@
 """Initial revision
 
-Revision ID: b77b0b51b551
+Revision ID: 57a3531ac05d
 Revises: 
-Create Date: 2025-04-11 23:58:39.158191
+Create Date: 2025-04-16 03:27:48.259244
 
 """
 from typing import Sequence, Union
@@ -13,7 +13,7 @@ import sqlmodel
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'b77b0b51b551'
+revision: str = '57a3531ac05d'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -128,7 +128,8 @@ def upgrade() -> None:
     sa.Column('template_content', sa.Text(), nullable=True),
     sa.Column('input_variables', sa.JSON(), nullable=True),
     sa.Column('owner_org_id', sa.Uuid(), nullable=True),
-    sa.Column('is_system_template', sa.Boolean(), nullable=False),
+    sa.Column('is_system_entity', sa.Boolean(), nullable=True),
+    sa.Column('is_public', sa.Boolean(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=False),
     sa.Column('updated_at', sa.DateTime(), nullable=False),
     sa.ForeignKeyConstraint(['owner_org_id'], ['kiwiq_auth_org.id'], ),
@@ -136,35 +137,36 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_kw_wf_prompt_template_id'), 'kw_wf_prompt_template', ['id'], unique=False)
-    op.create_index(op.f('ix_kw_wf_prompt_template_is_system_template'), 'kw_wf_prompt_template', ['is_system_template'], unique=False)
+    op.create_index(op.f('ix_kw_wf_prompt_template_is_public'), 'kw_wf_prompt_template', ['is_public'], unique=False)
+    op.create_index(op.f('ix_kw_wf_prompt_template_is_system_entity'), 'kw_wf_prompt_template', ['is_system_entity'], unique=False)
     op.create_index(op.f('ix_kw_wf_prompt_template_name'), 'kw_wf_prompt_template', ['name'], unique=False)
     op.create_index(op.f('ix_kw_wf_prompt_template_owner_org_id'), 'kw_wf_prompt_template', ['owner_org_id'], unique=False)
     op.create_index(op.f('ix_kw_wf_prompt_template_parent_base_id'), 'kw_wf_prompt_template', ['parent_base_id'], unique=False)
     op.create_index(op.f('ix_kw_wf_prompt_template_version'), 'kw_wf_prompt_template', ['version'], unique=False)
-    op.create_index('kw_wf_prompt_template_org_name_version_idx', 'kw_wf_prompt_template', ['owner_org_id', 'name', 'version'], unique=True, postgresql_where=sa.text('NOT is_system_template'))
-    op.create_index('kw_wf_prompt_template_system_name_version_idx', 'kw_wf_prompt_template', ['name', 'version'], unique=True, postgresql_where=sa.text('is_system_template'))
+    op.create_index('kw_wf_prompt_template_org_name_version_idx', 'kw_wf_prompt_template', ['owner_org_id', 'name', 'version'], unique=True)
     op.create_table('kw_wf_schema_template',
     sa.Column('id', sa.Uuid(), nullable=False),
     sa.Column('name', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.Column('version', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('version', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
     sa.Column('description', sa.Text(), nullable=True),
     sa.Column('schema_definition', sa.JSON(), nullable=True),
     sa.Column('schema_type', sa.Enum('JSON_SCHEMA', 'CONSTRUCT_DYNAMIC_SCHEMA', 'CODE_REGISTERED_SCHEMA', name='schematype'), nullable=False),
     sa.Column('owner_org_id', sa.Uuid(), nullable=True),
-    sa.Column('is_system_template', sa.Boolean(), nullable=False),
+    sa.Column('is_system_entity', sa.Boolean(), nullable=True),
+    sa.Column('is_public', sa.Boolean(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=False),
     sa.Column('updated_at', sa.DateTime(), nullable=False),
     sa.ForeignKeyConstraint(['owner_org_id'], ['kiwiq_auth_org.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_kw_wf_schema_template_id'), 'kw_wf_schema_template', ['id'], unique=False)
-    op.create_index(op.f('ix_kw_wf_schema_template_is_system_template'), 'kw_wf_schema_template', ['is_system_template'], unique=False)
+    op.create_index(op.f('ix_kw_wf_schema_template_is_public'), 'kw_wf_schema_template', ['is_public'], unique=False)
+    op.create_index(op.f('ix_kw_wf_schema_template_is_system_entity'), 'kw_wf_schema_template', ['is_system_entity'], unique=False)
     op.create_index(op.f('ix_kw_wf_schema_template_name'), 'kw_wf_schema_template', ['name'], unique=False)
     op.create_index(op.f('ix_kw_wf_schema_template_owner_org_id'), 'kw_wf_schema_template', ['owner_org_id'], unique=False)
     op.create_index(op.f('ix_kw_wf_schema_template_schema_type'), 'kw_wf_schema_template', ['schema_type'], unique=False)
     op.create_index(op.f('ix_kw_wf_schema_template_version'), 'kw_wf_schema_template', ['version'], unique=False)
-    op.create_index('kw_wf_schema_template_org_name_version_idx', 'kw_wf_schema_template', ['owner_org_id', 'name', 'version'], unique=True, postgresql_where=sa.text('NOT is_system_template'))
-    op.create_index('kw_wf_schema_template_system_name_version_idx', 'kw_wf_schema_template', ['name', 'version'], unique=True, postgresql_where=sa.text('is_system_template'))
+    op.create_index('kw_wf_schema_template_org_name_version_idx', 'kw_wf_schema_template', ['owner_org_id', 'name', 'version'], unique=True)
     op.create_table('kw_wf_workflow',
     sa.Column('id', sa.Uuid(), nullable=False),
     sa.Column('parent_base_id', sa.Uuid(), nullable=True),
@@ -175,6 +177,7 @@ def upgrade() -> None:
     sa.Column('version_tag', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
     sa.Column('is_template', sa.Boolean(), nullable=False),
     sa.Column('is_public', sa.Boolean(), nullable=True),
+    sa.Column('is_system_entity', sa.Boolean(), nullable=True),
     sa.Column('launch_status', sa.Enum('EXPERIMENTAL', 'DEVELOPMENT', 'STAGING', 'PRODUCTION', name='kw_wf_workflow_launch_status_enum'), nullable=False),
     sa.Column('created_by_user_id', sa.Uuid(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=False),
@@ -186,12 +189,14 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_kw_wf_workflow_id'), 'kw_wf_workflow', ['id'], unique=False)
     op.create_index(op.f('ix_kw_wf_workflow_is_public'), 'kw_wf_workflow', ['is_public'], unique=False)
+    op.create_index(op.f('ix_kw_wf_workflow_is_system_entity'), 'kw_wf_workflow', ['is_system_entity'], unique=False)
     op.create_index(op.f('ix_kw_wf_workflow_is_template'), 'kw_wf_workflow', ['is_template'], unique=False)
     op.create_index(op.f('ix_kw_wf_workflow_launch_status'), 'kw_wf_workflow', ['launch_status'], unique=False)
     op.create_index(op.f('ix_kw_wf_workflow_name'), 'kw_wf_workflow', ['name'], unique=False)
     op.create_index(op.f('ix_kw_wf_workflow_owner_org_id'), 'kw_wf_workflow', ['owner_org_id'], unique=False)
     op.create_index(op.f('ix_kw_wf_workflow_parent_base_id'), 'kw_wf_workflow', ['parent_base_id'], unique=False)
     op.create_index(op.f('ix_kw_wf_workflow_version_tag'), 'kw_wf_workflow', ['version_tag'], unique=False)
+    op.create_index('kw_wf_workflow_org_name_version_idx', 'kw_wf_workflow', ['owner_org_id', 'name', 'version_tag'], unique=True)
     op.create_table('kw_wf_workflow_run',
     sa.Column('id', sa.Uuid(), nullable=False),
     sa.Column('thread_id', sa.Uuid(), nullable=True),
@@ -288,31 +293,33 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_kw_wf_workflow_run_owner_org_id'), table_name='kw_wf_workflow_run')
     op.drop_index(op.f('ix_kw_wf_workflow_run_id'), table_name='kw_wf_workflow_run')
     op.drop_table('kw_wf_workflow_run')
+    op.drop_index('kw_wf_workflow_org_name_version_idx', table_name='kw_wf_workflow')
     op.drop_index(op.f('ix_kw_wf_workflow_version_tag'), table_name='kw_wf_workflow')
     op.drop_index(op.f('ix_kw_wf_workflow_parent_base_id'), table_name='kw_wf_workflow')
     op.drop_index(op.f('ix_kw_wf_workflow_owner_org_id'), table_name='kw_wf_workflow')
     op.drop_index(op.f('ix_kw_wf_workflow_name'), table_name='kw_wf_workflow')
     op.drop_index(op.f('ix_kw_wf_workflow_launch_status'), table_name='kw_wf_workflow')
     op.drop_index(op.f('ix_kw_wf_workflow_is_template'), table_name='kw_wf_workflow')
+    op.drop_index(op.f('ix_kw_wf_workflow_is_system_entity'), table_name='kw_wf_workflow')
     op.drop_index(op.f('ix_kw_wf_workflow_is_public'), table_name='kw_wf_workflow')
     op.drop_index(op.f('ix_kw_wf_workflow_id'), table_name='kw_wf_workflow')
     op.drop_table('kw_wf_workflow')
-    op.drop_index('kw_wf_schema_template_system_name_version_idx', table_name='kw_wf_schema_template', postgresql_where=sa.text('is_system_template'))
-    op.drop_index('kw_wf_schema_template_org_name_version_idx', table_name='kw_wf_schema_template', postgresql_where=sa.text('NOT is_system_template'))
+    op.drop_index('kw_wf_schema_template_org_name_version_idx', table_name='kw_wf_schema_template')
     op.drop_index(op.f('ix_kw_wf_schema_template_version'), table_name='kw_wf_schema_template')
     op.drop_index(op.f('ix_kw_wf_schema_template_schema_type'), table_name='kw_wf_schema_template')
     op.drop_index(op.f('ix_kw_wf_schema_template_owner_org_id'), table_name='kw_wf_schema_template')
     op.drop_index(op.f('ix_kw_wf_schema_template_name'), table_name='kw_wf_schema_template')
-    op.drop_index(op.f('ix_kw_wf_schema_template_is_system_template'), table_name='kw_wf_schema_template')
+    op.drop_index(op.f('ix_kw_wf_schema_template_is_system_entity'), table_name='kw_wf_schema_template')
+    op.drop_index(op.f('ix_kw_wf_schema_template_is_public'), table_name='kw_wf_schema_template')
     op.drop_index(op.f('ix_kw_wf_schema_template_id'), table_name='kw_wf_schema_template')
     op.drop_table('kw_wf_schema_template')
-    op.drop_index('kw_wf_prompt_template_system_name_version_idx', table_name='kw_wf_prompt_template', postgresql_where=sa.text('is_system_template'))
-    op.drop_index('kw_wf_prompt_template_org_name_version_idx', table_name='kw_wf_prompt_template', postgresql_where=sa.text('NOT is_system_template'))
+    op.drop_index('kw_wf_prompt_template_org_name_version_idx', table_name='kw_wf_prompt_template')
     op.drop_index(op.f('ix_kw_wf_prompt_template_version'), table_name='kw_wf_prompt_template')
     op.drop_index(op.f('ix_kw_wf_prompt_template_parent_base_id'), table_name='kw_wf_prompt_template')
     op.drop_index(op.f('ix_kw_wf_prompt_template_owner_org_id'), table_name='kw_wf_prompt_template')
     op.drop_index(op.f('ix_kw_wf_prompt_template_name'), table_name='kw_wf_prompt_template')
-    op.drop_index(op.f('ix_kw_wf_prompt_template_is_system_template'), table_name='kw_wf_prompt_template')
+    op.drop_index(op.f('ix_kw_wf_prompt_template_is_system_entity'), table_name='kw_wf_prompt_template')
+    op.drop_index(op.f('ix_kw_wf_prompt_template_is_public'), table_name='kw_wf_prompt_template')
     op.drop_index(op.f('ix_kw_wf_prompt_template_id'), table_name='kw_wf_prompt_template')
     op.drop_table('kw_wf_prompt_template')
     op.drop_table('kiwiq_auth_user_org_role')

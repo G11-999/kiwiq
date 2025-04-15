@@ -65,6 +65,7 @@ SCHEMA_TEMPLATE_DETAIL_URL = lambda template_id: f"{SCHEMA_TEMPLATES_URL}{templa
 # Workflows
 WORKFLOWS_URL = f"{API_BASE_URL}/workflows/"
 WORKFLOW_DETAIL_URL = lambda workflow_id: f"{WORKFLOWS_URL}{workflow_id}"
+VALIDATE_GRAPH_URL = f"{WORKFLOWS_URL}validate/"
 
 # Runs
 RUNS_URL = f"{API_BASE_URL}/runs/"
