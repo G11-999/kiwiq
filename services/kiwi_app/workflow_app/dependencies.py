@@ -3,11 +3,12 @@
 import uuid
 from typing import Optional, List, AsyncGenerator
 
-from fastapi import Depends, HTTPException, status, Path
+from fastapi import Depends, HTTPException, status, Path, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from db.session import get_async_session, get_async_db_dependency
+from functools import partial
 from kiwi_app.auth.models import User # Assuming auth models are accessible
 from kiwi_app.auth.dependencies import ( # Import relevant auth dependencies
     get_current_active_verified_user,
@@ -15,7 +16,8 @@ from kiwi_app.auth.dependencies import ( # Import relevant auth dependencies
     PermissionChecker as AuthPermissionChecker,
     SpecificOrgPermissionChecker as AuthSpecificOrgPermissionChecker
 )
-from mongo_client import AsyncMongoDBClient # Import the client class
+from mongo_client import AsyncMongoDBClient, AsyncMongoVersionedClient # Import the client classes
+from kiwi_app.settings import settings
 
 from kiwi_app.workflow_app import crud, models, schemas, services
 from kiwi_app.workflow_app.constants import WorkflowPermissions
@@ -24,9 +26,10 @@ from kiwi_app.workflow_app.exceptions import (
     WorkflowRunNotFoundException,
     TemplateNotFoundException
 )
+from kiwi_app.workflow_app.service_customer_data import CustomerDataService
 from workflow_service.registry import registry
 from workflow_service.services.db_node_register import register_node_templates
-from workflow_service.services.external_context_manager import get_workflow_mongo_client
+from workflow_service.services.external_context_manager import get_workflow_mongo_client, get_customer_mongo_client, get_customer_mongo_client_with_extra_segments
 
 # --- DAO Dependency Factories --- #
 
@@ -73,6 +76,7 @@ async def get_node_template_registry() -> registry.DBRegistry:
 
 # --- Service Dependency Factory --- #
 
+# TODO: FIXME: for fastapi dependencies, lifecycle is managed by yield, so do graceful shutdown!
 def get_workflow_service_dependency(
     node_template_dao: crud.NodeTemplateDAO = Depends(get_node_template_dao),
     workflow_dao: crud.WorkflowDAO = Depends(get_workflow_dao),
@@ -81,7 +85,8 @@ def get_workflow_service_dependency(
     schema_template_dao: crud.SchemaTemplateDAO = Depends(get_schema_template_dao),
     user_notification_dao: crud.UserNotificationDAO = Depends(get_user_notification_dao),
     hitl_job_dao: crud.HITLJobDAO = Depends(get_hitl_job_dao),
-    mongo_client: AsyncMongoDBClient = Depends(get_workflow_mongo_client)
+    mongo_client: AsyncMongoDBClient = Depends(get_workflow_mongo_client),
+    customer_mongo_client: AsyncMongoDBClient = Depends(get_customer_mongo_client),
 ) -> services.WorkflowService:
     """Dependency function to instantiate WorkflowService with its DAO dependencies."""
     return services.WorkflowService(
@@ -92,8 +97,38 @@ def get_workflow_service_dependency(
         schema_template_dao=schema_template_dao,
         user_notification_dao=user_notification_dao,
         hitl_job_dao=hitl_job_dao,
-        mongo_client=mongo_client
+        mongo_client=mongo_client,
+        customer_mongo_client=customer_mongo_client,
         # Pass NoSQL client here
+    )
+
+# --- Customer Data Service Dependency --- #
+
+async def partial_get_customer_mongo_client_with_extra_segments():
+    return await get_customer_mongo_client_with_extra_segments(extra_segments=AsyncMongoVersionedClient.VERSION_SEGMENT_NAMES)
+
+async def get_customer_versioned_mongo_client_dependency(
+    customer_mongo_client: AsyncMongoDBClient = Depends(partial_get_customer_mongo_client_with_extra_segments),
+) -> AsyncMongoVersionedClient:
+    """Create and return a versioned MongoDB client for customer data."""
+    # Create versioned client based on the base MongoDB client
+    # Use base segment names without version/sequence segments that will be added internally
+    versioned_client = AsyncMongoVersionedClient(
+        client=customer_mongo_client,
+        segment_names=settings.MONGO_CUSTOMER_SEGMENTS, # Base segments defined in settings
+    )
+    return versioned_client
+
+def get_customer_data_service_dependency(
+    customer_mongo_client: AsyncMongoDBClient = Depends(get_customer_mongo_client),
+    versioned_mongo_client: AsyncMongoVersionedClient = Depends(get_customer_versioned_mongo_client_dependency),
+    workflow_service: services.WorkflowService = Depends(get_workflow_service_dependency),
+) -> CustomerDataService:
+    """Dependency function to instantiate CustomerDataService."""
+    return CustomerDataService(
+        mongo_client=customer_mongo_client,
+        versioned_mongo_client=versioned_mongo_client,
+        workflow_service=workflow_service,
     )
 
 # --- Permission Checkers (using Auth checkers) --- #
@@ -120,6 +155,10 @@ RequireTemplateDeleteActiveOrg = AuthPermissionChecker([WorkflowPermissions.TEMP
 
 # You might need a slightly different checker if the workflow/run ID is in the path
 # and you need to fetch the object first to find its owning org ID.
+
+# Add checkers for Organization Data
+RequireOrgDataReadActiveOrg = AuthPermissionChecker([WorkflowPermissions.ORG_DATA_READ])
+RequireOrgDataWriteActiveOrg = AuthPermissionChecker([WorkflowPermissions.ORG_DATA_WRITE])
 
 # --- Resource Fetching Dependencies with Permission Checks --- #
 
@@ -211,5 +250,3 @@ async def get_hitl_job_for_org(
             detail="HITL job not found or does not belong to the active organization"
         )
     return job
-
-# Add similar dependencies for getting PromptTemplate and SchemaTemplate by ID + Org if needed 

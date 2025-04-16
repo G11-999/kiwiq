@@ -23,7 +23,7 @@ from kiwi_client.test_config import (
     CLIENT_LOG_LEVEL,
 )
 # Import workflow client to create a workflow to run
-from kiwi_client.test_workflow_client_v2 import WorkflowTestClient
+from kiwi_client.workflow_client import WorkflowTestClient
 
 # Import schemas and constants from the workflow app
 

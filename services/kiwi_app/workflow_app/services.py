@@ -16,6 +16,7 @@ from fastapi import HTTPException, status
 from pydantic import ValidationError # For schema validation
 
 from jsonschema import validate
+from jsonschema.validators import Draft202012Validator
 
 from global_utils import datetime_now_utc
 from global_config.logger import get_logger
@@ -52,7 +53,8 @@ class WorkflowService:
         schema_template_dao: crud.SchemaTemplateDAO,
         user_notification_dao: crud.UserNotificationDAO,
         hitl_job_dao: crud.HITLJobDAO,
-        mongo_client: Optional[AsyncMongoDBClient] = None # Make Mongo optional for now
+        mongo_client: Optional[AsyncMongoDBClient] = None, # Make Mongo optional for now
+        customer_mongo_client: Optional[AsyncMongoDBClient] = None, # Make Mongo optional for now
     ) -> None:
         """Initialize the WorkflowService with its DAO and client dependencies."""
         self.node_template_dao = node_template_dao
@@ -63,6 +65,7 @@ class WorkflowService:
         self.user_notification_dao = user_notification_dao
         self.hitl_job_dao = hitl_job_dao
         self.mongo_client = mongo_client
+        self.customer_mongo_client = customer_mongo_client
 
     # --- NodeTemplate Operations --- #
 
@@ -253,12 +256,13 @@ class WorkflowService:
                 # Validate input against response schema if one exists
                 if hitl_job.response_schema:
                     try:
-                        from jsonschema import validate
-                        validate(instance=run_submit.inputs, schema=hitl_job.response_schema)
-                    except Exception as e:
+                        validate(instance=run_submit.inputs, schema=hitl_job.response_schema, format_checker=Draft202012Validator.FORMAT_CHECKER)
+                    except ValidationError as e:
+                        error_path = "/".join(str(part) for part in e.path)
+                        error_msg = f"{error_path}: {e.message}" if error_path else e.message
                         raise HTTPException(
                             status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=f"HITL input validation failed: {str(e)}"
+                            detail=f"HITL input validation failed: {error_msg}"
                         )
                 
                 # Store HITL response and mark job as done

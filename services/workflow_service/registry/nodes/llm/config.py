@@ -145,8 +145,11 @@ class OpenAIModels(str, EnumWithAttr):
         "output_token_limit": 100000,
     }))
     GPT_4_5 = "gpt-4.5-preview", ModelMetadata(**(DEFAULT_OPENAI_METADATA.model_dump() | {"rate_limits": {"requests_per_minute": 10000, "tokens_per_minute": 2000000}}))
+    GPT_4_1 = "gpt-4.1", ModelMetadata(**(DEFAULT_OPENAI_METADATA.model_dump() | {"context_limit": 1000000}))
     GPT_4o = "gpt-4o", DEFAULT_OPENAI_METADATA
+    GPT_4_1_MINI = "gpt-4.1-mini", ModelMetadata(**(DEFAULT_OPENAI_METADATA.model_dump() | {"rate_limits": {"requests_per_minute": 30000, "tokens_per_minute": 150000000}, "context_limit": 1000000}))
     GPT_4o_mini = "gpt-4o-mini", ModelMetadata(**(DEFAULT_OPENAI_METADATA.model_dump() | {"rate_limits": {"requests_per_minute": 30000, "tokens_per_minute": 150000000}}))
+    GPT_4_1_NANO = "gpt-4.1-nano", ModelMetadata(**(DEFAULT_OPENAI_METADATA.model_dump() | {"rate_limits": {"requests_per_minute": 30000, "tokens_per_minute": 150000000}, "context_limit": 1000000}))
     O1_MINI = "o1-mini", ModelMetadata(**(DEFAULT_OPENAI_METADATA.model_dump() | {
         "rate_limits": {"requests_per_minute": 30000, "tokens_per_minute": 150000000},
         "reasoning": True,

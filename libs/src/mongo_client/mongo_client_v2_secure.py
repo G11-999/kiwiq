@@ -790,12 +790,13 @@ class AsyncMongoDBClient:
         except Exception as e:
             logger.error(f"Error creating document for path '{path}': {e}")
             raise
-    
+
     async def update_object(
         self, 
         path: List[str], 
         data: Dict[str, Any],
-        allowed_prefixes: Optional[List[List[str]]] = None
+        allowed_prefixes: Optional[List[List[str]]] = None,
+        update_subfields: bool = False
     ) -> Optional[str]:
         """
         Updates an existing document identified by its path.
@@ -807,6 +808,9 @@ class AsyncMongoDBClient:
             path: Path as list of segments
             data: New data to store
             allowed_prefixes: Optional list of allowed path prefixes as lists
+            update_subfields: If True, updates only specified subfields within data
+                              using dot notation (data.field_name) instead of replacing
+                              the entire data object
             
         Returns:
             ID of the updated document, or None if not found
@@ -830,14 +834,30 @@ class AsyncMongoDBClient:
         # Update document
         collection = await self._get_collection()
         try:
-            result = await collection.update_one(query, {"$set": {"data": data}})
+            # Construct update operation based on update_subfields flag
+            if update_subfields:
+                # Create update with individual field updates using dot notation
+                update_fields = {}
+                for key, value in data.items():
+                    update_fields[f"data.{key}"] = value
+                
+                update_operation = {"$set": update_fields}
+                logger.debug(f"Updating specific subfields: {list(update_fields.keys())}")
+            else:
+                # Replace entire data object
+                update_operation = {"$set": {"data": data}}
+            
+            result = await collection.update_one(query, update_operation)
             
             if result.matched_count == 0:
                 logger.info(f"No document found with path '{path}' to update.")
                 return None
             
             if result.modified_count > 0:
-                logger.info(f"Updated document data for path '{path}'.")
+                if update_subfields:
+                    logger.info(f"Updated {len(data)} subfields for document at path '{path}'.")
+                else:
+                    logger.info(f"Updated entire data object for path '{path}'.")
             else:
                 logger.info(f"Document found for path '{path}' but data was identical.")
                 

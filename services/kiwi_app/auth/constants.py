@@ -60,6 +60,9 @@ DEFAULT_ROLE_PERMISSIONS = {
         WorkflowPermissions.TEMPLATE_CREATE,
         WorkflowPermissions.TEMPLATE_UPDATE,
         WorkflowPermissions.TEMPLATE_DELETE,
+
+        WorkflowPermissions.ORG_DATA_READ,
+        WorkflowPermissions.ORG_DATA_WRITE,
     ],
     DefaultRoles.BILLING: [
         Permissions.ORG_READ,

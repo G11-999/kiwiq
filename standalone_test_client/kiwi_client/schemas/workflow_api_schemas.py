@@ -15,7 +15,6 @@ from kiwi_client.schemas.graph_schema import GraphSchema
 # from workflow_service.services import events as event_schemas
 from kiwi_client.schemas import events_schema as event_schemas
 
-# --- NodeTemplate Schemas --- #
 
 class NodeTemplateBase(BaseModel):
     """Base schema for NodeTemplate."""
@@ -63,6 +62,7 @@ class WorkflowBase(BaseModel):
 class WorkflowCreate(WorkflowBase):
     """Schema for creating a new Workflow."""
     parent_base_id: Optional[uuid.UUID] = None
+    is_system_entity: Optional[bool] = Field(default=False, description="Indicates if this workflow is a system entity. Only admins can create system workflows.")
 
 class WorkflowUpdate(WorkflowBase):
     """Schema for updating an existing Workflow. Allows partial updates."""
@@ -80,7 +80,6 @@ class WorkflowRead(WorkflowBase):
     parent_base_id: Optional[uuid.UUID] = None
 
     model_config = ConfigDict(from_attributes=True)
-
 
 
 # -- Graph Validation --
@@ -176,7 +175,7 @@ class PromptTemplateBase(BaseModel):
 
 class PromptTemplateCreate(PromptTemplateBase):
     """Schema for creating an organization-specific PromptTemplate."""
-    pass
+    is_system_entity: Optional[bool] = Field(default=False, description="Indicates if this prompt template is a system entity. Only system admins can create system templates.")
 
 class PromptTemplateUpdate(BaseModel):
     """Schema for updating an organization-specific PromptTemplate."""
@@ -211,7 +210,7 @@ class SchemaTemplateBase(BaseModel):
 
 class SchemaTemplateCreate(SchemaTemplateBase):
     """Schema for creating an organization-specific SchemaTemplate."""
-    pass
+    is_system_entity: Optional[bool] = Field(default=False, description="Indicates if this schema template is a system entity. Only system admins can create system templates.")
 
 class SchemaTemplateUpdate(BaseModel):
     """Schema for updating an organization-specific SchemaTemplate."""
@@ -331,6 +330,7 @@ class NotificationListQuery(CommonListQuery):
     is_read: Optional[bool] = Field(None, description="Filter by read status (true=read, false=unread, null=all)")
     sort_by: str = Field("created_at", description="Field to sort by")
     sort_order: str = Field("desc", description="Sort order ('asc' or 'desc')")
+    get_notifications_for_all_user_orgs: Optional[bool] = Field(False, description="If true, get notifications for all user organizations")
 
 
 class NodeTemplateListQuery(CommonListQuery):
@@ -344,10 +344,151 @@ class NodeTemplateListQuery(CommonListQuery):
 class PromptTemplateListQuery(CommonListQuery):
     """Query parameters for listing prompt templates."""
     owner_org_id: Optional[uuid.UUID] = Field(None, description="Filter by owning organization ID (Superuser only)")
-    include_system: bool = Field(True, description="Include system templates")
+    include_system: bool = Field(False, description="Include system templates.")
 
 
 class SchemaTemplateListQuery(CommonListQuery):
     """Query parameters for listing schema templates."""
     owner_org_id: Optional[uuid.UUID] = Field(None, description="Filter by owning organization ID (Superuser only)")
-    include_system: bool = Field(True, description="Include system templates")
+    include_system: bool = Field(False, description="Include system templates.")
+
+
+class WorkflowSearchQuery(BaseModel):
+    """Query parameters for searching workflows by name and version."""
+    name: str = Field(..., description="Name of the workflow to search for")
+    version_tag: Optional[str] = Field(None, description="Optional version tag to filter by")
+    include_public: bool = Field(True, description="Include public workflows in the results")
+    include_system_entities: bool = Field(False, description="Include system entities (superuser only)")
+    include_public_system_entities: bool = Field(False, description="Include public system entities")
+
+
+class PromptTemplateSearchQuery(BaseModel):
+    """Query parameters for searching prompt templates by name and version."""
+    name: str = Field(..., description="Name of the prompt template to search for")
+    version: Optional[str] = Field(None, description="Optional version to filter by")
+    include_public: bool = Field(True, description="Include public templates in the results")
+    include_system_entities: bool = Field(False, description="Include system entities (superuser only)")
+    include_public_system_entities: bool = Field(False, description="Include public system entities")
+
+
+class SchemaTemplateSearchQuery(BaseModel):
+    """Query parameters for searching schema templates by name and version."""
+    name: str = Field(..., description="Name of the schema template to search for")
+    version: Optional[str] = Field(None, description="Optional version to filter by")
+    include_public: bool = Field(True, description="Include public templates in the results")
+    include_system_entities: bool = Field(False, description="Include system entities (superuser only)")
+    include_public_system_entities: bool = Field(False, description="Include public system entities")
+
+
+# --- Customer Data Schemas ---
+
+class CustomerDataVersionedInitialize(BaseModel):
+    """Schema for initializing a customer data document."""
+    is_shared: bool = Field(False, description="Set to true to create a document shared within the organization, false for a user-specific document.")
+    initial_version: Optional[str] = Field(default="default", description="The initial version name for the document. Defaults to 'default'.")
+    schema_template_name: Optional[str] = Field(None, description="Optional name of a SchemaTemplate to enforce.")
+    schema_template_version: Optional[str] = Field(None, description="Optional version of the SchemaTemplate. Defaults to latest if name is provided but version is not.")
+    initial_data: Optional[Any] = Field({}, description="Optional initial data for the document. Defaults to an empty object.")
+    is_complete: Optional[bool] = Field(False, description="Mark the initial data as complete for validation.")
+
+
+class CustomerDataVersionedUpdate(BaseModel):
+    """Schema for updating customer data."""
+    is_shared: bool = Field(False, description="Set to true to update a shared document, false for a user-specific document.")
+    data: Any = Field(..., description="The data to update the document with. Can be a partial update for JSON objects or a full replacement for primitive types.")
+    version: Optional[str] = Field(None, description="Specific version to update. If None, updates the active version.")
+    is_complete: Optional[bool] = Field(None, description="Mark the document as complete after this update (for validation). Leave as None to keep current status.")
+    schema_template_name: Optional[str] = Field(None, description="Optional: Name of a SchemaTemplate to update the document's schema with before applying the data update.")
+    schema_template_version: Optional[str] = Field(None, description="Optional: Version of the SchemaTemplate. Defaults to latest if name is provided.")
+
+
+class CustomerDataRead(BaseModel):
+    """Schema for reading customer data. Returns the data itself."""
+    data: Any = Field(..., description="The customer data.")
+
+    model_config = ConfigDict(from_attributes=True) # Allow creation from ORM/dict
+
+
+class CustomerDataVersionInfo(BaseModel):
+    """Schema representing metadata about a specific version."""
+    version: str
+    is_active: bool
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+    is_complete: bool
+    edit_count: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CustomerDataVersionHistoryItem(BaseModel):
+    """Schema representing an item in the version history."""
+    timestamp: datetime
+    sequence: int
+    patch: str = Field(..., description="JSON Patch string representing the change.")
+    is_primitive: bool = Field(..., description="Indicates if the change was a replacement of a primitive type.")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CustomerDataCreateVersion(BaseModel):
+    """Schema for creating a new version (branching)."""
+    is_shared: bool = Field(False, description="Set to true to create a new version for a shared document, false for a user-specific document.")
+    new_version: str = Field(..., description="The name for the new version.")
+    from_version: Optional[str] = Field(None, description="The version to branch from. If None, branches from the active version.")
+
+
+class CustomerDataSetActiveVersion(BaseModel):
+    """Schema for setting the active version."""
+    is_shared: bool = Field(False, description="Set to true to set the active version for a shared document, false for a user-specific document.")
+    version: str = Field(..., description="The version name to set as active.")
+
+
+class CustomerDataVersionedRestore(BaseModel):
+    """Schema for restoring a document to a previous state."""
+    is_shared: bool = Field(False, description="Set to true to restore a shared document, false for a user-specific document.")
+    sequence: int = Field(..., ge=0, description="The sequence number to restore to.")
+    version: Optional[str] = Field(None, description="The version to restore within. If None, uses the active version.")
+
+
+class CustomerDataSchemaUpdate(BaseModel):
+    """Schema for explicitly updating the schema of a document."""
+    is_shared: bool = Field(False, description="Set to true to update a shared document, false for a user-specific document.")
+    schema_template_name: str = Field(..., description="Name of the SchemaTemplate to apply.")
+    schema_template_version: Optional[str] = Field(None, description="Optional version of the SchemaTemplate. Defaults to latest if name is provided but version is not.")
+
+
+# --- Unversioned Customer Data Schemas ---
+
+class CustomerDataUnversionedCreateUpdate(BaseModel):
+    """Schema for creating or updating unversioned customer data."""
+    is_shared: bool = Field(False, description="Set to true to create/update a shared document, false for user-specific.")
+    data: Any = Field(..., description="The data for the document.")
+    schema_template_name: Optional[str] = Field(None, description="Optional name of a SchemaTemplate to validate against.")
+    schema_template_version: Optional[str] = Field(None, description="Optional version of the SchemaTemplate. Defaults to latest if name is provided.")
+
+
+class CustomerDataUnversionedRead(BaseModel):
+    """Schema for reading unversioned customer data."""
+    data: Any = Field(..., description="The unversioned customer data.")
+    # Include metadata if needed, e.g., last updated timestamp
+    # updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# --- Document Listing Schema ---
+
+class CustomerDocumentMetadata(BaseModel):
+    """Schema representing metadata about a customer document (versioned or unversioned)."""
+    org_id: uuid.UUID
+    # scope: str # e.g., 'shared', 'user' - Replaced by user_id + is_shared logic
+    user_id_or_shared_placeholder: str = Field(..., description="The user ID or '_shared_' placeholder.")
+    namespace: str
+    docname: str
+    is_versioned: bool # Indicate if this corresponds to a versioned document entry
+    is_shared: bool # Indicate if this is a shared document path
+    # Add other relevant metadata like updated_at if available from the base client document
+    # updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)

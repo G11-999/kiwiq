@@ -70,5 +70,9 @@ class WorkflowPermissions(str, Enum):
     TEMPLATE_UPDATE = "template:update" # Update org-specific prompt/schema
     TEMPLATE_DELETE = "template:delete" # Delete org-specific prompt/schema
 
+    # Organization Data Permissions
+    ORG_DATA_READ = "org_data:read"
+    ORG_DATA_WRITE = "org_data:write"
+
     # # Admin-only Template Permissions
     # TEMPLATE_MANAGE_SYSTEM = "template:manage_system" # CRUD for Node Templates and system prompt/schema 

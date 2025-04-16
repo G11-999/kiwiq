@@ -8,7 +8,9 @@ from fastapi import (
     APIRouter, Depends, HTTPException, status, Query, WebSocket,
     WebSocketDisconnect, Body, Path, Response # Added Path, Response
 )
+import jsonschema
 from jsonschema import ValidationError
+from jsonschema.validators import Draft202012Validator
 from sqlalchemy.ext.asyncio import AsyncSession
 import jwt # For encoding/decoding tokens (requires python-jose)
 from datetime import datetime, timedelta
@@ -37,6 +39,8 @@ from kiwi_app.workflow_app import schemas, services, models, dependencies as wf_
 # Import event schemas for stream response type
 from workflow_service.registry import registry
 from workflow_service.services import events as event_schemas
+# TODO: FIX: circular imports!
+# from workflow_service.graph.graph import GraphSchema
 
 from kiwi_app.workflow_app.websockets import websocket_router
 # from kiwi_app.workflow_app.utils import workflow_logger
@@ -630,7 +634,6 @@ async def validate_graph(
     Returns detailed validation results with specific errors if validation fails.
     """
     from workflow_service.graph.graph import GraphSchema
-    import jsonschema
     
     workflow_logger.info(f"User {user.id} requested graph validation")
     all_errors: Dict[str, List[str]] = defaultdict(list)
@@ -695,7 +698,7 @@ async def validate_graph(
             
             # Validate the node's configuration against its schema
             try:
-                jsonschema.validate(instance=node_config.node_config, schema=config_schema)
+                jsonschema.validate(instance=node_config.node_config, schema=config_schema, format_checker=Draft202012Validator.FORMAT_CHECKER)
                 workflow_logger.info(f"Node {node_id} ({node_name}) configuration validated successfully")
             except ValidationError as e:
                 node_configs_valid = False

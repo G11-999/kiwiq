@@ -10,6 +10,7 @@ from kiwi_app import auth
 from kiwi_app.settings import settings # Import settings
 
 from kiwi_app.workflow_app import routes as workflow_routes
+from kiwi_app.workflow_app import customer_data_routes as customer_data_routes
 from kiwi_app.workflow_app import event_consumer
 from kiwi_app.workflow_app import dependencies as wf_deps
 
@@ -103,7 +104,7 @@ app.include_router(workflow_routes.run_router, prefix=settings.API_V1_PREFIX)
 app.include_router(workflow_routes.template_router, prefix=settings.API_V1_PREFIX)
 app.include_router(workflow_routes.notification_router, prefix=settings.API_V1_PREFIX)
 app.include_router(workflow_routes.hitl_router, prefix=settings.API_V1_PREFIX)
-
+app.include_router(customer_data_routes.customer_data_router, prefix=settings.API_V1_PREFIX)
 
 # ... rest of your app setup ...
 

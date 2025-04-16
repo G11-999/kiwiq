@@ -270,6 +270,21 @@ async def get_customer_mongo_client() -> AsyncMongoDBClient:
     """
     return await get_mongo_client('customer')
 
+async def get_customer_mongo_client_with_extra_segments(extra_segments: List[str]) -> AsyncMongoDBClient:
+    """
+    Get a MongoDB client configured for customer data with specific segments.
+    
+    Args:
+        extra_segments: List of segment names to include in the client
+    
+    Returns:
+        AsyncMongoDBClient: Client for customer data operations with specified segments
+    
+    Raises:
+        ValueError: If MongoDB URL is not configured
+    """
+    return await get_mongo_client('customer', extra_segments=extra_segments)
+
 async def get_workflow_mongo_client() -> AsyncMongoDBClient:
     """
     Get a MongoDB client configured for workflow stream data.
@@ -282,13 +297,13 @@ async def get_workflow_mongo_client() -> AsyncMongoDBClient:
     """
     return await get_mongo_client('workflow')
 
-async def get_mongo_client(client_type: str) -> AsyncMongoDBClient:
+async def get_mongo_client(client_type: str, extra_segments: List[str] = []) -> AsyncMongoDBClient:
     """
     Get or create a MongoDB client of the specified type.
     
     Args:
         client_type: Either 'customer' or 'workflow'
-        
+        extra_segments: List of segment names to include in the client
     Returns:
         AsyncMongoDBClient: Configured MongoDB client
         
@@ -310,7 +325,7 @@ async def get_mongo_client(client_type: str) -> AsyncMongoDBClient:
             uri=global_settings.MONGO_URL,
             database=settings.MONGO_CUSTOMER_DATABASE,
             collection=settings.MONGO_CUSTOMER_COLLECTION,
-            segment_names=settings.MONGO_CUSTOMER_SEGMENTS,
+            segment_names=settings.MONGO_CUSTOMER_SEGMENTS + extra_segments,
             text_search_fields=["name", "description"]
         )
     elif client_type == 'workflow':
@@ -318,7 +333,7 @@ async def get_mongo_client(client_type: str) -> AsyncMongoDBClient:
             uri=global_settings.MONGO_URL,
             database=settings.MONGO_WORKFLOW_DATABASE,
             collection=settings.MONGO_WORKFLOW_STREAM_COLLECTION,
-            segment_names=settings.MONGO_WORKFLOW_STREAM_SEGMENTS,
+            segment_names=settings.MONGO_WORKFLOW_STREAM_SEGMENTS + extra_segments,
             value_filter_fields=settings.MONGO_WORKFLOW_STREAM_SEGMENTS_VALUE_FILTER_FIELDS,
             text_search_fields=[]
         )

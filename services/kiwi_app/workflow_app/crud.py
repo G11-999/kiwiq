@@ -676,11 +676,10 @@ class BaseTemplateDAO(BaseDAO[TemplateModelType, TemplateCreateSchemaType, Templ
             create_data = obj_in.model_dump()
         except AttributeError:
             create_data = obj_in.dict()
-
+        create_data['is_system_entity'] = create_data.pop('is_system_entity', False)
         db_obj = self.model(
             **create_data,
             owner_org_id=owner_org_id,
-            is_system_entity=False
         )
         db.add(db_obj)
         await db.commit()

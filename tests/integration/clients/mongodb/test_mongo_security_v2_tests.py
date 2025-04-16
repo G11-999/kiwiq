@@ -247,7 +247,79 @@ class TestOptimizedMongoDBClient(unittest.IsolatedAsyncioTestCase):
         non_existent_path = [self.TEST_PREFIX, "nonexistent", "path", "object"]
         non_existent_id = await self.client.update_object(non_existent_path, {"test": "data"})
         self.assertIsNone(non_existent_id, "Update of non-existent object should return None")
-    
+
+    async def test_update_subfields(self):
+        """Test updating specific subfields of an object without replacing the entire object."""
+        # Create test object with multiple fields
+        path = [self.TEST_PREFIX, "user1", "configs", "complex_app"]
+        data = {
+            "name": "Complex App Config",
+            "version": "1.0",
+            "settings": {
+                "debug": False,
+                "log_level": "info",
+                "cache_size": 1000
+            },
+            "features": ["basic", "standard"],
+            "limits": {
+                "max_users": 100,
+                "max_storage": "5GB"
+            }
+        }
+        
+        # Create object
+        doc_id = await self.client.create_object(path, data)
+        self.assertIsNotNone(doc_id, "Object should be created successfully")
+        
+        # Update only specific subfields
+        subfield_updates = {
+            "version": "1.1",
+            "settings.debug": True,  # This won't work with dot notation as is
+            "features": ["basic", "standard", "premium"],
+            "new_field": "added value"
+        }
+        
+        # Update with subfields flag set to True
+        updated_id = await self.client.update_object(
+            path, 
+            subfield_updates,
+            update_subfields=True
+        )
+        
+        self.assertEqual(updated_id, doc_id, "update_object should return the same ID")
+        
+        # Fetch and verify update
+        updated_obj = await self.client.fetch_object(path)
+        
+        # Check that updated fields changed
+        self.assertEqual(updated_obj["data"]["version"], "1.1", "Version should be updated")
+        self.assertEqual(updated_obj["data"]["features"], ["basic", "standard", "premium"], "Features should be updated")
+        self.assertEqual(updated_obj["data"]["new_field"], "added value", "New field should be added")
+        
+        # Check that non-updated fields remain unchanged
+        self.assertEqual(updated_obj["data"]["name"], "Complex App Config", "Name should remain unchanged")
+        self.assertEqual(updated_obj["data"]["limits"]["max_users"], 100, "Nested fields should remain unchanged")
+        
+        # Note: The dot notation field won't work directly with the current implementation
+        # as the client would need special handling for nested paths
+        
+        # Test updating nested fields properly (using the whole nested object)
+        nested_update = {
+            "settings": {
+                "debug": True,
+                "log_level": "debug",
+                "cache_size": 2000
+            }
+        }
+        
+        await self.client.update_object(path, nested_update, update_subfields=True)
+        
+        # Verify nested update
+        updated_obj = await self.client.fetch_object(path)
+        self.assertEqual(updated_obj["data"]["settings"]["debug"], True, "Nested debug setting should be updated")
+        self.assertEqual(updated_obj["data"]["settings"]["log_level"], "debug", "Nested log_level should be updated")
+        self.assertEqual(updated_obj["data"]["settings"]["cache_size"], 2000, "Nested cache_size should be updated")
+
     async def test_create_or_update(self):
         """Test create_or_update_object functionality."""
         # Test path
