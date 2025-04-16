@@ -1,5 +1,5 @@
 """
-# poetry run python -m kiwi_client.test_workflow_client_v2
+# poetry run python -m kiwi_client.workflow_client
 
 API Test client for Workflow endpoints (/workflows/).
 

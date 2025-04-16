@@ -1,4 +1,4 @@
-# poetry run python -m kiwi_client.test_run_client_v2
+# poetry run python -m kiwi_client.run_client
 
 import asyncio
 import json
