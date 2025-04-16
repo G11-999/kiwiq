@@ -1,3 +1,4 @@
+import os
 import uuid
 import logging
 from pydantic import BaseModel
@@ -5,19 +6,28 @@ from typing import List, Optional
 
 from kiwi_client.schemas.graph_schema import GraphSchema
 
+from dotenv import load_dotenv
+
+# NOTE: set the below vars in your .env to load automatically: TEST_ENV, TEST_USER_EMAIL, TEST_USER_PASSWORD, TEST_ORG_ID
+load_dotenv()
+
 # --- Configuration ---
 # Replace with your actual API base URL
-BASE_HOST = "http://127.0.0.1:8000" # Example: http://localhost:8000
+BASE_HOST = "http://127.0.0.1:8000" if os.getenv("TEST_ENV") == "local" else "https://api.prod.kiwiq.ai"
 API_BASE_URL = f"{BASE_HOST}/api/v1" # Example: http://localhost:8000
 
 # Replace with your test user credentials
-TEST_USER_EMAIL = "admin@example.com"
-TEST_USER_PASSWORD = "testpass"
+TEST_USER_EMAIL = os.getenv("TEST_USER_EMAIL", "admin@example.com")
+TEST_USER_PASSWORD = os.getenv("TEST_USER_PASSWORD", "testpass")
+
+# NOTE: Important to also test with regular non-superuser User after registration!
+# TEST_USER_EMAIL = "admin@example.com"
+# TEST_USER_PASSWORD = "testpass"
 
 # Replace with a valid organization UUID accessible by the test user
 # This will be used for the X-Active-Org header
 # You might need to register the test user and create/find an org ID first.
-TEST_ORG_ID = uuid.UUID("cfcc3bc7-7d30-4ab1-b842-846a34b6d427") # Example Org ID
+TEST_ORG_ID = uuid.UUID(os.getenv("TEST_ORG_ID", "a7e22f23-1829-4f65-b21c-fecab74ef948"))
 
 # --- Standard Headers ---
 BASE_HEADERS = {
@@ -25,7 +35,7 @@ BASE_HEADERS = {
     "Content-Type": "application/json",
 }
 
-CLIENT_LOG_LEVEL = logging.WARNING
+CLIENT_LOG_LEVEL = logging.INFO
 
 # --- API Endpoints ---
 # Define constants for endpoint paths for easier maintenance
@@ -55,12 +65,16 @@ ORG_USERS_URL = lambda org_id: f"{ORGANIZATIONS_URL}/{org_id}/users"
 ROLES_URL = f"{API_BASE_URL}/auth/roles"
 
 # Templates
-NODE_TEMPLATES_URL = f"{API_BASE_URL}/templates/nodes/"
-NODE_TEMPLATE_DETAIL_URL = lambda name, version: f"{NODE_TEMPLATES_URL}{name}/{version}"
+# --- API Endpoint URLs ---
+# Construct absolute URLs using the base URL from config
 PROMPT_TEMPLATES_URL = f"{API_BASE_URL}/templates/prompts/"
 PROMPT_TEMPLATE_DETAIL_URL = lambda template_id: f"{PROMPT_TEMPLATES_URL}{template_id}"
+PROMPT_TEMPLATES_SEARCH_URL = f"{PROMPT_TEMPLATES_URL}search"
+
 SCHEMA_TEMPLATES_URL = f"{API_BASE_URL}/templates/schemas/"
 SCHEMA_TEMPLATE_DETAIL_URL = lambda template_id: f"{SCHEMA_TEMPLATES_URL}{template_id}"
+SCHEMA_TEMPLATES_SEARCH_URL = f"{SCHEMA_TEMPLATES_URL}search"
+
 
 # Workflows
 WORKFLOWS_URL = f"{API_BASE_URL}/workflows/"
@@ -85,6 +99,18 @@ HITL_JOBS_URL = f"{API_BASE_URL}/hitl/"
 HITL_JOB_DETAIL_URL = lambda job_id: f"{HITL_JOBS_URL}{job_id}"
 # HITL_JOB_RESPOND_URL = lambda job_id: f"{HITL_JOBS_URL}{job_id}/respond" # If implemented
 HITL_JOB_CANCEL_URL = lambda job_id: f"{HITL_JOBS_URL}{job_id}/cancel"
+
+# Customer Data
+CUSTOMER_DATA_BASE_URL = f"{API_BASE_URL}/customer-data"
+VERSIONED_DOC_URL = lambda namespace, docname: f"{CUSTOMER_DATA_BASE_URL}/versioned/{namespace}/{docname}"
+VERSIONED_DOC_VERSIONS_URL = lambda namespace, docname: f"{CUSTOMER_DATA_BASE_URL}/versioned/{namespace}/{docname}/versions"
+VERSIONED_DOC_ACTIVE_VERSION_URL = lambda namespace, docname: f"{CUSTOMER_DATA_BASE_URL}/versioned/{namespace}/{docname}/active-version"
+VERSIONED_DOC_HISTORY_URL = lambda namespace, docname: f"{CUSTOMER_DATA_BASE_URL}/versioned/{namespace}/{docname}/history"
+VERSIONED_DOC_PREVIEW_RESTORE_URL = lambda namespace, docname, sequence: f"{CUSTOMER_DATA_BASE_URL}/versioned/{namespace}/{docname}/preview-restore/{sequence}"
+VERSIONED_DOC_RESTORE_URL = lambda namespace, docname: f"{CUSTOMER_DATA_BASE_URL}/versioned/{namespace}/{docname}/restore"
+VERSIONED_DOC_SCHEMA_URL = lambda namespace, docname: f"{CUSTOMER_DATA_BASE_URL}/versioned/{namespace}/{docname}/schema"
+UNVERSIONED_DOC_URL = lambda namespace, docname: f"{CUSTOMER_DATA_BASE_URL}/unversioned/{namespace}/{docname}"
+LIST_DOCUMENTS_URL = f"{CUSTOMER_DATA_BASE_URL}/list"
 
 # WebSockets (Base URLs - specific paths depend on run_id etc.)
 # Note: httpx doesn't handle cookies automatically for websockets in the same way
