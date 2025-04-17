@@ -910,7 +910,8 @@ async def main():
             # 14. Get Unversioned (Shared, JSON)
             uv_get_result_json = await data_tester.get_unversioned_document(test_ns, uv_doc_name_json, is_shared=True)
             assert uv_get_result_json is not None, "Get unversioned JSON failed, expected result."
-            expected_uv_data = {'key': 'uv_key', 'count': 11, 'optional_field': 'optional_value'}
+            # NOTE: subfields are updated when we update an existing document!
+            expected_uv_data = {'config': 'shared_config_value', 'items': [1, 2], 'count': 11, 'key': 'uv_key', 'optional_field': 'optional_value'}
             assert uv_get_result_json.data == expected_uv_data, \
                    f"Get unversioned JSON data mismatch. Expected: {expected_uv_data}, Got: {uv_get_result_json.data}"
             print("   ✓ Got shared unversioned JSON document.")

@@ -840,6 +840,7 @@ class CustomerDataService:
                 path=base_path,
                 data=data,
                 allowed_prefixes=allowed_prefixes,
+                update_subfields=True,
             )
             
             return result

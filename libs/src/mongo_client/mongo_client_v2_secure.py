@@ -838,8 +838,11 @@ class AsyncMongoDBClient:
             if update_subfields:
                 # Create update with individual field updates using dot notation
                 update_fields = {}
-                for key, value in data.items():
-                    update_fields[f"data.{key}"] = value
+                if isinstance(data, dict):
+                    for key, value in data.items():
+                        update_fields[f"data.{key}"] = value
+                else:
+                    update_fields["data"] = data
                 
                 update_operation = {"$set": update_fields}
                 logger.debug(f"Updating specific subfields: {list(update_fields.keys())}")
@@ -855,7 +858,7 @@ class AsyncMongoDBClient:
             
             if result.modified_count > 0:
                 if update_subfields:
-                    logger.info(f"Updated {len(data)} subfields for document at path '{path}'.")
+                    logger.info(f"Updated {len(data) if isinstance(data, dict) else 1} subfields for document at path '{path}'.")
                 else:
                     logger.info(f"Updated entire data object for path '{path}'.")
             else:
@@ -870,7 +873,8 @@ class AsyncMongoDBClient:
         self, 
         path: List[str], 
         data: Dict[str, Any],
-        allowed_prefixes: Optional[List[List[str]]] = None
+        allowed_prefixes: Optional[List[List[str]]] = None,
+        update_subfields: bool = False
     ) -> Tuple[str, bool]:
         """
         Creates a document if it doesn't exist, or updates existing document.
@@ -918,7 +922,12 @@ class AsyncMongoDBClient:
                 logger.info(f"Created document for path '{path}', ID: {doc_id}")
             else:
                 # Update existing document
-                await collection.update_one({"_id": doc_id}, {"$set": {"data": data}})
+                doc_id = await self.update_object(
+                    path=path, 
+                    data=data,
+                    allowed_prefixes=allowed_prefixes,
+                    update_subfields=update_subfields
+                )
                 logger.info(f"Updated document for path '{path}', ID: {doc_id}")
             
             return doc_id, was_created
