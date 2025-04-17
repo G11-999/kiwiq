@@ -1,5 +1,6 @@
 from db.session import get_async_db_as_manager
 from global_config.settings import global_settings
+from mongo_client.mongo_versioned_client import AsyncMongoVersionedClient
 from kiwi_app.settings import settings
 
 import asyncio
@@ -156,6 +157,7 @@ class ExternalContextManager(BaseModel):
     prefect_client: Optional[Any] = Field(default=None)
     daos: DAOContext = Field(...)
     db_registry: DBRegistry = Field(...)
+    customer_data_service: Any = Field(...)  #  CustomerDataService
 
     class Config:
         arbitrary_types_allowed = True # Allow non-pydantic types like clients
@@ -218,9 +220,13 @@ class ExternalContextManager(BaseModel):
             except Exception as e:
                 logger.error(f"Error closing Prefect client: {e}", exc_info=True)
         
+        # Close CustomerDataService
+        if self.customer_data_service:
+            await self.customer_data_service.mongo_client.close()
+            await self.customer_data_service.versioned_mongo_client.client.close()
+            logger.debug("Closed CustomerDataService mongo_client connection")
+        
         logger.info("External context manager resources closed successfully")
-
-
 
 
 # Client instantiations
@@ -284,6 +290,31 @@ async def get_customer_mongo_client_with_extra_segments(extra_segments: List[str
         ValueError: If MongoDB URL is not configured
     """
     return await get_mongo_client('customer', extra_segments=extra_segments)
+
+async def get_customer_versioned_mongo_client() -> AsyncMongoVersionedClient:
+    """Create and return a versioned MongoDB client for customer data."""
+    # Create versioned client based on the base MongoDB client
+    # Use base segment names without version/sequence segments that will be added internally
+    customer_mongo_client = await get_customer_mongo_client_with_extra_segments(extra_segments=AsyncMongoVersionedClient.VERSION_SEGMENT_NAMES)
+    versioned_client = AsyncMongoVersionedClient(
+        client=customer_mongo_client,
+        segment_names=settings.MONGO_CUSTOMER_SEGMENTS, # Base segments defined in settings
+    )
+    return versioned_client
+
+async def get_customer_data_service(
+    customer_mongo_client: AsyncMongoDBClient,
+    versioned_mongo_client: AsyncMongoVersionedClient,
+    schema_template_dao: wf_crud.SchemaTemplateDAO,
+):
+    """Dependency function to instantiate CustomerDataService."""
+    from kiwi_app.workflow_app.service_customer_data import CustomerDataService
+    return CustomerDataService(
+        mongo_client=customer_mongo_client,
+        versioned_mongo_client=versioned_mongo_client,
+        schema_template_dao=schema_template_dao,
+    )
+
 
 async def get_workflow_mongo_client() -> AsyncMongoDBClient:
     """
@@ -422,6 +453,7 @@ async def get_external_context_manager_with_clients() -> ExternalContextManager:
         try:
             clients["mongo"]["customer"] = await get_mongo_client('customer')
             clients["mongo"]["workflow"] = await get_mongo_client('workflow')
+            clients["mongo"]["customer_versioned"] = await get_customer_versioned_mongo_client()
         except Exception as e:
             print(f"Error initializing MongoDB clients: {e}")
     
@@ -462,6 +494,12 @@ async def get_external_context_manager_with_clients() -> ExternalContextManager:
         user_notification=user_notification_dao,
         hitl_job=hitl_job_dao
     )
+
+    customer_data_service = await get_customer_data_service(
+        customer_mongo_client=clients["mongo"]["customer"],
+        versioned_mongo_client=clients["mongo"]["customer_versioned"],
+        schema_template_dao=schema_template_dao
+    )
     
     # Create and return the ExternalContextManager
     external_context = ExternalContextManager(
@@ -480,7 +518,8 @@ async def get_external_context_manager_with_clients() -> ExternalContextManager:
         ),
         prefect_client=clients["prefect"],
         daos=dao_context,
-        db_registry=db_registry
+        db_registry=db_registry,
+        customer_data_service=customer_data_service
     )
     
     return external_context

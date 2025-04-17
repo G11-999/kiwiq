@@ -59,6 +59,9 @@ def _set_refresh_cookie(response: Response, token: str):
         max_age=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600 # In seconds
     )
 
+def _get_base_url(request: Request):
+    return settings.AUTH_REDIRECT_BASE_URL if settings.APP_ENV == "PROD" else str(request.base_url)
+
 # === Email/Password Authentication Endpoints ===
 
 @router.post("/register", response_model=schemas.UserReadWithOrgs, status_code=status.HTTP_201_CREATED, tags=["auth"])
@@ -75,7 +78,7 @@ async def register_user_endpoint(
     using background tasks.
     """
     # Get base URL for verification link
-    base_url = str(request.base_url)
+    base_url = _get_base_url(request)
     try:
         # Service method now handles adding email task to background
         user = await auth_service.register_new_user(
@@ -191,7 +194,7 @@ async def request_email_verification_endpoint(
         if user.is_verified:
             return JSONResponse(content={"message": "Email is already verified."}, status_code=status.HTTP_200_OK)
 
-        base_url = str(request.base_url)
+        base_url = _get_base_url(request)
         # Use the trigger function which adds to background tasks
         await email_verify.trigger_send_verification_email(background_tasks=background_tasks, db=db, user=user, base_url=base_url)
         # Message returned is generic, log action
@@ -271,7 +274,7 @@ async def request_password_reset_endpoint(
     Always returns a 202 Accepted response to prevent email enumeration.
     """
     try:
-        base_url = str(request.base_url) # API base URL
+        base_url = _get_base_url(request) # API base URL
         result = await auth_service.request_password_reset(
             db=db,
             email=request_data.email,
@@ -561,7 +564,7 @@ async def add_user_to_organization_endpoint(
     auth_service: services.AuthService = Depends(dependencies.get_auth_service)
 ):
     """
-    Assign a role to a user within a specific organization.
+    Assign a role to a user within a specific organization. The user is specified by email and must have signed up with KiwiQ already (doesn't need to be verified or active user).
     Requires the current user to have 'org:manage_members' permission *in that specific org*.
     The org_id is taken from the URL path.
     """

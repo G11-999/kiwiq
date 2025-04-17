@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from kiwi_app.auth.models import User
 from kiwi_app.workflow_app import schemas, services, models
+from kiwi_app.workflow_app import crud
 from kiwi_app.workflow_app.constants import SchemaType
 from mongo_client import AsyncMongoDBClient, AsyncMongoVersionedClient
 from kiwi_app.settings import settings
@@ -36,7 +37,7 @@ class CustomerDataService:
         self,
         mongo_client: AsyncMongoDBClient,
         versioned_mongo_client: Optional[AsyncMongoVersionedClient] = None,
-        workflow_service: Optional[services.WorkflowService] = None,
+        schema_template_dao: Optional[crud.SchemaTemplateDAO] = None,
     ):
         """
         Initialize the CustomerDataService.
@@ -48,7 +49,7 @@ class CustomerDataService:
         """
         self.mongo_client = mongo_client
         self.versioned_mongo_client = versioned_mongo_client
-        self.workflow_service = workflow_service
+        self.schema_template_dao = schema_template_dao
         
         # Verify segment names match expectations
         expected_segments = ["org_id", "user_id", "namespace", "docname"]
@@ -137,19 +138,26 @@ class CustomerDataService:
         Returns:
             Schema definition from the template or None if not found
         """
-        if not self.workflow_service:
-            raise ValueError("WorkflowService is required for schema template lookup")
-            
-        templates = await self.workflow_service.search_schema_templates(
+        if not self.schema_template_dao:
+            raise ValueError("`schema_template_dao` is required for schema template lookup")
+        
+        # TODO: REFACTOR to not use workflow service, instead use DAO here! since workflow service is bulky and not used as much!
+        
+        # Use the generic search method from the DAO
+        results = await self.schema_template_dao.search_by_name_version(
             db=db,
             name=template_name,
             version=template_version,
+            version_field="version",
             owner_org_id=org_id,
             include_public=True,
             include_system_entities=False,
             include_public_system_entities=True,
-            user=user,
+            is_superuser=user.is_superuser
         )
+        
+        templates = list(results)
+
         # customer_data_logger.info(f" CUSTOMER DATA SERVICE: Found {len(templates)} templates")
         if not templates:
             return None

@@ -1,4 +1,7 @@
-"""Dependencies for the Workflow Service."""
+"""Dependencies for the Workflow Service.
+
+# TODO: CRITICAL: handle lifecycle of connections dependencies!
+"""
 
 import uuid
 from typing import Optional, List, AsyncGenerator
@@ -29,7 +32,7 @@ from kiwi_app.workflow_app.exceptions import (
 from kiwi_app.workflow_app.service_customer_data import CustomerDataService
 from workflow_service.registry import registry
 from workflow_service.services.db_node_register import register_node_templates
-from workflow_service.services.external_context_manager import get_workflow_mongo_client, get_customer_mongo_client, get_customer_mongo_client_with_extra_segments
+from workflow_service.services.external_context_manager import get_workflow_mongo_client, get_customer_mongo_client, get_customer_versioned_mongo_client
 
 # --- DAO Dependency Factories --- #
 
@@ -86,7 +89,6 @@ def get_workflow_service_dependency(
     user_notification_dao: crud.UserNotificationDAO = Depends(get_user_notification_dao),
     hitl_job_dao: crud.HITLJobDAO = Depends(get_hitl_job_dao),
     mongo_client: AsyncMongoDBClient = Depends(get_workflow_mongo_client),
-    customer_mongo_client: AsyncMongoDBClient = Depends(get_customer_mongo_client),
 ) -> services.WorkflowService:
     """Dependency function to instantiate WorkflowService with its DAO dependencies."""
     return services.WorkflowService(
@@ -98,37 +100,38 @@ def get_workflow_service_dependency(
         user_notification_dao=user_notification_dao,
         hitl_job_dao=hitl_job_dao,
         mongo_client=mongo_client,
-        customer_mongo_client=customer_mongo_client,
         # Pass NoSQL client here
     )
 
 # --- Customer Data Service Dependency --- #
 
-async def partial_get_customer_mongo_client_with_extra_segments():
-    return await get_customer_mongo_client_with_extra_segments(extra_segments=AsyncMongoVersionedClient.VERSION_SEGMENT_NAMES)
+# async def partial_get_customer_mongo_client_with_extra_segments():
+#     return await get_customer_mongo_client_with_extra_segments(extra_segments=AsyncMongoVersionedClient.VERSION_SEGMENT_NAMES)
 
-async def get_customer_versioned_mongo_client_dependency(
-    customer_mongo_client: AsyncMongoDBClient = Depends(partial_get_customer_mongo_client_with_extra_segments),
-) -> AsyncMongoVersionedClient:
-    """Create and return a versioned MongoDB client for customer data."""
-    # Create versioned client based on the base MongoDB client
-    # Use base segment names without version/sequence segments that will be added internally
-    versioned_client = AsyncMongoVersionedClient(
-        client=customer_mongo_client,
-        segment_names=settings.MONGO_CUSTOMER_SEGMENTS, # Base segments defined in settings
-    )
-    return versioned_client
+# async def get_customer_versioned_mongo_client_dependency(
+#     customer_mongo_client: AsyncMongoDBClient = Depends(partial_get_customer_mongo_client_with_extra_segments),
+# ) -> AsyncMongoVersionedClient:
+#     """Create and return a versioned MongoDB client for customer data."""
+#     # Create versioned client based on the base MongoDB client
+#     # Use base segment names without version/sequence segments that will be added internally
+#     versioned_client = AsyncMongoVersionedClient(
+#         client=customer_mongo_client,
+#         segment_names=settings.MONGO_CUSTOMER_SEGMENTS, # Base segments defined in settings
+#     )
+#     return versioned_client
 
+# TODO: FIXME: REFACTOR TO MOVE this to external dependencies and refactor customer data service to use an underlying DAO so as not to raise HTTP exceptions and potentially use it in prefect worker too!
 def get_customer_data_service_dependency(
     customer_mongo_client: AsyncMongoDBClient = Depends(get_customer_mongo_client),
-    versioned_mongo_client: AsyncMongoVersionedClient = Depends(get_customer_versioned_mongo_client_dependency),
-    workflow_service: services.WorkflowService = Depends(get_workflow_service_dependency),
+    versioned_mongo_client: AsyncMongoVersionedClient = Depends(get_customer_versioned_mongo_client),
+    schema_template_dao: crud.SchemaTemplateDAO = Depends(get_schema_template_dao),
+    # workflow_service: services.WorkflowService = Depends(get_workflow_service_dependency),
 ) -> CustomerDataService:
     """Dependency function to instantiate CustomerDataService."""
     return CustomerDataService(
         mongo_client=customer_mongo_client,
         versioned_mongo_client=versioned_mongo_client,
-        workflow_service=workflow_service,
+        schema_template_dao=schema_template_dao,
     )
 
 # --- Permission Checkers (using Auth checkers) --- #

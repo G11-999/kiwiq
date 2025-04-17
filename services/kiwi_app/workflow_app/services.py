@@ -54,7 +54,6 @@ class WorkflowService:
         user_notification_dao: crud.UserNotificationDAO,
         hitl_job_dao: crud.HITLJobDAO,
         mongo_client: Optional[AsyncMongoDBClient] = None, # Make Mongo optional for now
-        customer_mongo_client: Optional[AsyncMongoDBClient] = None, # Make Mongo optional for now
     ) -> None:
         """Initialize the WorkflowService with its DAO and client dependencies."""
         self.node_template_dao = node_template_dao
@@ -65,7 +64,6 @@ class WorkflowService:
         self.user_notification_dao = user_notification_dao
         self.hitl_job_dao = hitl_job_dao
         self.mongo_client = mongo_client
-        self.customer_mongo_client = customer_mongo_client
 
     # --- NodeTemplate Operations --- #
 

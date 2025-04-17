@@ -72,6 +72,7 @@ class Settings(GlobalSettings):
     AUTH_REFRESH_URL: str = "/auth/refresh"
     AUTH_VERIFY_EMAIL_URL: str = "/auth/verify-email"
     AUTH_VERIFY_PASSWORD_RESET_TOKEN_URL: str = "/auth/verify-password-reset-token"
+    AUTH_REDIRECT_BASE_URL: str = "http://localhost:3000"
     # TODO: FIXME: fill these up in production to redirect correctly to the SPA to handle verification / password reset!
     VERIFY_EMAIL_SPA_URL: Optional[str] = None
     VERIFY_PASSWORD_RESET_TOKEN_SPA_URL: Optional[str] = None

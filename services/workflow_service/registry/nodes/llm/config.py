@@ -135,12 +135,30 @@ DEFAULT_OPENAI_SEARCH_METADATA = ModelMetadata(
 
 class OpenAIModels(str, EnumWithAttr):
     """OpenAI model options."""
+    O4_MINI = "o4-mini", ModelMetadata(**(DEFAULT_OPENAI_METADATA.model_dump() | {
+        "rate_limits": {"requests_per_minute": 30000, "tokens_per_minute": 150000000},
+        "reasoning": True,
+        "non_reasoning_mode": False,
+        "reasoning_effort_class": ["low", "medium", "high"],
+        "multimodal": True,
+        "context_limit": 200000,
+        "output_token_limit": 100000,
+    }))
     O3_MINI = "o3-mini", ModelMetadata(**(DEFAULT_OPENAI_METADATA.model_dump() | {
         "rate_limits": {"requests_per_minute": 30000, "tokens_per_minute": 150000000},
         "reasoning": True,
         "non_reasoning_mode": False,
         "reasoning_effort_class": ["low", "medium", "high"],
         "multimodal": False,
+        "context_limit": 200000,
+        "output_token_limit": 100000,
+    }))
+    O3 = "o3", ModelMetadata(**(DEFAULT_OPENAI_METADATA.model_dump() | {
+        "rate_limits": {"requests_per_minute": 10000, "tokens_per_minute": 30000000},
+        "reasoning": True,
+        "non_reasoning_mode": False,
+        "reasoning_effort_class": ["low", "medium", "high"],
+        "multimodal": True,
         "context_limit": 200000,
         "output_token_limit": 100000,
     }))

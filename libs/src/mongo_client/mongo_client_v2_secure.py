@@ -794,7 +794,7 @@ class AsyncMongoDBClient:
     async def update_object(
         self, 
         path: List[str], 
-        data: Dict[str, Any],
+        data: Any,
         allowed_prefixes: Optional[List[List[str]]] = None,
         update_subfields: bool = False
     ) -> Optional[str]:

@@ -1,3 +1,5 @@
+# TODO: CRITICAL: handle lifecycle of connections dependencies!
+
 import uuid
 from typing import Set, List, Optional, AsyncGenerator
 import logging # Keep standard logging import if needed elsewhere
