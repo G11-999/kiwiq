@@ -61,7 +61,7 @@ def _set_refresh_cookie(response: Response, token: str):
 
 def _get_base_url(request: Request, dev_env_suffix: str = ""):
     URL = f"{str(request.base_url).rstrip('/')}{settings.API_V1_PREFIX}{dev_env_suffix}"
-    return settings.AUTH_REDIRECT_BASE_URL if settings.APP_ENV == "PROD" else URL
+    return f"{settings.AUTH_REDIRECT_BASE_URL}{dev_env_suffix}" if settings.APP_ENV == "PROD" else URL
 
 # === Email/Password Authentication Endpoints ===
 
@@ -642,7 +642,7 @@ async def delete_user_account_endpoint(
         )
 
 
-@router.get("/users", response_model=List[schemas.UserRead], tags=["admin"])
+@router.get("/users", response_model=List[schemas.UserReadWithSuperuserStatus], tags=["admin"])
 async def list_users_endpoint(
     skip: int = Query(0, ge=0, description="Number of users to skip"),
     limit: int = Query(100, ge=1, le=500, description="Maximum number of users to return"),

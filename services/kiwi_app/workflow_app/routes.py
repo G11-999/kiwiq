@@ -58,7 +58,7 @@ run_router = APIRouter(prefix="/runs", tags=["Workflow Runs"])
 template_router = APIRouter(prefix="/templates", tags=["Templates"])
 notification_router = APIRouter(prefix="/notifications", tags=["User Notifications"])
 hitl_router = APIRouter(prefix="/hitl", tags=["HITL Jobs"])
-notification_router.include_router(websocket_router, prefix="/ws", tags=["WebSocket Stream & Notifications"])
+notification_router.include_router(websocket_router, tags=["WebSocket Stream & Notifications"])
 
 # === Template Endpoints ===
 
