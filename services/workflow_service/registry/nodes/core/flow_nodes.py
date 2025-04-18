@@ -18,11 +18,11 @@ from typing import Any, Dict, List, Optional, Union, ClassVar, Literal, Tuple, S
 
 # Use real imports
 from pydantic import Field, model_validator, field_validator, BaseModel, ValidationError
+
+from kiwi_app.workflow_app.constants import LaunchStatus
 from workflow_service.registry.schemas.base import BaseSchema
 # from workflow_service.registry.nodes.core.base import BaseNode # Not used directly
 from workflow_service.registry.nodes.core.dynamic_nodes import DynamicSchema, BaseDynamicNode
-
-from global_config.constants import EnvFlag
 
 # --- Enums (REVISED) ---
 class LogicalOperator(str, Enum):
@@ -846,7 +846,7 @@ class FilterNode(BaseDynamicNode):
     """
     node_name: ClassVar[str] = "filter_data"
     node_version: ClassVar[str] = "0.1.0"  # Version bump for index fix
-    env_flag: ClassVar[str] = EnvFlag.PROD
+    env_flag: ClassVar[LaunchStatus] = LaunchStatus.PRODUCTION
     input_schema_cls: Type[DynamicSchema] = DynamicSchema
     output_schema_cls: Type[FilterOutputSchema] = FilterOutputSchema
     config_schema_cls: Type[FilterTargets] = FilterTargets
@@ -1111,7 +1111,7 @@ class IfElseConditionNode(BaseDynamicNode):
     """
     node_name: ClassVar[str] = "if_else_condition"
     node_version: ClassVar[str] = "0.1.0" # Version bump for consistency
-    env_flag: ClassVar[str] = EnvFlag.PROD
+    env_flag: ClassVar[LaunchStatus] = LaunchStatus.PRODUCTION
     input_schema_cls: Type[DynamicSchema] = DynamicSchema
     output_schema_cls: Type[IfElseOutputSchema] = IfElseOutputSchema
     config_schema_cls: Type[IfElseConfigSchema] = IfElseConfigSchema
