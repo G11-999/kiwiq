@@ -356,10 +356,10 @@ def build_load_tree(load_relations: List[Tuple[Type, str]]) -> Tuple[Dict[Type, 
              current = current.setdefault(part, {})
 
 
-    print("\nConstructed Load Tree:")
-    for model, tree in trees.items():
-        print(f"Query Root: {model.__name__}")
-        pprint(tree, indent=4)
+    # print("\nConstructed Load Tree:")
+    # for model, tree in trees.items():
+    #     print(f"Query Root: {model.__name__}")
+    #     pprint(tree, indent=4)
     return trees, query_root
 
 def build_option(model: Type, tree: Dict, strategy_func: Callable) -> List[LoaderOption]:
@@ -474,8 +474,8 @@ def build_load_options(
     # Build the final options list using the chosen strategy function
     options = build_option(query_root, trees[query_root], strategy_func)
 
-    print(f"\nEager load options for query root {query_root.__name__} (using {strategy}):")
-    pprint(options)
+    # print(f"\nEager load options for query root {query_root.__name__} (using {strategy}):")
+    # pprint(options)
     return options
 
 
