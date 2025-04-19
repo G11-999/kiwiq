@@ -13,7 +13,7 @@ from workflow_service.registry.nodes.data_ops.transform_node import (
     TransformerNode,
     DataJoinNode,
 )
-from workflow_service.registry.nodes.core.mapper_node import (
+from workflow_service.registry.nodes.core.map_list_router_node import (
     MapListRouterNode
 )
 from services.workflow_service.registry.nodes.db.customer_data import (

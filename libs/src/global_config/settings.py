@@ -42,7 +42,8 @@ class Settings(BaseSettings):
     APP_ENV: Literal["DEV", "STAGE", "PROD"] = "DEV"
     
     # Database settings
-    DATABASE_URL: str = ""  # Default Postgres for development
+    # Adding default URL which is parsable so SQL Alchemy doesn't throw errors if sessions file is imported!
+    DATABASE_URL: str = "postgresql://db_admin:db_admin_password@localhost/db_name"  # Default Postgres for development
     LANGGRAPH_DATABASE_NAME: str = "langgraph_db"
     LANGGRAPH_DATABASE_URL: Optional[str] = None
     DB_ECHO: bool = os.getenv("DB_ECHO_STR", "false").lower() == "true"  # SQL query logging
