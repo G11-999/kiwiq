@@ -11,7 +11,10 @@ from workflow_service.registry.nodes.core.flow_nodes import (  # flow_nodes_gemi
 )
 from workflow_service.registry.nodes.data_ops.transform_node import (
     TransformerNode,
-    MapperNode,
+    DataJoinNode,
+)
+from workflow_service.registry.nodes.core.mapper_node import (
+    MapListRouterNode
 )
 from services.workflow_service.registry.nodes.db.customer_data import (
     LoadCustomerDataNode,
@@ -19,31 +22,34 @@ from services.workflow_service.registry.nodes.db.customer_data import (
 )
 from workflow_service.registry.nodes.core.router_node import RouterNode
 
-from tests.unit.services.workflow_service.graph.runtime.tests.test_AI_loop import HumanReviewNode, AIGeneratorNode, ApprovalRouterNode, FinalProcessorNode
-
 async def register_node_templates(db_registry: DBRegistry):
     async with get_async_db_as_manager() as db:
         # Core Nodes
-        await db_registry.register_node_template(db, LLMNode)
-        await db_registry.register_node_template(db, PromptConstructorNode)
         await db_registry.register_node_template(db, InputNode)
         await db_registry.register_node_template(db, OutputNode)
+
+        # HITL
         await db_registry.register_node_template(db, HITLNode)
         
-        # Production Nodes
+        # Flow Nodes
         await db_registry.register_node_template(db, FilterNode)
         await db_registry.register_node_template(db, IfElseConditionNode)
+        
+        # Routing
         await db_registry.register_node_template(db, RouterNode)
+        await db_registry.register_node_template(db, MapListRouterNode)
+        
+        # Data Ops
         await db_registry.register_node_template(db, TransformerNode)
-        await db_registry.register_node_template(db, MapperNode)
+        await db_registry.register_node_template(db, DataJoinNode)
+        
+        # Customer / System Data
         await db_registry.register_node_template(db, LoadCustomerDataNode)
         await db_registry.register_node_template(db, StoreCustomerDataNode)
-
-        # Test Nodes
-        await db_registry.register_node_template(db, HumanReviewNode)
-        await db_registry.register_node_template(db, AIGeneratorNode)
-        await db_registry.register_node_template(db, ApprovalRouterNode)
-        await db_registry.register_node_template(db, FinalProcessorNode)
+        
+        # LLM
+        await db_registry.register_node_template(db, LLMNode)
+        await db_registry.register_node_template(db, PromptConstructorNode)
         # print("metadata keys:: ", db_registry._metadata.keys())
 
 # if __name__ == "__main__":
