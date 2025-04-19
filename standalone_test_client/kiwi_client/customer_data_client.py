@@ -1,5 +1,26 @@
 """
 Test client for the Customer Data API endpoints.
+
+
+is_shared is both for within org and system wide
+is_system_entity is for creating /reading from system paths
+
+paths can be of 4 components in hierarchy:
+org/system --/ --user / is_shared --/ -- doc category --/ -- doc name (edited) 
+
+
+is_shared toggles the 2nd component in path
+
+is_system toggles the first component
+
+its liek filesystem paths for system paths or org specific paths which can be both private or user specific or is_shared
+
+system paths can only be private / is_shared (edited) 
+
+
+As a rule of thumb:
+Put any docs which all users need and should be able to read in system / is_shared
+Put any docs which we need / our private system docs or even docs which user doesn’t need to read directly but needs to be injected in workflows (we can discuss how) in system / private
 """
 
 import asyncio

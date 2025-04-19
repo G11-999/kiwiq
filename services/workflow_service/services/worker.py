@@ -222,7 +222,11 @@ async def run_graph(
         # --- Runtime Configuration ---
         runtime_config = graph_entities.get("runtime_config", {})
         # Pass necessary context items into the config for LangGraph nodes
-        runtime_config[APPLICATION_CONTEXT_KEY] = workflow_run_job # Pass the whole job object
+        async with get_async_db_as_manager() as db:
+            runtime_config[APPLICATION_CONTEXT_KEY] = {
+                "workflow_run_job": workflow_run_job,
+                "user": await external_context.daos.user.get(db, id=user_id)
+            }
         runtime_config[EXTERNAL_CONTEXT_MANAGER_KEY] = external_context
 
         # Configure thread_id for checkpointing

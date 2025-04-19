@@ -54,6 +54,8 @@ class TestMongoVersionedClient(unittest.IsolatedAsyncioTestCase):
             # Add other necessary fields if needed by AsyncMongoDBClient 
             # e.g., text_search_fields, value_filter_fields
         )
+
+        self.client.version_mode = AsyncMongoDBClient.DOC_TYPE_VERSIONED
         
         # Setup underlying client (drop collection, create indexes)
         await self.client.drop_collection(confirm=True)

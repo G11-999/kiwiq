@@ -1,5 +1,6 @@
 """Customer Data Service for managing versioned and unversioned customer data."""
 
+import json
 import uuid
 from typing import List, Dict, Any, Optional, Tuple, Union, Type, cast, Set
 from datetime import datetime
@@ -10,7 +11,7 @@ import jsonschema
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from kiwi_app.auth.models import User
-from kiwi_app.workflow_app import schemas, services, models
+from kiwi_app.workflow_app import schemas
 from kiwi_app.workflow_app import crud
 from kiwi_app.workflow_app.constants import SchemaType
 from mongo_client import AsyncMongoDBClient, AsyncMongoVersionedClient
@@ -239,6 +240,7 @@ class CustomerDataService:
         initial_version: str = "default",
         schema_template_name: Optional[str] = None,
         schema_template_version: Optional[str] = None,
+        schema_definition: Optional[Dict[str, Any]] = None,
         initial_data: Any = None,
         is_complete: bool = False,
         on_behalf_of_user_id: Optional[uuid.UUID] = None,
@@ -257,6 +259,7 @@ class CustomerDataService:
             initial_version: Name for the initial version (default: "default")
             schema_template_name: Name of schema template to use (optional)
             schema_template_version: Version of schema template (optional)
+            schema_definition: Schema definition to use (optional)
             initial_data: Initial document data
             is_complete: Whether the initial data is complete (for validation)
             on_behalf_of_user_id: Optional user ID to act on behalf of (superusers only)
@@ -310,6 +313,8 @@ class CustomerDataService:
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Schema template '{schema_template_name}' not found",
                 )
+        elif schema_definition:
+            schema = schema_definition
         
         # Set initial data to empty object if None
         if initial_data is None:
@@ -360,6 +365,7 @@ class CustomerDataService:
         is_complete: Optional[bool] = None,
         schema_template_name: Optional[str] = None,
         schema_template_version: Optional[str] = None,
+        schema_definition: Optional[Dict[str, Any]] = None,
         on_behalf_of_user_id: Optional[uuid.UUID] = None,
         is_system_entity: bool = False,
     ) -> bool:
@@ -378,6 +384,7 @@ class CustomerDataService:
             is_complete: Whether the document is complete after update (optional)
             schema_template_name: Name of schema template to update with (optional)
             schema_template_version: Version of schema template (optional)
+            schema_definition: Schema definition to use (optional)
             on_behalf_of_user_id: Optional user ID to act on behalf of (superusers only)
             is_system_entity: Whether this is a system entity (superusers only)
             
@@ -418,6 +425,7 @@ class CustomerDataService:
             is_system_entity=is_system_entity
         )
         
+        schema = None
         # Update schema if template provided
         if schema_template_name:
             schema = await self._get_schema_from_template(
@@ -428,7 +436,10 @@ class CustomerDataService:
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Schema template '{schema_template_name}' not found",
                 )
+        elif schema_definition:
+            schema = schema_definition
                 
+        if schema:
             await self.versioned_mongo_client.update_schema(
                 base_path=base_path,
                 schema=schema,
@@ -518,7 +529,7 @@ class CustomerDataService:
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Document '{namespace}/{docname}' not found",
                 )
-                
+            # customer_data_logger.warning(f"-------Retrieved document at path {base_path}, version {version}\n\n\n\n{json.dumps(document, indent=4)}\n\n\n\n")
             return document
         except Exception as e:
             # Check if this is a 404 we already raised
@@ -1178,6 +1189,7 @@ class CustomerDataService:
         data: Any,
         schema_template_name: Optional[str] = None,
         schema_template_version: Optional[str] = None,
+        schema_definition: Optional[Dict[str, Any]] = None,
         on_behalf_of_user_id: Optional[uuid.UUID] = None,
         is_system_entity: bool = False,
     ) -> Tuple[str, bool]:
@@ -1194,6 +1206,7 @@ class CustomerDataService:
             data: Document data
             schema_template_name: Name of schema template to validate against (optional)
             schema_template_version: Version of schema template (optional)
+            schema_definition: Schema definition to validate against (optional)
             on_behalf_of_user_id: Optional user ID to act on behalf of (superusers only)
             is_system_entity: Whether this is a system entity (superusers only)
             
@@ -1231,6 +1244,7 @@ class CustomerDataService:
             is_system_entity=is_system_entity
         )
         
+        schema = None
         # Validate against schema if provided
         if schema_template_name:
             schema = await self._get_schema_from_template(
@@ -1241,7 +1255,9 @@ class CustomerDataService:
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Schema template '{schema_template_name}' not found",
                 )
-                
+        elif schema_definition:
+            schema = schema_definition
+        if schema:
             # TODO: Implement schema validation for unversioned documents
             # This requires custom validation since unversioned client doesn't have built-in schema validation
             # For now, we'll skip this and just store the data
@@ -1487,9 +1503,9 @@ class CustomerDataService:
             # Include the document type field to determine if it's versioned
             include_fields = [self.mongo_client.DOC_TYPE_KEY]
 
-            print(f"Fetching document at path: {base_path}")
-            print(f"Allowed prefixes: {allowed_prefixes}")
-            print(f"Include fields: {include_fields}")
+            # print(f"Fetching document at path: {base_path}")
+            # print(f"Allowed prefixes: {allowed_prefixes}")
+            # print(f"Include fields: {include_fields}")
             
             # Fetch the document
             document = await self.versioned_mongo_client.client.fetch_object(
@@ -1498,7 +1514,7 @@ class CustomerDataService:
                 include_fields=include_fields
             )
 
-            print(f"Document: {document}")
+            # print(f"Document: {document}")
             
             # Check if document exists
             if not document:
@@ -1509,6 +1525,7 @@ class CustomerDataService:
             
             # Determine if document is versioned
             is_versioned = document.get(self.mongo_client.DOC_TYPE_KEY) == self.mongo_client.DOC_TYPE_VERSIONED
+            # customer_data_logger.warning(f"-------Document at path {base_path} is versioned: {is_versioned} ---> **** DOC_TYPE_KEY *** : {document.get(self.mongo_client.DOC_TYPE_KEY)}")
             
             # Extract path components
             org_id_str = str(org_id) if not is_system_entity else CustomerDataService.SYSTEM_DOC_PLACEHOLDER
@@ -1570,21 +1587,25 @@ class CustomerDataService:
             List of document metadata
         """
         if not include_shared and not include_user_specific and not include_system_entities:
+            customer_data_logger.info("No document types included, returning empty list")
             return []
          
         # Permission checks for acting on behalf of another user or system entities
         if on_behalf_of_user_id and not user.is_superuser:
+            customer_data_logger.warning(f"Permission denied: Non-superuser {user.id} attempted to act on behalf of {on_behalf_of_user_id}")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only superusers can act on behalf of other users"
             )
             
         if include_system_entities and not user.is_superuser:
+            customer_data_logger.warning(f"Permission denied: Non-superuser {user.id} attempted to list system entities")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only superusers can list all system entities"
             )
         
+        customer_data_logger.debug(f"Getting allowed prefixes for org_id={org_id}, user={user.id}, on_behalf_of_user_id={on_behalf_of_user_id}")
         # Get allowed prefixes from our helper method
         allowed_prefixes = self._get_allowed_prefixes(
             org_id=org_id,
@@ -1593,46 +1614,59 @@ class CustomerDataService:
             is_mutation=False,  # Listing is not a mutation operation
             is_system_entity=False  # Basic prefixes, specific system patterns added below
         )
+        customer_data_logger.debug(f"Allowed prefixes: {allowed_prefixes}")
         
         # Build patterns to search for
         patterns = []
         
         # Organization patterns
         namespace_filter_pattern = namespace_filter if namespace_filter else "*"
+        customer_data_logger.debug(f"Namespace filter pattern: {namespace_filter_pattern}")
+        
         if include_shared or include_user_specific:
             if include_shared:
+                customer_data_logger.debug(f"Including shared documents for org_id={org_id}")
                 patterns.append([str(org_id), self.SHARED_DOC_PLACEHOLDER, namespace_filter_pattern, "*"])
             if include_user_specific:
                 user_id = str(on_behalf_of_user_id) if on_behalf_of_user_id and user.is_superuser else str(user.id)
+                customer_data_logger.debug(f"Including user-specific documents for user_id={user_id}")
                 patterns.append([str(org_id), user_id, namespace_filter_pattern, "*"])
         
         # System patterns
         if include_system_entities or (not user.is_superuser):  # Regular users can still see shared system docs
-            patterns.append([CustomerDataService.SYSTEM_DOC_PLACEHOLDER, self.SHARED_DOC_PLACEHOLDER, namespace_filter, "*"])
+            customer_data_logger.debug("Including shared system documents")
+            patterns.append([CustomerDataService.SYSTEM_DOC_PLACEHOLDER, self.SHARED_DOC_PLACEHOLDER, namespace_filter_pattern, "*"])
             # Only superusers can access private system docs
             if user.is_superuser and include_system_entities:
+                customer_data_logger.debug("Including private system documents (superuser only)")
                 patterns.append([CustomerDataService.SYSTEM_DOC_PLACEHOLDER, self.PRIVATE_DOC_PLACEHOLDER, namespace_filter_pattern, "*"])
         
         try:
+            customer_data_logger.debug(f"Beginning document search with {len(patterns)} patterns")
             # Process each pattern and combine results
             all_docs = {}
-            
+            customer_data_logger.debug(f"Patterns: {patterns}")
             for pattern in patterns:
+                customer_data_logger.debug(f"Processing pattern: {pattern}")
                 docs = await self.versioned_mongo_client.client.search_objects(
                     # NOTE: we only wanna fetch all docs where the version/sequence no. segments are unset!
                     key_pattern=pattern + [None] * len(self.versioned_mongo_client.VERSION_SEGMENT_NAMES),
                     allowed_prefixes=allowed_prefixes,
                     include_fields=self.versioned_mongo_client.segment_names + [self.mongo_client.DOC_TYPE_KEY],
                 )
+                customer_data_logger.debug(f"Found {len(docs)} documents for pattern: {pattern}")
                 all_docs.update(
                     {tuple(self.versioned_mongo_client.client._segments_to_path(doc)): doc for doc in docs}
                 )
+            
+            customer_data_logger.debug(f"Total unique documents found: {len(all_docs)}")
             
             # Process results into metadata objects
             result = []
             for doc_path, _doc_metadata in all_docs.items():
                 # Skip if not a list (should not happen)
-                if not isinstance(doc_path, list) or len(doc_path) != 4:
+                if not isinstance(doc_path, (list, tuple)) or len(doc_path) != 4:
+                    customer_data_logger.warning(f"Skipping invalid doc_path: {doc_path}")
                     continue
                     
                 # Extract path components
@@ -1644,6 +1678,7 @@ class CustomerDataService:
                 
                 # Skip system entities if not requested
                 if is_system and not include_system_entities and not is_shared:
+                    customer_data_logger.debug(f"Skipping system entity not requested: {doc_path}")
                     continue
                 
                 is_versioned = _doc_metadata.get(self.mongo_client.DOC_TYPE_KEY) == self.mongo_client.DOC_TYPE_VERSIONED
@@ -1661,6 +1696,8 @@ class CustomerDataService:
                 
                 result.append(metadata)
             
+            customer_data_logger.debug(f"Raw result count: {len(result)}")
+            
             # Remove duplicates (in case the same document matched multiple patterns)
             unique_result = []
             seen_paths = set()
@@ -1670,10 +1707,14 @@ class CustomerDataService:
                 if path_key not in seen_paths:
                     seen_paths.add(path_key)
                     unique_result.append(metadata)
+                else:
+                    customer_data_logger.debug(f"Skipping duplicate: {path_key}")
+            
+            customer_data_logger.debug(f"Unique result count: {len(unique_result)}")
             
             # Apply pagination
             paginated_result = unique_result[skip:skip + limit]
-            
+            customer_data_logger.debug(f"Paginated result count: {len(paginated_result)} (skip={skip}, limit={limit})")
             return paginated_result
         except Exception as e:
             raise HTTPException(

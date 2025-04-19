@@ -9,9 +9,10 @@ from typing import Optional, Dict, Any, List
 
 from workflow_service.registry.registry import DBRegistry
 from workflow_service.services.db_node_register import register_node_templates
-from kiwi_app.workflow_app import crud as wf_crud # Assuming path
-from kiwi_app.workflow_app.wf_queue.queue import workflow_notifications_queue # Assuming path
-from kiwi_app.workflow_app.wf_stream.stream import workflow_stream # Assuming path
+from kiwi_app.workflow_app import crud as wf_crud
+from kiwi_app.auth import crud as auth_crud
+from kiwi_app.workflow_app.wf_queue.queue import workflow_notifications_queue
+from kiwi_app.workflow_app.wf_stream.stream import workflow_stream
 
 # Add new imports for clients
 from redis_client import AsyncRedisClient
@@ -36,6 +37,7 @@ class DAOContext(BaseModel):
     schema_template: wf_crud.SchemaTemplateDAO = Field(...)
     user_notification: wf_crud.UserNotificationDAO = Field(...)
     hitl_job: wf_crud.HITLJobDAO = Field(...)
+    user: auth_crud.UserDAO = Field(...)
 
     class Config:
         arbitrary_types_allowed = True # Allow non-pydantic types like clients
@@ -296,6 +298,7 @@ async def get_customer_versioned_mongo_client() -> AsyncMongoVersionedClient:
     # Create versioned client based on the base MongoDB client
     # Use base segment names without version/sequence segments that will be added internally
     customer_mongo_client = await get_customer_mongo_client_with_extra_segments(extra_segments=AsyncMongoVersionedClient.VERSION_SEGMENT_NAMES)
+    customer_mongo_client.version_mode = AsyncMongoDBClient.DOC_TYPE_VERSIONED
     versioned_client = AsyncMongoVersionedClient(
         client=customer_mongo_client,
         segment_names=settings.MONGO_CUSTOMER_SEGMENTS, # Base segments defined in settings
@@ -474,6 +477,7 @@ async def get_external_context_manager_with_clients() -> ExternalContextManager:
     schema_template_dao = wf_crud.SchemaTemplateDAO()
     user_notification_dao = wf_crud.UserNotificationDAO()
     hitl_job_dao = wf_crud.HITLJobDAO()
+    user_dao = auth_crud.UserDAO()
 
     db_registry = DBRegistry(
         node_template_dao = node_template_dao,
@@ -492,7 +496,8 @@ async def get_external_context_manager_with_clients() -> ExternalContextManager:
         prompt_template=prompt_template_dao,
         schema_template=schema_template_dao,
         user_notification=user_notification_dao,
-        hitl_job=hitl_job_dao
+        hitl_job=hitl_job_dao,
+        user=user_dao
     )
 
     customer_data_service = await get_customer_data_service(

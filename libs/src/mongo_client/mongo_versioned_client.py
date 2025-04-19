@@ -135,6 +135,7 @@ class AsyncMongoVersionedClient:
             version_segment_name: Segment name for the version path
             sequence_segment_name: Segment name for the sequence number
         """
+        assert client.version_mode == AsyncMongoDBClient.DOC_TYPE_VERSIONED, "Client must be versioned"
         self.client = client
         self.segment_names = segment_names
         # self.metadata_segment_name = metadata_segment_name
@@ -494,7 +495,7 @@ class AsyncMongoVersionedClient:
         # Create initial metadata
         timestamp = datetime_now_utc().isoformat()
         metadata = {
-            AsyncMongoDBClient.DOC_TYPE_KEY: AsyncMongoDBClient.DOC_TYPE_VERSIONED,
+            # AsyncMongoDBClient.DOC_TYPE_KEY: AsyncMongoDBClient.DOC_TYPE_VERSIONED,
             "created_at": timestamp,
             "updated_at": timestamp,
             "active_version": initial_version,
@@ -663,7 +664,8 @@ class AsyncMongoVersionedClient:
             logger.error(f"Version data for {target_version} not found at path {base_path}")
             return None
         
-        logger.debug(f"Retrieved document at path {base_path}, version {target_version}")
+        # logger.warning(f"Retrieved document at path {base_path}, version {target_version}")
+        # logger.warning(f"-------Retrieved document at path {base_path}, version {target_version}\n\n\n\n{json.dumps(version_data, indent=4)}\n\n\n\n")
         return version_data.get("document")
     
     async def update_document(

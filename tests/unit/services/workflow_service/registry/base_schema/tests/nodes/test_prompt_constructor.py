@@ -13,7 +13,7 @@ from workflow_service.graph.graph import (
     ConstructDynamicSchema
 )
 from workflow_service.registry.nodes.core.dynamic_nodes import DynamicSchemaFieldConfig
-from workflow_service.registry.nodes.llm.prompt import PromptConstructorNode, PROMPT_CONSTRUCTOR_DELIMITER
+from workflow_service.registry.nodes.llm.prompt import PromptConstructorNode, OBJECT_PATH_REFERENCE_DELIMITER
 
 from workflow_service.graph.builder import GraphBuilder
 from workflow_service.graph.runtime.adapter import LangGraphRuntimeAdapter
@@ -75,7 +75,7 @@ def create_prompt_constructor_graph():
         },
         # Dynamic input schema to accept all prompt variables
         dynamic_input_schema=ConstructDynamicSchema(fields={
-            f"template1{PROMPT_CONSTRUCTOR_DELIMITER}variable3": DynamicSchemaFieldConfig(type="str", required=True, description="Constructed template 1"),
+            f"template1{OBJECT_PATH_REFERENCE_DELIMITER}variable3": DynamicSchemaFieldConfig(type="str", required=True, description="Constructed template 1"),
             f"variable1": DynamicSchemaFieldConfig(type="str", required=True, description="Constructed template 2")
         }),
         # Dynamic output schema to output all constructed templates
@@ -104,7 +104,7 @@ def create_prompt_constructor_graph():
             src_node_id=INPUT_NODE_NAME,
             dst_node_id="prompt_constructor",
             mappings=[
-                EdgeMapping(src_field="t1_variable3", dst_field=f"template1{PROMPT_CONSTRUCTOR_DELIMITER}variable3"),
+                EdgeMapping(src_field="t1_variable3", dst_field=f"template1{OBJECT_PATH_REFERENCE_DELIMITER}variable3"),
                 EdgeMapping(src_field="write_variable1", dst_field="variable1")
             ]
         ),

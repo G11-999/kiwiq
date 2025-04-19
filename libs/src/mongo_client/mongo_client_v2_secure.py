@@ -47,6 +47,7 @@ class AsyncMongoDBClient:
         segment_names: Optional[List[str]] = None,
         text_search_fields: Optional[List[str]] = None,
         value_filter_fields: Optional[List[str]] = None,  # fields within document such as `xyz` which will be stored under `data.xyz`; only specify xyz!
+        version_mode: Optional[str] = DOC_TYPE_UNVERSIONED,
         **kwargs
     ):
         """
@@ -68,6 +69,7 @@ class AsyncMongoDBClient:
         self.text_search_fields = text_search_fields or []
         self.value_filter_fields = value_filter_fields or []
         self.connection_params = kwargs
+        self.version_mode = version_mode
         
         # Connection objects (initialized lazily)
         self._client = None
@@ -510,7 +512,7 @@ class AsyncMongoDBClient:
     # DOCUMENT PROCESSING UTILITIES
     # =========================================================================
     
-    def _prepare_document(self, path: List[str], data: Dict[str, Any]) -> Dict[str, Any]:
+    def _prepare_document(self, path: List[str], data: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """
         Prepares a document for insertion/update.
         
@@ -527,7 +529,7 @@ class AsyncMongoDBClient:
             "_id": self._path_to_id(path),
             **segments,
             "data": data,
-            AsyncMongoDBClient.DOC_TYPE_KEY: AsyncMongoDBClient.DOC_TYPE_UNVERSIONED,
+            AsyncMongoDBClient.DOC_TYPE_KEY: self.version_mode,
         }
     
     async def _process_operation_with_retry(
