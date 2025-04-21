@@ -452,7 +452,7 @@ Ticket Body:
 ## 11. Tips and Best Practices
 
 -   **Plan First:** Sketch your workflow logic before writing the JSON. Identify steps, decisions, and data needs.
--   **Use Meaningful IDs:** Choose descriptive `node_id`s (e.g., `extract_invoice_data`, `route_by_amount`).
+-   **Use Meaningful IDs:** Choose descriptive `node_id`s (e.g., `extract_invoice_data`, `route_by_amount`), IDs also help to identify and differentiate the same node type used multiple times in a workflow.
 -   **Consult Node Guides:** Each node has unique `node_config` requirements and specific input/output fields. Refer to the guides constantly.
 -   **Validate Mappings:** Ensure `src_field` exists in the source node's output and `dst_field` matches the destination node's expected input or is handled dynamically. Check dot notation carefully.
 -   **Start Simple:** Build and test core paths first, then add complexity like branching, looping, or parallel processing.
