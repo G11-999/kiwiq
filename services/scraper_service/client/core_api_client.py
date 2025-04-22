@@ -254,7 +254,7 @@ class RapidAPIClient(Generic[T]):
         Returns:
             List[GetProfileCommentResponse]: List of parsed comment models
         """
-        endpoint = f"/get-profile-comments?username={request.username}"
+        endpoint = f"{rapid_api_settings.ENDPOINTS['profile_comments_made']}?username={request.username}"
         raw_response = await self.make_get_request(endpoint, GetProfileCommentResponse)
 
         # Ensure response is list

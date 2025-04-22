@@ -34,7 +34,7 @@ class LinkedinPostFetcher:
             base_url (Optional[str]): Host URL for RapidAPI. Defaults to settings value.
         """
         self.rapidapi_key = api_key or rapid_api_settings.RAPID_API_KEY
-        self.rapidapi_host = base_url or rapid_api_settings.RAPID_API_BASE_URL
+        self.rapidapi_host = base_url or rapid_api_settings.RAPID_API_HOST
         self.api_client = RapidAPIClient(self.rapidapi_key, self.rapidapi_host)
 
     async def get_company_posts(self, request: PostsRequest) -> List[CompanyPostResponse]:
@@ -73,7 +73,7 @@ class LinkedinPostFetcher:
         pagination_token = None
 
         while len(all_posts) < post_limit:
-            endpoint = f"/get-company-posts?username={request.username}&start={start}"
+            endpoint = f"{rapid_api_settings.ENDPOINTS['company_posts']}?username={request.username}&start={start}"
             if pagination_token:
                 endpoint += f"&paginationToken={pagination_token}"
 
@@ -184,7 +184,7 @@ class LinkedinPostFetcher:
         if not request.post_urn:
             return []
 
-        endpoint = f"/get-company-post-comments?urn={request.post_urn}"
+        endpoint = f"{rapid_api_settings.ENDPOINTS['company_post_comments']}?urn={request.post_urn}"
         response = await self.api_client.make_get_request(endpoint)
 
         raw_comments = []
@@ -243,7 +243,7 @@ class LinkedinPostFetcher:
 
         while len(all_reactions) < reaction_limit:
             payload = {"url": request.post_url, "page": page}
-            response = await self.api_client.make_post_request("/get-post-reactions", payload)
+            response = await self.api_client.make_post_request(rapid_api_settings.ENDPOINTS['post_reactions'], payload)
 
             if not response.get("success", False):
                 logger.error(f"Error fetching reactions: {response.get('message')}")
@@ -312,7 +312,7 @@ class LinkedinPostFetcher:
         pagination_token = None
 
         while len(all_posts) < post_limit:
-            endpoint = f"/get-profile-posts?username={request.username}&start={start}"
+            endpoint = f"{rapid_api_settings.ENDPOINTS['profile_posts']}?username={request.username}&start={start}"
             if pagination_token:
                 endpoint += f"&paginationToken={pagination_token}"
 
@@ -517,7 +517,7 @@ class LinkedinPostFetcher:
         pagination_token = None
 
         while len(all_likes) < post_limit:
-            endpoint = f"/get-profile-likes?username={request.username}&start={start}"
+            endpoint = f"{rapid_api_settings.ENDPOINTS['profile_likes']}?username={request.username}&start={start}"
             if pagination_token:
                 endpoint += f"&paginationToken={pagination_token}"
 

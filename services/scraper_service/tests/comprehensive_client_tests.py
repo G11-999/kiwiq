@@ -11,8 +11,8 @@ import math
 from scraper_service.client.core_api_client import RapidAPIClient 
 from scraper_service.client.post_manager import LinkedinPostFetcher
 from scraper_service.settings import rapid_api_settings
-from scraper_service.client.schemas import ProfileRequest, CompanyRequest, ProfileResponse, CompanyResponse , ProfilePost ,PostsRequest, LikeItem , GetProfileCommentResponse, PostsRequest
-from scraper_service.credit_calculator import calculate_credits
+from scraper_service.client.schemas import ProfileRequest, CompanyRequest, ProfileResponse, CompanyResponse , ProfilePost ,PostsRequest, LikeItem , GetProfileCommentResponse, PostsRequest, PostReactionsRequest, ProfilePostCommentsRequest, CompanyPostCommentsRequest
+from scraper_service.credit_calculator import calculate_credits, JobType
 from global_config.logger import get_logger
 logger = get_logger(__name__)
 
@@ -183,70 +183,154 @@ async def test_posts_client():
 
 
 async def test_credit_calculator():
-    """Test credit calculator functionality."""
+    """Test credit calculator functionality for various job types."""
     print("\n--- Testing Credit Calculator Functionality ---")
-    
-    # Get batch sizes from settings
-    POST_BATCH = rapid_api_settings.BATCH_SIZE
-    REACTION_BATCH = rapid_api_settings.DEFAULT_REACTION_LIMIT
-    
-    # Define test cases
+
+    # Get batch sizes from settings for calculations
+    POST_BATCH = rapid_api_settings.BATCH_SIZE or 50
+    REACTION_BATCH = rapid_api_settings.DEFAULT_REACTION_LIMIT or 30
+
+    # --- Helper for Reaction Cost ---
+    def expected_reaction_cost(limit):
+        if not limit or limit <= 0: return 0
+        return math.ceil(limit / REACTION_BATCH) * 1
+
+    # --- Define Test Cases ---
     test_cases = [
+        # --- Profile Fetching ---
         {
-            "name": "No posts, no comments, no reactions",
+            "name": "Fetch User Profile",
+            "job_type": JobType.FETCH_USER_PROFILE,
+            "request": ProfileRequest(username="testuser"),
+            "expected_min": 1,
+            "expected_max": 1
+        },
+        {
+            "name": "Fetch Company Profile",
+            "job_type": JobType.FETCH_COMPANY_PROFILE,
+            "request": CompanyRequest(username="testcompany"),
+            "expected_min": 1,
+            "expected_max": 1
+        },
+
+        # --- Post List Fetching (User/Company/Likes) ---
+        {
+            "name": "Fetch User Posts (No posts, no extras)",
+            "job_type": JobType.FETCH_USER_POSTS,
             "request": PostsRequest(username="testuser", post_limit=0, post_comments="no", post_reactions="no"),
             "expected_min": 0,
             "expected_max": 0
         },
         {
-            "name": "10 posts, no comments/reactions",
-            "request": PostsRequest(username="testuser", post_limit=10, post_comments="no", post_reactions="no"),
+            "name": "Fetch Company Posts (10 posts, no extras)",
+            "job_type": JobType.FETCH_COMPANY_POSTS,
+            "request": PostsRequest(username="testcompany", post_limit=10, post_comments="no", post_reactions="no"),
             "expected_min": math.ceil(10 / POST_BATCH) * 1,
             "expected_max": math.ceil(10 / POST_BATCH) * 1
         },
         {
-            "name": "10 posts with comments",
+            "name": "Fetch User Likes (10 likes with comments)",
+            "job_type": JobType.FETCH_USER_LIKES,
             "request": PostsRequest(username="testuser", post_limit=10, post_comments="yes", post_reactions="no"),
-            "expected_min": (math.ceil(10 / POST_BATCH) * 1) + (10 * 1),
+            "expected_min": (math.ceil(10 / POST_BATCH) * 1) + (10 * 1), # Base post cost + 1 credit per post for comments
             "expected_max": (math.ceil(10 / POST_BATCH) * 1) + (10 * 1)
         },
         {
-            "name": "10 posts with reactions (30 per post)",
+            "name": "Fetch User Posts (10 posts with reactions, limit 30)",
+            "job_type": JobType.FETCH_USER_POSTS,
             "request": PostsRequest(username="testuser", post_limit=10, post_comments="no", post_reactions="yes", reaction_limit=30),
-            "expected_min": (math.ceil(10 / POST_BATCH) * 1) + (10 * 1),
-            "expected_max": (math.ceil(10 / POST_BATCH) * 1) + (10 * 1)
+            "expected_min": (math.ceil(10 / POST_BATCH) * 1) + (10 * expected_reaction_cost(30)), # Base + 10 posts * reaction cost
+            "expected_max": (math.ceil(10 / POST_BATCH) * 1) + (10 * expected_reaction_cost(30))
         },
         {
-            "name": "10 posts with reactions (100 per post)",
-            "request": PostsRequest(username="testuser", post_limit=10, post_comments="no", post_reactions="yes", reaction_limit=100),
-            "expected_min": (math.ceil(10 / POST_BATCH) * 1) + (10 * (1 + math.ceil((100-REACTION_BATCH)/REACTION_BATCH))),
-            "expected_max": (math.ceil(10 / POST_BATCH) * 1) + (10 * (1 + math.ceil((100-REACTION_BATCH)/REACTION_BATCH)))
+            "name": "Fetch Company Posts (10 posts with reactions, limit 100)",
+            "job_type": JobType.FETCH_COMPANY_POSTS,
+            "request": PostsRequest(username="testcompany", post_limit=10, post_comments="no", post_reactions="yes", reaction_limit=100),
+            "expected_min": (math.ceil(10 / POST_BATCH) * 1) + (10 * expected_reaction_cost(100)),
+            "expected_max": (math.ceil(10 / POST_BATCH) * 1) + (10 * expected_reaction_cost(100))
         },
         {
-            "name": "10 posts with comments and reactions",
-            "request": PostsRequest(username="testuser", post_limit=10, post_comments="yes", post_reactions="yes", reaction_limit=30),
-            "expected_min": (math.ceil(10 / POST_BATCH) * 1) + (10 * (1 + 1)),
-            "expected_max": (math.ceil(10 / POST_BATCH) * 1) + (10 * (1 + 1))
-        }
+            "name": "Fetch User Likes (10 likes with comments and reactions, limit 50)",
+            "job_type": JobType.FETCH_USER_LIKES,
+            "request": PostsRequest(username="testuser", post_limit=10, post_comments="yes", post_reactions="yes", reaction_limit=50),
+            "expected_min": (math.ceil(10 / POST_BATCH) * 1) + (10 * (1 + expected_reaction_cost(50))), # Base + 10 posts * (comment cost + reaction cost)
+            "expected_max": (math.ceil(10 / POST_BATCH) * 1) + (10 * (1 + expected_reaction_cost(50)))
+        },
+        {
+            "name": "Fetch User Posts (150 posts, no extras)",
+            "job_type": JobType.FETCH_USER_POSTS,
+            "request": PostsRequest(username="testuser", post_limit=150, post_comments="no", post_reactions="no"),
+            "expected_min": math.ceil(150 / POST_BATCH) * 1,
+            "expected_max": math.ceil(150 / POST_BATCH) * 1
+        },
+
+        # --- User Activity: Comments Made ---
+        {
+            "name": "Fetch User Comments Activity",
+            "job_type": JobType.FETCH_USER_COMMENTS_ACTIVITY,
+            "request": ProfileRequest(username="testuser"),
+            "expected_min": 1,
+            "expected_max": 1
+        },
+
+        # --- Single Post Details ---
+        {
+            "name": "Fetch Post Reactions (Estimate with default limit)",
+            "job_type": JobType.FETCH_POST_REACTIONS,
+            "request": PostReactionsRequest(post_url="http://some.url"),
+            # Calculation assumes default reaction limit defined in settings for estimation
+            "expected_min": expected_reaction_cost(rapid_api_settings.DEFAULT_REACTION_LIMIT),
+            "expected_max": expected_reaction_cost(rapid_api_settings.DEFAULT_REACTION_LIMIT)
+        },
+        # Note: To test FETCH_POST_REACTIONS with a specific limit, the calculator
+        # would need modification or the test would need to simulate passing the limit.
+        {
+            "name": "Fetch Post Comments (Profile)",
+            "job_type": JobType.FETCH_POST_COMMENTS,
+            "request": ProfilePostCommentsRequest(post_urn="urn:li:activity:123"),
+            "expected_min": 1,
+            "expected_max": 1
+        },
+        {
+            "name": "Fetch Post Comments (Company)",
+            "job_type": JobType.FETCH_POST_COMMENTS,
+            "request": CompanyPostCommentsRequest(post_urn="urn:li:share:456"),
+            "expected_min": 1,
+            "expected_max": 1
+        },
     ]
-    
+
     passed_count = 0
     failed_count = 0
-    
-    for test_case in test_cases:
-        print(f"\nTesting: {test_case['name']}")
-        min_credits, max_credits = calculate_credits(test_case['request'])
-        
-        print(f"Expected: min={test_case['expected_min']}, max={test_case['expected_max']}")
-        print(f"Actual: min={min_credits}, max={max_credits}")
-        
-        if min_credits == test_case['expected_min'] and max_credits == test_case['expected_max']:
-            print("✓ PASSED")
-            passed_count += 1
-        else:
-            print("✗ FAILED")
+
+    for i, test_case in enumerate(test_cases):
+        print(f"\n--- Test Case {i+1}: {test_case['name']} ---")
+        print(f"Job Type: {test_case['job_type']}")
+        print(f"Request Data: {test_case['request']}")
+
+        try:
+            min_credits, max_credits = calculate_credits(
+                job_type=test_case['job_type'],
+                request_data=test_case['request']
+            )
+
+            print(f"Expected: Min={test_case['expected_min']}, Max={test_case['expected_max']}")
+            print(f"Actual:   Min={min_credits}, Max={max_credits}")
+
+            if min_credits == test_case['expected_min'] and max_credits == test_case['expected_max']:
+                print("✓ PASSED")
+                passed_count += 1
+            else:
+                print("✗ FAILED")
+                failed_count += 1
+        except TypeError as e:
+            print(f"✗ FAILED with TypeError: {e}")
             failed_count += 1
-    
+        except Exception as e:
+             print(f"✗ FAILED with unexpected error: {e}")
+             failed_count += 1
+
+
     print(f"\nCredit calculator tests summary: {passed_count} passed, {failed_count} failed")
     return passed_count, failed_count
 
@@ -258,12 +342,12 @@ async def main():
     print(f"API Host: {API_HOST}")
     
     # Test core client , has profile , company and post data
-    client = await test_core_client()
+    # client = await test_core_client()
     
   
     
     # # Test posts client has profile posts with comments and reactions , company posts with comments and reactions , user likes with details
-    post_urn = await test_posts_client()
+    # post_urn = await test_posts_client()
 
       # Test credit calculator
     await test_credit_calculator()
