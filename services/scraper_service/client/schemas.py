@@ -599,7 +599,7 @@ class GetProfileCommentResponse(BaseModel):
     commentsCount: Optional[int]
     repostsCount: Optional[int]
 
-    postUrl: Optional[str]
+    postUrl: Optional[str] #identifier for the post
     commentUrl: Optional[str]
 
     postedAt: Optional[str]

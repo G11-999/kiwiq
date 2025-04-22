@@ -40,8 +40,8 @@ class RapidAPISettings(GlobalSettings):
     
     # Request Settings
     DEFAULT_POST_LIMIT: int = 50  # Multiple of 50 always , because batch size is 50 so basically if this 1 or 50 , the credit consumed will be same that is why 50
-    DEFAULT_COMMENT_LIMIT: int = 49 
-    DEFAULT_REACTION_LIMIT: int = 49
+    DEFAULT_COMMENT_LIMIT: int = 50 #this will not matter actually , as comments are fetched per post
+    DEFAULT_REACTION_LIMIT: int = 30 #this limit is a little varied , was trying was getting different amount in every batch
 
     
     # Rate Limiting Settings
