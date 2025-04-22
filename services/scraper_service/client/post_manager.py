@@ -153,7 +153,7 @@ class LinkedinPostFetcher:
                 article=article,
                 video=raw_post.get("video", []),
                 comments=comments,
-                reactions=reactions  # reactions fetching can be added later
+                reactions=reactions  
             )
 
             posts.append(post)
