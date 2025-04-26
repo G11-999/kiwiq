@@ -96,19 +96,19 @@ app = FastAPI(
     openapi_tags=tags_metadata,
     )
 
-origins = [
-    "http://localhost:3000",  # Your frontend URL
-    "https://beta.kiwiq.ai",
-]
+# origins = [
+#     "http://localhost:3000",  # Your frontend URL
+#     "https://beta.kiwiq.ai",
+# ]
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    # expose_headers=["Access-Control-Allow-Origin", "Access-Control-Allow-Headers", "Access-Control-Allow-Methods", ],
-)
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=origins,
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+#     # expose_headers=["Access-Control-Allow-Origin", "Access-Control-Allow-Headers", "Access-Control-Allow-Methods", ],
+# )
 
 # Include the authentication routes using the exposed router
 app.include_router(auth.router, prefix=settings.API_V1_PREFIX)
