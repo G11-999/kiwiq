@@ -22,6 +22,12 @@ COPY pyproject.toml poetry.lock* ./
 # Copy the local 'libs' path dependency so poetry can find it
 COPY libs ./libs
 
+# 2) Bump pip timeout & retries
+ENV PIP_DEFAULT_TIMEOUT=120
+RUN pip install --upgrade pip \
+ && pip config --global set global.timeout 120 \
+ && pip config --global set global.retries 5
+
 # Install dependencies with Poetry (no virtualenv since we're in a container)
 RUN poetry config virtualenvs.create false && poetry install --no-interaction --no-ansi
 
