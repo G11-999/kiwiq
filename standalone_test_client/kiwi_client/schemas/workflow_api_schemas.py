@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Union, Sequence
 from pydantic import BaseModel, Field, validator, ConfigDict, field_validator, model_validator
+from enum import Enum
 
 # from kiwi_app.workflow_app.constants import LaunchStatus, WorkflowRunStatus, NotificationType, HITLJobStatus, SchemaType
 from kiwi_client.schemas.workflow_constants import LaunchStatus, WorkflowRunStatus, NotificationType, HITLJobStatus, SchemaType
@@ -577,3 +578,125 @@ class CustomerDocumentMetadata(BaseModel):
     # updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+
+class CustomerDataVersionedUpsert(BaseModel):
+    """
+    Schema for upserting a versioned customer data document.
+    Updates the document if it exists, otherwise initializes it.
+    Can target a specific version or the active version.
+    If updating a specific version that doesn't exist, it attempts to create it first.
+    """
+    is_shared: bool = Field(False, description="Target a shared document (true) or user-specific document (false).")
+    data: Any = Field(..., description="The data to upsert into the document.")
+    version: Optional[str] = Field(None, description="Specific version to target. If None, targets the active version for updates, or uses 'default' for initialization.")
+    from_version: Optional[str] = Field(None, description="If 'version' is specified and doesn't exist, use this version to branch from when creating it. Defaults to active version if None.")
+    is_complete: Optional[bool] = Field(None, description="Mark the document state as complete/incomplete after the operation. Applies to both updates and initializations. If None during update, keeps current status; if None during init, defaults to False.")
+    schema_template_name: Optional[str] = Field(None, description="Optional name of a SchemaTemplate to enforce/apply.")
+    schema_template_version: Optional[str] = Field(None, description="Optional version of the SchemaTemplate. Defaults to latest.")
+    # schema_definition: Optional[Dict[str, Any]] = Field(None, description="Optional explicit schema definition (takes precedence over template). NOTE: Not typically exposed directly in API for security/simplicity, prefer templates.")
+    is_system_entity: bool = Field(False, description="Target a system entity (superusers only).")
+    on_behalf_of_user_id: Optional[uuid.UUID] = Field(None, description="Act on behalf of another user (superusers only, requires is_shared=False).")
+
+
+class CustomerDocumentIdentifier(BaseModel):
+    """
+    Identifies a specific customer document, potentially including version info.
+    Used to reconstruct the path or retrieve the document after an operation.
+    """
+    doc_path_segments: Dict[str, str] = Field(..., description="Core path segments (org/system, user/shared, namespace, docname).")
+    operation_params: Dict[str, Any] = Field(..., description="Parameters used in the operation affecting the document (org_id, is_shared, etc.).")
+    version: Optional[str] = Field(None, description="The specific version affected or created (can be 'active' or None).")
+
+
+class CustomerDataVersionedUpsertResponse(BaseModel):
+    """
+    Response schema for the versioned document upsert operation.
+    """
+    operation_performed: str = Field(..., description="String indicating the action taken (e.g., 'updated_active', 'initialized_version_default').")
+    document_identifier: CustomerDocumentIdentifier = Field(..., description="Identifier for the document that was upserted.")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# --- File Upload Schemas ---
+
+class FileUploadModeEnum(str, Enum):
+    """Enum defining the modes for handling file uploads."""
+    create = "create"
+    upsert = "upsert"
+
+
+class FileUploadVersionedConfig(BaseModel):
+    """
+    Configuration specific to versioned file uploads.
+    These fields are only relevant if `is_versioned` is True in the main config.
+    """
+    version: Optional[str] = Field(None, description="Specific version to target for upsert/create. If None during upsert, targets active version. If None during create, uses 'default'.")
+    from_version: Optional[str] = Field(None, description="Version to branch from if creating a new version during an 'upsert' operation when the target 'version' doesn't exist. Defaults to active version if None.")
+    is_complete: Optional[bool] = Field(None, description="Mark the document state as complete/incomplete after the operation. Applies to both upserts and creations. If None during update, keeps current status; if None during create, defaults to False.")
+
+    model_config = ConfigDict(extra='forbid') # Forbid extra fields
+
+
+class FileUploadConfig(BaseModel):
+    """
+    Configuration for processing a single uploaded file and storing it as customer data.
+    """
+    namespace: str = Field("uploaded_files", description="Namespace where the document should be stored. Default is 'uploaded_files'.")
+    docname: Optional[str] = Field(None, description="Document name. If None, it will be inferred from the uploaded filename.")
+    is_shared: bool = Field(False, description="Set to true to store as a document shared within the organization, false for a user-specific document.")
+    is_system_entity: bool = Field(False, description="Whether this is a system entity (superusers only).")
+    on_behalf_of_user_id: Optional[uuid.UUID] = Field(None, description="Act on behalf of another user (superusers only, requires is_shared=False).")
+
+    mode: FileUploadModeEnum = Field(FileUploadModeEnum.create, description="Upload mode: 'create' (fail if exists) or 'upsert' (create or update).")
+    is_versioned: bool = Field(False, description="Whether to store the file content as a versioned document.")
+
+    versioned_config: Optional[FileUploadVersionedConfig] = Field(None, description="Configuration for versioned uploads. Required if is_versioned is True.")
+
+    @model_validator(mode='after')
+    def check_versioned_config(self) -> 'FileUploadConfig':
+        """Validate that versioned_config is provided if is_versioned is True."""
+        if self.is_versioned and self.versioned_config is None:
+            raise ValueError("`versioned_config` must be provided when `is_versioned` is True.")
+        if not self.is_versioned and self.versioned_config is not None:
+            # Optionally, you could clear it or raise an error. Clearing seems more robust.
+            # raise ValueError("`versioned_config` should not be provided when `is_versioned` is False.")
+            self.versioned_config = None # Clear it if provided unnecessarily
+        return self
+
+    model_config = ConfigDict(extra='forbid') # Forbid extra fields
+
+
+# Optional: If you want to allow passing global defaults and per-file overrides in one request
+class FileUploadRequestPayload(BaseModel):
+    """
+    Optional schema to allow specifying global defaults and per-file overrides
+    in a single API request payload, potentially alongside the file uploads
+    using multipart/form-data encoding (requires careful handling in the endpoint).
+    """
+    global_defaults: Optional[FileUploadConfig] = Field(default_factory=FileUploadConfig, description="Global default configuration to apply to all files unless overridden.")
+    file_configs: Optional[Dict[str, FileUploadConfig]] = Field(None, description="Dictionary mapping original filenames to their specific configurations, overriding global defaults.")
+
+    model_config = ConfigDict(extra='forbid')
+
+
+class FileUploadValidationRequest(BaseModel):
+    """
+    Schema for the request of the file upload configuration validation endpoint.
+    """
+    payload: FileUploadRequestPayload = Field(default_factory=FileUploadRequestPayload, description="The payload containing global defaults and per-file configurations.")
+    files: List[str] = Field(..., description="The files to upload.")
+
+
+class FileUploadValidationResult(BaseModel):
+    """
+    Schema for the response of the file upload configuration validation endpoint.
+    Indicates overall validity and lists any global or per-file errors found.
+    """
+    is_valid: bool = Field(..., description="True if all configurations and checks passed, False otherwise.")
+    global_errors: List[str] = Field(default_factory=list, description="List of validation errors not specific to a single file (e.g., payload parsing). Empty if none.")
+    file_errors: Dict[str, List[str]] = Field(default_factory=dict, description="Dictionary mapping filenames to a list of their specific validation errors. Empty if none.")
+
+    model_config = ConfigDict(extra='forbid')

@@ -20,7 +20,7 @@ system paths can only be private / is_shared (edited)
 
 As a rule of thumb:
 Put any docs which all users need and should be able to read in system / is_shared
-Put any docs which we need / our private system docs or even docs which user doesn’t need to read directly but needs to be injected in workflows (we can discuss how) in system / private
+Put any docs which we need / our private system docs or even docs which user doesn't need to read directly but needs to be injected in workflows (we can discuss how) in system / private
 """
 
 import asyncio
@@ -48,6 +48,7 @@ from kiwi_client.test_config import (
     CLIENT_LOG_LEVEL,
     TEST_ORG_ID,
     DOCUMENT_METADATA_URL,
+    VERSIONED_DOC_UPSERT_URL,
 )
 # Import schemas and constants from the workflow app
 from kiwi_client.schemas import workflow_api_schemas as wf_schemas
@@ -580,6 +581,60 @@ class CustomerDataTestClient:
             logger.error(f"Request error updating schema: {e}")
         except Exception as e:
             logger.exception("Unexpected error updating schema.")
+        return None
+
+    # --- Versioned Document Upsert ---
+
+    async def upsert_versioned_document(
+        self,
+        namespace: str,
+        docname: str,
+        data: wf_schemas.CustomerDataVersionedUpsert,
+    ) -> Optional[wf_schemas.CustomerDataVersionedUpsertResponse]:
+        """
+        Tests upserting a versioned document via POST /customer-data/versioned/{namespace}/{docname}/upsert.
+        This endpoint updates the document if it exists, or initializes it if it doesn't.
+        It can target specific versions or the active version, and handle version creation if needed.
+
+        Args:
+            namespace (str): The namespace of the document.
+            docname (str): The name of the document.
+            data (wf_schemas.CustomerDataVersionedUpsert): The upsert payload containing data,
+                versioning info, schema info, and other parameters.
+
+        Returns:
+            Optional[wf_schemas.CustomerDataVersionedUpsertResponse]: Response indicating the
+                operation performed and document identifier if successful, None otherwise.
+        """
+        logger.info(f"Attempting to upsert versioned document: {namespace}/{docname} (target version: {data.version or 'active/default'})")
+        url = VERSIONED_DOC_UPSERT_URL(namespace, docname)
+        # Send model_dump directly as the request body
+        payload = data.model_dump(exclude_none=True) # Exclude None values for cleaner payload
+        logger.debug(f"Upsert payload: {json.dumps(payload, indent=2)}")
+
+        try:
+            response = await self._client.post(url, json=payload)
+
+            # Upsert should return 200 OK on success (whether it updated or created)
+            if response.status_code != 200:
+                logger.error(f"Error upserting document: Status {response.status_code} - {response.text}")
+                response.raise_for_status() # Raise for non-200 status codes
+
+            response_json = response.json()
+            validated_response = wf_schemas.CustomerDataVersionedUpsertResponse.model_validate(response_json)
+            logger.info(f"Successfully upserted document: {namespace}/{docname}. Operation: {validated_response.operation_performed}")
+            logger.debug(f"Upsert response validated: {validated_response.model_dump_json(indent=2)}")
+            return validated_response
+        except httpx.HTTPStatusError as e:
+            # Log specific details if available (e.g., 404, 409, 422 for validation)
+            logger.error(f"HTTP Status Error upserting document: {e.response.status_code} - {e.response.text}")
+        except httpx.RequestError as e:
+            logger.error(f"Request error upserting document: {e}")
+        except ValidationError as e:
+            logger.error(f"Response validation error upserting document: {e}")
+            logger.debug(f"Invalid response JSON: {response_json if 'response_json' in locals() else 'No response JSON'}")
+        except Exception as e:
+            logger.exception("Unexpected error during document upsert.")
         return None
 
     # --- Unversioned Document Methods ---
@@ -1269,6 +1324,80 @@ async def main():
             assert len(ns_docs) >= 4, f"Expected at least 4 documents in namespace '{test_ns}', found {len(ns_docs)}: {[d.docname for d in ns_docs]}"
             print(f"   ✓ Listed documents in namespace '{test_ns}' (found {len(ns_docs)}).")
 
+            # --- Upsert Tests ---
+            print(f"\n--- Testing Versioned Upsert: {test_ns}/upsert_doc ---")
+            upsert_doc_name = f"upsert_doc_{uuid.uuid4().hex[:6]}"
+            upsert_ns = test_ns
+
+            # 21. Upsert to Initialize
+            upsert_init_payload = wf_schemas.CustomerDataVersionedUpsert(
+                is_shared=False,
+                data={"initial": "data", "count": 0},
+                version="v_init", # Initialize with a specific version
+                # schema_template_name=schema_template_name, # Can add schema on init
+                # schema_template_version=schema_template_version,
+            )
+            upsert_init_result = await data_tester.upsert_versioned_document(upsert_ns, upsert_doc_name, upsert_init_payload)
+            assert upsert_init_result is not None, "Upsert (initialize) failed"
+            assert "initialize" in upsert_init_result.operation_performed, f"Expected 'initialize' in operation, got {upsert_init_result.operation_performed}"
+            assert upsert_init_result.document_identifier.version == "v_init", f"Expected version v_init, got {upsert_init_result.document_identifier.version}"
+            print("   ✓ Upsert initialized document.")
+            created_docs_for_cleanup.append({
+                "namespace": upsert_ns, "docname": upsert_doc_name, 
+                "is_shared": False, "is_versioned": True
+            })
+
+            # 22. Upsert to Update Existing Version (v_init)
+            upsert_update_payload = wf_schemas.CustomerDataVersionedUpsert(
+                is_shared=False,
+                data={"initial": "updated", "count": 1}, # Overwrite data
+                version="v_init",
+            )
+            upsert_update_result = await data_tester.upsert_versioned_document(upsert_ns, upsert_doc_name, upsert_update_payload)
+            assert upsert_update_result is not None, "Upsert (update v_init) failed"
+            assert "update" in upsert_update_result.operation_performed, f"Expected 'update' in operation, got {upsert_update_result.operation_performed}"
+            assert upsert_update_result.document_identifier.version == "v_init", f"Expected version v_init, got {upsert_update_result.document_identifier.version}"
+            # Verify update
+            get_updated_vinit = await data_tester.get_versioned_document(upsert_ns, upsert_doc_name, is_shared=False, version="v_init")
+            assert get_updated_vinit is not None and get_updated_vinit.data == {"initial": "updated", "count": 1}
+            print("   ✓ Upsert updated existing version (v_init).")
+
+            # 23. Upsert to Create and Update a New Version (v_new)
+            upsert_new_version_payload = wf_schemas.CustomerDataVersionedUpsert(
+                is_shared=False,
+                data={"new_version_data": True, "count": 100},
+                version="v_new", # Target a version that doesn't exist
+                from_version="v_init" # Branch from v_init
+            )
+            upsert_new_version_result = await data_tester.upsert_versioned_document(upsert_ns, upsert_doc_name, upsert_new_version_payload)
+            assert upsert_new_version_result is not None, "Upsert (create + update v_new) failed"
+            # The operation should reflect the *update* after the creation
+            assert "update" in upsert_new_version_result.operation_performed, f"Expected 'update' in operation, got {upsert_new_version_result.operation_performed}"
+            assert upsert_new_version_result.document_identifier.version == "v_new", f"Expected version v_new, got {upsert_new_version_result.document_identifier.version}"
+            # Verify new version exists and has the data
+            get_vnew = await data_tester.get_versioned_document(upsert_ns, upsert_doc_name, is_shared=False, version="v_new")
+            assert get_vnew is not None and get_vnew.data == {"new_version_data": True, "count": 100, "initial": "updated"}
+            print("   ✓ Upsert created and updated new version (v_new).")
+
+            # 24. Upsert to Update Active Version (assuming v_init is still active, or default)
+            # First, set v_new as active
+            set_active_vnew = wf_schemas.CustomerDataSetActiveVersion(is_shared=False, version="v_new")
+            await data_tester.set_active_version(upsert_ns, upsert_doc_name, set_active_vnew)
+            # Now upsert without specifying version (targets active: v_new)
+            upsert_active_payload = wf_schemas.CustomerDataVersionedUpsert(
+                is_shared=False,
+                data={"active_update": "done", "count": 101},
+                # version=None implicitly targets active
+            )
+            upsert_active_result = await data_tester.upsert_versioned_document(upsert_ns, upsert_doc_name, upsert_active_payload)
+            assert upsert_active_result is not None, "Upsert (update active) failed"
+            assert "update" in upsert_active_result.operation_performed
+            print(upsert_active_result.document_identifier.model_dump_json(indent=4))
+            assert upsert_active_result.document_identifier.version is None, "Expected active version represented by None to be updated"
+            # Verify active version (v_new) was updated
+            get_active = await data_tester.get_versioned_document(upsert_ns, upsert_doc_name, is_shared=False) # Gets active
+            assert get_active is not None and get_active.data == {"new_version_data": True, "count": 101, "active_update": "done", "initial": "updated"}
+            print("   ✓ Upsert updated active version (v_new).")
 
     except AuthenticationError as e:
         print(f"Authentication Error: {e}")
@@ -1484,5 +1613,5 @@ async def main2():
 
 if __name__ == "__main__":
     import asyncio
-    # asyncio.run(main())
+    asyncio.run(main())
     asyncio.run(main2())  # Run the advanced tests
