@@ -7,7 +7,6 @@ templates or load them dynamically from the database.
 """
 from collections import defaultdict
 import json
-import logging
 from typing import Any, ClassVar, Dict, List, Optional, Type, Union
 import re
 from pydantic import Field, model_validator, BaseModel
@@ -25,8 +24,6 @@ from workflow_service.config.constants import (
 from workflow_service.registry.nodes.core.base import BaseSchema
 from workflow_service.registry.nodes.core.dynamic_nodes import DynamicSchema, BaseDynamicNode
 
-
-import logging
 from typing import Any, Dict, Optional, Type, ClassVar, Union, List, Tuple
 
 from pydantic import Field, model_validator
@@ -35,6 +32,7 @@ from pydantic import Field, model_validator
 from kiwi_app.workflow_app.constants import LaunchStatus
 from kiwi_app.workflow_app import crud as wf_crud
 from db.session import get_async_db_as_manager # For database access
+from global_config.logger import get_prefect_or_regular_python_logger
 # Import helper from customer_data for nested object retrieval
 # from workflow_service.registry.nodes.db.customer_data import _get_nested_obj 
 
@@ -45,9 +43,6 @@ from workflow_service.config.constants import (
     APPLICATION_CONTEXT_KEY,
     EXTERNAL_CONTEXT_MANAGER_KEY
 )
-
-# Setup logger
-log = logging.getLogger(__name__)
 
 # --- Type Aliases ---
 PromptConstructOptions = Dict[str, str] # Type alias for clarity: maps variable_name -> input_data_path
@@ -70,6 +65,7 @@ def _get_nested_obj(data: Any, field_path: str) -> Tuple[Any, bool]:
         Tuple[Any, bool]: The retrieved object/value and a boolean indicating if the path was found.
                          Returns (None, False) if the path is invalid or not found.
     """
+    logger = get_prefect_or_regular_python_logger(__name__)
     current = data
     parts = field_path.split('.') if field_path else []
 
@@ -125,6 +121,7 @@ def _resolve_template_path(
         Tuple (resolved_name, resolved_version, error_message).
         Returns (None, None, error_message) if resolution fails for either.
     """
+    logger = get_prefect_or_regular_python_logger(__name__)
     resolved_name: Optional[str] = None
     resolved_version: Optional[str] = None
     error_message: Optional[str] = None
@@ -134,32 +131,32 @@ def _resolve_template_path(
         name_val, found = _get_nested_obj(input_data, input_name_field_path)
         if found and isinstance(name_val, str):
             resolved_name = name_val
-            log.debug(f"Resolved template name '{resolved_name}' from input path '{input_name_field_path}'.")
+            logger.debug(f"Resolved template name '{resolved_name}' from input path '{input_name_field_path}'.")
         elif found:
             error_message = f"Input field '{input_name_field_path}' for template name found but is not a string (type: {type(name_val)})."
-            log.warning(error_message)
+            logger.warning(error_message)
             # Continue to static fallback if defined
             if static_name:
                 resolved_name = static_name
-                log.debug(f"Using static template name '{resolved_name}' as fallback.")
+                logger.debug(f"Using static template name '{resolved_name}' as fallback.")
                 error_message = None # Clear error as we have a fallback
             else:
                  return None, None, error_message # Fatal if no static fallback
         else: # Not found
-            log.debug(f"Input field '{input_name_field_path}' for template name not found.")
+            logger.debug(f"Input field '{input_name_field_path}' for template name not found.")
             if static_name:
                 resolved_name = static_name
-                log.debug(f"Using static template name '{resolved_name}' as fallback.")
+                logger.debug(f"Using static template name '{resolved_name}' as fallback.")
             else:
                 error_message = f"Template name resolution failed: Input field '{input_name_field_path}' not found and no static_name provided."
-                log.warning(error_message)
+                logger.warning(error_message)
                 return None, None, error_message
     elif static_name:
         resolved_name = static_name
-        log.debug(f"Using static template name '{resolved_name}'.")
+        logger.debug(f"Using static template name '{resolved_name}'.")
     else:
         error_message = "Template name resolution failed: Neither input_name_field_path nor static_name provided."
-        log.error(error_message)
+        logger.error(error_message)
         return None, None, error_message
 
     # Resolve Version
@@ -167,34 +164,34 @@ def _resolve_template_path(
         version_val, found = _get_nested_obj(input_data, input_version_field_path)
         if found and isinstance(version_val, str):
             resolved_version = version_val
-            log.debug(f"Resolved template version '{resolved_version}' from input path '{input_version_field_path}'.")
+            logger.debug(f"Resolved template version '{resolved_version}' from input path '{input_version_field_path}'.")
         elif found:
             # If found but wrong type, still try static fallback if version IS required implicitly by static_version being set
             error_message = f"Input field '{input_version_field_path}' for template version found but is not a string (type: {type(version_val)})."
-            log.warning(error_message)
+            logger.warning(error_message)
             if static_version:
                 resolved_version = static_version
-                log.debug(f"Using static template version '{resolved_version}' as fallback.")
+                logger.debug(f"Using static template version '{resolved_version}' as fallback.")
                 error_message = None
             else:
                  # If no static fallback, and input was provided but invalid, it IS an error.
                  return resolved_name, None, error_message 
         else: # Not found via input path
-            log.debug(f"Input field '{input_version_field_path}' for template version not found.")
+            logger.debug(f"Input field '{input_version_field_path}' for template version not found.")
             if static_version:
                 resolved_version = static_version
-                log.debug(f"Using static template version '{resolved_version}' as fallback.")
+                logger.debug(f"Using static template version '{resolved_version}' as fallback.")
             # If input path was specified but not found, AND no static version exists, treat as resolvable to None (version optional)
             # else: # No static version, input path specified but not found -> version is None
             #    resolved_version = None 
-            #    log.debug("No static version and input path not found, resolving version to None.")
+            #    logger.debug("No static version and input path not found, resolving version to None.")
     elif static_version:
         resolved_version = static_version
-        log.debug(f"Using static template version '{resolved_version}'.")
+        logger.debug(f"Using static template version '{resolved_version}'.")
     # If neither input path nor static version was provided, version resolves to None cleanly.
     else:
         resolved_version = None 
-        log.debug("Neither static_version nor input_version_field_path provided, resolving version to None.")
+        logger.debug("Neither static_version nor input_version_field_path provided, resolving version to None.")
         error_message = None # Not an error if version is optional
 
     # Final check: Name must always be resolved. Version is optional.
@@ -203,7 +200,7 @@ def _resolve_template_path(
     else:
         # This case should be covered by name resolution logic, but safeguard.
         final_error = error_message or "Name resolution failed for unknown reason."
-        log.error(f"Final resolution check failed for name: {final_error}")
+        logger.error(f"Final resolution check failed for name: {final_error}")
         return None, None, final_error
 
 
@@ -372,7 +369,7 @@ class PromptConstructorNode(BaseDynamicNode):
         if not app_context or not ext_context:
             missing_keys = [k for k, v in [(APPLICATION_CONTEXT_KEY, app_context), (EXTERNAL_CONTEXT_MANAGER_KEY, ext_context)] if not v]
             error_msg = f"Missing required keys in runtime_config for dynamic loading: {', '.join(missing_keys)}"
-            log.error(error_msg)
+            self.error(error_msg)
             # Store a general error? This affects ALL dynamic loads.
             # For now, just log and dynamic loads will fail individually below.
             # Alternatively, append one error and return early. Let's return early.
@@ -385,7 +382,7 @@ class PromptConstructorNode(BaseDynamicNode):
         if not user or not run_job:
             missing_ctx = [k for k, v in [("user", user), ("workflow_run_job", run_job)] if not v]
             error_msg = f"Missing required data in application_context for dynamic loading: {', '.join(missing_ctx)}"
-            log.error(error_msg)
+            self.error(error_msg)
             load_errors.append({"error": error_msg, "scope": "application_context"})
             return load_errors
 
@@ -413,7 +410,7 @@ class PromptConstructorNode(BaseDynamicNode):
                     )
 
                     if resolution_error:
-                        log.warning(f"Template '{template_id}': Path resolution failed: {resolution_error}")
+                        self.warning(f"Template '{template_id}': Path resolution failed: {resolution_error}")
                         err_details = {
                             "template_id": template_id,
                             "config": entry_config.model_dump(),
@@ -425,7 +422,7 @@ class PromptConstructorNode(BaseDynamicNode):
 
                     if not resolved_name: # Should be caught by resolution_error, but safety first
                         unknown_error = "Unknown error during path resolution (name is None)."
-                        log.error(f"Template '{template_id}': {unknown_error}")
+                        self.error(f"Template '{template_id}': {unknown_error}")
                         err_details = {
                             "template_id": template_id, "config": entry_config.model_dump(), "error": unknown_error,
                         }
@@ -433,7 +430,7 @@ class PromptConstructorNode(BaseDynamicNode):
                         template_def._load_error = err_details
                         continue
 
-                    log.info(f"Template '{template_id}': Attempting to load '{resolved_name}' v'{resolved_version}' for org '{org_id}'.")
+                    self.info(f"Template '{template_id}': Attempting to load '{resolved_name}' v'{resolved_version}' for org '{org_id}'.")
 
                     # --- 2b. Load from DB ---
                     templates_found = await prompt_template_dao.search_by_name_version(
@@ -457,10 +454,10 @@ class PromptConstructorNode(BaseDynamicNode):
                         # --- 2c. Populate Internal Fields ---
                         template_def._loaded_template = db_template.template_content
                         template_def._loaded_variables = db_template.input_variables or {}
-                        log.info(f"Template '{template_id}': Successfully loaded '{resolved_name}' v'{resolved_version}' (ID: {db_template.id}).")
+                        self.info(f"Template '{template_id}': Successfully loaded '{resolved_name}' v'{resolved_version}' (ID: {db_template.id}).")
                     else:
                         not_found_error = f"Template '{resolved_name}' version '{resolved_version}' not found for org '{org_id}' or as accessible system template."
-                        log.warning(f"Template '{template_id}': {not_found_error}")
+                        self.warning(f"Template '{template_id}': {not_found_error}")
                         err_details = {
                             "template_id": template_id, "config": entry_config.model_dump(),
                             "resolved_name": resolved_name, "resolved_version": resolved_version,
@@ -470,7 +467,7 @@ class PromptConstructorNode(BaseDynamicNode):
                         template_def._load_error = err_details
 
                 except Exception as e:
-                    log.error(f"Template '{template_id}': Unexpected error during loading: {e}", exc_info=True)
+                    self.error(f"Template '{template_id}': Unexpected error during loading: {e}", exc_info=True)
                     err_details = {
                         "template_id": template_id, "config": entry_config.model_dump(),
                         "resolved_name": resolved_name, "resolved_version": resolved_version,
@@ -512,9 +509,7 @@ class PromptConstructorNode(BaseDynamicNode):
         """
         # Convert validated input_data (based on dynamic_input_schema) to dictionary for lookups.
         # This contains data mapped via edges or defined in the schema.
-        input_dict = input_data.model_dump(mode='json') if isinstance(input_data, BaseModel) else input_data
-        log.debug(f"Received validated input data for lookups: {json.dumps(input_dict, indent=2)}")
-        log.debug(f"Node Config: {self.config.model_dump_json(indent=2)}")
+        input_dict = input_data if isinstance(input_data, dict) else input_data.model_dump(mode='json')
 
         # --- 1. Load Dynamic Templates ---
         needs_dynamic_loading = any(
@@ -523,7 +518,7 @@ class PromptConstructorNode(BaseDynamicNode):
         load_errors: List[Dict[str, Any]] = []
         if needs_dynamic_loading:
             if not runtime_config:
-                 log.error("Runtime config is required for dynamic template loading but was not provided.")
+                 self.error("Runtime config is required for dynamic template loading but was not provided.")
                  load_errors.append({"error": "Missing runtime_config for dynamic loading", "scope": "global"})
                  for tpl_id, tpl_def in self.config.prompt_templates.items():
                       if tpl_def.template_load_config and not tpl_def._load_error:
@@ -532,7 +527,7 @@ class PromptConstructorNode(BaseDynamicNode):
                 # Pass the input_dict here for resolving template load paths
                 load_errors = await self._load_dynamic_templates(input_dict, runtime_config)
         else:
-             log.debug("No dynamic template loading configured for this node instance.")
+             self.debug("No dynamic template loading configured for this node instance.")
 
 
         # --- 2. Prepare Final Templates and Variables ---
@@ -541,7 +536,7 @@ class PromptConstructorNode(BaseDynamicNode):
 
         for template_id, template_def in self.config.prompt_templates.items():
             if template_def._load_error:
-                log.warning(f"Skipping template '{template_id}' due to load error: {template_def._load_error.get('error')}")
+                self.warning(f"Skipping template '{template_id}' due to load error: {template_def._load_error.get('error')}")
                 continue
 
             current_template_content: Optional[str] = None
@@ -556,13 +551,13 @@ class PromptConstructorNode(BaseDynamicNode):
                 current_variables_defaults = template_def.variables.copy()
 
             if current_template_content is None:
-                 log.error(f"Template content for '{template_id}' is None after processing static/dynamic paths. Skipping.")
+                 self.error(f"Template content for '{template_id}' is None after processing static/dynamic paths. Skipping.")
                  load_errors.append({"template_id": template_id, "error": "Template content missing after load/static check."})
                  continue
 
             final_templates[template_id] = current_template_content
             initial_variables[template_id] = current_variables_defaults
-            log.debug(f"Prepared template '{template_id}' with initial variables: {current_variables_defaults}")
+            self.debug(f"Prepared template '{template_id}' with initial variables: {current_variables_defaults}")
 
 
         # --- 3. Resolve Variables and Construct Prompts ---
@@ -576,7 +571,7 @@ class PromptConstructorNode(BaseDynamicNode):
             template_construct_options = template_def.construct_options or {}
             template_defaults = initial_variables.get(template_id, {})
             placeholders = set(re.findall(r'\{([^{}]+)\}', template_str))
-            log.debug(f"Template '{template_id}' requires placeholders: {placeholders}")
+            self.debug(f"Template '{template_id}' requires placeholders: {placeholders}")
 
             for var_name in placeholders:
                 resolved_value: Any = None
@@ -591,9 +586,9 @@ class PromptConstructorNode(BaseDynamicNode):
                     if found:
                         resolved_value = value
                         found_value = True
-                        log.debug(f"Var '{var_name}' for template '{template_id}': Found via template construct_options path '{path}' in node input.")
+                        self.debug(f"Var '{var_name}' for template '{template_id}': Found via template construct_options path '{path}' in node input.")
                     else:
-                        log.debug(f"Var '{var_name}' for template '{template_id}': Template construct_options path '{path}' not found in node input.")
+                        self.debug(f"Var '{var_name}' for template '{template_id}': Template construct_options path '{path}' not found in node input.")
  
                 # Priority 2: Global construct_options path
                 # Lookup within the validated input_dict
@@ -603,44 +598,44 @@ class PromptConstructorNode(BaseDynamicNode):
                     if found:
                         resolved_value = value
                         found_value = True
-                        log.debug(f"Var '{var_name}' for template '{template_id}': Found via global construct_options path '{path}' in node input.")
+                        self.debug(f"Var '{var_name}' for template '{template_id}': Found via global construct_options path '{path}' in node input.")
                     else:
-                        log.debug(f"Var '{var_name}' for template '{template_id}': Global construct_options path '{path}' not found in node input.")
+                        self.debug(f"Var '{var_name}' for template '{template_id}': Global construct_options path '{path}' not found in node input.")
 
                 # Priority 3: Template-specific input key (template_id::var_name)
                 # Check directly in the input_dict (which contains validated/mapped inputs)
                 if not found_value and specific_input_key in input_dict and input_dict[specific_input_key] is not None:
                     resolved_value = input_dict[specific_input_key]
                     found_value = True
-                    log.debug(f"Var '{var_name}' for template '{template_id}': Found via specific input key '{specific_input_key}' in node input.")
+                    self.debug(f"Var '{var_name}' for template '{template_id}': Found via specific input key '{specific_input_key}' in node input.")
                 
                 # Priority 4: Global input key (var_name)
                 # Check directly in the input_dict
                 if not found_value and var_name in input_dict and input_dict[var_name] is not None:
                     resolved_value = input_dict[var_name]
                     found_value = True
-                    log.debug(f"Var '{var_name}' for template '{template_id}': Found via global input key '{var_name}' in node input.")
+                    self.debug(f"Var '{var_name}' for template '{template_id}': Found via global input key '{var_name}' in node input.")
 
                 # Priority 5: Default value from template definition
                 if not found_value and var_name in template_defaults:
                     resolved_value = template_defaults[var_name]
                     if resolved_value is not None:
                         found_value = True
-                        log.debug(f"Var '{var_name}' for template '{template_id}': Using default value.")
+                        self.debug(f"Var '{var_name}' for template '{template_id}': Using default value.")
                     else:
-                        log.debug(f"Var '{var_name}' for template '{template_id}': Default value is None.")
+                        self.debug(f"Var '{var_name}' for template '{template_id}': Default value is None.")
 
                 if found_value:
                     resolved_vars_for_template[var_name] = resolved_value
 
             # --- 4. Construct Single Prompt ---
             try:
-                log.debug(f"Attempting construction for template ID '{template_id}' with resolved variables: {resolved_vars_for_template}")
+                self.debug(f"Attempting construction for template ID '{template_id}' with resolved variables: {resolved_vars_for_template}")
                 # IMPORTANT: Only add to constructed_prompts if successful
                 constructed_prompts[template_id] = self._build_prompt_string(template_str, resolved_vars_for_template)
-                log.debug(f"Successfully constructed prompt '{template_id}': {constructed_prompts[template_id]}")
+                self.debug(f"Successfully constructed prompt '{template_id}': {constructed_prompts[template_id]}")
             except ValueError as e:
-                log.error(f"Error constructing prompt for template ID '{template_id}': {e}")
+                self.error(f"Error constructing prompt for template ID '{template_id}': {e}")
                 missing_in_build = placeholders - set(resolved_vars_for_template.keys())
                 err_detail = {
                     "template_id": template_id, "error": f"Prompt construction failed: {e}",
@@ -664,30 +659,28 @@ class PromptConstructorNode(BaseDynamicNode):
             # Check if the output schema expects errors before adding
             if 'prompt_template_errors' in self.__class__.output_schema_cls.model_fields:
                 output_data_for_validation['prompt_template_errors'] = all_errors
-                log.info(f"Completed processing with {len(all_errors)} errors.")
+                self.info(f"Completed processing with {len(all_errors)} errors.")
             else:
-                log.warning(f"Processing completed with {len(all_errors)} errors, but 'prompt_template_errors' field not in output schema. Errors: {all_errors}")
+                self.warning(f"Processing completed with {len(all_errors)} errors, but 'prompt_template_errors' field not in output schema. Errors: {all_errors}")
 
         elif 'prompt_template_errors' in self.__class__.output_schema_cls.model_fields:
              # Add empty list if the field exists and there are no errors
             output_data_for_validation['prompt_template_errors'] = []
-            log.info("Completed processing successfully with no errors.")
+            self.info("Completed processing successfully with no errors.")
         else:
-            log.info("Completed processing successfully.")
+            self.info("Completed processing successfully.")
 
 
         # Validate and return the Pydantic model instance.
         # Pydantic will raise ValidationError if required fields (defined in dynamic_output_schema)
         # are missing from output_data_for_validation (because they failed construction).
         # This is the desired behavior - the node run should fail if required outputs aren't produced.
-        log.debug(f"Final dictionary for output validation: {output_data_for_validation}")
         try:
             # NOTE: this works because BaseSchema ignores additional provided fields!
             validated_output = self.__class__.output_schema_cls.model_validate(output_data_for_validation)
-            log.debug(f"Validated output model: {validated_output}")
             return validated_output
         except Exception as e:
-            log.error(f"Output validation failed: {e}. Data: {output_data_for_validation}", exc_info=True)
+            self.error(f"Output validation failed: {e}. Data: {output_data_for_validation}", exc_info=True)
             raise # Re-raise the validation error to fail the node execution
 
 
@@ -723,7 +716,7 @@ class PromptConstructorNode(BaseDynamicNode):
         # For now, we allow None and let format() handle it. Stricter checking could be added here if needed.
         # vars_with_none = {k for k, v in variables.items() if k in placeholders and v is None}
         # if vars_with_none:
-        #     log.warning(f"Variables resolved to None for template placeholders: {vars_with_none}")
+        #     self.warning(f"Variables resolved to None for template placeholders: {vars_with_none}")
 
 
         # Use string formatting to replace placeholders with variable values

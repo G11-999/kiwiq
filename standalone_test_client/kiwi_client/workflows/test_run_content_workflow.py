@@ -585,355 +585,151 @@ workflow_graph_schema = {
 
 # --- Test Execution Logic ---
 
-import asyncio
-import json
-import httpx
-import logging
-import uuid
-import time
-from typing import Dict, Any, Optional, List, Union
-
-# Import necessary components from the existing test client structure
-from kiwi_client.auth_client import AuthenticatedClient, AuthenticationError
-from kiwi_client.test_config import (
-    CLIENT_LOG_LEVEL,
-)
-from kiwi_client.workflow_client import WorkflowTestClient
-from kiwi_client.run_client import WorkflowRunTestClient
-from kiwi_client.customer_data_client import CustomerDataTestClient
-# Import HITL client
-from kiwi_client.notification_hitl_client import HITLTestClient
-
-# Import schemas used in the main function
-from kiwi_client.schemas import workflow_api_schemas as wf_schemas
-from kiwi_client.schemas import events_schema as event_schemas
-from kiwi_client.schemas.workflow_constants import WorkflowRunStatus, HITLJobStatus
-
-# Setup logger (could also configure externally)
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=CLIENT_LOG_LEVEL)
-
-# --- Workflow Schema (Already defined in the file) ---
-# workflow_graph_schema = { ... } # Assumed to be defined above this code
-
 # --- Inputs for the Post Creation Workflow ---
 # These inputs match the 'input_node' dynamic_output_schema
-POST_CREATION_WORKFLOW_INPUTS = {
-    "post_draft_name": "Test Post via Client v2", # Updated name slightly
-    "initial_content_brief": "Create a concise LinkedIn post announcing a new feature: AI-powered comment generation. Mention the benefits for busy professionals.",
-    "linkedin_username": "example-user"
-}
 
 
-async def main_test_post_creation():
+
+import asyncio
+import logging
+from typing import Dict, Any, Optional, List
+
+# Configure logging
+logging.basicConfig(level=logging.INFO) # Use INFO level for less verbose output
+logger = logging.getLogger(__name__)
+
+# Import the new helper function and necessary types
+from kiwi_client.test_run_workflow_client import (
+    run_workflow_test,
+    SetupDocInfo,
+    CleanupDocInfo
+)
+# CustomerDataTestClient is no longer directly needed in main, but keep for potential future use or reference
+# from kiwi_client.customer_data_client import CustomerDataTestClient
+
+# Schema imports
+from kiwi_client.schemas.workflow_constants import WorkflowRunStatus
+
+# Removed the ensure_user_dna_exists function as setup is handled by run_workflow_test
+
+
+async def validate_content_workflow_output(outputs: Optional[Dict[str, Any]]) -> bool:
     """
-    Tests creating, running, and deleting the Post Creation Workflow.
-    Handles the WAITING_HITL state, simulates feedback, and resumes the run.
-    Ensures the required user_dna_doc exists before running.
+    Custom validation function for the content creation workflow outputs.
+
+    Args:
+        outputs: The dictionary of final outputs from the workflow run.
+
+    Returns:
+        True if the outputs are valid, False otherwise.
+
+    Raises:
+        AssertionError: If the outputs are None or do not contain the expected keys.
     """
-    print("--- Starting Post Creation Workflow API Test (with HITL Handling) --- ")
-    workflow_id_to_run: Optional[uuid.UUID] = None
-    created_run_id: Optional[uuid.UUID] = None
-    user_dna_created_for_cleanup = False
+    # Ensure outputs exist
+    assert outputs is not None, "Validation Failed: Workflow returned no outputs."
+    logger.info("Validating content workflow outputs...")
 
-    # Need an authenticated client first
-    try:
-        async with AuthenticatedClient() as auth_client:
-            print("Authenticated.")
-            # Initialize test clients
-            workflow_tester = WorkflowTestClient(auth_client)
-            run_tester = WorkflowRunTestClient(auth_client)
-            data_tester = CustomerDataTestClient(auth_client) # Initialize customer data client
-            hitl_tester = HITLTestClient(auth_client) # Initialize HITL client
+    # Check for expected keys in the output
+    assert 'final_post_paths' in outputs, "Validation Failed: 'final_post_paths' key missing in outputs."
+    assert 'final_post_content' in outputs, "Validation Failed: 'final_post_content' key missing in outputs."
 
-            # --- Setup: Ensure user_dna_doc exists ---
-            print(f"\n--- Setup: Ensuring '{user_dna_namespace}/{user_dna_docname}' exists ---")
-            user_dna_data = {
-                "style_preference": "professional", # Field referenced in 'construct_initial_prompt'
-                "tone": "informative",
-                "preferred_hashtags": ["#AI", "#LinkedIn", "#ContentMarketing"]
-                # Add any other fields potentially useful for the user DNA
-            }
-            init_payload = wf_schemas.CustomerDataVersionedInitialize(
-                is_shared=False, # User specific
-                initial_data=user_dna_data,
-                initial_version="default", # Use 'default' as the initial version
-                is_system_entity=False
-            )
-            # Attempt to initialize - this will fail if it already exists, which is acceptable
-            # We primarily want to ensure it's there for the workflow run.
-            print(f"   Attempting to initialize '{user_dna_namespace}/{user_dna_docname}'...")
-            init_result = await data_tester.initialize_versioned_document(user_dna_namespace, user_dna_docname, init_payload)
-            if init_result:
-                print(f"   ✓ Document initialized successfully.")
-                user_dna_created_for_cleanup = True # Mark for cleanup only if we created it
-            else:
-                # If initialization failed, check if it already exists
-                print(f"   Initialization failed (likely already exists). Checking metadata...")
-                metadata = await data_tester.get_document_metadata(
-                    namespace=user_dna_namespace,
-                    docname=user_dna_docname,
-                    is_shared=False,
-                    is_system_entity=False
-                )
-                if metadata:
-                    print(f"   ✓ Document already exists (Versioned: {metadata.is_versioned}). Proceeding.")
-                    # Optionally, update the existing document if needed, e.g., using UPSERT_VERSIONED or UPDATE
-                    # For now, just confirming existence is enough.
-                else:
-                    print(f"   ✗ Critical Setup Error: Document '{user_dna_namespace}/{user_dna_docname}' does not exist and could not be initialized.")
-                    return # Stop the test if the prerequisite document is missing
+    # Optional: Add more sophisticated checks here, e.g., check content format, path validity etc.
+    logger.info(f"   Found 'final_post_paths': {outputs.get('final_post_paths')}")
+    logger.info(f"   Found 'final_post_content' (snippet): {str(outputs.get('final_post_content'))[:100]}...")
+    logger.info("✓ Output structure validation passed.")
+    return True # Return True if all assertions pass
 
 
-            # --- Setup: Create the Post Creation workflow ---
-            print("\n--- Setup: Creating the Post Creation workflow --- ")
+async def main_test_content_workflow_with_client():
+    """
+    Tests the Post Creation Workflow using the run_workflow_test helper function.
+    Includes setup for user DNA, handles HITL steps with pre-defined inputs,
+    validates output, and performs cleanup.
+    """
+    test_name = "Content Workflow Test via Helper"
+    print(f"--- Starting {test_name} --- ")
+    # No longer need this flag, cleanup is handled by the helper
+    # user_dna_created_for_cleanup = False
 
-            # Optional: Validate the specific workflow_graph_schema via API
-            print("\n1. Validating post creation workflow schema using API...")
-            validation_result = await workflow_tester.validate_graph_api(workflow_graph_schema)
-            if validation_result:
-                if validation_result.is_valid:
-                    print("   ✓ Workflow validation completed successfully!")
-                else:
-                    print("   ✗ Workflow validation failed:")
-                    if validation_result.errors:
-                        for category, errors in validation_result.errors.items():
-                            print(f"     {category}:")
-                            for error in errors:
-                                print(f"       - {error}")
-                    # Optionally stop if validation fails critically
-                    # return
-            else:
-                print("   ✗ Failed to perform API-based validation.")
-                # Depending on severity, you might stop here
-                # return
+    POST_CREATION_WORKFLOW_INPUTS = {
+      "post_draft_name": "Test Post via Client v2", # Updated name slightly
+      "initial_content_brief": "Create a concise LinkedIn post announcing a new feature: AI-powered comment generation. Mention the benefits for busy professionals.",
+      "linkedin_username": "example-user"
+  }
 
+    # Define the user DNA document for setup
+    user_dna_setup_doc: SetupDocInfo = {
+        'namespace': user_dna_namespace,
+        'docname': user_dna_docname,
+        'initial_data': { # Data previously in ensure_user_dna_exists
+            "style_preference": "professional",
+            "tone": "informative",
+            "preferred_hashtags": ["#AI", "#LinkedIn", "#ContentMarketing"]
+        },
+        'is_shared': False,
+        'is_versioned': True,
+        'initial_version': "default", # Version previously in ensure_user_dna_exists
+        'is_system_entity': False
+    }
 
-            print("\n2. Creating the workflow...")
-            created_workflow = await workflow_tester.create_workflow(
-                name="Post Creation Workflow Test Run",
-                graph_config=workflow_graph_schema # Use the schema from this file
-            )
-            if created_workflow:
-                workflow_id_to_run = created_workflow.id # Access UUID directly from schema
-                print(f"   Setup complete: Created workflow ID: {workflow_id_to_run}")
-                print(f"   Workflow name: {created_workflow.name}")
-            else:
-                print("   Setup failed: Could not create workflow.")
-                # Need to cleanup user_dna if we created it
-                if user_dna_created_for_cleanup:
-                     await data_tester.delete_versioned_document(user_dna_namespace, user_dna_docname, is_shared=False)
-                return
-            # --- ----------------------------------------- ---
-
-            # 3. Submit Run using the created Workflow ID
-            print(f"\n3. Submitting run for workflow ID: {workflow_id_to_run}...")
-            submitted_run: Optional[wf_schemas.WorkflowRunRead] = await run_tester.submit_run(
-                workflow_id=workflow_id_to_run,
-                inputs=POST_CREATION_WORKFLOW_INPUTS # Use the specific inputs
-            )
-            if submitted_run:
-                created_run_id = submitted_run.id
-                print(f"   Run submitted successfully: ID = {created_run_id} (Status: {submitted_run.status})")
-            else:
-                print("   Run submission failed.")
-                # Fall through to finally block for cleanup
-
-            # --- Wait for the run to complete or pause ---
-            current_run_status_obj: Optional[wf_schemas.WorkflowRunRead] = None
-            if created_run_id:
-                print(f"\n--- Waiting for run {created_run_id} to finish or pause (Round 1) ---")
-                current_run_status_obj = await run_tester.wait_for_run_completion(created_run_id, timeout_sec=180)
-
-                # --- Handle First WAITING_HITL State (Reject) ---
-                if current_run_status_obj and current_run_status_obj.status == WorkflowRunStatus.WAITING_HITL:
-                    print(f"   Run {created_run_id} paused for HITL (Round 1).")
-
-                    print("\n4. Fetching pending HITL job details (Round 1)...")
-                    pending_job_round1 = await hitl_tester.get_latest_pending_hitl_job(run_id=created_run_id)
-
-                    if pending_job_round1:
-                        print(f"   ✓ Found pending HITL job: {pending_job_round1.id}")
-                        print(f"     Request Details: {json.dumps(pending_job_round1.request_details, indent=2)}")
-                        print(f"     Response Schema: {json.dumps(pending_job_round1.response_schema, indent=2)}")
-
-                        print("\n5. Submitting HITL response (Reject - Round 1)...")
-                        # Define the rejection response based on the 'capture_approval' node's dynamic_output_schema
-                        hitl_response_inputs_reject = {
-                            "approval_status": "needs_work",
-                            "feedback_text": "The tone is a bit too generic. Make it more engaging and add a specific call to action."
-                        }
-                        print(f"   Submitting response: {json.dumps(hitl_response_inputs_reject, indent=2)}")
-
-                        # Resume the run with the rejection feedback
-                        resumed_run_status_round1 = await run_tester.submit_run(
-                            resume_run_id=created_run_id,
-                            inputs=hitl_response_inputs_reject
-                        )
-
-                        if resumed_run_status_round1:
-                            print(f"   ✓ Resume request submitted (Round 1). Run status: {resumed_run_status_round1.status}")
-
-                            # --- Wait for Run to Pause Again (Round 2) ---
-                            print(f"\n--- Waiting for run {created_run_id} to finish or pause (Round 2) ---")
-                            current_run_status_obj = await run_tester.wait_for_run_completion(created_run_id, timeout_sec=180) # Wait again
-
-                            # --- Handle Second WAITING_HITL State (Approve) ---
-                            if current_run_status_obj and current_run_status_obj.status == WorkflowRunStatus.WAITING_HITL:
-                                print(f"   Run {created_run_id} paused for HITL (Round 2).")
-
-                                print("\n6. Fetching pending HITL job details (Round 2)...")
-                                pending_job_round2 = await hitl_tester.get_latest_pending_hitl_job(run_id=created_run_id)
-
-                                if pending_job_round2:
-                                    print(f"   ✓ Found pending HITL job: {pending_job_round2.id}")
-                                    print(f"     Request Details: {json.dumps(pending_job_round2.request_details, indent=2)}")
-                                    print(f"     Response Schema: {json.dumps(pending_job_round2.response_schema, indent=2)}") # Schema should be the same
-
-                                    print("\n7. Submitting HITL response (Approve - Round 2)...")
-                                    # Define the approval response
-                                    hitl_response_inputs_approve = {
-                                        "approval_status": "approved",
-                                        "feedback_text": "" # No further feedback
-                                    }
-                                    print(f"   Submitting response: {json.dumps(hitl_response_inputs_approve, indent=2)}")
-
-                                    # Resume the run with approval
-                                    resumed_run_status_round2 = await run_tester.submit_run(
-                                        resume_run_id=created_run_id,
-                                        inputs=hitl_response_inputs_approve
-                                    )
-
-                                    if resumed_run_status_round2:
-                                        print(f"   ✓ Resume request submitted (Round 2). Run status: {resumed_run_status_round2.status}")
-
-                                        # --- Wait for Final Completion ---
-                                        print(f"\n--- Waiting for run {created_run_id} to reach *final* completion ---")
-                                        current_run_status_obj = await run_tester.wait_for_run_completion(created_run_id, timeout_sec=180) # Final wait
-
-                                    else:
-                                        print(f"   ✗ Failed to submit resume request (Round 2).")
-                                else:
-                                     print(f"   ✗ Could not find pending HITL job (Round 2). Cannot resume.")
-
-                            # --- Handle potential immediate completion/failure after Round 1 feedback ---
-                            elif current_run_status_obj and current_run_status_obj.status == WorkflowRunStatus.COMPLETED:
-                                print(f"   Run {created_run_id} completed unexpectedly after Round 1 feedback.")
-                            elif current_run_status_obj:
-                                print(f"   Run {created_run_id} failed after Round 1 feedback. Status: {current_run_status_obj.status}")
-
-                        else:
-                            print(f"   ✗ Failed to submit resume request (Round 1).")
-                    else:
-                        print(f"   ✗ Could not find pending HITL job (Round 1). Cannot proceed with feedback loop.")
+    # Define the draft document that the *workflow* creates for cleanup
+    # Note: The helper function will try to delete this, even though it wasn't created during setup.
+    draft_doc_cleanup: CleanupDocInfo = {
+        'namespace': draft_storage_namespace,
+        'docname': POST_CREATION_WORKFLOW_INPUTS['post_draft_name'], # Get name from inputs
+        'is_shared': False, # Assuming draft is user-specific
+        'is_versioned': False, # Assuming draft is unversioned
+        'is_system_entity': False
+    }
 
 
-            # --- Final Status Check & Details ---
-            if current_run_status_obj and current_run_status_obj.status == WorkflowRunStatus.COMPLETED:
-                print(f"\n--- Run {created_run_id} Completed Successfully ---")
-                # Fetch and display final details
-                print(f"\n8. Getting final details for completed run {created_run_id}...")
-                details_obj: Optional[wf_schemas.WorkflowRunDetailRead] = await run_tester.get_run_details(created_run_id)
-                if details_obj:
-                    output_sample = json.dumps(details_obj.outputs, indent=2) # Show full output if possible
-                    event_count = len(details_obj.detailed_results) if details_obj.detailed_results else 0
-                    print(f"   ✓ Successfully fetched details (Status: {details_obj.status}, Events: {event_count})")
-                    print(f"   Final Output:\n{output_sample}")
-                    # Add assertions based on expected output structure if needed
-                    assert details_obj.id == created_run_id
-                    assert details_obj.outputs is not None
-                    assert details_obj.detailed_results is not None
-                    # Check if the final output node fields are present
-                    assert 'final_post_paths' in details_obj.outputs
-                    assert 'final_post_content' in details_obj.outputs
-                else:
-                    print("   ✗ Failed to get final run details.")
+    # Pre-defined HITL inputs for the two expected stops in this workflow
+    predefined_hitl_inputs: List[Dict[str, Any]] = [
+        { # Input for the first HITL stop (reject)
+            "approval_status": "needs_work",
+            "feedback_text": "CLIENT Feedback: The tone is a bit too generic. Make it more engaging and add a specific call to action."
+        },
+        { # Input for the second HITL stop (approve)
+            "approval_status": "approved",
+            "feedback_text": ""
+        }
+    ]
 
-            elif current_run_status_obj:
-                print(f"\n--- Run {created_run_id} Finished with Status: {current_run_status_obj.status} ---")
-                if current_run_status_obj.error_message:
-                    print(f"   Error message: {current_run_status_obj.error_message}")
-                # Optionally fetch details even for failed runs
-                details_obj = await run_tester.get_run_details(created_run_id)
-                if details_obj and details_obj.error_message:
-                     print(f"   Detailed Error from Run Details: {details_obj.error_message}")
+    # Execute the test using the reusable helper function
+    final_run_status_obj, final_run_outputs = await run_workflow_test(
+        test_name=test_name,
+        workflow_graph_schema=workflow_graph_schema,
+        initial_inputs=POST_CREATION_WORKFLOW_INPUTS,
+        expected_final_status=WorkflowRunStatus.COMPLETED,
+        hitl_inputs=predefined_hitl_inputs,
+        setup_docs=[user_dna_setup_doc], # List containing the user DNA setup info
+        # Add the draft doc to the explicit cleanup list
+        cleanup_docs=[draft_doc_cleanup],
+        # Pass the custom validation function we defined above
+        validate_output_func=validate_content_workflow_output,
+        stream_intermediate_results=True,
+        poll_interval_sec=3,
+        timeout_sec=600
+    )
 
-            elif created_run_id:
-                print(f"\n--- Run {created_run_id} timed out or final status could not be retrieved ---")
-            # --- ---------------------------------- ---
-
-    except AuthenticationError as e:
-        print(f"Authentication Error: {e}")
-    except ImportError as e:
-         print(f"Import Error: {e}. Check PYTHONPATH and schema/client locations.")
-    except Exception as e:
-        print(f"An unexpected error occurred in the main test execution: {e}")
-        logger.exception("Main test execution error:")
-    finally:
-        # --- Cleanup ---
-        print(f"\n--- Cleanup --- ")
-
-        # Cleanup workflow first
-        if workflow_id_to_run:
-            print(f"   Deleting workflow {workflow_id_to_run}...")
-            try:
-                async with AuthenticatedClient() as cleanup_auth_client:
-                    cleanup_workflow_tester = WorkflowTestClient(cleanup_auth_client)
-                    deleted = await cleanup_workflow_tester.delete_workflow(workflow_id_to_run)
-                    print(f"     {'✓' if deleted else '✗'} Deleted workflow.")
-            except Exception as cleanup_e:
-                print(f"     ✗ Workflow cleanup failed: {cleanup_e}")
-                logger.exception("Workflow cleanup error:")
-
-        # Cleanup user_dna_doc IF we created it in this run
-        if user_dna_created_for_cleanup:
-            print(f"   Deleting user DNA document '{user_dna_namespace}/{user_dna_docname}'...")
-            try:
-                 async with AuthenticatedClient() as cleanup_auth_client:
-                    cleanup_data_tester = CustomerDataTestClient(cleanup_auth_client)
-                    deleted_dna = await cleanup_data_tester.delete_versioned_document(
-                        namespace=user_dna_namespace,
-                        docname=user_dna_docname,
-                        is_shared=False # It was user-specific
-                    )
-                    print(f"     {'✓' if deleted_dna else '✗'} Deleted user DNA document.")
-            except Exception as dna_cleanup_e:
-                print(f"     ✗ User DNA document cleanup failed: {dna_cleanup_e}")
-                logger.exception("User DNA document cleanup error:")
-        else:
-            print(f"   Skipping user DNA document cleanup (was not created in this run).")
-
-        # TODO: Add cleanup for the created draft document in 'draft_storage_namespace'
-        print(f"   NOTE: Draft document '{draft_storage_namespace}/{POST_CREATION_WORKFLOW_INPUTS['post_draft_name']}' may need manual cleanup.")
+    print(f"\n--- {test_name} Finished --- ")
 
 
-        print("\n--- Post Creation Workflow API Test Finished --- ")
-
+# Standard Python entry point check.
 if __name__ == "__main__":
-    # Ensure API server is running and config (.env) is correct
-    # Run with: PYTHONPATH=. python standalone_test_client/kiwi_client/_test_content_workflow.py
-    print("Attempting to run Post Creation Workflow test client...")
-    # Make sure the event loop is managed correctly
-    # asyncio.run(main_test_post_creation()) # Use asyncio.run for top-level execution
-
-    # Fix for potential nested loop issues if run from certain environments:
+    print("="*50)
+    print("Executing Content Workflow Test via Interactive Client")
+    print("="*50)
     try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError: # \'RuntimeError: Cannot run the event loop while another loop is running\'
-        loop = None
+        # Ensure the event loop is managed correctly for top-level execution
+        asyncio.run(main_test_content_workflow_with_client())
+    except KeyboardInterrupt:
+        print("\nExecution interrupted by user.")
+    except Exception as main_err:
+        print(f"\nCritical error during script execution: {main_err}")
+        logger.exception("Critical error running main")
 
-    if loop and loop.is_running():
-        print("   Async event loop already running. Adding task...")
-        # Schedule the task in the existing loop
-        # Note: This might not wait for completion unless awaited elsewhere
-        tsk = loop.create_task(main_test_post_creation())
-        # If you need to wait here in a sync context, it\'s complex.
-        # Better to ensure this script is run in a context where asyncio.run works.
-    else:
-        print("   Starting new async event loop...")
-        asyncio.run(main_test_post_creation())
-
-
-    print("\nRun this script from the project root directory using:")
-    print("PYTHONPATH=. python standalone_test_client/kiwi_client/_test_content_workflow.py")
-
+    print("\nScript execution finished.")
+    print(f"Run this script from the project root directory using:")
+    print(f"PYTHONPATH=. python standalone_test_client/kiwi_client/workflows/test_run_content_workflow_with_client.py")

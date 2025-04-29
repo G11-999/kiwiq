@@ -149,7 +149,7 @@ class MapListRouterNode(DynamicRouterNode):
             try:
                 return copy.deepcopy(dict(input_data))
             except Exception:
-                print(f"Warning: Could not convert input data of type {type(input_data)} to dict in MapListRouterNode. Proceeding with empty data.")
+                self.warning(f"Could not convert input data of type {type(input_data)} to dict in MapListRouterNode. Proceeding with empty data.")
                 return {}
 
     async def process(self, input_data: Union[DynamicSchema, Dict[str, Any]], config: Optional[Dict[str, Any]] = None, *args: Any, **kwargs: Any) -> Command:
@@ -176,6 +176,7 @@ class MapListRouterNode(DynamicRouterNode):
         input_dict = self._prepare_input_data(input_data)
         node_config: MapperConfigSchema = self.config # Use the node's validated instance config
         runtime_config = config if config else {}
+        runtime_config = runtime_config.get("configurable")
 
         # Ensure runtime_config has the necessary structure
         if "outgoing_edges" not in runtime_config or self.node_id not in runtime_config["outgoing_edges"]:
@@ -183,7 +184,7 @@ class MapListRouterNode(DynamicRouterNode):
              # node config expects destinations, it's an inconsistency. However, if the node config
              # also has no map_targets, then it's okay (a mapper node with nothing to map).
              if node_config.map_targets:
-                 print(f"Warning: MapListRouterNode '{self.node_id}' has map_targets defined, but no outgoing edges found in runtime config. No items will be sent.")
+                 self.warning(f"MapListRouterNode '{self.node_id}' has map_targets defined, but no outgoing edges found in runtime config. No items will be sent.")
              # Return an empty command with just the state update for node order
              state_update_dict = self.build_output_state_update(None, runtime_config)
              state_update_dict.pop(get_central_state_field_key(self.node_id), None)
@@ -202,7 +203,7 @@ class MapListRouterNode(DynamicRouterNode):
             source_collection, found = _get_nested_value(input_dict, target_config.source_path)
 
             if not found:
-                print(f"Warning: Source path '{target_config.source_path}' not found in input data for MapListRouterNode {self.node_id}.")
+                self.warning(f"Source path '{target_config.source_path}' not found in input data for MapListRouterNode {self.node_id}.")
                 continue
 
             # Determine items to iterate over
@@ -212,7 +213,7 @@ class MapListRouterNode(DynamicRouterNode):
             elif isinstance(source_collection, dict):
                 items_to_process = source_collection.values() # Iterate over dictionary values
             else:
-                print(f"Warning: Source path '{target_config.source_path}' does not point to a list or dict in MapListRouterNode {self.node_id}. Found type: {type(source_collection)}. Skipping this target.")
+                self.warning(f"Source path '{target_config.source_path}' does not point to a list or dict in MapListRouterNode {self.node_id}. Found type: {type(source_collection)}. Skipping this target.")
                 continue
 
             # 2. Process each item in the collection
@@ -238,7 +239,7 @@ class MapListRouterNode(DynamicRouterNode):
                             if src_found:
                                 mapped_item[mapping.dst_field] = src_value
                             else:
-                                print(f"Warning: Source field '{mapping.src_field}' specified in edge mapping to '{destination_node_id}' not found in item at index {item_index} from path '{target_config.source_path}' in MapListRouterNode {self.node_id}.")
+                                self.warning(f"Source field '{mapping.src_field}' specified in edge mapping to '{destination_node_id}' not found in item at index {item_index} from path '{target_config.source_path}' in MapListRouterNode {self.node_id}.")
                         data_to_send = mapped_item
                     else:
                         # No mappings on the edge: Send item as-is.
@@ -246,17 +247,18 @@ class MapListRouterNode(DynamicRouterNode):
                             try:
                                 data_to_send = item.model_dump(mode='json')
                             except Exception as e:
-                                print(f"Warning: Could not serialize item {item} to dict in MapListRouterNode {self.node_id}. Sending as is. Error: {e}")
+                                self.warning(f"Could not serialize item {item} to dict in MapListRouterNode {self.node_id}. Sending as is. Error: {e}")
                                 data_to_send = item
                         elif isinstance(item, (dict, list, str, int, float, bool, type(None))):
                             data_to_send = item # Already serializable
                         else:
-                            print(f"Warning: Sending non-standard type {type(item)} as-is from MapListRouterNode {self.node_id} to {destination_node_id}. Ensure target node can handle it.")
+                            self.warning(f"Sending non-standard type {type(item)} as-is from MapListRouterNode {self.node_id} to {destination_node_id}. Ensure target node can handle it.")
                             data_to_send = item
 
                     # Create the Send action with a deep copy of the data
                     send_data_copy = copy.deepcopy(data_to_send)
-                    sends.append(Send(node_id=destination_node_id, data=send_data_copy))
+                    self.info(f"Sending data to {destination_node_id}: {send_data_copy}")
+                    sends.append(Send(destination_node_id, send_data_copy))
 
         # 5. Build the standard state update (primarily for node execution order)
         state_update_dict = self.build_output_state_update(None, runtime_config) # Pass None as output_data

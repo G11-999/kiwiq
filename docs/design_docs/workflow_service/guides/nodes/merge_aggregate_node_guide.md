@@ -151,9 +151,22 @@ You configure the `MergeAggregateNode` within the `node_config` field of its ent
                 *   Common Reducers:
                     *   `replace_right`: The value from the new source object overwrites the existing value. (Default)
                     *   `replace_left`: Keep the existing value; ignore the value from the new source object.
+                    *   `append`: Expects the left value to be a list. Appends the entire right value as a single new element to the list.
+                    *   `extend`: Expects *both* values to be lists. Extends the left list with the elements from the right list.
+                    *   `combine_in_list`: Creates a list containing `[left_value, right_value]`. If the left value is already a list, it appends the right value to it.
+                    *   `sum`, `min`, `max`: Perform numerical aggregation (expects numbers).
+                    *   `simple_merge_replace`: Expects both values to be dictionaries. Merges *top-level* keys from the right dictionary into the left. If keys collide, the right value replaces the left. Does *not* recurse into nested dictionaries.
+                    *   `simple_merge_aggregate`: Expects both values to be dictionaries. Merges *top-level* keys. If keys collide, values are combined into a list (`[left_value, right_value]`). Does *not* recurse.
+                    *   `nested_merge_replace`: Handles any value types. If *both* values are dictionaries, it merges them recursively, applying the 'replace' logic at each level. For non-dictionary collisions, the right value replaces the left (if not None).
+                    *   `nested_merge_aggregate`: Handles any value types. This provides a deep aggregation:
+                        *   If *both* values are dictionaries, it merges them recursively, applying the 'aggregate' logic at each level.
+                        *   If *both* values are lists, it extends the left list with the non-None items from the right list.
+                        *   If values have different types or are primitives (numbers, strings, booleans), they are combined into a list. If the left value is already a list, the right value is appended.
+                        *   `None` values on the right side are ignored and do not get added to lists or overwrite existing values during aggregation.
             *   `error_strategy` (String): How to handle errors during reduction (e.g., trying to `sum` text). Options:
-                *   `coalesce_keep_left`: Keep the original ("left") value. (Default)
-                *   `skip_operation`: Keep the original ("left") value.
+                *   `coalesce_keep_left`: Keep the original (\"left\") value.
+                *   `coalesce_keep_non_empty`: **(Default)** Keep the original (\"left\") value if it exists and is considered \"truthy\" (not `null`, `false`, `0`, empty string/list/dict). Otherwise, use the new (\"right\") value. This is useful for accumulating values where the first non-empty value encountered should be kept if subsequent reductions fail.
+                *   `skip_operation`: Keep the original (\"left\") value.
                 *   `set_none`: Set the value to `null`.
                 *   `fail_node`: Stop the node and report an error.
         *   **`post_merge_transformations`** (Object, Optional): Apply calculations *after* all sources for this operation are merged. Maps `destination_key` names to transformation rules.
@@ -250,6 +263,8 @@ The node produces an output object containing:
         -   **`reduce_phase`**: Handle overlaps.
             -   `default_reducer`: The basic rule (usually "keep the last value seen").
             -   `reducers`: Special rules for specific fields (e.g., `sum` for numbers, `extend` for lists, `nested_merge` for complex details). These can target nested paths directly (e.g., `user.settings`).
+                -   Use `nested_merge_replace` or `nested_merge_aggregate` to combine complex nested data structures deeply.
+                -   `nested_merge_aggregate` is useful for combining everything found: it merges nested objects, extends lists, and groups differing values into lists.
         -   **`post_merge_transformations`**: Final tweaks after combining (e.g., calculate an `average`, `multiply` a value).
 -   **Dot Notation:** Use dots (`.`) to access data inside objects (e.g., `customer.address.zipcode`).
 -   **It Modifies a Copy:** The node doesn't change the original input data; it creates a new combined result in its output field (`merged_data`).

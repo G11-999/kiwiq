@@ -20,7 +20,7 @@ from langchain_core.load import dumps # Added dumps for logging complex objects
 
 from db.session import get_async_pool, get_async_db_as_manager # Assuming this provides psycopg pool
 from global_config.settings import global_settings
-# from global_config.logger import get_logger
+from global_config.logger import get_prefect_or_regular_python_logger
 from workflow_service.utils.utils import get_prefect_logger
 # Local workflow service imports
 from workflow_service.graph.graph import GraphSchema
@@ -69,6 +69,28 @@ configured_logger = get_prefect_logger()
 #     log_to_file=True,
 # )
 
+"""
+NOTE: when passing JSON schemas (I think as JSON objects and not as str); prefect tries to resolve them as blocks and fails with $ref references.
+TO disable this behavior, pass the JSON schema as a str or set validate_parameters=False.
+
+Bug:
+2025-04-29 04:25:03,999 - httpx - INFO - HTTP Request: GET http://prefect-server:4200/api/csrf-token?client=d7b38bc1-50aa-4e36-a685-9b57ff26acff "HTTP/1.1 422 Unprocessable Entity"
+prefect-agent-dev  | 2025-04-29 04:25:04,003 - httpx - INFO - HTTP Request: PATCH http://prefect-server:4200/api/flow_runs/80b69977-b379-439b-9f0d-eb3cdf494c4f "HTTP/1.1 204 No Content"
+prefect-agent-dev  | 2025-04-29 04:25:04,025 - prefect.engine - ERROR - Validation of flow parameters failed with error: Failed to resolve block references in parameters.
+prefect-agent-dev  | 2025-04-29 04:25:04,042 - httpx - INFO - HTTP Request: POST http://prefect-server:4200/api/flow_runs/80b69977-b379-439b-9f0d-eb3cdf494c4f/set_state "HTTP/1.1 201 Created"
+prefect-agent-dev  | 2025-04-29 04:25:04,042 - prefect.engine - ERROR - Finished in state Failed('Validation of flow parameters failed with error: ParameterTypeError: Failed to resolve block references in parameters.')
+prefect-agent-dev  | 2025-04-29 04:25:04,043 - prefect.engine - ERROR - Execution of flow run '80b69977-b379-439b-9f0d-eb3cdf494c4f' exited with unexpected exception
+prefect-agent-dev  | Traceback (most recent call last):
+prefect-agent-dev  |   File "/usr/local/lib/python3.12/site-packages/prefect/blocks/core.py", line 878, in _get_block_document_by_id
+prefect-agent-dev  |     block_document_id = UUID(block_document_id)
+prefect-agent-dev  |                         ^^^^^^^^^^^^^^^^^^^^^^^
+prefect-agent-dev  |   File "/usr/local/lib/python3.12/uuid.py", line 178, in __init__
+prefect-agent-dev  |     raise ValueError('badly formed hexadecimal UUID string')
+prefect-agent-dev  | ValueError: badly formed hexadecimal UUID string
+prefect-agent-dev  |
+prefect-agent-dev  | During handling of the above exception, another exception occurred:
+prefect-agent-dev  |
+"""
 @flow(
     name="workflow-execution",
     description="Orchestrates the execution of a LangGraph workflow",
@@ -77,6 +99,7 @@ configured_logger = get_prefect_logger()
     retry_delay_seconds=30,
     # cache_result_in_memory=True, # by default, True
     # cache_policy=NO_CACHE,
+    validate_parameters=False,
 )
 async def workflow_execution_flow(
     run_job: wf_schemas.WorkflowRunJobCreate
@@ -99,8 +122,13 @@ async def workflow_execution_flow(
     Returns:
         Dict[str, Any]: The workflow execution result or final status info.
     """
+
+    # Disabled prefect params validation, so validate here!
+    if isinstance(run_job, dict):
+        run_job = wf_schemas.WorkflowRunJobCreate(**run_job)
+
     # global external_context_global
-    logger = get_run_logger()
+    logger = get_prefect_or_regular_python_logger(name="workflow-execution-flow")
     logger.info(f"Starting workflow execution for Run ID: {run_job.run_id}, Workflow ID: {run_job.workflow_id}")
     
     # Create application context for the LangGraph workflow
@@ -159,7 +187,7 @@ async def run_graph(
     Returns:
         WorkflowRunUpdate: An object containing the final status, outputs, and error message (if any).
     """
-    logger = get_run_logger()
+    logger = get_prefect_or_regular_python_logger(name="workflow-execution-flow")
     run_id = workflow_run_job.run_id
     org_id = workflow_run_job.owner_org_id
     user_id = workflow_run_job.triggered_by_user_id

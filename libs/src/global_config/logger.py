@@ -6,6 +6,8 @@ import os
 import atexit
 from typing import List, Optional, Union
 
+from prefect.exceptions import MissingContextError
+
 from global_config.settings import global_settings, LOG_ROOT
 
 # --- Global Queue and Listener ---
@@ -23,6 +25,19 @@ DEFAULT_LOG_DIR: str = './logs' # Relative to current working directory
 DEFAULT_LOG_FILENAME: str = 'app.log'
 DEFAULT_MAX_BYTES: int = 10 * 1024 * 1024  # 10 MB
 DEFAULT_BACKUP_COUNT: int = 5
+
+
+def get_prefect_or_regular_python_logger(name: str) -> logging.Logger:
+    """
+    Returns the appropriate logger based on the environment.
+    """
+    from prefect.logging import get_run_logger
+    try:
+        logger = get_run_logger()
+        return logger
+    except MissingContextError:
+        return get_logger(name)
+
 
 def setup_logging(
     log_level: int = DEFAULT_LOG_LEVEL,

@@ -577,9 +577,11 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
         - Runtime config (passed parameter) used for execution context
         - Registry accessed through kwargs
         """
+        if isinstance(input_data, dict):
+            input_data = self.input_schema_cls(**input_data)
         # Extract context from runtime config
         if not config:
-            self.logger.error("Missing runtime config (config argument).")
+            self.error("Missing runtime config (config argument).")
             # TODO: Consider returning a default error output or raising an exception
             return LLMNodeOutputSchema(
                 current_messages=[],
@@ -592,7 +594,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
         registry = ext_context.db_registry  # : Optional[DBRegistry]
 
         if not app_context or not ext_context:
-            self.logger.error(f"Missing required keys in runtime_config: {APPLICATION_CONTEXT_KEY}, {EXTERNAL_CONTEXT_MANAGER_KEY} in external config.")
+            self.error(f"Missing required keys in runtime_config: {APPLICATION_CONTEXT_KEY}, {EXTERNAL_CONTEXT_MANAGER_KEY} in external config.")
             return LLMNodeOutputSchema(
                 current_messages=[],
                 metadata=LLMMetadata(model_name=self.config.llm_config.model_spec.model),
@@ -603,7 +605,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
         customer_data_service = ext_context.customer_data_service  # : Optional[CustomerDataService]
 
         if not user or not run_job or not customer_data_service:
-            self.logger.error("Missing 'user', 'workflow_run_job', or 'customer_data_service' in context.")
+            self.error("Missing 'user', 'workflow_run_job', or 'customer_data_service' in context.")
             return LLMNodeOutputSchema(
                 current_messages=[],
                 metadata=LLMMetadata(model_name=self.config.llm_config.model_spec.model),
@@ -616,7 +618,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
             model_metadata: ModelMetadata
             chat_model, model_metadata = self._init_model()
         except Exception as e:
-            self.logger.exception("Model initialization failed")
+            self.critical("Model initialization failed")
             raise ValueError(f"Model initialization failed: {str(e)}, \n{e.__traceback__}") from e
 
         # Prepare messages using node config
@@ -635,7 +637,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                 )
                 chat_model = self._apply_structured_output(chat_model, determined_output_schema, model_metadata)
             except Exception as e:
-                self.logger.exception("Failed to get or apply structured output schema")
+                self.critical("Failed to get or apply structured output schema")
                 raise ValueError(f"Structured output configuration failed: {str(e)}") from e
 
         # Bind tools if configured in node config
@@ -646,7 +648,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
         # Execute model with provider-specific handling
         try:
             start_time = time.time()
-            response = self._execute_model(chat_model, messages_for_model, model_metadata)
+            response = await self._execute_model(chat_model, messages_for_model, model_metadata)
             # NOTE: 
             # if (not self.config.output_schema.is_output_str()): 
             #     # response is dict with keys {"raw": Any, "parsed": Any, "parsing_error": Optional[str]}
@@ -655,7 +657,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
             # import ipdb; ipdb.set_trace()
             latency = time.time() - start_time
         except Exception as e:
-            self.logger.exception("Model execution failed")
+            self.critical("Model execution failed")
             raise RuntimeError(f"Model execution failed: {str(e)}") from e
 
         # Parse and validate response using node config
@@ -839,7 +841,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                 **kwargs
             )
         except Exception as e:
-            self.logger.exception("Failed to apply structured output to model")
+            self.critical("Failed to apply structured output to model")
             raise ValueError(f"Structured output configuration failed: {str(e)}") from e
 
     def _bind_tools(self, model: Any, model_metadata: ModelMetadata, registry: DBRegistry) -> Any:
@@ -887,7 +889,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
 
         return model.bind_tools(tools=tools, **kwargs)
 
-    def _execute_model(self, model: Any, messages: List[AnyMessage], model_metadata: ModelMetadata) -> Any:
+    async def _execute_model(self, model: Any, messages: List[AnyMessage], model_metadata: ModelMetadata) -> Any:
         """Execute model with provider-specific streaming handling."""
         # if self.config.stream:
         #     return self._handle_streaming(model, messages)
@@ -927,7 +929,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                 # Check if model supports specific web search features
                 if self.config.web_search_options.search_recency_filter and (not model_metadata.search_recency_filter):
                     raise ValueError(f"Model {model_metadata.model_name} does not support recency filtering for web search, but it was configured")
-                    # self.logger.warning(f"Model {model_metadata.model_name} does not support recency filtering, but it was configured")
+                    # self.warning(f"Model {model_metadata.model_name} does not support recency filtering, but it was configured")
                 
                 if self.config.web_search_options.search_domain_filter and (not model_metadata.search_domain_filter):
                     raise ValueError(f"Model {model_metadata.model_name} does not support domain filtering for web search, but it was configured")
@@ -942,8 +944,11 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                 invoke_kwargs["extra_body"] = {
                     "web_search_options": web_search_options
                 }
+        invoke_kwargs["max_concurrency"] = 50
       # import ipdb; ipdb.set_trace()
+        # from asyncio import shield
         return model.invoke(messages, **invoke_kwargs)
+        # return await shield(model.ainvoke)(messages, **invoke_kwargs)
     
     def filter_tool_calls(self, tool_calls: Any, output_schema: Any) -> LLMNodeOutputSchema:
         """Filter tool calls from the response.

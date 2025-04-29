@@ -27,6 +27,7 @@ import traceback
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union, ClassVar, Literal, Tuple, Set, Type, Callable
 import numbers # Import numbers module for checking numeric types
+from global_config.logger import get_prefect_or_regular_python_logger
 
 from pydantic import Field, model_validator, field_validator, BaseModel, ValidationError, validator
 
@@ -100,8 +101,9 @@ def _set_nested_obj(data: Dict[str, Any], path: str, value: Any, create_missing:
     Raises:
         TypeError: If trying to set a key on a non-dictionary intermediate path element.
     """
+    logger = get_prefect_or_regular_python_logger(f"{__name__}")
     if not path:
-        print("Warning: Attempted to set value with an empty path. This is not supported.")
+        logger.warning("Warning: Attempted to set value with an empty path. This is not supported.")
         return False
 
     parts = path.split('.')
@@ -116,7 +118,7 @@ def _set_nested_obj(data: Dict[str, Any], path: str, value: Any, create_missing:
         elif part in current_level and not isinstance(current_level[part], dict):
              if create_missing:
                  # Overwrite the existing non-dict value if create_missing is true
-                 print(f"Warning: Overwriting non-dictionary element at path part '{part}' in path '{path}'.")
+                 logger.warning(f"Warning: Overwriting non-dictionary element at path part '{part}' in path '{path}'.")
                  current_level[part] = {}
                  current_level = current_level[part]
              else:
@@ -131,7 +133,7 @@ def _set_nested_obj(data: Dict[str, Any], path: str, value: Any, create_missing:
                 current_level = current_level[part]
             else:
                 # Path does not exist, and we're not creating it
-                print(f"Warning: Path part '{part}' not found in path '{path}' and create_missing is False.")
+                logger.warning(f"Warning: Path part '{part}' not found in path '{path}' and create_missing is False.")
                 return False
 
     # Ensure the final part can be set (i.e., current_level is a dict)
@@ -149,6 +151,7 @@ def _set_nested_obj(data: Dict[str, Any], path: str, value: Any, create_missing:
 class ErrorHandlingStrategy(str, Enum):
     """Strategy for handling errors during reduction or transformation."""
     COALESCE_KEEP_LEFT = "coalesce_keep_left" # Keep the existing left value if reduction fails
+    COALESCE_KEEP_NON_EMPTY = "coalesce_keep_non_empty" # Keep the existing left value if reduction fails
     SKIP_OPERATION = "skip_operation"       # Skip the reduction/transformation if it fails
     SET_NONE = "set_none"                   # Set the destination field to None if it fails
     FAIL_NODE = "fail_node"                 # Raise exception, causing the node to fail
@@ -231,61 +234,120 @@ def _simple_merge(left_dict: Dict[str, Any], right_dict: Dict[str, Any], mode: D
 
 def _nested_merge(left_data: Any, right_data: Any, mode: DictMergeMode) -> Any:
     """
-    Recursively merges right_data into left_data based on mode.
-    Handles nested dictionaries. Returns the merged result (may modify left_data partially).
+    Recursively merges right_data into left_data based on the specified mode.
+
+    Handles nested dictionaries and lists. Returns the merged result.
+    - In 'REPLACE' mode, values from right_data overwrite corresponding values
+      in left_data. If keys are dictionaries, they are merged recursively.
+      None values in right_data do not overwrite existing values.
+    - In 'AGGREGATE' mode:
+        - Dictionaries are merged recursively (keys combined).
+        - Lists are extended (right list appended to left list, non-None items).
+        - If types differ or are primitives, values are combined into a list
+          (e.g., merging 1 and 2 results in [1, 2]; merging 1 and {'a': 1} results in [1, {'a': 1}]).
+        - None values from right_data are ignored during aggregation.
+
+    Args:
+        left_data (Any): The base data structure (often a dictionary or list).
+        right_data (Any): The data structure to merge into left_data.
+        mode (DictMergeMode): The merge mode ('replace' or 'aggregate').
+
+    Returns:
+        Any: The merged data structure. Note that for mutable inputs like dictionaries
+             passed in the 'left_data' argument during recursive calls, modifications
+             might occur partially in-place, although the function generally returns
+             new objects (especially via deepcopy at the start of dict merges).
     """
-    if isinstance(right_data, dict) and isinstance(left_data, dict):
-        # Both are dictionaries, merge recursively
-        merged_dict = copy.deepcopy(left_data) # Start with a copy of left
-        for key, right_val in right_data.items():
-            if right_val is None and mode == DictMergeMode.REPLACE: # Only skip None if replacing
-                continue
+    logger = get_prefect_or_regular_python_logger(f"{__name__}._nested_merge") # Add logger
 
-            if key not in merged_dict:
-                 # Key only in right, add based on mode
-                 if mode == DictMergeMode.AGGREGATE and right_val is not None:
-                     merged_dict[key] = [right_val]
-                 elif mode == DictMergeMode.REPLACE and right_val is not None: # Should always be non-None here unless AGGREGATE
-                     merged_dict[key] = right_val
-                 # else: mode is AGGREGATE and right_val is None, do nothing
-            else:
-                 # Key exists in both, recursive call or apply mode
-                 left_val = merged_dict[key]
-                 if mode == DictMergeMode.REPLACE:
+    # --- AGGREGATE Mode Logic ---
+    if mode == DictMergeMode.AGGREGATE:
+        # 1. Both are dictionaries: Recursively merge keys
+        if isinstance(left_data, dict) and isinstance(right_data, dict):
+            # Start with a deep copy of the left dictionary to avoid modifying the original
+            # during the merge process, especially important for nested structures.
+            merged_dict = copy.deepcopy(left_data)
+            for key, right_val in right_data.items():
+                 # Retrieve the corresponding value from the merged dictionary (initially left_data's copy).
+                 left_val = merged_dict.get(key)
+
+                 if left_val is not None:
+                      # Key exists in both left and right: merge their values recursively.
                       merged_dict[key] = _nested_merge(left_val, right_val, mode)
-                 elif mode == DictMergeMode.AGGREGATE:
-                      # Always aggregate non-None right values
-                      if right_val is not None:
-                         if isinstance(left_val, list):
-                              # Append result of nested merge if right is dict/list? Or just right_val?
-                              # Let's append right_val directly for aggregate simplicity.
-                              # if right_val not in left_val: # Optional duplicate check
-                              left_val.append(right_val)
-                         else:
-                              # Convert left to list
-                              merged_dict[key] = [left_val, right_val]
-                      # else: right_val is None, do nothing for aggregate
-        return merged_dict
+                 elif right_val is not None: # Key only exists in right (and right value is not None)
+                      # Add the new key-value pair from right_data.
+                      # A deepcopy is used here to ensure independence if right_val is mutable.
+                      merged_dict[key] = copy.deepcopy(right_val)
+                 # If right_val is None and the key wasn't in left, it's simply skipped.
+            return merged_dict
 
-    elif isinstance(right_data, list) and isinstance(left_data, list) and mode == DictMergeMode.AGGREGATE:
-        # Simple list extension for aggregate mode if both are lists
-        new_list = copy.copy(left_data)
-        new_list.extend(item for item in right_data if item is not None) # Add non-none items
-        return new_list
+        # 2. Both are lists: Extend left with non-None items from right
+        elif isinstance(left_data, list) and isinstance(right_data, list):
+            # Create a copy of the left list.
+            new_list = copy.copy(left_data)
+            # Extend the new list with items from the right list, filtering out None values.
+            new_list.extend(item for item in right_data if item is not None)
+            return new_list
 
-    # Base case: Right side overwrites Left side if not dict/list (or mode is REPLACE)
-    elif mode == DictMergeMode.REPLACE and right_data is not None:
-        return right_data
-    elif mode == DictMergeMode.AGGREGATE and right_data is not None:
-        # Aggregate non-dict/list values
-        if isinstance(left_data, list):
-            # if right_data not in left_data: # Optional check
-            left_data.append(right_data)
-            return left_data
+        # 3. Aggregating disparate types or primitives into a list
+        elif right_data is not None: # Only aggregate if right_data has a value
+             final_right_data = copy.deepcopy(right_data) if isinstance(right_data, (dict, list)) else right_data
+             if isinstance(left_data, list):
+                 # Left is already a list: Create a copy and append the right value.
+                 new_list = copy.copy(left_data)
+                 # Deepcopy right_data if it's mutable to avoid shared references in the list.
+                 new_list.append(final_right_data)
+                 return new_list
+             else:
+                 # Left is not a list: Create a new list containing both left and right values.
+                 # Deepcopy right_data if mutable. Left_data is assumed to be handled correctly
+                 # as it came from a previous state or initial input.
+                 
+                 ret_data = []
+                 if left_data is not None:
+                     ret_data.append(left_data)
+                 if final_right_data is not None:
+                     ret_data.append(final_right_data)
+                 return ret_data
         else:
-            return [left_data, right_data] # Create list
+             # Right_data is None: Aggregation results in keeping the left_data unchanged.
+             return left_data
+
+    # --- REPLACE Mode Logic ---
+    elif mode == DictMergeMode.REPLACE:
+        # 1. Both are dictionaries: Recursively merge keys, replacing values
+        if isinstance(left_data, dict) and isinstance(right_data, dict):
+            # Start with a deep copy of the left dictionary.
+            merged_dict = copy.deepcopy(left_data)
+            for key, right_val in right_data.items():
+                # In REPLACE mode, skip merging if the right value is None.
+                if right_val is None:
+                    continue
+
+                if key not in merged_dict:
+                    # Key only in right: Add it to the merged dictionary. Deepcopy if mutable.
+                    merged_dict[key] = copy.deepcopy(right_val) if isinstance(right_val, (dict, list)) else right_val
+                else:
+                    # Key exists in both: Recursively merge the values using REPLACE mode.
+                    left_val = merged_dict[key]
+                    merged_dict[key] = _nested_merge(left_val, right_val, mode)
+            return merged_dict
+
+        # 2. Base case: Right replaces Left if right is not None
+        elif right_data is not None:
+            # Return a deep copy if the right data is mutable to prevent aliasing issues later.
+            return copy.deepcopy(right_data) if isinstance(right_data, (dict, list)) else right_data
+
+        # 3. Right is None, keep Left
+        else:
+            # Return the left data as is. If it was mutable, the caller should be aware.
+            return left_data
+
+    # --- Fallback ---
+    # This part should ideally not be reached if 'mode' is always a valid DictMergeMode enum.
+    # However, as a safeguard, return left_data.
     else:
-        # Fallback: Keep left value (e.g., right is None in REPLACE, or type mismatch)
+        logger.warning(f"Warning: Unhandled merge mode '{mode}'. Returning left_data.")
         return left_data
 
 
@@ -298,12 +360,13 @@ def _reduce_replace_left(left_val: Any, right_val: Any) -> Any:
     return left_val
 
 def _reduce_append(left_val: Any, right_val: Any) -> Any:
+    logger = get_prefect_or_regular_python_logger(f"{__name__}")
     if isinstance(left_val, list):
         new_list = copy.copy(left_val)
         new_list.append(right_val)
         return new_list
     else:
-        print(f"Warning: APPEND reducer called with non-list left value ({type(left_val).__name__}). Creating new list.")
+        logger.warning(f"Warning: APPEND reducer called with non-list left value ({type(left_val).__name__}). Creating new list.")
         return [left_val, right_val]
 
 def _reduce_extend(left_val: Any, right_val: Any) -> Any:
@@ -315,6 +378,10 @@ def _reduce_extend(left_val: Any, right_val: Any) -> Any:
         raise TypeError(f"EXTEND reducer requires both values to be lists. Got {type(left_val).__name__} and {type(right_val).__name__}.")
 
 def _reduce_combine_in_list(left_val: Any, right_val: Any) -> Any:
+    if (not left_val) or (not right_val):
+        ret_val = left_val or right_val
+        return ret_val if isinstance(ret_val, list) and ret_val else [ret_val]
+    
     if isinstance(left_val, list):
         new_list = copy.copy(left_val)
         new_list.append(right_val)
@@ -491,7 +558,7 @@ class ReducePhaseConfigSchema(BaseSchema):
         description="Default reducer type to use when keys collide or for auto-merged keys."
     )
     error_strategy: ErrorHandlingStrategy = Field(
-        default=ErrorHandlingStrategy.COALESCE_KEEP_LEFT,
+        default=ErrorHandlingStrategy.COALESCE_KEEP_NON_EMPTY,
         description="How to handle errors (e.g., TypeError, ZeroDivisionError) during reduction."
     )
 
@@ -627,7 +694,7 @@ class MergeAggregateNode(BaseDynamicNode):
             if hasattr(input_data, 'model_dump'): return copy.deepcopy(input_data.model_dump(mode='json'))
             return copy.deepcopy(dict(input_data))
         except Exception as e:
-            print(f"Warning: Could not reliably convert input data of type {type(input_data)} to dict for {self.node_name}. Error: {e}")
+            self.warning(f"Could not reliably convert input data of type {type(input_data)} to dict for {self.node_name}. Error: {e}")
             return {}
 
     def _get_value_via_source_keys(self, obj: Dict[str, Any], source_keys: List[str]) -> Tuple[Any, bool]:
@@ -639,34 +706,36 @@ class MergeAggregateNode(BaseDynamicNode):
 
     def _handle_reduction_error(self, error: Exception, strategy: ErrorHandlingStrategy, dest_key: str, left_val: Any, right_val: Any) -> Tuple[Optional[Any], bool]:
         """Handles errors during the reduction phase based on the configured strategy."""
-        print(f"Error reducing key '{dest_key}': {error} (Left: {type(left_val).__name__}, Right: {type(right_val).__name__}). Strategy: {strategy.value}")
+        self.error(f"Error reducing key '{dest_key}': {error} (Left: {type(left_val).__name__}, Right: {type(right_val).__name__}). Strategy: {strategy.value}")
         # Raise immediately if FAIL_NODE is the strategy
         if strategy == ErrorHandlingStrategy.FAIL_NODE: raise error
         # Otherwise, return value based on strategy (no longer need boolean flag)
         if strategy == ErrorHandlingStrategy.SET_NONE: return None
         if strategy == ErrorHandlingStrategy.SKIP_OPERATION: return left_val # Keep left if exists
         if strategy == ErrorHandlingStrategy.COALESCE_KEEP_LEFT: return left_val # Explicitly keep left
-        print(f"Warning: Unknown error handling strategy '{strategy}'. Defaulting to COALESCE_KEEP_LEFT.")
+        if strategy == ErrorHandlingStrategy.COALESCE_KEEP_NON_EMPTY: return left_val if left_val else right_val # Keep left if non-empty, otherwise right
+        self.warning(f"Unknown error handling strategy '{strategy}'. Defaulting to COALESCE_KEEP_LEFT.")
         return left_val # Default safety
 
     def _handle_transformation_error(self, error: Exception, strategy: ErrorHandlingStrategy, dest_key: str, current_val: Any) -> Tuple[Optional[Any], bool]:
         """Handles errors during the post-merge transformation phase."""
-        print(f"Error transforming key '{dest_key}': {error} (Value: {type(current_val).__name__}). Strategy: {strategy.value}")
+        self.error(f"Error transforming key '{dest_key}': {error} (Value: {type(current_val).__name__}). Strategy: {strategy.value}")
         # Raise immediately if FAIL_NODE is the strategy
         if strategy == ErrorHandlingStrategy.FAIL_NODE: raise error
         # Otherwise, return value based on strategy (no longer need boolean flag)
         if strategy == ErrorHandlingStrategy.SET_NONE: return None
         if strategy == ErrorHandlingStrategy.SKIP_OPERATION: return current_val # Keep original
-        if strategy == ErrorHandlingStrategy.COALESCE_KEEP_LEFT: return current_val # Treat as SKIP
-        print(f"Warning: Unknown error handling strategy '{strategy}'. Defaulting to SKIP_OPERATION.")
+        if strategy in [ErrorHandlingStrategy.COALESCE_KEEP_LEFT, ErrorHandlingStrategy.COALESCE_KEEP_NON_EMPTY]: return current_val # Treat as SKIP
+        self.warning(f"Unknown error handling strategy '{strategy}'. Defaulting to SKIP_OPERATION.")
         return current_val # Default safety
 
 
     def _merge_two_objects(self, left_obj: Dict[str, Any], right_obj: Dict[str, Any], strategy: MergeStrategySchema, merged_counts: Dict[str, int]) -> Dict[str, Any]:
-        """Merges two objects, handling nested keys, errors, and tracking counts."""
+        """Merges two objects according to the given merge strategy."""
+        # Both inputs must be dictionaries
         if not isinstance(left_obj, dict) or not isinstance(right_obj, dict):
-             print(f"Warning: _merge_two_objects requires dictionary inputs. Got {type(left_obj)}, {type(right_obj)}. Skipping.")
-             return left_obj if isinstance(left_obj, dict) else {}
+            self.warning(f"_merge_two_objects requires dictionary inputs. Got {type(left_obj)}, {type(right_obj)}. Skipping.")
+            return left_obj if isinstance(left_obj, dict) else {}
 
         map_config = strategy.map_phase
         reduce_config = strategy.reduce_phase
@@ -704,11 +773,12 @@ class MergeAggregateNode(BaseDynamicNode):
                     try: _set_nested_obj(left_obj, dest_key, final_value, create_missing=True)
                     except TypeError as e_set: print(f"Error setting nested key '{dest_key}': {e_set}.")
                 else: # Fallback for unknown reducer
-                     print(f"Warning: Unknown reducer '{reducer_type}' for key '{dest_key}'. Using REPLACE_RIGHT.")
+                     self.warning(f"Unknown reducer '{reducer_type}' for key '{dest_key}'. Using REPLACE_RIGHT.")
                      try:
-                          _set_nested_obj(left_obj, dest_key, copy.deepcopy(right_val), create_missing=True)
-                          merged_counts[dest_key] = merged_counts.get(dest_key, 0) + 1
-                     except TypeError as e_set: print(f"Error setting nested key '{dest_key}' in fallback: {e_set}.")
+                        _set_nested_obj(left_obj, dest_key, copy.deepcopy(right_val), create_missing=True)
+                        merged_counts[dest_key] = merged_counts.get(dest_key, 0) + 1
+                     except TypeError as e_set:
+                        self.warning(f"Error setting nested key '{dest_key}' in fallback: {e_set}.")
 
         # Process unspecified keys
         if map_config.unspecified_keys_strategy == UnspecifiedKeysStrategy.AUTO_MERGE:
@@ -748,13 +818,15 @@ class MergeAggregateNode(BaseDynamicNode):
                          final_value = self._handle_reduction_error(e, reduce_config.error_strategy, dest_key, left_val, right_val)
 
                      try: _set_nested_obj(left_obj, dest_key, final_value, create_missing=True)
-                     except TypeError as e_set: print(f"Error setting auto-merged key '{dest_key}': {e_set}.")
+                     except TypeError as e_set: 
+                         self.warning(f"Error setting auto-merged key '{dest_key}': {e_set}.")
                  else: # Fallback for unknown reducer during auto-merge
-                     print(f"Warning: Unknown reducer '{reducer_type}' for auto-merged key '{dest_key}'. Using REPLACE_RIGHT.")
+                     self.warning(f"Unknown reducer '{reducer_type}' for auto-merged key '{dest_key}'. Using REPLACE_RIGHT.")
                      try:
                          _set_nested_obj(left_obj, dest_key, copy.deepcopy(right_val), create_missing=True)
                          merged_counts[dest_key] = merged_counts.get(dest_key, 0) + 1
-                     except TypeError as e_set: print(f"Error setting auto-merged key '{dest_key}' in fallback: {e_set}.")
+                     except TypeError as e_set:
+                        self.warning(f"Error setting auto-merged key '{dest_key}' in fallback: {e_set}.")
         return left_obj
 
 
@@ -772,25 +844,26 @@ class MergeAggregateNode(BaseDynamicNode):
 
                 # --- 1. Select and Flatten Objects ---
                 objects_to_merge: List[Dict[str, Any]] = []
-                print(f"Processing merge operation #{operation_index + 1} for output field: '{output_field}'")
+                self.info(f"Processing merge operation #{operation_index + 1} for output field: '{output_field}'")
                 for path in select_paths:
                     selected_data, found = _get_nested_obj(prepared_input, path)
                     items_added = 0
+
                     if found:
                         if isinstance(selected_data, list):
                             for item in selected_data:
                                 if isinstance(item, dict): objects_to_merge.append(copy.deepcopy(item)); items_added += 1
-                                else: print(f"  Warning: Item in list from path '{path}' is not a dict. Skipping.")
+                                else: self.warning(f"  Warning: Item in list from path '{path}' is not a dict. Skipping.")
                         elif isinstance(selected_data, dict): objects_to_merge.append(copy.deepcopy(selected_data)); items_added = 1
-                        else: print(f"  Warning: Path '{path}' is not list/dict. Skipping.")
-                        if items_added > 0: print(f"  - Selected {items_added} object(s) from path: '{path}'")
-                    else: print(f"  Warning: Select path '{path}' not found. Skipping.")
+                        else: self.warning(f"  Warning: Path '{path}' is not list/dict. Skipping.")
+                        if items_added > 0: self.info(f"  - Selected {items_added} object(s) from path: '{path}'")
+                    else: self.warning(f"  Warning: Select path '{path}' not found. Skipping.")
 
                 # --- 2. Perform Sequential Merge ---
                 merged_result = {} # Initialize with an empty dictionary
 
                 if not objects_to_merge:
-                    print(f"Warning: No objects to merge for '{output_field}'. Setting to empty dict.")
+                    self.warning(f"Warning: No objects to merge for '{output_field}'. Setting to empty dict.")
                     final_output_data[output_field] = {}
                     continue
 
@@ -800,7 +873,7 @@ class MergeAggregateNode(BaseDynamicNode):
 
                 # Merge ALL objects sequentially into the initially empty merged_result
                 for i, obj_to_merge in enumerate(objects_to_merge):
-                    print(f"  - Merging object {i+1}...")
+                    self.info(f"  - Merging object {i+1}...")
                     # The first object is merged into the empty dict, applying mapping rules.
                     # Subsequent objects are merged into the result of the previous merge.
                     merged_result = self._merge_two_objects(merged_result, obj_to_merge, strategy, merged_counts_for_op)
@@ -808,41 +881,41 @@ class MergeAggregateNode(BaseDynamicNode):
 
                 # --- 3. Apply Post-Merge Transformations ---
                 if strategy.post_merge_transformations:
-                    print(f"  - Applying post-merge transformations for '{output_field}'...")
+                    self.info(f"  - Applying post-merge transformations for '{output_field}'...")
                     for dest_key, transform_config in strategy.post_merge_transformations.items():
-                         current_value, found_val = _get_nested_obj(merged_result, dest_key)
-                         if not found_val:
-                             print(f"    Warning: Cannot transform '{dest_key}'. Key not found.")
-                             continue
+                        current_value, found_val = _get_nested_obj(merged_result, dest_key)
+                        if not found_val:
+                            self.warning(f"    Warning: Cannot transform '{dest_key}'. Key not found.")
+                            continue
 
-                         transform_func = TRANSFORMATION_FUNCTIONS.get(transform_config.operation_type)
-                         if transform_func:
+                        transform_func = TRANSFORMATION_FUNCTIONS.get(transform_config.operation_type)
+                        if transform_func:
                              final_value, should_fail_node = None, False
                              try:
                                  count_for_avg = merged_counts_for_op.get(dest_key) if transform_config.operation_type == SingleFieldOperationType.AVERAGE else None
                                  final_value = transform_func(current_value, transform_config, count_for_avg)
-                                 print(f"    - Applied {transform_config.operation_type.value} to '{dest_key}' -> {final_value}")
+                                 self.info(f"    - Applied {transform_config.operation_type.value} to '{dest_key}' -> {final_value}")
                              except Exception as e:
                                  # If FAIL_NODE is strategy, _handle_transformation_error will raise, exiting this function.
                                  # Otherwise, it returns the value to use.
                                  final_value = self._handle_transformation_error(e, strategy.transformation_error_strategy, dest_key, current_value)
 
                              try: _set_nested_obj(merged_result, dest_key, final_value, create_missing=False) # Don't create missing during transform
-                             except TypeError as e_set: print(f"    Error setting key '{dest_key}' after transform error: {e_set}.")
-                         else:
-                             print(f"    Warning: Unknown transformation type '{transform_config.operation_type}'. Skipping.")
+                             except TypeError as e_set: self.warning(f"    Error setting key '{dest_key}' after transform error: {e_set}.")
+                        else:
+                            self.warning(f"    Warning: Unknown transformation type '{transform_config.operation_type}'. Skipping.")
 
                 # Store final result
                 final_output_data[output_field] = merged_result
-                print(f"  - Finished processing for '{output_field}'.")
+                self.info(f"  - Finished processing for '{output_field}'.")
 
             return MergeObjectsOutputSchema(merged_data=final_output_data)
 
         except ValidationError as e:
-             print(f"Error: Config validation failed: {e}"); return MergeObjectsOutputSchema(merged_data={})
+            self.error(f"Error: Config validation failed: {e}"); return MergeObjectsOutputSchema(merged_data={})
         # Specific exceptions raised by FAIL_NODE strategy should now propagate up
         # Keep the generic Exception catch for truly unexpected errors
         except Exception as e:
-             print(f"Error processing node: {e}"); traceback.print_exc(); 
-             # TODO: FXIME: Log error and potentially fail node and not silently pass through error??
-             return MergeObjectsOutputSchema(merged_data={})
+            self.error(f"Error processing node: {e}"); traceback.print_exc(); 
+            # TODO: FXIME: Log error and potentially fail node and not silently pass through error??
+            return MergeObjectsOutputSchema(merged_data={})

@@ -19,7 +19,16 @@ The `StoreCustomerDataNode` allows your workflow to write data back to the centr
 
 ## Configuration (`NodeConfig`)
 
-You configure the `StoreCustomerDataNode` within the `node_config` field of its entry in the `GraphSchema`.
+You configure the `StoreCustomerDataNode` within the `node_config` field of its entry in the `GraphSchema`. The configuration follows the `StoreCustomerDataConfig` schema.
+
+**Configuration Source:**
+
+You must define the store operations using *one* of the following methods:
+
+1.  **`store_configs`**: A static list of `StoreConfig` objects directly defined in the workflow schema.
+2.  **`store_configs_input_path`**: A dot-notation path pointing to data within the node's input which resolves to either a single `StoreConfig` object or a list of `StoreConfig` objects.
+
+You **cannot** provide both `store_configs` and `store_configs_input_path`.
 
 ```json
 {
@@ -43,9 +52,10 @@ You configure the `StoreCustomerDataNode` within the `node_config` field of its 
           // "schema_definition": null
         },
         "global_on_behalf_of_user_id": null, // Default: don't act on behalf of another user
+        "global_process_list_items_separately": true, // Default: process items in lists individually
 
-        // --- Specific Documents/Data to Store ---
-        "store_configs": [ // List of store instructions
+        // --- Option 1: Define Store Configs Statically ---
+        "store_configs": [ // List of store instructions (Use this OR store_configs_input_path)
           // --- Example 1: Upsert an unversioned document (using default versioning) ---
           {
             "input_field_path": "analysis_output", // Path to the data in the node's input
@@ -54,8 +64,8 @@ You configure the `StoreCustomerDataNode` within the `node_config` field of its 
                 "static_namespace": "analysis_reports",
                 "static_docname": "report_final"
               }
-            }
-            // Inherits global defaults: is_versioned=false, operation=upsert
+            },
+            "process_list_items_separately": false // Store the entire list in one go
           },
           // --- Example 2: Initialize a new versioned document ---
           {
@@ -135,8 +145,38 @@ You configure the `StoreCustomerDataNode` within the `node_config` field of its 
               // If it doesn't exist (but the doc does), it will be initialized.
               // If the doc doesn't exist, the doc will be initialized with this version.
             }
+          },
+          // --- Example 7: Store using patterns based on separate input metadata --- 
+          {
+            "input_field_path": "log_data_payload", // The actual data to store
+            "target_path": {
+              "filename_config": {
+                "input_namespace_field": "run_metadata", // Path to the metadata object
+                "input_namespace_field_pattern": "logs/{item[source_system]}/{item[year]}", // Pattern using metadata
+                "input_docname_field": "run_metadata.run_id", // Path to specific field for docname data
+                "input_docname_field_pattern": "run_{item}.log" // Pattern using the run_id value
+                // e.g. if run_metadata is {"source_system": "A", "year": 2024, "run_id": "xyz"}
+                // the path would be: logs/A/2024/run_xyz.log
+              }
+            },
+            "versioning": { "is_versioned": false, "operation": "upsert" } 
+          },
+          // --- Example 8: Store a list as a single document ---
+          {
+             "input_field_path": "list_of_tags", // Path to a list of strings
+             "target_path": {
+               "filename_config": {
+                 "static_namespace": "metadata",
+                 "static_docname": "all_tags"
+               }
+             },
+             "process_list_items_separately": false // Store the entire list in one go
           }
-        ]
+        ],
+        // --- Option 2: Define Store Configs Dynamically from Input ---
+        // "store_configs_input_path": "path.to.dynamic.configs.in.input" // Use this OR store_configs
+        // Example Input Data for dynamic path:
+        // { "path": { "to": { "dynamic": { "configs": { "in": { "input": [ { store_config_1 }, { store_config_2 } ] } } } } } }
       }
       // dynamic_input_schema / dynamic_output_schema usually not needed
     }
@@ -148,20 +188,27 @@ You configure the `StoreCustomerDataNode` within the `node_config` field of its 
 
 ### Key Configuration Sections:
 
-1.  **Global Defaults (`global_is_shared`, `global_is_system_entity`, `global_versioning`, `global_schema_options`, `global_on_behalf_of_user_id`)**: (Optional) Set default behaviors for all store operations. These can be individually overridden within each `store_configs` item.
+1.  **Global Defaults (`global_is_shared`, `global_is_system_entity`, `global_versioning`, `global_schema_options`, `global_on_behalf_of_user_id`, `global_process_list_items_separately`)**: (Optional) Set default behaviors for all store operations. These can be individually overridden within each `store_configs` item.
     *   `global_versioning`: Defines the default versioning strategy.
         *   `is_versioned`: `true` or `false`.
         *   `operation`: Default action (e.g., `"upsert"`, `"update"`). A common default is `is_versioned: false, operation: "upsert"`.
         *   `version`: Default version name (e.g., `"default"`).
+    *   `global_process_list_items_separately` (Optional bool): Default is `null`. If set to `true` or `false`, this provides the default behavior for list processing when the local `process_list_items_separately` is `null`. If both global and local are `null`, the ultimate fallback is `false` (store list as a single document).
     *   See `LoadCustomerDataNode` guide for details on other global defaults.
-2.  **`store_configs`** (List): **Required**. A list where each item defines a specific store operation.
-3.  **Inside each `store_configs` item**:
-    *   **`input_field_path`**: **Required**. Dot-notation path (e.g., `"results.summary"`, `"customer_data"`) to the data *within the node's input* that you want to store. This can point to a single dictionary or a list of dictionaries.
+2.  **`store_configs`** (List): **Required (unless `store_configs_input_path` is used)**. A list where each item defines a specific store operation. Provide this OR `store_configs_input_path`.
+3.  **`store_configs_input_path`** (String): **Required (unless `store_configs` is used)**. A dot-notation path (e.g., `"dynamic_configs.store_jobs"`) within the node's input data. The data at this path must be either a single JSON object matching the `StoreConfig` structure, or a list of such JSON objects. If this path is provided, the static `store_configs` list is ignored. This allows generating the entire storage plan dynamically based on previous workflow steps.
+4.  **Inside each `store_configs` item** (whether defined statically or loaded dynamically):
+    *   **`input_field_path`**: **Required**. Dot-notation path (e.g., `"results.summary"`, `"customer_data"`, `"simple_string"`) to the data *within the node's input* that you want to store. This can point to a dictionary, a list (of dictionaries, primitives, etc.), or a primitive value (string, number, boolean, null).
     *   **`target_path`**: **Required**. Defines *where* to store the data.
         *   **`filename_config`**: **Required**. Defines the target namespace and docname. Exactly one method must be chosen for namespace and one for docname:
             *   `static_namespace` / `static_docname`: Fixed string values.
-            *   `input_namespace_field` / `input_docname_field`: Dot-notation path to a field in the node's input data *or* within the item being stored (if `input_field_path` points to a list). The system checks the item first, then the overall input data.
-            *   `namespace_pattern` / `docname_pattern`: An f-string like template using `{item[...]}` and `{index}`. Used when `input_field_path` points to a list. `{item[...]}` accesses fields within the current list item being stored, and `{index}` provides its position in the list (0, 1, 2...). Example: `"order_{item[order_id]}_{index}"`.
+            *   `input_namespace_field` / `input_docname_field`: Dot-notation path to a field in the node's input data *or* within the item being stored (if `input_field_path` points to a list and `process_list_items_separately` is `true`). The system checks the item first, then the overall input data. **Note:** If `process_list_items_separately` is `false`, path resolution cannot depend on fields *within* the list items themselves using this method.
+            *   `namespace_pattern` / `docname_pattern`: An f-string like template using `{item[...]}` and `{index}`. Used when `input_field_path` points to a list *and `process_list_items_separately` is `true`*. `{item[...]}` accesses fields within the current list item being stored (assumed to be a dict), and `{index}` provides its position in the list (0, 1, 2...). Example: `"order_{item[order_id]}_{index}"`. **Note:** This method will likely fail if items in the list are not dictionaries or if `process_list_items_separately` is `false`.
+            *   `input_namespace_field_pattern` / `input_docname_field_pattern`: An f-string like template that uses data found at the path specified by `input_namespace_field` or `input_docname_field` respectively. The context provided to the format string is `{'item': retrieved_data}`. This allows generating paths based on metadata located elsewhere in the input. **Note:** If you use `input_..._field_pattern`, you *must* also provide the corresponding `input_..._field` to specify where to get the data for the pattern.
+    *   **`process_list_items_separately`** (Optional bool): Default is `null`. Controls behavior if `input_field_path` points to a list:
+        *   `true`: Each item in the list is processed individually. Path resolution can use `{item[...]}` if items are dictionaries.
+        *   `false`: The entire list is stored as a single document. Path resolution cannot use `{item[...]}`.
+        *   `null`: Behavior is determined by `global_process_list_items_separately`. If that is also `null`, the behavior defaults to `false` (store list as a single document).
     *   **`is_shared`** (Optional bool): Overrides global default.
     *   **`is_system_entity`** (Optional bool): Overrides global default (requires superuser context).
     *   **`on_behalf_of_user_id`** (Optional str): Overrides global default. **Requires the workflow run context to have superuser privileges.** If provided and `is_shared` is `false`, the data will be stored under the path associated with this user ID instead of the user running the workflow. This parameter is ignored if `is_shared` is `true` or `is_system_entity` is `true`.
@@ -187,7 +234,7 @@ You configure the `StoreCustomerDataNode` within the `node_config` field of its 
 
 ## Input (`DynamicSchema`)
 
-The `StoreCustomerDataNode` requires input data containing the document(s) to be stored, located at the path(s) specified in `input_field_path`.
+The `StoreCustomerDataNode` requires input data containing the document(s) or value(s) to be stored, located at the path(s) specified in `input_field_path`. The data can be a dictionary, a list, or a primitive type (string, number, boolean, null).
 
 -   It might also require additional fields in the input if `input_namespace_field` or `input_docname_field` are used in the `filename_config`.
 -   Input data should be mapped from previous nodes or the central state.
@@ -260,15 +307,18 @@ The node primarily performs a write operation and then passes through the origin
 ## Notes for Non-Coders
 
 -   Use this node to save data generated or modified by your workflow.
--   `store_configs`: Tell the node what data to save and where.
--   Inside `store_configs`:
-    -   `input_field_path`: Which piece of data from the previous step should be saved? (e.g., `"customer_summary"`).
-    -   `target_path.filename_config`: Where should it be saved?
+-   You can either define the save instructions (`store_configs`) directly when building the workflow, OR you can provide a path (`store_configs_input_path`) to where those instructions can be found in the data coming into this node. Use one method or the other.
+-   `store_configs` (or the data found at `store_configs_input_path`): Tell the node what data to save and where.
+-   Inside each save instruction:
+    *   `input_field_path`: Which piece of data from the previous step should be saved? (e.g., `"customer_summary"`, `"list_of_names"`, `"final_score"`).
+    *   `process_list_items_separately` (usually default/`null` which means `false`): If the data is a list, should each item be saved individually (`true`) or should the whole list be saved as one file (`false`)? If you don't set it, it usually defaults to saving the **whole list as one file (`false`)**.
+    *   `target_path.filename_config`: Where should it be saved?
         -   `static_...`: Use if you know the exact name (e.g., save as `"latest_results"` in the `"daily_reports"` namespace).
-        -   `input_..._field`: Use if the name comes from the data itself (e.g., save the order using the `"order_id"` field from the order data).
-        -   `..._pattern`: Use when saving a list of items, creating names based on each item's properties (e.g., save each product using its `"product_id"`).
-    -   `versioning`: How to handle saving?
-        -   `is_versioned: false, operation: "upsert"`: Simple save - create if new, overwrite if exists (good for status dashboards, latest configs).
+        -   `input_..._field`: Use if the name comes from the data itself (e.g., save the order using the `"order_id"` field from the order data). **Works best if the item being saved is an object/dictionary.**
+        -   `..._pattern`: Use when saving a list of items *individually* (`process_list_items_separately: true`), creating names based on each item's properties (e.g., save each product using its `"product_id"`). **Requires items in the list to be objects/dictionaries.**
+        -   `input_..._field_pattern`: Use when the name needs to be constructed using a template, but the data for the template comes from *another* part of the input, not the item being saved (e.g., creating a log filename using `run_id` and `system_name` provided elsewhere in the input).
+    *   `versioning`: How to handle saving?
+        -   `is_versioned: false, operation: "upsert"`: Simple save - create if new, overwrite if exists (good for status dashboards, latest configs, simple values).
         -   `is_versioned: true, operation: "initialize"`: Save the *first version* of something important (e.g., initial customer profile).
         -   `is_versioned: true, operation: "update"`: Update the *current* version of something (e.g., update user preferences). Fails if the document/version doesn't exist.
         -   `is_versioned: true, operation: "create_version"`: Save as a *new version* (e.g., save `"v2_approved"` after edits to `"v1_draft"`).

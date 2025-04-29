@@ -8,10 +8,10 @@ calculates the estimated credit cost before execution.
 """
 
 import asyncio
-import logging
 import traceback
 from typing import Any, Dict, List, Optional, Union, Type, ClassVar, Tuple, Set
 
+from global_config.logger import get_prefect_or_regular_python_logger
 from pydantic import Field, model_validator, BaseModel, ValidationError
 
 # Node framework imports
@@ -31,8 +31,6 @@ from services.scraper_service.client.schemas.job_config_schema import (
 from services.scraper_service.scraper_entrypoint import execute_scraper_job
 from services.scraper_service.settings import rapid_api_settings # For defaults maybe
 
-# Setup logger
-log = logging.getLogger(__name__)
 
 # --- Helper Function (adapted from customer_data.py) ---
 
@@ -50,6 +48,7 @@ def _get_nested_obj(data: Any, field_path: str) -> Tuple[Any, bool]:
         Tuple[Any, bool]: The retrieved object/value and a boolean indicating if the path was found.
                          Returns (None, False) if the path is invalid or not found.
     """
+    logger = get_prefect_or_regular_python_logger(f"{__name__}")
     current = data
     parts = field_path.split('.') if field_path else []
 
@@ -62,7 +61,7 @@ def _get_nested_obj(data: Any, field_path: str) -> Tuple[Any, bool]:
             if part in current:
                 current = current[part]
             else:
-                log.debug(f"Key '{part}' not found in dict during path traversal: {field_path}")
+                logger.debug(f"Key '{part}' not found in dict during path traversal: {field_path}")
                 return None, False # Key not found in dict
         elif isinstance(current, list):
             try:
@@ -71,15 +70,15 @@ def _get_nested_obj(data: Any, field_path: str) -> Tuple[Any, bool]:
                 if 0 <= idx < len(current):
                     current = current[idx]
                 else:
-                    log.debug(f"Index '{idx}' out of bounds for list during path traversal: {field_path}")
+                    logger.debug(f"Index '{idx}' out of bounds for list during path traversal: {field_path}")
                     return None, False # Index out of bounds
             except (ValueError, TypeError):
                 # Invalid index format for list
-                log.debug(f"Invalid index '{part}' for list during path traversal: {field_path}")
+                logger.debug(f"Invalid index '{part}' for list during path traversal: {field_path}")
                 return None, False
         else:
             # Cannot navigate further (e.g., encountered a primitive type)
-            log.debug(f"Cannot navigate further at part '{part}' (value is {type(current)}) during path traversal: {field_path}")
+            logger.debug(f"Cannot navigate further at part '{part}' (value is {type(current)}) during path traversal: {field_path}")
             return None, False
 
     return current, True
@@ -303,17 +302,17 @@ class LinkedInScrapingNode(BaseDynamicNode):
                      is_list_for_expansion = True
                 else:
                      # Log a warning if expand_list=True but the input wasn't a list
-                     log.warning(f"Field '{field_name}' ({source.input_field_path}) has expand_list=True, but did not resolve to a list in input data.")
+                     self.warning(f"Field '{field_name}' ({source.input_field_path}) has expand_list=True, but did not resolve to a list in input data.")
 
 
             if not found:
-                log.warning(f"Input field path '{source.input_field_path}' for '{field_name}' not found in input data.")
+                self.warning(f"Input field path '{source.input_field_path}' for '{field_name}' not found in input data.")
                 return None, False, False # Field path not found
 
             return resolved_value, True, is_list_for_expansion
 
         # Should be unreachable due to InputSource validation
-        log.error(f"Invalid InputSource state for field '{field_name}'.")
+        self.error(f"Invalid InputSource state for field '{field_name}'.")
         return None, False, False
 
 
@@ -347,12 +346,13 @@ class LinkedInScrapingNode(BaseDynamicNode):
         job_output_map: Dict[str, List[Union[asyncio.Task, Dict[str, Any]]]] = {}
         execution_summary: Dict[str, Dict[str, Any]] = {}
 
-        log.info(f"LinkedIn Scraping Node processing. Test Mode: {test_mode}")
+        self.info(f"LinkedIn Scraping Node processing. Test Mode: {test_mode}")
 
         for job_def in self.config.jobs:
             output_field = job_def.output_field_name
             job_output_map[output_field] = [] # Initialize list for results/configs/errors
             execution_summary[output_field] = {"jobs_triggered": 0, "successful": 0, "failed": 0, "errors": []}
+            self.debug(f"Processing job definition for output field: {output_field}")
 
             expanding_field_name: Optional[str] = None
             expansion_list: List[Any] = [None] # Default: run once even if no expansion
@@ -368,19 +368,22 @@ class LinkedInScrapingNode(BaseDynamicNode):
                             expansion_list = list_value
                             num_iterations = len(expansion_list)
                             if num_iterations == 0:
-                                 log.warning(f"Expansion field '{field_name}' ({source.input_field_path}) resolved to an empty list for output '{output_field}'. No jobs will be triggered for this definition.")
+                                 self.warning(f"Expansion field '{field_name}' ({source.input_field_path}) resolved to an empty list for output '{output_field}'. No jobs will be triggered for this definition.")
                             break # Found the single expander
                         elif found:
-                            log.warning(f"Expansion field '{field_name}' ({source.input_field_path}) has expand_list=True but did not resolve to a list for output '{output_field}'. Treating as single item.")
+                            self.warning(f"Expansion field '{field_name}' ({source.input_field_path}) has expand_list=True but did not resolve to a list for output '{output_field}'. Treating as single item.")
                             expanding_field_name = field_name
                             expansion_list = [list_value]
                             num_iterations = 1
                             break
                         else:
-                            log.warning(f"Expansion field '{field_name}' ({source.input_field_path}) not found for output '{output_field}'. expand_list=True ignored. Will attempt single execution if possible.")
+                            self.warning(f"Expansion field '{field_name}' ({source.input_field_path}) not found for output '{output_field}'. expand_list=True ignored. Will attempt single execution if possible.")
                             break
                     # No need to check static_value here, as expand_list=True requires input_field_path
 
+            if expanding_field_name:
+                self.debug(f"Found expanding field: {expanding_field_name} with {num_iterations} item(s)")
+            
             # 2. Iterate and construct/validate parameters for each job
             for i in range(num_iterations):
                 request_params: Dict[str, Any] = {}
@@ -398,7 +401,7 @@ class LinkedInScrapingNode(BaseDynamicNode):
                         if found_or_static:
                              request_params[field_name] = resolved_value
                         elif field_name in ["job_type"]: # Check strictly required fields
-                             log.error(f"Required field '{field_name}' could not be resolved for job definition '{output_field}', iteration {i}. Skipping this job.")
+                             self.error(f"Required field '{field_name}' could not be resolved for job definition '{output_field}', iteration {i}. Skipping this job.")
                              is_valid_iteration = False
                              execution_summary[output_field]["errors"].append(f"Iteration {i}: Required field '{field_name}' could not be resolved.")
                              break
@@ -421,7 +424,7 @@ class LinkedInScrapingNode(BaseDynamicNode):
                              if other_flag_name != flag_name:
                                   request_params[other_flag_name] = YesNoEnum.NO.value
                     except ValueError:
-                         log.error(f"Resolved job_type '{resolved_job_type}' is not a valid JobTypeEnum value for output '{output_field}', iteration {i}. Skipping.")
+                         self.error(f"Resolved job_type '{resolved_job_type}' is not a valid JobTypeEnum value for output '{output_field}', iteration {i}. Skipping.")
                          is_valid_iteration = False
                          execution_summary[output_field]["errors"].append(f"Iteration {i}: Invalid job_type '{resolved_job_type}'.")
 
@@ -438,7 +441,7 @@ class LinkedInScrapingNode(BaseDynamicNode):
 
                     if test_mode:
                         # Store the validated config dictionary
-                        log.debug(f"[Test Mode] Validated config for '{output_field}_{i}': {validated_request.model_dump()}")
+                        self.debug(f"[Test Mode] Validated config for '{output_field}_{i}': {validated_request.model_dump()}")
                         job_output_map[output_field].append(validated_request.model_dump(mode='json'))
                         execution_summary[output_field]["successful"] += 1 # Mark as successful validation
                     else:
@@ -452,8 +455,8 @@ class LinkedInScrapingNode(BaseDynamicNode):
                         # Success/failure counted after gather
 
                 except ValidationError as e:
-                    log.error(f"Validation failed for ScrapingRequest (output: {output_field}, iteration: {i}): {e}")
-                    log.error(f"Parameters: {final_params}")
+                    self.error(f"Validation failed for ScrapingRequest (output: {output_field}, iteration: {i}): {e}")
+                    self.error(f"Parameters: {final_params}")
                     error_details = e.errors()
                     error_msg = f"Validation failed: {e}"
                     job_output_map[output_field].append({"error": error_msg, "details": error_details})
@@ -462,7 +465,7 @@ class LinkedInScrapingNode(BaseDynamicNode):
                     execution_summary[output_field]["errors"].append(f"Iteration {i}: Error {error_msg} Details: {error_details}")
 
                 except Exception as e:
-                    log.error(f"Unexpected error preparing job for {output_field}, iteration {i}: {e}", exc_info=True)
+                    self.error(f"Unexpected error preparing job for {output_field}, iteration {i}: {e}", exc_info=True)
                     error_msg = f"Unexpected error preparing job: {e}"
                     job_output_map[output_field].append({"error": error_msg})
                     execution_summary[output_field]["failed"] += 1
@@ -472,11 +475,11 @@ class LinkedInScrapingNode(BaseDynamicNode):
         # 4. Run tasks concurrently (only if not in test_mode)
         results = []
         if not test_mode and all_tasks:
-            log.info(f"Executing {len(all_tasks)} scraping jobs concurrently...")
+            self.info(f"Executing {len(all_tasks)} scraping jobs concurrently...")
             results = await asyncio.gather(*all_tasks, return_exceptions=True)
-            log.info("Scraping jobs execution finished.")
+            self.info("Scraping jobs execution finished.")
         elif test_mode:
-             log.info("Test mode enabled. Skipping actual job execution.")
+             self.info("Test mode enabled. Skipping actual job execution.")
 
         # 5. Process results (or stored configs in test_mode) and map back to output fields
         output_data: Dict[str, Any] = {}
@@ -494,7 +497,7 @@ class LinkedInScrapingNode(BaseDynamicNode):
                          final_outputs_for_field.append(item)
                      else:
                          # Should not happen in test_mode
-                         log.error(f"[Test Mode] Unexpected item type '{type(item)}' found for output '{output_field}'.")
+                         self.error(f"[Test Mode] Unexpected item type '{type(item)}' found for output '{output_field}'.")
                          final_outputs_for_field.append({"error": "Internal test mode error: Unexpected item type."})
                  else:
                      # Normal mode: Item is either a Task or an error dict (from pre-validation failure)
@@ -502,7 +505,7 @@ class LinkedInScrapingNode(BaseDynamicNode):
                          if task_index < len(results):
                              result_or_exception = results[task_index]
                              if isinstance(result_or_exception, Exception):
-                                 log.error(f"Scraping job '{item.get_name()}' failed: {result_or_exception}", exc_info=result_or_exception)
+                                 self.error(f"Scraping job '{item.get_name()}' failed: {result_or_exception}", exc_info=result_or_exception)
                                  error_detail = str(result_or_exception)
                                  # Attempt to get cleaner error if available
                                  if hasattr(result_or_exception, '__cause__') and isinstance(getattr(result_or_exception, '__cause__'), dict):
@@ -511,7 +514,7 @@ class LinkedInScrapingNode(BaseDynamicNode):
                                  # We count triggered jobs earlier, now mark failure post-execution
                                  execution_summary[output_field]["failed"] += 1
                              elif isinstance(result_or_exception, dict) and "error" in result_or_exception:
-                                 log.warning(f"Scraping job '{item.get_name()}' returned an error: {result_or_exception['error']}")
+                                 self.warning(f"Scraping job '{item.get_name()}' returned an error: {result_or_exception['error']}")
                                  final_outputs_for_field.append(result_or_exception)
                                  execution_summary[output_field]["failed"] += 1
                              else:
@@ -520,7 +523,7 @@ class LinkedInScrapingNode(BaseDynamicNode):
                                  execution_summary[output_field]["successful"] += 1 # Count success post-execution
                              task_index += 1
                          else:
-                             log.error(f"Mismatch between tasks and results for '{output_field}'.")
+                             self.error(f"Mismatch between tasks and results for '{output_field}'.")
                              final_outputs_for_field.append({"error": "Internal error processing results."})
                              execution_summary[output_field]["failed"] += 1 # Count as failed if result missing
                      elif isinstance(item, dict) and "error" in item:
@@ -528,7 +531,7 @@ class LinkedInScrapingNode(BaseDynamicNode):
                          final_outputs_for_field.append(item)
                          # Failure already counted
                      else:
-                         log.error(f"Unexpected item type in normal mode for '{output_field}': {type(item)}")
+                         self.error(f"Unexpected item type in normal mode for '{output_field}': {type(item)}")
                          final_outputs_for_field.append({"error": "Internal error: Unexpected result item type."})
 
              # Assign results/configs to the output field.
@@ -554,16 +557,22 @@ class LinkedInScrapingNode(BaseDynamicNode):
         try:
             output_instance = output_cls(**init_data)
         except ValidationError as ve:
-             log.error(f"Output validation error for LinkedInScrapingNode: {ve}. Summary: {execution_summary}")
+             self.error(f"Output validation error for LinkedInScrapingNode: {ve}. Summary: {execution_summary}")
              fallback_data = {"execution_summary": execution_summary}
              for key, val in output_data.items():
                  if key not in fallback_data:
                      fallback_data[key] = {"error": f"Failed to serialize results/configs: {ve}"}
              return output_cls(**fallback_data)
         except Exception as e:
-            log.error(f"Unexpected error during output instantiation: {e}", exc_info=True)
+            self.error(f"Unexpected error during output instantiation: {e}", exc_info=True)
             fallback_data = {"execution_summary": execution_summary}
             return output_cls(**fallback_data)
+
+        # Final summary logging
+        for field_name, summary in execution_summary.items():
+            self.info(f"Output field {field_name}: triggered={summary['jobs_triggered']}, successful={summary['successful']}, failed={summary['failed']}")
+            if summary['errors']:
+                self.warning(f"Errors for {field_name}: {summary['errors'][:5]}" + ("..." if len(summary['errors']) > 5 else ""))
 
         return output_instance
 
@@ -577,6 +586,6 @@ class LinkedInScrapingNode(BaseDynamicNode):
             # Assume other types (dict, str, int, etc.) are already serializable
             return result
         except Exception as e:
-            log.error(f"Error serializing scraping result item: {e}")
+            self.error(f"Error serializing scraping result item: {e}")
             return {"error": f"Failed to serialize result item: {e}"}
 

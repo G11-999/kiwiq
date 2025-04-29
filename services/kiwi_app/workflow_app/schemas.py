@@ -114,6 +114,8 @@ class WorkflowRunCreate(BaseModel):
     graph_schema: Optional[GraphSchema] = None
     resume_after_hitl: Optional[bool] = False
     force_resume_experimental_option: Optional[bool] = Field(default=False, description="Experimental option to force resume after HITL even if not in WAITING_HITL state or without pending HITL jobs! (Use with caution!)")
+    on_behalf_of_user_id: Optional[uuid.UUID] = Field(None, description="User ID to act on behalf of (requires superuser privileges)")
+
 
 class WorkflowRunJobCreate(WorkflowRunCreate):
     """Schema used specifically to trigger a new run."""
@@ -152,6 +154,15 @@ class WorkflowRunRead(WorkflowRunBase):
     ended_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+class WorkflowRunState(BaseModel):
+    """Schema for reading a WorkflowRun state (SQL data mainly)."""
+    central_state: Dict[str, Any]
+    node_outputs: Dict[str, Any]
+    run_id: uuid.UUID
+    thread_id: uuid.UUID
 
     model_config = ConfigDict(from_attributes=True)
 

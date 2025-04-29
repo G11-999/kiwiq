@@ -266,10 +266,12 @@ class LangGraphRuntimeAdapter(GraphRuntimeAdapter):
         # Collect edges by destination node ID to handle fan-in
         edges_by_dst = {}
         for edge in graph_entities["edges"]:
-            if edge.src_node_id in router_instances or edge.src_node_id == GRAPH_STATE_SPECIAL_NODE_NAME or edge.dst_node_id == GRAPH_STATE_SPECIAL_NODE_NAME:
+            if (edge.src_node_id in router_instances) or (edge.src_node_id == GRAPH_STATE_SPECIAL_NODE_NAME) or (edge.dst_node_id == GRAPH_STATE_SPECIAL_NODE_NAME):
                     # NOTE: routing edges are dynamic and not added to the graph directly!
                     #     https://langchain-ai.github.io/langgraph/how-tos/command/#basic-usage
                     continue
+            if node_instances[edge.src_node_id].private_output_mode:
+                continue
             if edge.dst_node_id not in edges_by_dst:
                 edges_by_dst[edge.dst_node_id] = []
             edges_by_dst[edge.dst_node_id].append(edge.src_node_id)

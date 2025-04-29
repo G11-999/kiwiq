@@ -114,7 +114,9 @@ class WorkflowRunCreate(BaseModel):
     thread_id: Optional[uuid.UUID] = Field(None, description="Optional existing thread ID to reuse")
     graph_schema: Optional[GraphSchema] = None
     resume_after_hitl: Optional[bool] = False
-    force_resume_experimental_option: Optional[bool] = Field(default=False, description="Experimental option to force resume after HITL even if not in WAITING_HITL state or without pending HITL jobs!")
+    force_resume_experimental_option: Optional[bool] = Field(default=False, description="Experimental option to force resume after HITL even if not in WAITING_HITL state or without pending HITL jobs! (Use with caution!)")
+    on_behalf_of_user_id: Optional[uuid.UUID] = Field(None, description="User ID to act on behalf of (requires superuser privileges)")
+
 
 class WorkflowRunJobCreate(WorkflowRunCreate):
     """Schema used specifically to trigger a new run."""

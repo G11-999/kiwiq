@@ -164,7 +164,7 @@ class RouterNode(DynamicRouterNode):
             except Exception:
                  # If conversion fails, return an empty dict or raise an error
                  # For robustness, returning empty might be safer in production
-                 print(f"Warning: Could not convert input data of type {type(input_data)} to dict. Proceeding with empty data.")
+                 self.warning(f"Could not convert input data of type {type(input_data)} to dict. Proceeding with empty data.")
                  return {}
 
     async def process(self, input_data: Union[DynamicSchema, Dict[str, Any]], config: Optional[Dict[str, Any]] = None, *args: Any, **kwargs: Any) -> Dict[str, Any]:
@@ -212,7 +212,7 @@ class RouterNode(DynamicRouterNode):
                         break
             else:
                  # Optionally log a warning if a path doesn't exist
-                 print(f"Warning: Input path '{condition.input_path}' not found in data for RouterNode.")
+                 self.warning(f"Input path '{condition.input_path}' not found in data for RouterNode.")
 
 
         # Prepare the output data structure expected by the execution engine

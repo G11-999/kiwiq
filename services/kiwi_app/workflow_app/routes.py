@@ -1011,6 +1011,7 @@ async def submit_workflow_run(
     current_user: User = Depends(wf_deps.RequireWorkflowExecuteActiveOrg),
     db: AsyncSession = Depends(get_async_db_dependency),
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
+    user_dao: auth_crud.UserDAO = Depends(auth_deps.get_user_dao),
 ):
     """
     Submits a new workflow run for execution.
@@ -1025,11 +1026,22 @@ async def submit_workflow_run(
     try:
         if not active_org_id:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Active organization not found")
+        
+        user = current_user
+        if run_submit.on_behalf_of_user_id:
+            if not current_user.is_superuser:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You must be a superuser to act on behalf of another user")
+            if run_submit.on_behalf_of_user_id != current_user.id:
+                user = await user_dao.get(db, id=run_submit.on_behalf_of_user_id)
+                if not user:
+                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+            
         # Service layer handles creating ad-hoc workflow if needed and triggering execution
         run = await workflow_service.submit_workflow_run(
-            db=db, run_submit=run_submit, owner_org_id=active_org_id, user=current_user
+            db=db, run_submit=run_submit, owner_org_id=active_org_id, user=user
         )
-        workflow_logger.info(f"User {current_user.id} submitted workflow run for org {active_org_id}, run_id: {run.id}")
+        on_behalf_of_user_id_msg = f" on behalf of user {user.id}" if user.id != current_user.id else ""
+        workflow_logger.info(f"User {current_user.id} submitted workflow run{on_behalf_of_user_id_msg} for org {active_org_id}, run_id: {run.id}")
         return run
     except exceptions.WorkflowNotFoundException as e:
         workflow_logger.warning(f"User {current_user.id} attempted to run non-existent workflow: {str(e)}")
@@ -1144,6 +1156,38 @@ async def get_run_status(
     except Exception as e:
         workflow_logger.error(f"Error retrieving workflow run status for run {run.id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An error occurred while retrieving the workflow run status")
+
+
+# NOTE: state exposes intermediate prompts, system prompts, extra metadata we may not wanna show the user!
+@run_router.get(
+    "/{run_id}/state",
+    response_model=schemas.WorkflowRunState,
+    summary="Get Workflow Run State",
+    dependencies=[Depends(wf_deps.RequireRunReadActiveOrg)] # Basic check on active org context
+)
+async def get_run_state(
+    # Use dependency to fetch run and ensure it belongs to active org
+    run: models.WorkflowRun = Depends(wf_deps.get_workflow_run_for_org),
+    # Re-inject active_org_id for service call if needed, though run object has it
+    current_superuser: User = Depends(auth_deps.get_current_active_superuser),
+    db: AsyncSession = Depends(get_async_db_dependency),
+    workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
+):
+    """
+    Gets the state of a specific workflow run. (ONLY FOR DEBUGGING for SUPERUSERS!)
+
+    - Fetches data primarily from the SQL database.
+    - May attempt to augment the state with the latest update from the event stream (MongoDB) if available.
+    - Requires `run:read` permission on the active organization.
+    """
+    try:
+        state = await workflow_service.get_run_state(db, run=run)
+        workflow_logger.info(f"Retrieved workflow run state for run {run.id}")
+        return state
+    except Exception as e:
+        workflow_logger.error(f"Error retrieving workflow run state for run {run.id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An error occurred while retrieving the workflow run state")
+
 
 @run_router.get(
     "/{run_id}/details",

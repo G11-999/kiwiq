@@ -35,7 +35,7 @@ if TYPE_CHECKING:
     from prefect.tasks import Task
 
 
-from global_config.logger import get_logger
+from global_config.logger import get_prefect_or_regular_python_logger
 
 
 class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], ABC):
@@ -84,7 +84,7 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
 
     runtime_postprocessor: ClassVar[Optional[Callable[[Dict[str, Any]], Dict[str, Any]]]] = None
     runtime_preprocessor: ClassVar[Optional[Callable[[Dict[str, Any]], Dict[str, Any]]]] = None
-    logger: ClassVar[Logger] = None
+    logger: Optional[Logger] = None
 
     # FIXME: DEBUG: Prefect test!
     # --- The Fix ---
@@ -103,6 +103,9 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
     private_input_mode: bool = False
     private_output_mode: bool = False
 
+    class Config:
+        arbitrary_types_allowed = True # Allow non-pydantic types like clients, etc!
+
     @classmethod
     def __pydantic_init_subclass__(cls, *args, **kwargs):
         """
@@ -119,7 +122,7 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
         
         assert cls.node_name is not None and re.match(r"^[a-zA-Z0-9_\. \(\),]+$", cls.node_name), f"Valid characters for node_name are: a-z, A-Z, 0-9, _, ., (, ), , and space!"
         
-        cls.logger = get_logger(f"{__name__}.{cls.__name__}")
+        # cls.logger = get_prefect_or_regular_python_logger(f"{__name__}.{cls.__name__}")
 
         if cls.input_schema_cls is None:
             cls.input_schema_cls = None
@@ -134,6 +137,8 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
     
     def __init__(self, allow_non_user_editable_fields_in_config: bool = True, **kwargs):
         super().__init__(**kwargs)
+        # classes instantiated with configs during flow run!
+        self.logger = get_prefect_or_regular_python_logger(f"{__name__}.{self.node_name}.{self.node_id}")
         if (not allow_non_user_editable_fields_in_config) and (self.__class__.config_schema_cls is not None) and (not inspect.isabstract(self.__class__.config_schema_cls)):
             is_valid, error_field = self.__class__.config_schema_cls.validate_only_user_editable_fields_provided_in_input(kwargs.get("config", {}))
             if not is_valid:
@@ -282,7 +287,9 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
         state_update = {}
         output_schema = self.__class__.output_schema_cls
         if output_schema and isinstance(output_data, output_schema):
-            state_update = {get_node_output_state_key(self.node_id): output_data}
+            # We will let node outputs be outputed even in private input mode for debugging purpsoes by adding collect values reducer for node output keys!
+            if not self.private_input_mode:
+                state_update = {get_node_output_state_key(self.node_id): output_data}
         
             # Ensure that this node is configured to send outputs to the global central state
             #     And it has a set output schema and the generated output is actually an instance of the schema object
@@ -298,13 +305,19 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
                 state_update.update(central_state_output)
         else:
             # NOTE: may wanna copy this potentially!
-            state_update = output_data
+            state_update = output_data if output_data else state_update
 
         # Add node execution order to state update
         state_update[get_central_state_field_key(NODE_EXECUTION_ORDER_KEY)] = [self.node_id]
 
         return state_update
     
+    # def _prepare_input_data(self, input_data: Union[InputSchemaT, Dict[str, Any]], config: Dict[str, Any]) -> InputSchemaT:
+    #     """
+    #     Prepare the input data for the node.
+    #     """
+    #     return self.input_schema_cls(**input_data) if isinstance(input_data, dict) else input_data
+
     # FIXME: DEBUG: Prefect test!
     # @task
     async def run(self, state: StateT, config: Dict[str, Any], *args: Any, **kwargs: Any) -> Dict[str, Any]:
@@ -327,6 +340,7 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
         Raises:
             Exception: For any unregistered error codes encountered during processing
         """
+        
         try:
             # print("\n\n\n\n NODE ENTRY: ", "="*100, "\n\n\n\n")
             # print("\n\n\n\n#### RUN ", self.node_id, " --> ", self.node_name, "\n\n\n\n")
@@ -340,7 +354,10 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
                 #   for conflicting keys, overwrite central state values with private values!
                 input_data_dict.update(state)
                 # TODO: Potentially use model_validate(...)?
-                input_data = self.input_schema_cls(**input_data_dict)
+                input_data = input_data_dict
+                # NOTE: TODO: FIXME: We don't initialize the input schema in private input mode! Be careful and handle this behaviour more gracefully!
+                #     This is mainly the case due to dynamic schemas and missing field types leading to empty input schema cls!
+                # input_data = self.input_schema_cls(**input_data_dict)
             else:
                 input_data = self.build_input_state(state, config)
             if input_data is None:
@@ -413,15 +430,16 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
             
             if (isinstance(output_data, dict) or isinstance(output_data, BaseSchema)) and (not isinstance(state_update, (Command, Send, Interrupt))) and (not isinstance(output_data, (Command, Send, Interrupt))):
                 # assume this is standard state_update and not Command / Send / Interrupts for eg
+                configurable = config.get("configurable", {})
                 if self.private_output_mode:
                     # update central state with private output!
                     output_to_nodes = {}
-                    for out_node_id, out_node_edge in config.get("outgoing_edges", {}).get(self.node_id, {}).items():
+                    for out_node_id, out_node_edge in configurable.get("outgoing_edges", {}).get(self.node_id, {}).items():
                         output_to_node = {}
                         for mapping in out_node_edge.mappings:
                             # Get source field value from state_update, handling both dict and BaseSchema objects
                             if isinstance(output_data, dict):
-                                src_value = state_update.get(mapping.src_field, None)
+                                src_value = output_data.get(mapping.src_field, None)
                             else:  # BaseSchema
                                 src_value = getattr(output_data, mapping.src_field, None)
                             
@@ -632,3 +650,64 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
                 # Use BaseSchema diff to compare schemas
                 diff["schema_diffs"][schema_type] = current_schema_cls.diff_from_provided_schema(provided_schema, self_is_base_for_diff=self_is_base_for_diff)
         return diff
+
+    # Logger convenience methods
+    def debug(self, msg: str, *args: Any, **kwargs: Any) -> None:
+        """
+        Log a debug message through the node's logger.
+        
+        Args:
+            msg: The message to log
+            *args: Additional positional arguments for the logger
+            **kwargs: Additional keyword arguments for the logger
+        """
+        if self.logger:
+            self.logger.debug(msg, *args, **kwargs)
+    
+    def info(self, msg: str, *args: Any, **kwargs: Any) -> None:
+        """
+        Log an info message through the node's logger.
+        
+        Args:
+            msg: The message to log
+            *args: Additional positional arguments for the logger
+            **kwargs: Additional keyword arguments for the logger
+        """
+        if self.logger:
+            self.logger.info(msg, *args, **kwargs)
+    
+    def warning(self, msg: str, *args: Any, **kwargs: Any) -> None:
+        """
+        Log a warning message through the node's logger.
+        
+        Args:
+            msg: The message to log
+            *args: Additional positional arguments for the logger
+            **kwargs: Additional keyword arguments for the logger
+        """
+        if self.logger:
+            self.logger.warning(msg, *args, **kwargs)
+    
+    def error(self, msg: str, *args: Any, **kwargs: Any) -> None:
+        """
+        Log an error message through the node's logger.
+        
+        Args:
+            msg: The message to log
+            *args: Additional positional arguments for the logger
+            **kwargs: Additional keyword arguments for the logger
+        """
+        if self.logger:
+            self.logger.error(msg, *args, **kwargs)
+    
+    def critical(self, msg: str, *args: Any, **kwargs: Any) -> None:
+        """
+        Log a critical message through the node's logger.
+        
+        Args:
+            msg: The message to log
+            *args: Additional positional arguments for the logger
+            **kwargs: Additional keyword arguments for the logger
+        """
+        if self.logger:
+            self.logger.critical(msg, *args, **kwargs)

@@ -10,6 +10,96 @@ Also store the fetched user profile to central state
 @job_config_schema.py 
 
 
+## Build workflow from scratch
+
+```
+create a linkedin scraping workflow in file @linkedin_scraping_workflow.py  which given user/company's URL and entity name (name is not username) in input: 
+
+## I. scrapes the following: @linkedin_scraping.py 
+1. entity profile
+2. Upto 50 posts for entity
+
+
+## II. Stores data into the following paths: 
+@customer_data.py 
+namespace: linkedin_scraping_results
+doc_name for profile: profile_{entity-name}
+doc_name for posts: posts_{entity-name}
+
+
+## III. Transforms data using transform node @transform_node.py  from src schema @posts_schema.py @profile_schema.py to following formats:
+
+NOTE: (only need json with same fields, pydantic is just for reference)
+
+### Profile Schemas 
+```
+class LinkedInProfileSchema(BaseSchema):
+    """LinkedIn profile data structure (scraped from LinkedIn)"""
+    full_name: str = Field(description="User's full name from LinkedIn")
+    headline: str = Field(description="LinkedIn headline")
+    location: str = Field(description="User's geographic location")
+    about: str = Field(description="About section content")
+    follower_count: str = Field(description="Number of followers")
+    phone: Optional[str] = Field(None, description="Contact phone number if available")
+    company: str = Field(description="Current company name")
+    company_description: str = Field(description="Description of current company")
+    company_industry: str = Field(description="Industry of current company")
+    experiences: List[ExperienceSchema] = Field(description="Work experience history")
+    educations: List[EducationSchema] = Field(description="Educational background")
+
+class ExperienceSchema(BaseSchema):
+    """Work experience entry from LinkedIn profile"""
+    title: str = Field(description="Job title")
+    company: str = Field(description="Company name")
+    company_id: Optional[str] = Field(None, description="LinkedIn company identifier")
+    company_linkedin_url: Optional[str] = Field(None, description="URL to company LinkedIn page")
+    company_logo_url: Optional[str] = Field(None, description="URL to company logo")
+    date_range: str = Field(description="Employment date range as string")
+    description: Optional[str] = Field(None, description="Job description")
+    duration: str = Field(description="Employment duration")
+    start_month: Optional[int] = Field(None, description="Start month")
+    start_year: int = Field(description="Start year")
+    end_month: Optional[int] = Field(None, description="End month if applicable")
+    end_year: Optional[int] = Field(None, description="End year if applicable")
+    is_current: bool = Field(description="Whether this is current position")
+    job_type: Optional[str] = Field(None, description="Type of employment (full-time, contract, etc.)")
+    location: Optional[str] = Field(None, description="Job location")
+    skills: Optional[str] = Field(None, description="Relevant skills")
+
+
+class EducationSchema(BaseSchema):
+    """Education entry from LinkedIn profile"""
+    school: str = Field(description="School/university name")
+    school_id: Optional[str] = Field(None, description="LinkedIn school identifier")
+    school_linkedin_url: Optional[str] = Field(None, description="URL to school LinkedIn page")
+    school_logo_url: Optional[str] = Field(None, description="URL to school logo")
+    degree: Optional[str] = Field(None, description="Degree obtained")
+    field_of_study: Optional[str] = Field(None, description="Field of study/major")
+```
+
+### Posts schema
+
+```
+class LinkedInPostSchema(BaseSchema):
+    """LinkedIn post data structure (scraped from LinkedIn)"""
+    text: str = Field(description="Post content text")
+    posted_at_timestamp: str = Field(description="When the post was published (DD/MM/YYYY, HH:MM:SS)")
+    type: Literal["Image", "Video", "Text"] = Field(description="Type of LinkedIn post")
+    engagement_metrics: EngagementMetricsSchema = Field(description="Post engagement data")
+    
+class EngagementMetricsSchema(BaseSchema):
+    likes: Dict = Field(description="Number of different reaction types (LIKE, CELEBRATE, SUPPORT, LOVE, INSIGHTFUL, CURIOUS)")
+    comments: int = Field(description="Number of comments on the post")
+    shares: int = Field(description="Number of times the post was shared")
+```
+
+## IV. Stores data into same namespace but diff docname
+doc_name for profile: profile_filtered_{entity-name}
+doc_name for posts: posts_filtered_{entity-name}
+
+Workflow reference: @post_creation_workflow.py 
+```
+
 ## Plan
 Create a detailed plan including a detailed mermaid diagram to build a workflow using the appropriate nodes available given the workflow PRD; translate requirements in our available nodes and config schema only and suggest caveats / watchouts as required; add placeholders (eg: for loading or storing specific data and config needed for it -- i.e. name/version etc), user inputs, user HITL etc as required for the right kinds of inputs to the graph.
 Add each node config in detail as required

@@ -227,6 +227,7 @@ async def run_test(config_data: Dict[str, Any], test_name: str):
 if __name__ == "__main__":
 
     PERSON_USERNAME = "example-user"
+    URL = "https://www.linkedin.com/in/sytalal/"
     COMPANY_USERNAME = "microsoft"
     KEYWORD = "generative ai applications"
     HASHTAG = "genai"
@@ -298,6 +299,12 @@ if __name__ == "__main__":
         "username": PERSON_USERNAME, # Example person username
     }
 
+    test_config_profile_info_url = {
+        "job_type": JobTypeEnum.PROFILE_INFO.value,
+        "profile_info": YesNoEnum.YES.value,
+        "url": URL,
+    }
+
     # Example 7: Search by Hashtag 
     test_config_search_hashtag = {
         "job_type": JobTypeEnum.SEARCH_POST_BY_HASHTAG.value,
@@ -321,7 +328,8 @@ if __name__ == "__main__":
         # (test_config_person_posts, "Person Posts"),
         # (test_config_search_keyword, "Keyword Search"),
         # (test_config_activity_likes, "User Activity (Likes)"),
-        (test_config_profile_info, "User Profile Info"),
+        # (test_config_profile_info, "User Profile Info"),
+        (test_config_profile_info_url, "User Profile Info (URL)"),
         # (test_config_company_info, "Company Profile Info"),
         # (test_config_search_hashtag, "Hashtag Search"),
         # (test_config_activity_comments, "User Activity (Comments)"),

@@ -19,6 +19,8 @@ from typing import Any, Dict, List, Optional, Union, ClassVar, Literal, Tuple, S
 # Use real imports
 from pydantic import Field, model_validator, field_validator, BaseModel, ValidationError
 
+from global_config.logger import get_prefect_or_regular_python_logger
+
 from kiwi_app.workflow_app.constants import LaunchStatus
 from workflow_service.registry.schemas.base import BaseSchema
 # from workflow_service.registry.nodes.core.base import BaseNode # Not used directly
@@ -400,6 +402,7 @@ def _evaluate_single_condition_on_value(
     Raises:
         ConditionEvaluationError: If an error occurs during evaluation
     """
+    logger = get_prefect_or_regular_python_logger(f"{__name__}")
     if condition is not None:
         operator = condition.operator
         condition_value = condition.value
@@ -501,8 +504,8 @@ def _evaluate_single_condition_on_value(
             return field_value.endswith(str(condition_value))
         return False
     
-    print(f"Warning: Reached end of _evaluate_single_condition_on_value unexpectedly for operator {operator}")
-    return False
+    logger.warning(f"Reached end of _evaluate_single_condition_on_value unexpectedly for operator {operator}")
+    return False  # Default to False for unrecognized operators
 
 
 def evaluate_condition_recursive(
@@ -530,6 +533,7 @@ def evaluate_condition_recursive(
     Returns:
         bool: True if the condition passes, False otherwise
     """
+    logger = get_prefect_or_regular_python_logger(f"{__name__}")
     path_parts = condition.field.split('.')
     if not condition.field:
         path_parts = []
@@ -588,7 +592,7 @@ def evaluate_condition_recursive(
                     target_list_instance, target_item_index
                 )
                 item_results.append(item_result)
-                # print(f"Item {idx} result: {item_result}")
+                logger.debug(f"Item {i} result: {item_result}")
                 
             if not item_results:
                 return False
@@ -608,11 +612,11 @@ def evaluate_condition_recursive(
         )
     except ConditionEvaluationError as e:
         last_part = path_parts[-1] if path_parts else "root"
-        print(f"Warning: Condition eval failed for field '{condition.field}' near '{last_part}': {e}. Treating as False.")
+        logger.warning(f"Condition eval failed for field '{condition.field}' near '{last_part}': {e}. Treating as False.")
         return False
     except Exception as e:
         last_part = path_parts[-1] if path_parts else "root"
-        print(f"Error: Unexpected error eval condition for field '{condition.field}' near '{last_part}': {e}. Treating as False.")
+        logger.error(f"Unexpected error eval condition for field '{condition.field}' near '{last_part}': {e}. Treating as False.")
         traceback.print_exc()
         return False
 
@@ -676,6 +680,7 @@ def evaluate_filter_config_generic(
     Returns:
         bool: True if the data passes the filter conditions, False otherwise
     """
+    logger = get_prefect_or_regular_python_logger(f"{__name__}")
     group_results: List[bool] = []
     full_data_ref = initial_context if isinstance(initial_context, dict) else {}
     
@@ -691,18 +696,18 @@ def evaluate_filter_config_generic(
                 condition,
                 config.nested_list_logical_operator
             )
-            # print(f"Condition result: {result} -- > {condition.model_dump_json(indent=4)}")
+            logger.debug(f"Condition result: {result} -- > {condition.model_dump_json(indent=4)}")
             condition_results.append(result)
             
         # Combine condition results based on group's logical operator
         group_passed = all(condition_results) if group.logical_operator == LogicalOperator.AND else any(condition_results)
-        # print(f"Group result: {group_passed} -- > {group.model_dump_json(indent=4)}")
+        logger.debug(f"Group result: {group_passed} -- > {group.model_dump_json(indent=4)}")
         group_results.append(group_passed)
     
-    # print(f"Group results: {group_results} -- > {config.group_logical_operator}")
+    logger.debug(f"Group results: {group_results} -- > {config.group_logical_operator}")
     # Combine group results based on config's logical operator
     config_passed = all(group_results) if config.group_logical_operator == LogicalOperator.AND else any(group_results)
-    # print(f"Config result: {config_passed} -- > {config.model_dump_json(indent=4)}")
+    logger.debug(f"Config result: {config_passed} -- > {config.model_dump_json(indent=4)}")
     return config_passed
 
 
@@ -1009,8 +1014,7 @@ class FilterNode(BaseDynamicNode):
                         if 0 <= current_idx_to_remove < len(target_list_in_result):
                             del target_list_in_result[current_idx_to_remove]
                         else:
-                            # This might happen if the list was modified by other operations
-                            print(f"Warning: Calculated index {current_idx_to_remove} for removal (original {i_orig}) out of bounds for list {list_path} (len={len(target_list_in_result)}). Item might have been removed by other means.")
+                            self.warning(f"Calculated index {current_idx_to_remove} for removal (original {i_orig}) out of bounds for list {list_path} (len={len(target_list_in_result)}). Item might have been removed by other matching conditions.")
 
                 # --- Step 2c: Apply field removals within the remaining items ---
                 current_result_idx = 0  # Track position in the modified result list
@@ -1026,7 +1030,7 @@ class FilterNode(BaseDynamicNode):
                                      _remove_nested_path(item_in_result, rel_path)
                              current_result_idx += 1
                         else:
-                             print(f"Warning: Result list '{list_path}' length mismatch during field removal (original index {i_orig}).")
+                             self.warning(f"Result list '{list_path}' length mismatch during field removal (original index {i_orig}).")
 
                 # Mark this list as processed
                 processed_list_paths.add(list_path)
@@ -1053,11 +1057,11 @@ class FilterNode(BaseDynamicNode):
 
         except ValidationError as e:
              # Handle configuration validation errors
-             print(f"Error: Config validation failed for FilterNode: {e}")
+             self.error(f"Config validation failed for FilterNode: {e}")
              return FilterOutputSchema(filtered_data=None)
         except Exception as e:
              # Handle any other errors during processing
-             print(f"Error processing FilterNode: {e}")
+             self.error(f"Error processing FilterNode: {e}")
              traceback.print_exc()
              return FilterOutputSchema(filtered_data=None)
 
@@ -1150,10 +1154,10 @@ class IfElseConditionNode(BaseDynamicNode):
             )
         except ValidationError as e:
              # Handle configuration validation errors
-             print(f"Error: Config validation failed for IfElseNode: {e}")
+             self.error(f"Config validation failed for IfElseNode: {e}")
         except Exception as e:
              # Handle any other errors during processing
-             print(f"Error processing IfElseNode: {e}")
+             self.error(f"Error processing IfElseNode: {e}")
              traceback.print_exc()
              
         # Return default result in case of errors
@@ -1166,9 +1170,10 @@ class IfElseConditionNode(BaseDynamicNode):
 
 # --- Example Usage Block (Optional) ---
 if __name__ == '__main__':
-    # print(f"\n\nIfElseConditionNode.output_schema_cls.IS_DYNAMIC_SCHEMA: {IfElseConditionNode.output_schema_cls.__name__} --> {IfElseConditionNode.output_schema_cls.IS_DYNAMIC_SCHEMA}\n\n")
-    # raise ValueError("Stop here!")
-     # Example demonstrating FilterMode.DENY
+    # Configure logging
+    logger = get_prefect_or_regular_python_logger(f"{__name__}")
+    
+    # Example demonstrating FilterMode.DENY
     deny_node = FilterNode(
         node_id="deny_example",
         config={
@@ -1205,14 +1210,14 @@ if __name__ == '__main__':
         }
 
     result = deny_node.process(test_data)
-    print("--- DENY Example ---")
-    print("Original Data:")
-    print(json.dumps(test_data, indent=2))
-    print("\nFiltered Data (DENY pending orders, DENY metadata.source if 'test'):")
-    print(json.dumps(result.model_dump(), indent=2))
+    logger.info("--- DENY Example ---")
+    logger.info("Original Data:")
+    logger.info(json.dumps(test_data, indent=2))
+    logger.info("\nFiltered Data (DENY pending orders, DENY metadata.source if 'test'):")
+    logger.info(json.dumps(result.model_dump(), indent=2))
 
     test_data_deny_source = test_data.copy()
     test_data_deny_source["metadata"] = {"source": "test", "timestamp": 987}
     result_deny_source = deny_node.process(test_data_deny_source)
-    print("\nFiltered Data (DENY pending orders, DENY metadata.source if 'test' - source IS test):")
-    print(json.dumps(result_deny_source.model_dump(), indent=2))
+    logger.info("\nFiltered Data (DENY pending orders, DENY metadata.source if 'test' - source IS test):")
+    logger.info(json.dumps(result_deny_source.model_dump(), indent=2))

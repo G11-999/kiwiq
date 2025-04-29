@@ -16,6 +16,8 @@ from typing import Any, Dict, List, Optional, Union, ClassVar, Literal, Tuple, S
 # Use real imports
 from pydantic import Field, model_validator, field_validator, BaseModel, ValidationError, validator
 
+from global_config.logger import get_prefect_or_regular_python_logger
+
 from kiwi_app.workflow_app.constants import LaunchStatus
 from workflow_service.registry.schemas.base import BaseSchema
 from workflow_service.registry.nodes.core.dynamic_nodes import DynamicSchema, BaseDynamicNode
@@ -42,10 +44,12 @@ def _set_nested_obj(data: Dict[str, Any], path: str, value: Any, create_missing:
         TypeError: If trying to set a key on a non-dictionary intermediate path element
                    when create_missing is False or if the path structure conflicts.
     """
+    logger = get_prefect_or_regular_python_logger(f"{__name__}")
     if not path:
         # Cannot set a value at the root level directly with this function's logic
         # It might overwrite the entire dictionary, which is likely unintended.
-        print("Warning: Attempted to set value with an empty path. This is not supported.")
+        # print("Warning: Attempted to set value with an empty path. This is not supported.")
+        logger.warning("Attempted to set value with an empty path. This is not supported.")
         return False
 
     parts = path.split('.')
@@ -61,7 +65,8 @@ def _set_nested_obj(data: Dict[str, Any], path: str, value: Any, create_missing:
                 current_level = current_level[part]
             else:
                 # Path does not exist, and we're not creating it
-                print(f"Warning: Path part '{part}' not found in path '{path}' and create_missing is False.")
+                # print(f"Warning: Path part '{part}' not found in path '{path}' and create_missing is False.")
+                logger.warning(f"Path part '{part}' not found in path '{path}' and create_missing is False.")
                 return False
         elif isinstance(current_level[part], dict):
             # Move to the next level if it's a dictionary
@@ -135,6 +140,9 @@ class TransformerNode(BaseDynamicNode):
     is copied from specified source paths in the input to destination paths
     in the output. Intermediate dictionary structures in the destination path
     are created automatically if they don't exist.
+
+    # TODO: add selector of paths, multiple mappings for each object and mapping paths based on item context / relative to selected object(s)
+    #     Support mapping lists of objects in selector path
     """
     node_name: ClassVar[str] = "transform_data"
     node_version: ClassVar[str] = "0.1.0"
@@ -167,8 +175,8 @@ class TransformerNode(BaseDynamicNode):
             try:
                 return copy.deepcopy(dict(input_data))
             except Exception:
-                 print(f"Warning: Could not reliably convert input data of type {type(input_data)} to dict.")
-                 return {}
+                self.warning(f"Could not reliably convert input data of type {type(input_data)} to dict.")
+                return {}
 
 
     async def process(self, input_data: Union[DynamicSchema, Dict[str, Any]], config: Optional[Dict[str, Any]] = None, *args: Any, **kwargs: Any) -> TransformerOutputSchema:
@@ -214,25 +222,25 @@ class TransformerNode(BaseDynamicNode):
                     try:
                          success = _set_nested_obj(output_data, destination_path, copied_value, create_missing=True)
                          if not success:
-                             print(f"Warning: Failed to set value for destination path '{destination_path}' from source '{source_path}'.")
+                             self.warning(f"Failed to set value for destination path '{destination_path}' from source '{source_path}'.")
                     except TypeError as e:
                          # This can happen if _set_nested_obj encounters a non-dict where it expects one
-                         print(f"Error setting destination path '{destination_path}': {e}. Skipping this mapping.")
+                         self.error(f"Error setting destination path '{destination_path}': {e}. Skipping this mapping.")
                          traceback.print_exc() # Log the error for debugging
                 else:
                     # Optional: Log or handle cases where the source path doesn't exist
-                    print(f"Warning: Source path '{source_path}' not found in input data. Skipping mapping to '{destination_path}'.")
+                    self.warning(f"Source path '{source_path}' not found in input data. Skipping mapping to '{destination_path}'.")
 
             # Return the constructed output data
             return TransformerOutputSchema(transformed_data=output_data)
 
         except ValidationError as e:
              # Handle configuration validation errors
-             print(f"Error: Config validation failed for TransformerNode: {e}")
+             self.error(f"Error: Config validation failed for TransformerNode: {e}")
              return TransformerOutputSchema(transformed_data={}) # Return empty on config error
         except Exception as e:
              # Handle any other unexpected errors during processing
-             print(f"Error processing TransformerNode: {e}")
+             self.error(f"Error processing TransformerNode: {e}")
              traceback.print_exc()
              return TransformerOutputSchema(transformed_data={}) # Return empty on general error
 
@@ -358,7 +366,7 @@ class DataJoinNode(BaseDynamicNode):
                  # Fallback, attempt dict conversion then deepcopy
                  return copy.deepcopy(dict(input_data))
             except Exception:
-                  print(f"Warning: Could not reliably convert input data of type {type(input_data)} to dict for MapperNode.")
+                  self.warning(f"Warning: Could not reliably convert input data of type {type(input_data)} to dict for MapperNode.")
                   return {} # Return empty dict if conversion fails
 
     def _build_lookup(self, data_list: List[Any], join_key: str) -> Dict[Any, List[Dict[str, Any]]]:
@@ -391,12 +399,12 @@ class DataJoinNode(BaseDynamicNode):
                         lookup[key_value] = []
                     lookup[key_value].append(item_copy)
                 elif not found:
-                    print(f"Warning: Join key path '{join_key}' not found in secondary item: {item}. Skipping item for lookup.")
+                    self.warning(f"Warning: Join key path '{join_key}' not found in secondary item: {item}. Skipping item for lookup.")
                 # else: key_value is None, potentially skip or handle if None keys are meaningful
 
             else:
                 # Log or handle items in the list that are not dictionaries
-                print(f"Warning: Item found in list for key path '{join_key}' is not a dictionary: {type(item)}. Skipping item for lookup.")
+                self.warning(f"Warning: Item found in list for key path '{join_key}' is not a dictionary: {type(item)}. Skipping item for lookup.")
         return lookup
 
     async def process(self, input_data: Union[DynamicSchema, Dict[str, Any]], config: Optional[Dict[str, Any]] = None, *args: Any, **kwargs: Any) -> MapperOutputSchema:
@@ -445,10 +453,10 @@ class DataJoinNode(BaseDynamicNode):
 
                 # --- Validate and Normalize to List ---
                 if not p_found:
-                    print(f"Error: Primary path '{primary_path}' not found in MapperNode. Aborting join.")
+                    self.error(f"Error: Primary path '{primary_path}' not found in MapperNode. Aborting join.")
                     return MapperOutputSchema(mapped_data=None)
                 if not s_found:
-                    print(f"Error: Secondary path '{secondary_path}' not found in MapperNode. Aborting join.")
+                    self.error(f"Error: Secondary path '{secondary_path}' not found in MapperNode. Aborting join.")
                     return MapperOutputSchema(mapped_data=None)
 
                 # Normalize primary object to list if it's a single dictionary
@@ -457,7 +465,7 @@ class DataJoinNode(BaseDynamicNode):
                 elif isinstance(primary_obj, list):
                     primary_list_obj = primary_obj   # It's already a list
                 else:
-                    print(f"Error: Primary path '{primary_path}' does not point to a list or a dictionary object. Found type: {type(primary_obj).__name__}. Aborting join.")
+                    self.error(f"Error: Primary path '{primary_path}' does not point to a list or a dictionary object. Found type: {type(primary_obj).__name__}. Aborting join.")
                     return MapperOutputSchema(mapped_data=None)
 
                 # Normalize secondary object to list if it's a single dictionary
@@ -466,7 +474,7 @@ class DataJoinNode(BaseDynamicNode):
                 elif isinstance(secondary_obj, list):
                     secondary_list_obj = secondary_obj   # It's already a list
                 else:
-                    print(f"Error: Secondary path '{secondary_path}' does not point to a list or a dictionary object. Found type: {type(secondary_obj).__name__}. Aborting join.")
+                    self.error(f"Error: Secondary path '{secondary_path}' does not point to a list or a dictionary object. Found type: {type(secondary_obj).__name__}. Aborting join.")
                     return MapperOutputSchema(mapped_data=None)
 
                 # --- Build Secondary Lookup ---
@@ -496,13 +504,13 @@ class DataJoinNode(BaseDynamicNode):
                                 found_match = True # None is a valid result for one-to-one
 
                         elif not key_found:
-                            print(f"Warning: Primary join key path '{primary_key}' not found in primary item: {primary_item}. Setting '{nesting_field}' to default.")
+                            self.warning(f"Warning: Primary join key path '{primary_key}' not found in primary item: {primary_item}. Setting '{nesting_field}' to default.")
                             # Set default value based on join type even if key not found
                             nested_value = [] if join_type == JoinType.ONE_TO_MANY else None
                             found_match = True # Treat missing key as needing default value set
                         # else: primary_key_value is None, handle similarly to key not found
                         else:
-                            print(f"Warning: Primary join key path '{primary_key}' value is None in primary item: {primary_item}. Setting '{nesting_field}' to default.")
+                            self.warning(f"Warning: Primary join key path '{primary_key}' value is None in primary item: {primary_item}. Setting '{nesting_field}' to default.")
                             nested_value = [] if join_type == JoinType.ONE_TO_MANY else None
                             found_match = True
 
@@ -512,13 +520,13 @@ class DataJoinNode(BaseDynamicNode):
                                 # Use _set_nested_obj to handle nested output path
                                 success = _set_nested_obj(primary_item, nesting_field, nested_value, create_missing=True)
                                 if not success:
-                                    print(f"Warning: Failed to set nested value for path '{nesting_field}' in primary item.")
+                                    self.warning(f"Warning: Failed to set nested value for path '{nesting_field}' in primary item.")
                             except TypeError as e:
-                                 print(f"Error setting nesting path '{nesting_field}': {e}. Skipping nesting for this item.")
+                                 self.error(f"Error setting nesting path '{nesting_field}': {e}. Skipping nesting for this item.")
                                  # Potentially log traceback: traceback.print_exc()
 
                     else:
-                        print(f"Warning: Item found in primary list/object '{primary_path}' is not a dictionary: {type(primary_item)}. Skipping join for this item.")
+                        self.warning(f"Warning: Item found in primary list/object '{primary_path}' is not a dictionary: {type(primary_item)}. Skipping join for this item.")
 
             # After all joins are processed, return the modified working_data
             # Note: If primary_path pointed to a single object, working_data at that path
@@ -527,10 +535,10 @@ class DataJoinNode(BaseDynamicNode):
 
         except ValidationError as e:
              # Handle configuration validation errors
-             print(f"Error: Config validation failed for MapperNode: {e}")
+             self.error(f"Error: Config validation failed for MapperNode: {e}")
              return MapperOutputSchema(mapped_data=None) # Return None on config error
         except Exception as e:
              # Handle any other unexpected errors during processing
-             print(f"Error processing MapperNode: {e}")
+             self.error(f"Error processing MapperNode: {e}")
              traceback.print_exc()
              return MapperOutputSchema(mapped_data=None) # Return None on general error

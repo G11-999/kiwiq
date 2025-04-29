@@ -11,12 +11,15 @@ import asyncio # Keep asyncio import
 from datetime import datetime, timezone # Add timezone
 from typing import List, Optional, Dict, Any, Union
 
+from db.session import get_async_pool
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status
 from pydantic import ValidationError # For schema validation
 
 from jsonschema import validate
 from jsonschema.validators import Draft202012Validator
+
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
 from global_utils import datetime_now_utc
 from global_config.logger import get_logger
@@ -28,6 +31,7 @@ from kiwi_app.settings import settings # Import settings for Mongo paths etc.
 
 # MongoDB Client and Event Schemas
 from mongo_client import AsyncMongoDBClient
+from workflow_service.config.constants import GRAPH_STATE_SPECIAL_NODE_NAME, STATE_KEY_DELIMITER
 from workflow_service.graph.graph import GraphSchema
 from workflow_service.services import events as event_schemas # For Run Details
 
@@ -199,7 +203,7 @@ class WorkflowService:
         *, 
         run_submit: schemas.WorkflowRunCreate, # New schema for submission
         owner_org_id: uuid.UUID, 
-        user: User
+        user: User,
     ) -> models.WorkflowRun:
         """
         Submits a new workflow run, creating a workflow first if graph_schema is provided.
@@ -210,7 +214,7 @@ class WorkflowService:
             run_submit: Schema containing workflow_id OR graph_schema, plus inputs/thread_id.
             owner_org_id: ID of the organization context for the run.
             user: The user initiating the run.
-            
+
         Returns:
             The created WorkflowRun object (in SCHEDULED state).
             
@@ -397,6 +401,88 @@ class WorkflowService:
             # Use standard HTTPException
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workflow run not found or access denied")
         return run
+    
+    async def get_run_state(
+        self,
+        db: AsyncSession,
+        *,
+        run: models.WorkflowRun,
+    ) -> Dict[str, Any]:
+        """Retrieves the state for a run."""
+        # TODO: Implement this
+        """
+        Retrieves the state for a workflow run.
+        
+        This function fetches a workflow run by ID and organization, then retrieves
+        the state from the checkpoint storage using the run's thread_id.
+        
+        Args:
+            db: AsyncSession instance for database operations
+            run: models.WorkflowRun instance
+            owner_org_id: UUID of the organization that owns the run
+            
+        Returns:
+            Dict containing the state of the workflow run
+            
+        Raises:
+            HTTPException: If the run is not found or if there's an error retrieving the state
+        """
+        # First, retrieve the run to get the thread_id
+        if not run:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, 
+                detail="Workflow run not found or access denied"
+            )
+        
+        # Check if thread_id exists
+        if not run.thread_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Run does not have a thread_id associated with it"
+            )
+            
+        try:
+            # Use the thread_id to retrieve the central state from the checkpoint storage
+            
+            async with get_async_pool() as async_psycopg_pool:
+                checkpointer = AsyncPostgresSaver(async_psycopg_pool)
+                config = {"configurable": {"thread_id": str(run.thread_id)}}
+                
+                # Get the checkpoint snapshot
+                snapshot = await checkpointer.aget_tuple(config)
+                
+                if not snapshot:
+                    logger.warning(f"No checkpoint state found for run {run.id} with thread_id {run.thread_id}")
+                    return {"state": None, "message": "No state found for this run"}
+                
+                # Return the central state
+                return {
+                    # Split channel values into central state and node outputs
+                    # Central state keys have format "central_state:field_name"
+                    # Node output keys have format "node_id:output"
+                    "central_state": {
+                        field_name.split(STATE_KEY_DELIMITER)[1]: value 
+                        for field_name, value in snapshot.checkpoint["channel_values"].items() 
+                        if field_name.startswith(GRAPH_STATE_SPECIAL_NODE_NAME)
+                    },
+                    "node_outputs": {
+                        field_name.split(STATE_KEY_DELIMITER)[0]: value
+                        for field_name, value in snapshot.checkpoint["channel_values"].items()
+                        if STATE_KEY_DELIMITER in field_name 
+                        and field_name.endswith("output") 
+                        and not field_name.startswith(GRAPH_STATE_SPECIAL_NODE_NAME)
+                    },
+                    "run_id": str(run.id),
+                    "thread_id": str(run.thread_id)
+                }
+                
+        except Exception as e:
+            logger.error(f"Error retrieving central state for run {run.id}: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to retrieve central state: {str(e)}"
+            )
+        
 
     async def list_runs(
         self, 

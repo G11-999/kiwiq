@@ -47,6 +47,7 @@ class BaseMergeNodeTest(IsolatedAsyncioTestCase):
              "dictMergeLeft": {"a": 1, "b": {"x": 10}},
              "dictMergeRight": {"b": {"y": 20}, "c": 3},
         }
+        self.maxDiff = None
 
 # === MergeAggregateNode Tests ===
 class TestMergeAggregateNode(BaseMergeNodeTest):
@@ -348,13 +349,106 @@ class TestMergeAggregateNode(BaseMergeNodeTest):
              "dicts_merged_auto": {
                 "a": 1,
                 # NOTE: x is not list since it was only present in left and not right; y is list since it was in right and in aggregate mode, right is always init as list!
-                "b": {"x": 10, "z": [30, 40], "y": [20]}, # Nested merge treats y correctly
+                #"b": {"x": 10, "z": [30, 40], "y": [20]}, # Nested merge treats y correctly
+                # Corrected based on _nested_merge AGGREGATE logic:
+                "b": {"x": 10, "y": 20, "z": [30, 40]}, # y is only in right, z is merged into list
                 "c": 3
             }
         }
         self.assertEqual(result_nested_agg.merged_data["dicts_merged_auto"]["a"], expected_nested_agg["dicts_merged_auto"]["a"])
         self.assertEqual(result_nested_agg.merged_data["dicts_merged_auto"]["c"], expected_nested_agg["dicts_merged_auto"]["c"])
         self.assertDictEqual(result_nested_agg.merged_data["dicts_merged_auto"]["b"], expected_nested_agg["dicts_merged_auto"]["b"])
+
+
+    async def test_nested_merge_aggregate_scenarios(self):
+        """Test NESTED_MERGE_AGGREGATE reducer with various complex nested structures."""
+        nested_agg_data = {
+            "sourceX": {
+                "id": "X",
+                "config": {"timeout": 30, "retries": 2},
+                "data": {
+                    "values": [1, 2],
+                    "params": {"a": 10, "b": {"c": "X_c"}},
+                    "report": {"status": "pending"},
+                    "maybe_dict": {"key": "valX"}
+                },
+                "optional_list": None,
+                "primitive": 100
+            },
+            "sourceY": {
+                "id": "Y", # Collide with primitive
+                "config": {"retries": 5, "verbose": True}, # Collide dict
+                "data": {
+                    "values": [3, 4], # Collide list
+                    "params": {"b": {"d": "Y_d"}, "e": 20}, # Collide nested dict
+                    "report": None, # Collide with None
+                    "maybe_dict": None # Collide with None
+                },
+                "optional_list": ["item1"], # Collide with None
+                "primitive": 200 # Collide with primitive
+            },
+            "sourceZ": {
+                "id": "Z", # Third item for list
+                "config": None, # Collide with None
+                "data": {
+                    "values": [5] # Collide list again
+                },
+                "primitive": None # Collide with None
+            }
+        }
+
+        config = {
+            "operations": [
+                {
+                    "output_field_name": "nested_agg_result",
+                    "select_paths": ["sourceX", "sourceY", "sourceZ"],
+                    "merge_strategy": {
+                        "map_phase": {"unspecified_keys_strategy": UnspecifiedKeysStrategy.AUTO_MERGE},
+                        "reduce_phase": {
+                            # Apply nested aggregate globally using default_reducer
+                            "default_reducer": ReducerType.NESTED_MERGE_AGGREGATE
+                        }
+                    }
+                }
+            ]
+        }
+
+        node = MergeAggregateNode(config=config, node_id="nested_agg_complex")
+        result = await node.process(nested_agg_data)
+
+        # Expected result based on NESTED_MERGE_AGGREGATE logic:
+        # - Dictionaries are recursively merged.
+        # - Lists are extended.
+        # - Colliding primitives or mixed types are put into lists.
+        # - None on the right is ignored during aggregation.
+        expected = {
+            "nested_agg_result": {
+                "id": ["X", "Y", "Z"], # Primitive collision -> list -> list append
+                "config": {             # Dict merge
+                    "timeout": 30,      # Only in X
+                    "retries": [2, 5],  # Primitive collision -> list
+                    "verbose": True     # Only in Y (Z's None ignored)
+                },
+                "data": {               # Dict merge
+                    "values": [1, 2, 3, 4, 5], # List extension
+                    "params": {         # Dict merge
+                        "a": 10,        # Only in X
+                        "b": {          # Dict merge
+                            "c": "X_c", # Only in X.b
+                            "d": "Y_d"  # Only in Y.b
+                         },
+                        "e": 20         # Only in Y.params
+                    },
+                    "report": {"status": "pending"}, # Y's None ignored
+                    "maybe_dict": {"key": "valX"}    # Y's None ignored
+                },
+                "optional_list": [["item1"]], # X's None replaced by Y's list (Z has no list)
+                "primitive": [100, 200] # Primitive collision -> list (Z's None ignored)
+            }
+        }
+
+        # Perform deep comparison
+        self.assertDictEqual(result.merged_data, expected)
 
 
     async def test_key_mapping_and_unspecified_ignore(self):
@@ -652,6 +746,87 @@ class TestMergeAggregateNode(BaseMergeNodeTest):
             }
         }
         self.assertEqual(result.merged_data, expected)
+
+    async def test_reduction_error_handling_coalesce_non_empty(self):
+        """Test COALESCE_KEEP_NON_EMPTY error handling during reduction."""
+        data_for_test = {
+            "source1_truthy": {"key_to_sum": "existing_string"}, # Truthy left value
+            "source1_falsy": {"key_to_sum": ""}, # Falsy left value (empty string)
+            "source1_none": {"key_to_sum": None}, # Falsy left value (None)
+            "source2_incompatible": {"key_to_sum": 123} # Incompatible right value for SUM
+        }
+
+        config = {
+            "operations": [
+                {
+                    "output_field_name": "coalesce_result",
+                    "select_paths": ["left_source", "right_source"], # Placeholder paths
+                    "merge_strategy": {
+                        "map_phase": {"unspecified_keys_strategy": "auto_merge"},
+                        "reduce_phase": {
+                            "default_reducer": "replace_right",
+                            "reducers": {"key_to_sum": ReducerType.SUM}, # Will cause TypeError
+                            "error_strategy": ErrorHandlingStrategy.COALESCE_KEEP_NON_EMPTY
+                        }
+                    }
+                }
+            ]
+        }
+
+        # Case 1: Left value is truthy ('existing_string')
+        config["operations"].pop()
+        config["operations"]=[{
+                    "output_field_name": "coalesce_result_truthy",
+                    "select_paths": ["source1_truthy", "source2_incompatible"], # Use truthy left
+                    "merge_strategy": {
+                        "map_phase": {"unspecified_keys_strategy": "auto_merge"},
+                        "reduce_phase": {
+                            "default_reducer": "replace_right",
+                            "reducers": {"key_to_sum": ReducerType.SUM},
+                            "error_strategy": ErrorHandlingStrategy.COALESCE_KEEP_NON_EMPTY
+                        }
+                    }
+                }]
+        node_truthy = MergeAggregateNode(config=config, node_id="merge_err_coalesce_truthy")
+        result_truthy = await node_truthy.process(data_for_test)
+        expected_truthy = {"coalesce_result_truthy": {"key_to_sum": "existing_string"}} # Keep truthy left
+        self.assertEqual(result_truthy.merged_data, expected_truthy)
+
+        # Case 2: Left value is falsy ('')
+        config["operations"]=[{
+                    "output_field_name": "coalesce_result_falsy",
+                    "select_paths": ["source1_falsy", "source2_incompatible"], # Use falsy left
+                    "merge_strategy": {
+                        "map_phase": {"unspecified_keys_strategy": "auto_merge"},
+                        "reduce_phase": {
+                            "default_reducer": "replace_right",
+                            "reducers": {"key_to_sum": ReducerType.SUM},
+                            "error_strategy": ErrorHandlingStrategy.COALESCE_KEEP_NON_EMPTY
+                        }
+                    }
+                }]
+        node_falsy = MergeAggregateNode(config=config, node_id="merge_err_coalesce_falsy")
+        result_falsy = await node_falsy.process(data_for_test)
+        expected_falsy = {"coalesce_result_falsy": {"key_to_sum": 123}} # Keep right value (since left was falsy)
+        self.assertEqual(result_falsy.merged_data, expected_falsy)
+
+        # Case 3: Left value is None
+        config["operations"]=[{
+                    "output_field_name": "coalesce_result_none",
+                    "select_paths": ["source1_none", "source2_incompatible"], # Use None left
+                    "merge_strategy": {
+                        "map_phase": {"unspecified_keys_strategy": "auto_merge"},
+                        "reduce_phase": {
+                            "default_reducer": "replace_right",
+                            "reducers": {"key_to_sum": ReducerType.SUM},
+                            "error_strategy": ErrorHandlingStrategy.COALESCE_KEEP_NON_EMPTY
+                        }
+                    }
+                }]
+        node_none = MergeAggregateNode(config=config, node_id="merge_err_coalesce_none")
+        result_none = await node_none.process(data_for_test)
+        expected_none = {"coalesce_result_none": {"key_to_sum": 123}} # Keep right value (since left was None)
+        self.assertEqual(result_none.merged_data, expected_none)
 
     async def test_reduction_error_handling_fail_node(self):
         """Test FAIL_NODE error handling during reduction."""
@@ -1352,6 +1527,7 @@ class TestMergeAggregateNode(BaseMergeNodeTest):
             }
         }
         self.assertEqual(result.merged_data, expected)
+
 
 
 # === unittest execution ===

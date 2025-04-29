@@ -7,15 +7,17 @@ respecting organization, user, shared, and system data access patterns.
 """
 
 import copy
+import json
 import traceback
 import uuid
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union, Type, ClassVar, Tuple, Set
-import logging # Added logging
 
 from pydantic import Field, model_validator, BaseModel, ValidationError
 
 # Internal dependencies
+from global_config.logger import get_prefect_or_regular_python_logger
+
 from kiwi_app.workflow_app.constants import LaunchStatus
 from kiwi_app.auth.models import User
 from kiwi_app.workflow_app.schemas import WorkflowRunJobCreate # For application context typing
@@ -32,8 +34,6 @@ from workflow_service.config.constants import (
 from workflow_service.registry.schemas.base import BaseSchema
 from workflow_service.registry.nodes.core.dynamic_nodes import DynamicSchema, BaseDynamicNode
 
-# Setup logger
-log = logging.getLogger(__name__)
 
 # --- Helper Functions ---
 
@@ -86,7 +86,13 @@ class FilenameConfig(BaseSchema):
     """
     Configuration for determining the namespace and docname for a customer data operation.
 
-    Supports static values, dynamic retrieval from input fields, or pattern-based generation.
+    Supports static values, dynamic retrieval from input fields, pattern-based generation
+    using the current item context, or pattern-based generation using data from a
+    specific input field.
+
+    Context for patterns:
+    - `namespace_pattern`/`docname_pattern`: Use `{'item': current_item_data, 'index': item_index}`.
+    - `input_namespace_field_pattern`/`input_docname_field_pattern`: Use `{'item': retrieved_data_from_input_field}`.
     """
     # Static Definition
     static_namespace: Optional[str] = Field(
@@ -96,52 +102,87 @@ class FilenameConfig(BaseSchema):
         None, description="A fixed document name value."
     )
 
-    # Dynamic Retrieval from Input Data
+    # Dynamic Retrieval from Input Data (direct value)
     input_namespace_field: Optional[str] = Field(
-        None, description="Dot-notation path in the input data to retrieve the namespace value."
+        None, description="Dot-notation path in the input data to retrieve the namespace value OR the object for pattern evaluation."
     )
     input_docname_field: Optional[str] = Field(
-        None, description="Dot-notation path in the input data to retrieve the docname value."
+        None, description="Dot-notation path in the input data to retrieve the docname value OR the object for pattern evaluation."
     )
 
-    # Pattern-Based Generation (using fields from the item being processed)
+    # Pattern-Based Generation (using current item context)
     namespace_pattern: Optional[str] = Field(
-        None, description="f-string like template to generate the namespace (e.g., 'user_{item[user_id]}'). Uses 'item' and 'index' context."
+        None, description="f-string like template to generate the namespace (e.g., 'user_{item[user_id]}'). Uses 'item' and 'index' context from the currently processed item."
     )
     docname_pattern: Optional[str] = Field(
-        None, description="f-string like template to generate the docname (e.g., 'order_{item[order_id]}_{index}'). Uses 'item' and 'index' context."
+        None, description="f-string like template to generate the docname (e.g., 'order_{item[order_id]}_{index}'). Uses 'item' and 'index' context from the currently processed item."
+    )
+
+    # Pattern-Based Generation (using data from specific input field)
+    input_namespace_field_pattern: Optional[str] = Field(
+        None, description="f-string like template to generate the namespace using data found at 'input_namespace_field'. Uses {'item': retrieved_data} context."
+    )
+    input_docname_field_pattern: Optional[str] = Field(
+        None, description="f-string like template to generate the docname using data found at 'input_docname_field'. Uses {'item': retrieved_data} context."
     )
 
     @model_validator(mode='after')
     def validate_config(self) -> 'FilenameConfig':
-        """Ensures a valid combination of static, input, or pattern fields is provided for namespace and docname."""
+        """Ensures a valid and unique combination of fields is provided for namespace and docname."""
         # Namespace validation
-        ns_sources = sum(1 for source in [self.static_namespace, self.input_namespace_field, self.namespace_pattern] if source is not None)
-        if ns_sources > 1:
-            raise ValueError("Provide only one of static_namespace, input_namespace_field, or namespace_pattern.")
-        if ns_sources == 0:
-            raise ValueError("One of static_namespace, input_namespace_field, or namespace_pattern must be provided.")
-        if self.namespace_pattern and not self.input_namespace_field:
-             log.debug("namespace_pattern is set, but input_namespace_field is not. Pattern will use the 'item' context directly.")
-             # This is allowed, pattern will use the whole item.
-
+        logger = get_prefect_or_regular_python_logger(f"{__name__}")
+        ns_sources = [
+            self.static_namespace,
+            self.input_namespace_field and not self.input_namespace_field_pattern, # Field used directly
+            self.namespace_pattern,
+            self.input_namespace_field_pattern
+        ]
+        num_ns_sources = sum(1 for source in ns_sources if source) # Count how many are not None/False
+        
+        if num_ns_sources > 1:
+            logger.error("Multiple namespace sources configured in FilenameConfig")
+            raise ValueError("Provide only one source for namespace: static_namespace, input_namespace_field (direct), namespace_pattern, or input_namespace_field_pattern.")
+        if num_ns_sources == 0:
+            logger.error("No namespace source configured in FilenameConfig")
+            raise ValueError("One source for namespace must be provided: static_namespace, input_namespace_field, namespace_pattern, or input_namespace_field_pattern.")
+        
+        # If using input_namespace_field_pattern, input_namespace_field must be set
+        if self.input_namespace_field_pattern and not self.input_namespace_field:
+            logger.error("input_namespace_field_pattern used without input_namespace_field")
+            raise ValueError("'input_namespace_field' must be provided when using 'input_namespace_field_pattern'.")
+        
         # Docname validation
-        dn_sources = sum(1 for source in [self.static_docname, self.input_docname_field, self.docname_pattern] if source is not None)
-        if dn_sources > 1:
-            raise ValueError("Provide only one of static_docname, input_docname_field, or docname_pattern.")
-        if dn_sources == 0:
-            raise ValueError("One of static_docname, input_docname_field, or docname_pattern must be provided.")
-        if self.docname_pattern and not self.input_docname_field:
-             log.debug("docname_pattern is set, but input_docname_field is not. Pattern will use the 'item' context directly.")
-             # This is allowed.
-
-        # Pattern validation (basic check for now)
-        # TODO: Add more robust pattern validation if needed (e.g., check for valid keys)
+        dn_sources = [
+            self.static_docname,
+            self.input_docname_field and not self.input_docname_field_pattern, # Field used directly
+            self.docname_pattern,
+            self.input_docname_field_pattern
+        ]
+        num_dn_sources = sum(1 for source in dn_sources if source) # Count how many are not None/False
+        
+        if num_dn_sources > 1:
+            logger.error("Multiple docname sources configured in FilenameConfig")
+            raise ValueError("Provide only one source for docname: static_docname, input_docname_field (direct), docname_pattern, or input_docname_field_pattern.")
+        if num_dn_sources == 0:
+            logger.error("No docname source configured in FilenameConfig")
+            raise ValueError("One source for docname must be provided: static_docname, input_docname_field, docname_pattern, or input_docname_field_pattern.")
+        
+        # If using input_docname_field_pattern, input_docname_field must be set
+        if self.input_docname_field_pattern and not self.input_docname_field:
+            logger.error("input_docname_field_pattern used without input_docname_field")
+            raise ValueError("'input_docname_field' must be provided when using 'input_docname_field_pattern'.")
+        
+        # Original pattern validation (basic checks)
         if self.namespace_pattern and ('{' not in self.namespace_pattern or '}' not in self.namespace_pattern):
-             log.warning(f"namespace_pattern '{self.namespace_pattern}' doesn't look like a valid pattern.")
+            logger.warning(f"namespace_pattern '{self.namespace_pattern}' doesn't look like a valid f-string pattern.")
         if self.docname_pattern and ('{' not in self.docname_pattern or '}' not in self.docname_pattern):
-             log.warning(f"docname_pattern '{self.docname_pattern}' doesn't look like a valid pattern.")
-
+            logger.warning(f"docname_pattern '{self.docname_pattern}' doesn't look like a valid f-string pattern.")
+        # New pattern validation (basic checks)
+        if self.input_namespace_field_pattern and ('{' not in self.input_namespace_field_pattern or '}' not in self.input_namespace_field_pattern):
+            logger.warning(f"input_namespace_field_pattern '{self.input_namespace_field_pattern}' doesn't look like a valid f-string pattern.")
+        if self.input_docname_field_pattern and ('{' not in self.input_docname_field_pattern or '}' not in self.input_docname_field_pattern):
+            logger.warning(f"input_docname_field_pattern '{self.input_docname_field_pattern}' doesn't look like a valid f-string pattern.")
+        
         return self
 
 def _resolve_single_doc_path(
@@ -169,6 +210,7 @@ def _resolve_single_doc_path(
     Returns:
         A tuple (namespace, docname) or None if resolution fails.
     """
+    logger = get_prefect_or_regular_python_logger(f"{__name__}")
     resolved_namespace: Optional[str] = None
     resolved_docname: Optional[str] = None
     context_data = current_item_data if current_item_data is not None else full_input_data
@@ -176,74 +218,117 @@ def _resolve_single_doc_path(
     # --- Resolve Namespace ---
     if config.static_namespace is not None:
         resolved_namespace = config.static_namespace
-    elif config.input_namespace_field:
+    elif config.input_namespace_field and not config.input_namespace_field_pattern:
+        # Direct retrieval using input_namespace_field
         # Try finding the field within the current item first, fallback to full input
-        ns_val, found = _get_nested_obj(context_data, config.input_namespace_field)
-        if not found and current_item_data is not None: # Fallback to full input if item exists
-            ns_val, found = _get_nested_obj(full_input_data, config.input_namespace_field)
+        # Note: This prioritizes current_item if available, might need adjustment based on exact desired behavior.
+        # Let's prioritize full_input_data for fields meant to be *outside* the item.
+        ns_val, found = _get_nested_obj(full_input_data, config.input_namespace_field)
+        if not found and current_item_data is not None: # Fallback only if not found in full input
+             ns_val, found = _get_nested_obj(current_item_data, config.input_namespace_field)
 
         if found and isinstance(ns_val, str):
             resolved_namespace = ns_val
         else:
-            log.warning(f"Namespace field '{config.input_namespace_field}' not found or not a string.")
+            logger.warning(f"Direct namespace field '{config.input_namespace_field}' not found in full input or item, or not a string.")
+            return None
+    elif config.input_namespace_field_pattern:
+        # Pattern evaluation using data from input_namespace_field
+        if not config.input_namespace_field: # Should be caught by validator, but double-check
+             logger.error("Config Error: input_namespace_field_pattern specified without input_namespace_field.")
+             return None
+        # Retrieve the object to use in the pattern context
+        pattern_source_data, found = _get_nested_obj(full_input_data, config.input_namespace_field)
+        if not found:
+             logger.warning(f"Data for namespace pattern not found at '{config.input_namespace_field}' in full input data.")
+             return None
+        try:
+            # Use the retrieved object as 'item' in the pattern context
+            resolved_namespace = config.input_namespace_field_pattern.format(item=pattern_source_data)
+        except KeyError as e:
+            logger.error(f"Error formatting input_namespace_field_pattern '{config.input_namespace_field_pattern}': Key {e} not found in data at '{config.input_namespace_field}'.")
+            return None
+        except Exception as e:
+            logger.error(f"Error formatting input_namespace_field_pattern '{config.input_namespace_field_pattern}': {e}")
             return None
     elif config.namespace_pattern:
+        # Original pattern evaluation using current_item_data and item_index
         if current_item_data is None:
-            log.error("Cannot evaluate namespace_pattern: 'current_item_data' is missing.")
+            logger.error("Cannot evaluate namespace_pattern: 'current_item_data' is missing (required for this pattern type).")
             return None
         try:
-            # Provide 'item' and 'index' context for formatting
+            # Provide 'item' (current item) and 'index' context for formatting
             pattern_context = {'item': current_item_data, 'index': item_index}
             resolved_namespace = config.namespace_pattern.format(**pattern_context)
         except KeyError as e:
-            log.error(f"Error formatting namespace_pattern '{config.namespace_pattern}': Key {e} not found in item data.")
+            logger.error(f"Error formatting namespace_pattern '{config.namespace_pattern}': Key {e} not found in current item data.")
             return None
         except Exception as e:
-            log.error(f"Error formatting namespace_pattern '{config.namespace_pattern}': {e}")
+            logger.error(f"Error formatting namespace_pattern '{config.namespace_pattern}': {e}")
             return None
     else:
          # Should be caught by validator
-         log.error("Invalid FilenameConfig state for namespace.")
+         logger.error("Invalid FilenameConfig state for namespace.")
          return None
 
     # --- Resolve Docname ---
     if config.static_docname is not None:
         resolved_docname = config.static_docname
-    elif config.input_docname_field:
-        # Try finding the field within the current item first, fallback to full input
-        dn_val, found = _get_nested_obj(context_data, config.input_docname_field)
-        if not found and current_item_data is not None: # Fallback to full input if item exists
-             dn_val, found = _get_nested_obj(full_input_data, config.input_docname_field)
+    elif config.input_docname_field and not config.input_docname_field_pattern:
+        # Direct retrieval using input_docname_field
+        dn_val, found = _get_nested_obj(full_input_data, config.input_docname_field)
+        if not found and current_item_data is not None: # Fallback
+             dn_val, found = _get_nested_obj(current_item_data, config.input_docname_field)
 
         if found and isinstance(dn_val, str):
             resolved_docname = dn_val
         else:
-            log.warning(f"Docname field '{config.input_docname_field}' not found or not a string.")
+            logger.warning(f"Direct docname field '{config.input_docname_field}' not found in full input or item, or not a string.")
+            return None
+    elif config.input_docname_field_pattern:
+         # Pattern evaluation using data from input_docname_field
+        if not config.input_docname_field: # Should be caught by validator
+             logger.error("Config Error: input_docname_field_pattern specified without input_docname_field.")
+             return None
+        # Retrieve the object to use in the pattern context
+        pattern_source_data, found = _get_nested_obj(full_input_data, config.input_docname_field)
+        if not found:
+             logger.warning(f"Data for docname pattern not found at '{config.input_docname_field}' in full input data.")
+             return None
+        try:
+            # Use the retrieved object as 'item' in the pattern context
+            resolved_docname = config.input_docname_field_pattern.format(item=pattern_source_data)
+        except KeyError as e:
+            logger.error(f"Error formatting input_docname_field_pattern '{config.input_docname_field_pattern}': Key {e} not found in data at '{config.input_docname_field}'.")
+            return None
+        except Exception as e:
+            logger.error(f"Error formatting input_docname_field_pattern '{config.input_docname_field_pattern}': {e}")
             return None
     elif config.docname_pattern:
+        # Original pattern evaluation using current_item_data and item_index
         if current_item_data is None:
-            log.error("Cannot evaluate docname_pattern: 'current_item_data' is missing.")
+            logger.error("Cannot evaluate docname_pattern: 'current_item_data' is missing (required for this pattern type).")
             return None
         try:
-            # Provide 'item' and 'index' context for formatting
+            # Provide 'item' (current item) and 'index' context for formatting
             pattern_context = {'item': current_item_data, 'index': item_index}
             resolved_docname = config.docname_pattern.format(**pattern_context)
         except KeyError as e:
-            log.error(f"Error formatting docname_pattern '{config.docname_pattern}': Key {e} not found in item data.")
+            logger.error(f"Error formatting docname_pattern '{config.docname_pattern}': Key {e} not found in current item data.")
             return None
         except Exception as e:
-            log.error(f"Error formatting docname_pattern '{config.docname_pattern}': {e}")
+            logger.error(f"Error formatting docname_pattern '{config.docname_pattern}': {e}")
             return None
     else:
          # Should be caught by validator
-         log.error("Invalid FilenameConfig state for docname.")
+         logger.error("Invalid FilenameConfig state for docname.")
          return None
 
     # Final check
     if resolved_namespace is not None and resolved_docname is not None:
         return resolved_namespace, resolved_docname
     else:
-        log.error("Failed to resolve namespace or docname.")
+        logger.error("Failed to resolve namespace or docname.")
         return None
 
 # --- Enums ---
@@ -335,12 +420,27 @@ class LoadPathConfig(BaseSchema):
         return self
 
 class LoadCustomerDataConfig(BaseSchema):
-    """Configuration schema for the LoadCustomerDataNode."""
-    load_paths: List[LoadPathConfig] = Field(
-        ...,
-        min_length=1,
-        description="List of configurations, each defining a document or pattern to load."
+    """
+    Configuration schema for the LoadCustomerDataNode.
+
+    Defines document loading either via a static list of configurations (`load_paths`)
+    or dynamically by specifying a path (`load_configs_input_path`) within the input
+    data that contains the configuration(s).
+    """
+    # Static list of load configurations
+    load_paths: Optional[List[LoadPathConfig]] = Field(
+        None, # Changed from ... to None, making it optional
+        min_length=1, # Keep min_length constraint if provided directly
+        description="List of configurations, each defining a document or pattern to load. Used if 'load_configs_input_path' is not provided."
     )
+    # Dynamic loading from input data
+    load_configs_input_path: Optional[str] = Field(
+        None,
+        description="Dot-notation path within the node's input data to find the load configuration(s). "
+                    "This can be a single JSON object matching LoadPathConfig structure, or a list of such objects. "
+                    "If provided, this overrides 'load_paths'."
+    )
+
     # Global defaults (applied if not overridden in LoadPathConfig)
     global_is_shared: bool = Field(False, description="Default value for 'is_shared'.")
     global_is_system_entity: bool = Field(False, description="Default value for 'is_system_entity'.")
@@ -354,6 +454,18 @@ class LoadCustomerDataConfig(BaseSchema):
     global_on_behalf_of_user_id: Optional[str] = Field(
         None, description="Default User ID (as string) to act on behalf of (requires superuser privileges)."
     )
+
+    @model_validator(mode='after')
+    def check_config_source(self) -> 'LoadCustomerDataConfig':
+        """Ensure either load_paths or load_configs_input_path is provided, but not both."""
+        if self.load_paths is None and self.load_configs_input_path is None:
+            raise ValueError("Either 'load_paths' or 'load_configs_input_path' must be provided.")
+        if self.load_paths is not None and self.load_configs_input_path is not None:
+            raise ValueError("Provide either 'load_paths' or 'load_configs_input_path', not both.")
+        # Ensure load_paths has at least one item if it's the chosen source
+        if self.load_paths is not None and not self.load_paths:
+             raise ValueError("'load_paths' must contain at least one configuration if provided.")
+        return self
 
 class LoadCustomerDataOutput(DynamicSchema):
     """
@@ -398,6 +510,9 @@ class LoadCustomerDataNode(BaseDynamicNode):
         """
         Loads customer data based on the node's configuration.
 
+        Can load configurations statically defined in `load_paths` or dynamically
+        from `load_configs_input_path` pointing to data within `input_data`.
+
         Args:
             input_data: The input data potentially containing path information.
             runtime_config: The runtime configuration containing execution context
@@ -409,31 +524,86 @@ class LoadCustomerDataNode(BaseDynamicNode):
             LoadCustomerDataOutput: An object containing the loaded data and metadata.
                                     Fields are dynamically added based on 'output_field_name'.
         """
+        
         if not runtime_config:
-            self.logger.error("Missing runtime_config.")
+            self.error("Missing runtime_config.")
             return self.__class__.output_schema_cls(__root__={}, output_metadata={})
         
         runtime_config = runtime_config.get("configurable")
         app_context: Optional[Dict[str, Any]] = runtime_config.get(APPLICATION_CONTEXT_KEY)
         ext_context = runtime_config.get(EXTERNAL_CONTEXT_MANAGER_KEY)  # : Optional[ExternalContextManager]
         if not app_context or not ext_context:
-            self.logger.error(f"Missing required keys in runtime_config: {APPLICATION_CONTEXT_KEY} or {EXTERNAL_CONTEXT_MANAGER_KEY}")
+            self.error(f"Missing required keys in runtime_config: {APPLICATION_CONTEXT_KEY} or {EXTERNAL_CONTEXT_MANAGER_KEY}")
             return self.__class__.output_schema_cls(__root__={}, output_metadata={})
         user: Optional[User] = app_context.get("user")
         run_job: Optional[WorkflowRunJobCreate] = app_context.get("workflow_run_job")
         if not user or not run_job:
-            self.logger.error("Missing 'user' or 'workflow_run_job' in application_context.")
+            self.error("Missing 'user' or 'workflow_run_job' in application_context.")
             return self.__class__.output_schema_cls(__root__={}, output_metadata={})
         org_id = run_job.owner_org_id
         customer_data_service: CustomerDataService = ext_context.customer_data_service
         input_dict = input_data if isinstance(input_data, dict) else input_data.model_dump(mode='json')
 
+        # self.info(f"Starting LoadCustomerDataNode processing, runtime_config: {runtime_config}")
+        # self.info(f"\n\nStarting LoadCustomerDataNode processing, runtime_config OUTGOING EDGES: {runtime_config.get('outgoing_edges', {})}\n\n")
+
         output_data: Dict[str, Any] = {}
         output_meta: Dict[str, Dict[str, Any]] = {}
 
+        effective_load_configs: List[LoadPathConfig] = []
+
+        # --- Determine effective load configurations ---
+        if self.config.load_configs_input_path:
+            self.info(f"Attempting to load configurations dynamically from input path: {self.config.load_configs_input_path}")
+            config_data, found = _get_nested_obj(input_dict, self.config.load_configs_input_path)
+            if not found:
+                self.error(f"Input path '{self.config.load_configs_input_path}' for load configs not found in input data. Cannot load any documents.")
+                # Return empty output, respecting the schema
+                return self.__class__.output_schema_cls(**{"output_metadata": output_meta})
+            try:
+                if isinstance(config_data, list):
+                    # Parse list of configs
+                    effective_load_configs = [LoadPathConfig.model_validate(item) for item in config_data]
+                    self.info(f"Successfully parsed {len(effective_load_configs)} load configurations from list at '{self.config.load_configs_input_path}'.")
+                elif isinstance(config_data, dict):
+                    # Parse single config
+                    effective_load_configs = [LoadPathConfig.model_validate(config_data)]
+                    self.info(f"Successfully parsed 1 load configuration from object at '{self.config.load_configs_input_path}'.")
+                else:
+                    self.error(f"Data found at '{self.config.load_configs_input_path}' is not a valid list or object for load configurations. Type: {type(config_data)}. Cannot load documents.")
+                    return self.__class__.output_schema_cls(**{"output_metadata": output_meta}) # Return empty output
+            except ValidationError as e:
+                 self.error(f"Validation error parsing load configuration(s) from input path '{self.config.load_configs_input_path}': {e}", exc_info=True)
+                 return self.__class__.output_schema_cls(**{"output_metadata": output_meta}) # Return empty on parse error
+            except Exception as e:
+                 self.error(f"Unexpected error parsing load configuration(s) from input path '{self.config.load_configs_input_path}': {e}", exc_info=True)
+                 return self.__class__.output_schema_cls(**{"output_metadata": output_meta}) # Return empty on unexpected error
+
+        elif self.config.load_paths:
+            self.info(f"Using statically defined load configurations from 'load_paths' ({len(self.config.load_paths)} configs).")
+            effective_load_configs = self.config.load_paths
+        else:
+            # This case should be prevented by the validator, but good practice to handle
+            self.error("Configuration error: No load paths or dynamic input path specified.")
+            return self.__class__.output_schema_cls(**{"output_metadata": output_meta})
+
+        # --- Process effective load configurations ---
+        if not effective_load_configs:
+             self.warning("No effective load configurations found after processing static/dynamic options. No documents will be loaded.")
+
         async with get_async_db_as_manager() as db:
-            for path_config in self.config.load_paths:
+            output_fields_overlapping_count = {}
+            for path_config in effective_load_configs:
+                output_fields_overlapping_count[path_config.output_field_name] = output_fields_overlapping_count.get(path_config.output_field_name, 0) + 1
+            
+            for path_config in effective_load_configs:
                 try:
+                    # --- Validation Check ---
+                    if not isinstance(path_config, LoadPathConfig):
+                         self.error(f"Internal Error: Encountered non-LoadPathConfig object during processing: {type(path_config)}. Skipping.")
+                         continue
+                    # --- End Validation Check ---
+
                     resolved_path = _resolve_single_doc_path(
                         config=path_config.filename_config,
                         full_input_data=input_dict,
@@ -441,7 +611,7 @@ class LoadCustomerDataNode(BaseDynamicNode):
                         item_index=None
                     )
                     if not resolved_path:
-                        self.logger.error(f"Could not resolve document path for output field '{path_config.output_field_name}'. Skipping.")
+                        self.error(f"Could not resolve document path for output field '{path_config.output_field_name}'. Skipping.")
                         continue
                     namespace, docname = resolved_path
 
@@ -459,12 +629,12 @@ class LoadCustomerDataNode(BaseDynamicNode):
                             try:
                                 on_behalf_of_user_id_uuid = uuid.UUID(on_behalf_id_str)
                             except ValueError:
-                                self.logger.error(f"Invalid UUID format for on_behalf_of_user_id: '{on_behalf_id_str}'. Skipping document load.")
+                                self.error(f"Invalid UUID format for on_behalf_of_user_id: '{on_behalf_id_str}'. Skipping document load.")
                                 continue # Skip this path_config
 
                         # --- Superuser Check --- #
                         if on_behalf_of_user_id_uuid and not user.is_superuser:
-                            self.logger.error(f"User '{user.id}' is not a superuser and cannot use 'on_behalf_of_user_id'='{on_behalf_id_str}'. Skipping load for output field '{path_config.output_field_name}'.")
+                            self.error(f"User '{user.id}' is not a superuser and cannot use 'on_behalf_of_user_id'='{on_behalf_id_str}'. Skipping load for output field '{path_config.output_field_name}'.")
                             continue # Skip this path_config
                         # --- End Superuser Check --- #
 
@@ -476,9 +646,9 @@ class LoadCustomerDataNode(BaseDynamicNode):
                     except Exception as meta_err:
                         # Check if it's a 403 Forbidden, often due to superuser required for on_behalf_of
                         if hasattr(meta_err, 'status_code') and meta_err.status_code == 403:
-                            self.logger.error(f"Permission denied fetching metadata for '{namespace}/{docname}'. Check if superuser is required for 'on_behalf_of_user_id': {meta_err}")
+                            self.error(f"Permission denied fetching metadata for '{namespace}/{docname}'. Check if superuser is required for 'on_behalf_of_user_id': {meta_err}")
                         else:
-                            self.logger.warning(f"Could not fetch metadata for '{namespace}/{docname}': {meta_err}. Assuming unversioned.")
+                            self.warning(f"Could not fetch metadata for '{namespace}/{docname}': {meta_err}. Assuming unversioned.")
 
                     is_versioned_doc = doc_metadata.is_versioned if doc_metadata else False
 
@@ -508,7 +678,7 @@ class LoadCustomerDataNode(BaseDynamicNode):
                                     on_behalf_of_user_id=on_behalf_of_user_id_uuid # Pass the UUID
                                 )
                         except Exception as load_err:
-                             self.logger.error(f"Failed to load versioned document '{namespace}/{docname}': {load_err}", exc_info=True)
+                             self.error(f"Failed to load versioned document '{namespace}/{docname}': {load_err}", exc_info=True)
                              continue # Skip this document
                     else:
                         try:
@@ -529,22 +699,30 @@ class LoadCustomerDataNode(BaseDynamicNode):
                                             org_id=org_id, user=user
                                         )
                                     except Exception as schema_err:
-                                         self.logger.error(f"Failed to load schema template '{schema_opts.schema_template_name}' for '{namespace}/{docname}': {schema_err}")
+                                         self.error(f"Failed to load schema template '{schema_opts.schema_template_name}' for '{namespace}/{docname}': {schema_err}")
                                 elif schema_opts.schema_definition:
                                     loaded_schema = schema_opts.schema_definition
                         except Exception as load_err:
-                             self.logger.error(f"Failed to load unversioned document '{namespace}/{docname}': {load_err}", exc_info=True)
+                             self.error(f"Failed to load unversioned document '{namespace}/{docname}': {load_err}", exc_info=True)
                              continue # Skip this document
 
                     if document_data is not None:
-                        output_data[path_config.output_field_name] = document_data
+                        if output_fields_overlapping_count[path_config.output_field_name] == 1:
+                            output_data[path_config.output_field_name] = document_data
+                        else:
+                            if path_config.output_field_name not in output_data:
+                                output_data[path_config.output_field_name] = [document_data]
+                            else:
+                                output_data[path_config.output_field_name].append(document_data)
                         if loaded_schema:
+                             # NOTE: while loading multiple objects to same output field name, its assumed that all schemas should be same!
+                             # TODO: FIXME: validate this!
                              output_meta.setdefault(path_config.output_field_name, {})['schema'] = loaded_schema
                     else:
-                         self.logger.warning(f"Document not found or access denied for '{namespace}/{docname}' (Output field: {path_config.output_field_name}).")
+                         self.warning(f"Document not found or access denied for '{namespace}/{docname}' (Output field: {path_config.output_field_name}).")
 
                 except Exception as e:
-                    self.logger.error(f"Failed to load document for output field '{path_config.output_field_name}': {e}", exc_info=True)
+                    self.error(f"Failed to load document for output field '{path_config.output_field_name}': {e}", exc_info=True)
 
         # Create output instance using the class reference
         output_cls = self.__class__.output_schema_cls
@@ -570,15 +748,16 @@ class LoadCustomerDataNode(BaseDynamicNode):
                  output_instance.loaded_fields = list(output_data.keys())
 
         except ValidationError as ve:
-            self.logger.error(f"Output validation error: {ve}. Initializing with: {safe_init_data.keys()}")
+            self.error(f"Output validation error: {ve}. Initializing with: {safe_init_data.keys()}")
             # Fallback to empty output, ensuring output_metadata is included if possible
             fallback_data = {"output_metadata": output_meta}
             return output_cls(**fallback_data) # Attempt instantiation with just metadata
         except Exception as e:
-             self.logger.error(f"Unexpected error during output instantiation: {e}", exc_info=True)
+             self.error(f"Unexpected error during output instantiation: {e}", exc_info=True)
              fallback_data = {"output_metadata": output_meta}
              return output_cls(**fallback_data)
 
+        self.info(f"Completed LoadCustomerDataNode processing, loaded {len(output_meta)} documents")
         return output_instance
 
 # --- Store Customer Data Node ---
@@ -670,17 +849,30 @@ class StoreConfig(BaseSchema):
     on_behalf_of_user_id: Optional[str] = Field(
         None, description="User ID (as string) to act on behalf of (requires superuser privileges). Overrides global default."
     )
+    # NEW FIELD: Control list processing
+    process_list_items_separately: Optional[bool] = Field(
+        None,
+        description="If True and input data is a list, process each item separately using the target path config. If False, store the entire list as a single document."
+    )
 
 class StoreCustomerDataConfig(BaseSchema):
     """Configuration schema for the StoreCustomerDataNode."""
     store_configs: List[StoreConfig] = Field(
-        ...,
+        None, # Changed from ... to None, making it optional
         min_length=1,
-        description="List of configurations, each defining data to store and its target."
+        description="List of configurations, each defining data to store and its target. Used if 'store_configs_input_path' is not provided."
     )
+    # Dynamic loading from input data
+    store_configs_input_path: Optional[str] = Field(
+        None,
+        description="Dot-notation path within the node\'s input data to find the store configuration(s). "\
+                    "This can be a single JSON object matching StoreConfig structure, or a list of such objects. "\
+                    "If provided, this overrides \'store_configs\'."
+    )
+
     # Global defaults
-    global_is_shared: bool = Field(False, description="Default value for 'is_shared'.")
-    global_is_system_entity: bool = Field(False, description="Default value for 'is_system_entity'.")
+    global_is_shared: bool = Field(False, description="Default value for \'is_shared\'.")
+    global_is_system_entity: bool = Field(False, description="Default value for \'is_system_entity\'.")
     global_versioning: VersioningInfo = Field(
         default_factory=lambda: VersioningInfo(operation=StoreOperation.UPSERT, is_versioned=False), # Sensible default: upsert unversioned
         description="Default versioning configuration."
@@ -693,6 +885,23 @@ class StoreCustomerDataConfig(BaseSchema):
     global_on_behalf_of_user_id: Optional[str] = Field(
         None, description="Default User ID (as string) to act on behalf of (requires superuser privileges)."
     )
+    # NEW FIELD: Global default for list processing
+    global_process_list_items_separately: Optional[bool] = Field(
+        None,
+        description="Default value for 'process_list_items_separately'."
+    )
+
+    @model_validator(mode='after')
+    def check_config_source(self) -> 'StoreCustomerDataConfig':
+        """Ensure either store_configs or store_configs_input_path is provided, but not both."""
+        if self.store_configs is None and self.store_configs_input_path is None:
+            raise ValueError("Either \'store_configs\' or \'store_configs_input_path\' must be provided.")
+        if self.store_configs is not None and self.store_configs_input_path is not None:
+            raise ValueError("Provide either \'store_configs\' or \'store_configs_input_path\', not both.")
+        # Ensure store_configs has at least one item if it\'s the chosen source
+        if self.store_configs is not None and not self.store_configs:
+             raise ValueError("\'store_configs\' must contain at least one configuration if provided.")
+        return self
 
 class StoreCustomerDataOutput(DynamicSchema):
     """
@@ -759,7 +968,7 @@ class StoreCustomerDataNode(BaseDynamicNode):
             item_index=item_index
         )
         if not resolved_path:
-            self.logger.error(f"Could not resolve target path for item from input '{store_cfg.input_field_path}' (index: {item_index}). Skipping store.")
+            self.error(f"Could not resolve target path for item from input '{store_cfg.input_field_path}' (index: {item_index}). Skipping store.")
             return False, None
         namespace, docname = resolved_path
 
@@ -775,13 +984,13 @@ class StoreCustomerDataNode(BaseDynamicNode):
             try:
                 on_behalf_of_user_id_uuid = uuid.UUID(on_behalf_id_str)
             except ValueError:
-                self.logger.error(f"Invalid UUID format for on_behalf_of_user_id: '{on_behalf_id_str}' for doc '{namespace}/{docname}'. Skipping store.")
+                self.error(f"Invalid UUID format for on_behalf_of_user_id: '{on_behalf_id_str}' for doc '{namespace}/{docname}'. Skipping store.")
                 return False, None # Explicit failure due to invalid config
         # --- --- ---
 
         # --- Superuser Check --- #
         if on_behalf_of_user_id_uuid and not user.is_superuser:
-            self.logger.error(f"User '{user.id}' is not a superuser and cannot use 'on_behalf_of_user_id'='{on_behalf_id_str}'. Skipping store for output field '{namespace}/{docname}'.")
+            self.error(f"User '{user.id}' is not a superuser and cannot use 'on_behalf_of_user_id'='{on_behalf_id_str}'. Skipping store for output field '{namespace}/{docname}'.")
             return False, None # Skip this store_cfg
         # --- End Superuser Check --- #
 
@@ -803,7 +1012,7 @@ class StoreCustomerDataNode(BaseDynamicNode):
                         )
                         success_flag = True # create_or_update generally doesn't fail unless db error
                         operation_str = f"upsert_unversioned (created: {created})"
-                        self.logger.info(f"Upserted unversioned doc '{namespace}/{docname}'. Created: {created}")
+                        self.info(f"Upserted unversioned doc '{namespace}/{docname}'. Created: {created}")
                     elif versioning.operation == StoreOperation.UPDATE:
                         # NOTE: create_or_update_unversioned_document currently behaves like UPSERT.
                         # To enforce UPDATE (fail if not exists), the service method would need modification.
@@ -820,12 +1029,12 @@ class StoreCustomerDataNode(BaseDynamicNode):
                         success_flag = True # Assume success from service perspective
                         operation_str = f"update_unversioned (created: {created})"
                         if created:
-                            self.logger.warning(f"Performed 'update' on unversioned doc '{namespace}/{docname}', but it resulted in creation (upsert behavior). Document did not previously exist.")
+                            self.warning(f"Performed 'update' on unversioned doc '{namespace}/{docname}', but it resulted in creation (upsert behavior). Document did not previously exist.")
                         else:
-                            self.logger.info(f"Updated unversioned doc '{namespace}/{docname}'.")
+                            self.info(f"Updated unversioned doc '{namespace}/{docname}'.")
                     else:
                         # This case should be prevented by the VersioningInfo validator
-                        self.logger.error(f"Invalid operation '{versioning.operation.value}' for unversioned document '{namespace}/{docname}'.")
+                        self.error(f"Invalid operation '{versioning.operation.value}' for unversioned document '{namespace}/{docname}'.")
                         return False, None
 
                 else:
@@ -844,9 +1053,9 @@ class StoreCustomerDataNode(BaseDynamicNode):
                         if success:
                             success_flag = True
                             operation_str = f"initialize_versioned_{versioning.version or 'default'}"
-                            self.logger.info(f"Initialized versioned doc '{namespace}/{docname}' with version '{versioning.version or 'default'}'.")
+                            self.info(f"Initialized versioned doc '{namespace}/{docname}' with version '{versioning.version or 'default'}'.")
                         else:
-                            self.logger.error(f"Failed to initialize versioned doc '{namespace}/{docname}'. Check permissions (e.g., superuser for on_behalf_of) or if it already exists.")
+                            self.error(f"Failed to initialize versioned doc '{namespace}/{docname}'. Check permissions (e.g., superuser for on_behalf_of) or if it already exists.")
                             return False, None # Explicit failure
 
                     elif versioning.operation == StoreOperation.UPDATE:
@@ -865,14 +1074,14 @@ class StoreCustomerDataNode(BaseDynamicNode):
                         if success:
                             success_flag = True
                             operation_str = f"update_versioned_{target_version or 'active'}"
-                            self.logger.info(f"Updated versioned doc '{namespace}/{docname}' (version: {target_version or 'active'}).")
+                            self.info(f"Updated versioned doc '{namespace}/{docname}' (version: {target_version or 'active'}).")
                         else:
-                            self.logger.error(f"Failed to update versioned doc '{namespace}/{docname}' (version: {target_version or 'active'}). Check permissions, if doc/version exists, or if superuser is required for on_behalf_of.")
+                            self.error(f"Failed to update versioned doc '{namespace}/{docname}' (version: {target_version or 'active'}). Check permissions, if doc/version exists, or if superuser is required for on_behalf_of.")
                             return False, None # Explicit failure
 
                     elif versioning.operation == StoreOperation.UPSERT_VERSIONED:
                         # --- Use the dedicated upsert service method --- # 
-                        self.logger.info(f"Attempting upsert_versioned for doc '{namespace}/{docname}' (target version: {versioning.version or 'active/default'}).")
+                        self.info(f"Attempting upsert_versioned for doc '{namespace}/{docname}' (target version: {versioning.version or 'active/default'}).")
                         try:
                             op_performed, doc_identifier_dict = await customer_data_service.upsert_versioned_document(
                                 db=db,
@@ -894,10 +1103,10 @@ class StoreCustomerDataNode(BaseDynamicNode):
                             # If the service call succeeds without raising an exception, mark success
                             success_flag = True
                             operation_str = op_performed # Use the detailed string from the service
-                            self.logger.info(f"Upsert_versioned operation successful for doc '{namespace}/{docname}'. Action: {operation_str}")
+                            self.info(f"Upsert_versioned operation successful for doc '{namespace}/{docname}'. Action: {operation_str}")
                         except Exception as upsert_err:
                             # Catch potential HTTPExceptions or other errors from the service
-                            self.logger.error(f"Upsert_versioned operation failed for doc '{namespace}/{docname}': {upsert_err}", exc_info=True)
+                            self.error(f"Upsert_versioned operation failed for doc '{namespace}/{docname}': {upsert_err}", exc_info=True)
                             # Failure is indicated by success_flag remaining False
                             # Re-raise the exception? Or just return False? Let's return False for now.
                             return False, None # Explicit failure
@@ -907,7 +1116,7 @@ class StoreCustomerDataNode(BaseDynamicNode):
                         if not new_version_name:
                             # Generate a unique version name if not provided
                             new_version_name = f"version_{uuid.uuid4().hex[:8]}"
-                            self.logger.info(f"Generated new version name for CREATE_VERSION: {new_version_name}")
+                            self.info(f"Generated new version name for CREATE_VERSION: {new_version_name}")
 
                         # Create the version entry first
                         create_success = await customer_data_service.create_versioned_document_version(
@@ -931,18 +1140,18 @@ class StoreCustomerDataNode(BaseDynamicNode):
                             if update_success:
                                 success_flag = True
                                 operation_str = f"create_version_{new_version_name}"
-                                self.logger.info(f"Created and updated new version '{new_version_name}' for doc '{namespace}/{docname}'.")
+                                self.info(f"Created and updated new version '{new_version_name}' for doc '{namespace}/{docname}'.")
                             else:
                                 # Version created, but update failed - inconsistent state
-                                self.logger.error(f"Created new version '{new_version_name}' for doc '{namespace}/{docname}', but failed to update it with data. The version entry exists but is empty/incomplete. Check permissions.")
+                                self.error(f"Created new version '{new_version_name}' for doc '{namespace}/{docname}', but failed to update it with data. The version entry exists but is empty/incomplete. Check permissions.")
                                 return False, None # Explicit failure
                         else:
                             # Failed to create the version entry itself
-                            self.logger.error(f"Failed to create new version entry '{new_version_name}' for doc '{namespace}/{docname}'. Does the document exist? Does the 'from_version' exist? Check permissions (e.g., superuser for on_behalf_of).")
+                            self.error(f"Failed to create new version entry '{new_version_name}' for doc '{namespace}/{docname}'. Does the document exist? Does the 'from_version' exist? Check permissions (e.g., superuser for on_behalf_of).")
                             return False, None # Explicit failure
                     else:
                         # This case should be prevented by the VersioningInfo validator
-                        self.logger.error(f"Unsupported operation '{versioning.operation.value}' for versioned document.")
+                        self.error(f"Unsupported operation '{versioning.operation.value}' for versioned document.")
                         return False, None
                 
                 # Return success status and detailed operation string if successful
@@ -950,7 +1159,7 @@ class StoreCustomerDataNode(BaseDynamicNode):
                     return True, (namespace, docname, operation_str)
                 else:
                     # Should have returned False, None earlier in specific failure cases
-                    self.logger.error(f"Reached end of storage logic without success for '{namespace}/{docname}' operation '{versioning.operation.value if versioning else 'unknown'}': {e}"
+                    self.error(f"Reached end of storage logic without success for '{namespace}/{docname}' operation '{versioning.operation.value if versioning else 'unknown'}': {e}"
                                      f" (Permission denied - check superuser privileges if using on_behalf_of_user_id)"
                                      if hasattr(e, 'status_code') and e.status_code == 403 else
                                      f"This indicates an unexpected control flow issue or prior logged failure.")
@@ -962,7 +1171,7 @@ class StoreCustomerDataNode(BaseDynamicNode):
                 # Check for permission errors specifically
                 if hasattr(e, 'status_code') and e.status_code == 403:
                     error_msg += " (Permission denied - check superuser privileges if using on_behalf_of_user_id)"
-                self.logger.error(error_msg, exc_info=True)
+                self.error(error_msg, exc_info=True)
                 return False, None
 
     async def process(
@@ -987,7 +1196,7 @@ class StoreCustomerDataNode(BaseDynamicNode):
         """
         # Retrieve context from runtime_config
         if not runtime_config:
-            self.logger.error("Missing runtime_config.")
+            self.error("Missing runtime_config.")
             passthrough_dict = input_data if isinstance(input_data, dict) else input_data.model_dump(mode='json')
             # Instantiate output using class reference, even on failure
             return self.__class__.output_schema_cls(passthrough_data=passthrough_dict, paths_processed=[])
@@ -997,7 +1206,7 @@ class StoreCustomerDataNode(BaseDynamicNode):
         ext_context = runtime_config.get(EXTERNAL_CONTEXT_MANAGER_KEY)  # : Optional[ExternalContextManager]
 
         if not app_context or not ext_context:
-            self.logger.error(f"Missing required keys in runtime_config: {APPLICATION_CONTEXT_KEY} or {EXTERNAL_CONTEXT_MANAGER_KEY}")
+            self.error(f"Missing required keys in runtime_config: {APPLICATION_CONTEXT_KEY} or {EXTERNAL_CONTEXT_MANAGER_KEY}")
             passthrough_dict = input_data if isinstance(input_data, dict) else input_data.model_dump(mode='json')
             return self.__class__.output_schema_cls(passthrough_data=passthrough_dict, paths_processed=[])
 
@@ -1008,28 +1217,81 @@ class StoreCustomerDataNode(BaseDynamicNode):
         paths_processed: List[List[str]] = [] # List of [namespace, docname, operation_details] lists
         any_failures = False # Track if any individual store operation failed
         
-        for store_cfg in self.config.store_configs:
+        effective_store_configs: List[StoreConfig] = []
+
+        # --- Determine effective store configurations ---
+        if self.config.store_configs_input_path:
+            self.info(f"Attempting to load store configurations dynamically from input path: {self.config.store_configs_input_path}")
+            config_data, found = _get_nested_obj(input_dict, self.config.store_configs_input_path)
+            if not found:
+                self.error(f"Input path '{self.config.store_configs_input_path}' for store configs not found in input data. Cannot store any documents.")
+                any_failures = True # Mark failure but continue (maybe other static configs exist? No, validator prevents this)
+                # Need to decide whether to completely fail or just skip this dynamic part.
+                # For consistency with Load, let's return early.
+                return self.__class__.output_schema_cls(passthrough_data=passthrough_input, paths_processed=[])
+            try:
+                if isinstance(config_data, list):
+                    # Parse list of configs
+                    effective_store_configs = [StoreConfig.model_validate(item) for item in config_data]
+                    self.info(f"Successfully parsed {len(effective_store_configs)} store configurations from list at '{self.config.store_configs_input_path}'.")
+                elif isinstance(config_data, dict):
+                    # Parse single config
+                    effective_store_configs = [StoreConfig.model_validate(config_data)]
+                    self.info(f"Successfully parsed 1 store configuration from object at '{self.config.store_configs_input_path}'.")
+                else:
+                    self.error(f"Data found at '{self.config.store_configs_input_path}' is not a valid list or object for store configurations. Type: {type(config_data)}. Cannot store documents.")
+                    return self.__class__.output_schema_cls(passthrough_data=passthrough_input, paths_processed=[])
+            except ValidationError as e:
+                 self.error(f"Validation error parsing store configuration(s) from input path '{self.config.store_configs_input_path}': {e}", exc_info=True)
+                 return self.__class__.output_schema_cls(passthrough_data=passthrough_input, paths_processed=[])
+            except Exception as e:
+                 self.error(f"Unexpected error parsing store configuration(s) from input path '{self.config.store_configs_input_path}': {e}", exc_info=True)
+                 return self.__class__.output_schema_cls(passthrough_data=passthrough_input, paths_processed=[])
+
+        elif self.config.store_configs:
+            self.info(f"Using statically defined store configurations from 'store_configs' ({len(self.config.store_configs)} configs).")
+            effective_store_configs = self.config.store_configs
+        else:
+            # This case should be prevented by the validator
+            self.error("Configuration error: No store configs or dynamic input path specified.")
+            return self.__class__.output_schema_cls(passthrough_data=passthrough_input, paths_processed=[])
+
+        # --- Process effective store configurations ---
+        if not effective_store_configs:
+             self.warning("No effective store configurations found after processing static/dynamic options. No documents will be stored.")
+
+        # Iterate over the determined configurations
+        for store_cfg in effective_store_configs:
+            # --- Validation Check ---
+            if not isinstance(store_cfg, StoreConfig):
+                self.error(f"Internal Error: Encountered non-StoreConfig object during processing: {type(store_cfg)}. Skipping.")
+                continue
+            # --- End Validation Check ---
+
             data_to_store, found = _get_nested_obj(input_dict, store_cfg.input_field_path)
 
             if not found:
-                self.logger.warning(f"Input field '{store_cfg.input_field_path}' not found. Skipping store configuration.")
+                self.warning(f"Input field '{store_cfg.input_field_path}' not found. Skipping store configuration.")
                 any_failures = True
                 continue
 
             items_to_process: List[Tuple[Optional[int], Dict[str, Any]]] = []
-            if isinstance(data_to_store, list):
+
+            process_list_items_separately = store_cfg.process_list_items_separately if store_cfg.process_list_items_separately is not None else self.config.global_process_list_items_separately
+
+            if isinstance(data_to_store, list) and process_list_items_separately:
                 for item_index, item_data in enumerate(data_to_store):
-                    if isinstance(item_data, dict):
-                        items_to_process.append((item_index, item_data))
-                    else:
-                        self.logger.warning(f"Item at index {item_index} in '{store_cfg.input_field_path}' is not a dictionary. Skipping.")
-                        any_failures = True
-            elif isinstance(data_to_store, dict):
+                    # if isinstance(item_data, dict):
+                    items_to_process.append((item_index, item_data))
+                    # else:
+                    #     self.warning(f"Item at index {item_index} in '{store_cfg.input_field_path}' is not a dictionary. Skipping.")
+                    #     any_failures = True
+            else:  # if isinstance(data_to_store, dict):
                 items_to_process.append((None, data_to_store))
-            else:
-                self.logger.warning(f"Data at '{store_cfg.input_field_path}' is not a dictionary or list of dictionaries. Skipping.")
-                any_failures = True
-                continue # Skip to next store_cfg
+            # else:
+            #     self.warning(f"Data at '{store_cfg.input_field_path}' is not a dictionary or list of dictionaries. Skipping.")
+            #     any_failures = True
+            #     continue # Skip to next store_cfg
 
             # Process the identified items
             for item_index, item_data in items_to_process:
@@ -1046,7 +1308,7 @@ class StoreCustomerDataNode(BaseDynamicNode):
 
 
         if any_failures:
-             self.logger.warning("One or more documents failed to store or were skipped.")
+             self.warning("One or more documents failed to store or were skipped.")
 
         # Instantiate output using class reference
         output_cls = self.__class__.output_schema_cls
@@ -1059,3 +1321,25 @@ class StoreCustomerDataNode(BaseDynamicNode):
         return output_instance
 
 
+if __name__ == "__main__":
+    workflow_inputs: Dict[str, Any] = {
+        "documents_to_process": [
+            {
+                "filename_config": {
+                    "static_namespace": "test",
+                    "static_docname": "test",
+                },
+                "output_field": "loaded_documents",
+            },
+            {
+                "filename_config": {
+                    "static_namespace": "test",
+                    "static_docname": "test",
+                },
+                "output_field": "loaded_documents",
+            }
+        ]
+    }
+    load_path_configs = [LoadPathConfig(**w) for w in workflow_inputs["documents_to_process"]]
+    node = LoadCustomerDataNode(config=LoadCustomerDataConfig(load_paths=load_path_configs), node_id="test_node")
+    # node.run(input_data=None, runtime_config=None)

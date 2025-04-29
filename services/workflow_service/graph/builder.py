@@ -142,7 +142,7 @@ class GraphBuilder:
         
         return central_state_fields
 
-    def build_dynamic_nodes_from_schema_mappings(self, graph_schema: GraphSchema, central_state_fields: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    def build_dynamic_nodes_from_schema_mappings(self, graph_schema: GraphSchema, central_state_fields: Dict[str, Dict[str, Any]], allow_non_user_editable_fields: bool = True) -> Dict[str, Dict[str, Any]]:
         """
         Build dynamic nodes from schema mappings.
 
@@ -469,7 +469,10 @@ class GraphBuilder:
             # Instantiate the node
             dynamic_nodes[node_id] = dynamic_node_cls(
                 node_id=node_id,
-                config=node_config.node_config
+                config=node_config.node_config,
+                private_input_mode=node_config.private_input_mode,
+                private_output_mode=node_config.private_output_mode,
+                allow_non_user_editable_fields_in_config=allow_non_user_editable_fields
             )
         
         return dynamic_nodes
@@ -528,7 +531,11 @@ class GraphBuilder:
                 assert node_id == node_config.node_id, "Node ID and node config node ID must be same!"
             if self.registry.is_non_dynamic_normal_node(node_config.node_name):            
                 node_cls = self.registry.get_node(node_config.node_name, node_config.node_version)
-                node_instances[node_id] = node_cls(node_id=node_id, config=node_config.node_config, allow_non_user_editable_fields_in_config=allow_non_user_editable_fields)
+                node_instances[node_id] = node_cls(node_id=node_id, 
+                                                   config=node_config.node_config, 
+                                                   private_input_mode=node_config.private_input_mode, 
+                                                   private_output_mode=node_config.private_output_mode, 
+                                                   allow_non_user_editable_fields_in_config=allow_non_user_editable_fields)
         
         return node_instances
     
@@ -542,6 +549,8 @@ class GraphBuilder:
         #     for field_name, field_info in input_schema.model_fields.items():
         #         fields[field_name] = field_info.annotation
         for node_id, node_instance in node_instances.items():
+            # NOTE: this is only for debugging parallel branches outputs!
+            # node_output_field = Annotated[node_instance.output_schema_cls, ReducerRegistry.get_reducer(ReducerType.COLLECT_VALUES)]
             fields[get_node_output_state_key(node_id)] = node_instance.output_schema_cls
         GraphState = TypedDict('GraphState', fields)
         return GraphState
@@ -718,7 +727,7 @@ class GraphBuilder:
 
         central_state_fields = self.build_central_state_schema(graph_schema, node_instances)
 
-        dynamic_nodes = self.build_dynamic_nodes_from_schema_mappings(graph_schema, central_state_fields)
+        dynamic_nodes = self.build_dynamic_nodes_from_schema_mappings(graph_schema, central_state_fields, allow_non_user_editable_fields=allow_non_user_editable_fields)
         node_instances.update(dynamic_nodes)
 
         input_schema = node_instances[graph_schema.input_node_id].input_schema_cls
