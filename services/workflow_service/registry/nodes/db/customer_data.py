@@ -11,7 +11,7 @@ import json
 import traceback
 import uuid
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union, Type, ClassVar, Tuple, Set
+from typing import Any, Dict, List, Optional, Union, Type, ClassVar, Tuple, Set, get_origin
 
 from pydantic import Field, model_validator, BaseModel, ValidationError
 
@@ -733,6 +733,12 @@ class LoadCustomerDataNode(BaseDynamicNode):
             "output_metadata": output_meta,
             **output_data  # Add the dynamically loaded data fields
         }
+
+        for field_name, field_info in output_cls.model_fields.items():
+            if field_name in init_data:
+                if get_origin(field_info.annotation) is list:
+                    if not isinstance(init_data[field_name], list):
+                        init_data[field_name] = [init_data[field_name]]
 
         try:
             # Filter out any potential Pydantic keywords from dynamically added keys
