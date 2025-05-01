@@ -734,6 +734,7 @@ class LoadCustomerDataNode(BaseDynamicNode):
             **output_data  # Add the dynamically loaded data fields
         }
 
+        # Hack for converting output data into correct list types from non-list if output schema is expecting list type
         for field_name, field_info in output_cls.model_fields.items():
             if field_name in init_data:
                 if get_origin(field_info.annotation) is list:

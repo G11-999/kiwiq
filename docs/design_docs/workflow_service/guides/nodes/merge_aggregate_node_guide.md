@@ -14,7 +14,7 @@ You can use it to:
 -   Rename or select specific fields (keys) during the merge when working with objects.
 -   Decide how to handle fields that aren't explicitly mentioned when merging objects (`auto_merge` or `ignore`).
 -   Define rules (reducers) for what to do when the same field exists in multiple source objects, or how to combine sequential non-dictionary values (e.g., keep the newest value, keep the oldest, add numbers together, combine items into lists, merge nested details).
--   Perform calculations or transformations (like averaging, multiplying, flattening lists) on the final merged values.
+-   Perform calculations or transformations (like averaging, multiplying, flattening lists, limiting lists) on the final merged values.
 -   Configure multiple, independent merge operations within a single node instance, each producing its own output field.
 -   **Perform transformations on a single selected object or value**, even without performing a multi-source merge.
 
@@ -33,7 +33,7 @@ You can use it to:
     *   You can set a `default_reducer` and, for dictionary merges, specific `reducers` for certain destination keys.
 5.  **Transformation (`post_merge_transformations`):** After all items for a single operation have been merged, you can apply final transformations.
     *   **Dictionary Results:** Apply transformations to specific fields (using their `destination_key`) within the merged dictionary.
-    *   **Non-Dictionary Results:** Apply **only the first listed transformation** to the *entire* final merged value. Any other transformations defined for that operation are ignored.
+    *   **Non-Dictionary Results:** Apply **only the first listed transformation** to the *entire* final merged value. Any other transformations defined for that operation are ignored. For example, you could flatten a list and *then* limit its size using two sequential transformations in the configuration, but only the flatten would run if applied to a non-dictionary list. **Correction**: Multiple transformations *can* apply sequentially to a non-dictionary result; the output of one transformation becomes the input to the next one listed in the `post_merge_transformations` dictionary.
 6.  **Operations:** Define multiple independent merge/transform tasks within one node. Each operation selects its data, applies its strategy, and saves its result to a unique `output_field_name`.
 
 ## Configuration (`NodeConfig`)
@@ -90,7 +90,6 @@ You configure the `MergeAggregateNode` within the `node_config` field of its ent
             "select_paths": ["system_a_tags", "system_b_tags", "manual_tags"], // Paths point to lists or primitives
             "merge_each_object_in_selected_list": false, // Treat lists/values as atomic items
             "merge_strategy": {
-              // map_phase is ignored here
               "reduce_phase": {
                 "default_reducer": "combine_in_list" // Combine all selected items into a single list
                 // 'reducers' dict is ignored here
@@ -98,8 +97,12 @@ You configure the `MergeAggregateNode` within the `node_config` field of its ent
               "post_merge_transformations": {
                 "flatten_tags": { // Apply to the combined list result
                   "operation_type": "recursive_flatten_list"
-                }
-                // Only this first transformation applies if the result is a list
+                },
+                 "limit_tags": { // Can apply another transformation sequentially
+                   "operation_type": "limit_list",
+                   "operand": 10 // Keep only the first 10 tags after flattening
+                 }
+                // Multiple transformations can apply sequentially to non-dictionary results
               }
             }
           },
@@ -159,7 +162,7 @@ You configure the `MergeAggregateNode` within the `node_config` field of its ent
                     *   `replace_left`: Keep the existing value; ignore the value from the new source object.
                     *   `append`: Expects the left value to be a list. Appends the entire right value as a single new element to the list.
                     *   `extend`: Expects *both* values to be lists. Extends the left list with the elements from the right list.
-                    *   `combine_in_list`: Creates a list containing `[left_value, right_value]`. If the left value is already a list, it appends the right value to it.
+                    *   `combine_in_list`: Creates a list containing `[left_value, right_value]`. If the left value is already a list, it appends the right value to it. Handles initial item correctly.
                     *   `sum`, `min`, `max`: Perform numerical aggregation (expects numbers).
                     *   `simple_merge_replace`: Expects both values to be dictionaries. Merges *top-level* keys from the right dictionary into the left. If keys collide, the right value replaces the left. Does *not* recurse into nested dictionaries.
                     *   `simple_merge_aggregate`: Expects both values to be dictionaries. Merges *top-level* keys. If keys collide, values are combined into a list (`[left_value, right_value]`). Does *not* recurse.
@@ -177,12 +180,14 @@ You configure the `MergeAggregateNode` within the `node_config` field of its ent
                 *   `fail_node`: Stop the node and report an error.
         *   **`post_merge_transformations`** (Object, Optional): Apply calculations/transformations *after* merging is complete.
             *   **Dictionary Results:** Maps `destination_key` names (dot-notation supported) to transformation rules. Multiple transformations can target different keys.
-            *   **Non-Dictionary Results:** Maps arbitrary keys to transformation rules. **Caveat: Only the first transformation listed in this dictionary will be applied** to the single, final non-dictionary value. Others are ignored.
+            *   **Non-Dictionary Results:** Maps arbitrary keys to transformation rules. **Caveat: Only the first transformation listed in this dictionary will be applied** to the single, final non-dictionary value. Others are ignored. **Correction:** Transformations are applied **sequentially** based on their order in the `post_merge_transformations` dictionary. The output of one transformation becomes the input for the next.
             *   Each rule specifies:
                 *   `operation_type` (String): The calculation/transformation. Common types:
                     *   `average`: Calculates average (uses internal count of merged items for that key).
                     *   `multiply`, `divide`, `add`, `subtract`: Basic arithmetic (requires `operand`).
                     *   `recursive_flatten_list`: Flattens a potentially nested list into a single level. Expects the input value to be a list.
+                    *   `limit_list`: Truncates a list to keep only the first N items (requires numeric `operand`). Expects the input value to be a list.
+                    *   `sort_list`: Sorts a list. Specify the key (optional, dot-notation for nested keys in dictionaries, can be a list of keys for multi-level sort) and order (`ascending` or `descending`) in the `operand` dictionary. `None` values (both `None` items and items where the sort key resolves to `None`) are always placed at the end of the sorted list, regardless of the specified order.
                 *   `operand` (Any): Value needed for arithmetic operations.
         *   **`transformation_error_strategy`** (String): How to handle errors during transformations (e.g., `divide` by zero). Default is `skip_operation`. Same options as `error_strategy`.
 
@@ -203,7 +208,7 @@ You can use this node simply to apply transformations to a single object or valu
 2.  Set `merge_each_object_in_selected_list` to `false`. (This is crucial, otherwise, it might try to merge items *within* the list if they were dictionaries).
 3.  The `reduce_phase` will technically run with the `default_reducer` on the single item, but effectively just passes the item through.
 4.  Define your transformation in `post_merge_transformations`. Give it any key (e.g., `"flatten_op"`).
-    *   **Caveat:** If you define multiple transformations here, **only the first one listed will be applied** to the non-dictionary value.
+    *   **Caveat:** If you define multiple transformations here, **only the first one listed will be applied** to the non-dictionary value. **Correction:** Multiple transformations can be applied sequentially. For example, define a `"flatten_op"` first, then a `"limit_op"` second.
 
 ## Input (`DynamicSchema`)
 
@@ -287,8 +292,8 @@ The node produces an output object containing:
     -   `merge_strategy`: The core instructions for combining/transforming.
         -   **`map_phase`** (Only for dictionary merging): Prepare the fields before merging. Use `key_mappings` to rename fields (e.g., `customer_id` -> `clientID`) or grab nested values. Use `unspecified_keys_strategy` to decide if other fields are included (`auto_merge`) or dropped (`ignore`). See the Configuration section for important nuances on `auto_merge`.
         -   **`reduce_phase`**: Handle overlaps (dict merging) or combine sequence (non-dict merging). Use `default_reducer` to pick the main rule (e.g., `replace_right`, `combine_in_list`, `sum`). For dictionary merging, you can use `reducers` to apply special rules for specific fields (even nested ones like `user.settings`). Use `nested_merge_replace` or `nested_merge_aggregate` to combine complex nested dictionary data deeply.
-        -   **`post_merge_transformations`**: Final tweaks after combining. If the result is a dictionary, you can transform multiple fields (e.g., calculate an `average`, `multiply` a value). If the result is *not* a dictionary (e.g., a number, a list), **only the first transformation you list gets applied.** Use `recursive_flatten_list` to turn `[1, [2, 3], [[4]]]` into `[1, 2, 3, 4]`.
--   **Single Item Transformation:** You *can* use this node to just transform one piece of data. Select only that piece in `select_paths`. If it's a dictionary, use transformations as normal. If it's a list or value, set `merge_each_object_in_selected_list` to `false` and define *one* transformation in `post_merge_transformations`.
+        -   **`post_merge_transformations`**: Final tweaks after combining. If the result is a dictionary, you can transform multiple fields (e.g., calculate an `average`, `multiply` a value). If the result is *not* a dictionary (e.g., a number, a list), **only the first transformation you list gets applied.** **Correction:** Transformations apply sequentially (e.g., flatten then limit). Use `recursive_flatten_list` to turn `[1, [2, 3], [[4]]]` into `[1, 2, 3, 4]`. Use `limit_list` (with an `operand`) to keep only the first few items of a list.
+-   **Single Item Transformation:** You *can* use this node to just transform one piece of data. Select only that piece in `select_paths`. If it's a dictionary, use transformations as normal. If it's a list or value, set `merge_each_object_in_selected_list` to `false` and define one or more transformations in `post_merge_transformations` - they will apply sequentially.
 -   **Dot Notation:** Use dots (`.`) to access data inside objects (e.g., `customer.address.zipcode`).
 -   **It Modifies a Copy:** The node doesn't change the original input data; it creates a new combined result in its output field (`merged_data`).
 -   Connect the necessary input data sources to this node using edges and mappings. Connect the `merged_data` field (or a specific field *inside* it like `merged_data.my_output_name`) to the next node that needs the combined result.

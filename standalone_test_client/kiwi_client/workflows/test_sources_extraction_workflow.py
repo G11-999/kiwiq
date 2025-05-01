@@ -313,9 +313,9 @@ workflow_graph_schema = {
       "dynamic_output_schema": {
         "fields": {
           "loaded_documents": {
-            "type": "list",
+            "type": "any",
             "required": True,
-            "description": "List of loaded documents"
+            "description": "List or single document loaded from the input"
           }
         }
       }
@@ -420,9 +420,9 @@ workflow_graph_schema = {
       "dynamic_input_schema": {
         "fields": {
           "collected_extractions": {
-            "type": "list",
+            "type": "any",
             "required": True,
-            "description": "List of collected extractions"
+            "description": "List or single extracted data"
           }
         }
       }
@@ -463,9 +463,9 @@ workflow_graph_schema = {
       "dynamic_input_schema": {
         "fields": {
           "all_extractions": {
-            "type": "list",
+            "type": "any",
             "required": True,
-            "description": "List of collected extractions"
+            "description": "List or single extracted data"
           }
         }
       }

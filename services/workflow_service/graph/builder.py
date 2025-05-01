@@ -330,6 +330,13 @@ class GraphBuilder:
             else:
                 field_info = get_field_info_from_fields_dict(other_node_id, other_field_name, other_fields_dict)
             
+            # hack to set Any type on unavailable field!
+            if not field_info:
+                field_info = FieldInfo(
+                    default=None,
+                    annotation=Any,
+                )
+
             if field_info:
                 copy_field_info_to_fields_dict(node_id, field_name, fields_dict, field_info)
                 return field_info
@@ -400,6 +407,8 @@ class GraphBuilder:
                         recuperated_field_info = try_recuperate_missing_field_info(edge.src_node_id, mapping.src_field, edge.dst_node_id, mapping.dst_field, output_fields, input_fields)
                         if not recuperated_field_info:
                             raise ValueError(f"Field `{mapping.src_field}` for node `{edge.src_node_id}` is not found in output fields and couldn't be recuperated from `{edge.dst_node_id}`'s `{mapping.dst_field}`!")
+                        if is_central_state_special_node(dst_node_id):
+                            copy_field_to_central_state_fields_no_replace(mapping.dst_field, recuperated_field_info)
                 
                 if not is_central_state_special_node(dst_node_id):
                     dst_node_cls = self.registry.get_node(dst_node_config.node_name, dst_node_config.node_version)
@@ -408,6 +417,8 @@ class GraphBuilder:
                         recuperated_field_info = try_recuperate_missing_field_info(edge.dst_node_id, mapping.dst_field, edge.src_node_id, mapping.src_field, input_fields, output_fields)
                         if not recuperated_field_info:
                             raise ValueError(f"Field `{mapping.dst_field}` for node `{edge.dst_node_id}` is not found in input fields and couldn't be recuperated from `{edge.src_node_id}`'s `{mapping.src_field}`!")
+                        if is_central_state_special_node(src_node_id):
+                            copy_field_to_central_state_fields_no_replace(mapping.src_field, recuperated_field_info)
         
         # Step 5: Construct dynamic nodes with gathered schema information
         for node_id, schemas in explicit_dynamic_schemas.items():

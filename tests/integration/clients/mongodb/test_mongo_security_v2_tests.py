@@ -449,6 +449,85 @@ class TestOptimizedMongoDBClient(unittest.IsolatedAsyncioTestCase):
             if "text index required" in str(e).lower():
                 logger.warning("Skipping text search test as text index is not available")
     
+    async def test_search_objects_pagination_and_sort(self):
+        """Test searching objects with skip, limit, and sort options."""
+        # Create test objects with distinct values for sorting
+        test_objects_data = [
+            ([self.TEST_PREFIX, "search_opts", "items", "item1"], {"name": "Charlie", "value": 30, "category": "A"}),
+            ([self.TEST_PREFIX, "search_opts", "items", "item2"], {"name": "Alice", "value": 10, "category": "B"}),
+            ([self.TEST_PREFIX, "search_opts", "items", "item3"], {"name": "Bob", "value": 20, "category": "A"}),
+            ([self.TEST_PREFIX, "search_opts", "items", "item4"], {"name": "David", "value": 40, "category": "B"}),
+            ([self.TEST_PREFIX, "search_opts", "items", "item5"], {"name": "Eve", "value": 50, "category": "A"}),
+        ]
+        
+        # Batch create objects
+        await self.client.batch_create_objects(test_objects_data)
+        
+        # 1. Test Sorting (Ascending by value)
+        sort_asc_results = await self.client.search_objects(
+            key_pattern=[self.TEST_PREFIX, "search_opts", "items", "*"],
+            value_sort_by=[("value", 1)]  # 1 for ascending
+        )
+        self.assertEqual(len(sort_asc_results), 5, "Should find all 5 items")
+        # Extract values to check order
+        values_asc = [doc["data"]["value"] for doc in sort_asc_results]
+        self.assertListEqual(values_asc, [10, 20, 30, 40, 50], "Items should be sorted by value ascending")
+
+        # 2. Test Sorting (Descending by name)
+        sort_desc_results = await self.client.search_objects(
+            key_pattern=[self.TEST_PREFIX, "search_opts", "items", "*"],
+            value_sort_by=[("name", -1)]  # -1 for descending
+        )
+        self.assertEqual(len(sort_desc_results), 5, "Should find all 5 items")
+        # Extract names to check order
+        names_desc = [doc["data"]["name"] for doc in sort_desc_results]
+        self.assertListEqual(names_desc, ["Eve", "David", "Charlie", "Bob", "Alice"], "Items should be sorted by name descending")
+
+        # 3. Test Limit
+        limit_results = await self.client.search_objects(
+            key_pattern=[self.TEST_PREFIX, "search_opts", "items", "*"],
+            value_sort_by=[("value", 1)],  # Sort to make limit predictable
+            limit=2
+        )
+        self.assertEqual(len(limit_results), 2, "Should return only 2 items due to limit")
+        # Check the values of the returned items
+        limit_values = [doc["data"]["value"] for doc in limit_results]
+        self.assertListEqual(limit_values, [10, 20], "Should return the first 2 items when sorted by value")
+
+        # 4. Test Skip
+        skip_results = await self.client.search_objects(
+            key_pattern=[self.TEST_PREFIX, "search_opts", "items", "*"],
+            value_sort_by=[("value", 1)],  # Sort to make skip predictable
+            skip=3
+        )
+        self.assertEqual(len(skip_results), 2, "Should return 2 items after skipping 3")
+        # Check the values of the returned items
+        skip_values = [doc["data"]["value"] for doc in skip_results]
+        self.assertListEqual(skip_values, [40, 50], "Should return the last 2 items when sorted by value and skipping 3")
+
+        # 5. Test Skip and Limit combined
+        skip_limit_results = await self.client.search_objects(
+            key_pattern=[self.TEST_PREFIX, "search_opts", "items", "*"],
+            value_sort_by=[("value", 1)],  # Sort by value ascending
+            skip=1,
+            limit=2
+        )
+        self.assertEqual(len(skip_limit_results), 2, "Should return 2 items when skipping 1 and limiting to 2")
+        # Check the values of the returned items (should be the 2nd and 3rd items)
+        skip_limit_values = [doc["data"]["value"] for doc in skip_limit_results]
+        self.assertListEqual(skip_limit_values, [20, 30], "Should return the items with values 20 and 30")
+
+        # 6. Test Sorting by Multiple Fields
+        multi_sort_results = await self.client.search_objects(
+            key_pattern=[self.TEST_PREFIX, "search_opts", "items", "*"],
+            value_sort_by=[("category", 1), ("value", -1)] # Sort by category ASC, then value DESC
+        )
+        self.assertEqual(len(multi_sort_results), 5, "Should find all 5 items for multi-sort")
+        # Extract relevant fields to check order
+        multi_sort_data = [(doc["data"]["category"], doc["data"]["value"]) for doc in multi_sort_results]
+        expected_multi_sort = [('A', 50), ('A', 30), ('A', 20), ('B', 40), ('B', 10)]
+        self.assertListEqual(multi_sort_data, expected_multi_sort, "Items should be sorted by category ASC, then value DESC")
+
     async def test_count_objects(self):
         """Test counting objects with different patterns."""
         # Create test objects

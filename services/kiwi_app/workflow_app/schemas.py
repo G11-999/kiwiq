@@ -366,6 +366,12 @@ class SchemaTemplateListQuery(CommonListQuery):
     include_system: bool = Field(False, description="Include system templates.")
 
 
+class CustomerDataSortBy(str, Enum):
+    """Enum for sorting customer data results."""
+    CREATED_AT = "created_at"
+    UPDATED_AT = "updated_at"
+
+
 class SearchSortBy(str, Enum):
     """Enum for sorting search results."""
     CREATED_AT = "created_at"

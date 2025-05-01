@@ -190,6 +190,8 @@ class SingleFieldOperationType(str, Enum):
     ADD = "add"                     # Add an operand to the final value
     SUBTRACT = "subtract"           # Subtract an operand from the final value
     RECURSIVE_FLATTEN_LIST = "recursive_flatten_list"   # Flatten nested lists into a single-level list
+    LIMIT_LIST = "limit_list"       # Limit the final value to a specified number of items
+    SORT_LIST = "sort_list"         # Sort a list based on key(s) and order
 
 # --- Configuration Schemas (Forward declaration for type hints) ---
 class SingleFieldTransformationSchema(BaseModel):
@@ -532,6 +534,135 @@ def _transform_subtract(current_value: Any, config: SingleFieldTransformationSch
         raise TypeError(f"SUBTRACT requires a numeric value. Got {type(current_value).__name__}.")
     return current_value - operand
 
+def _transform_limit_list(current_value: Any, config: SingleFieldTransformationSchema, count: Optional[int]) -> Any:
+    """
+    Transformation: Limit a list to a specified number of items.
+    
+    Args:
+        current_value: The list to limit
+        config: Configuration containing the operand (max items to keep)
+        count: Not used for this transformation
+        
+    Returns:
+        List limited to the specified number of items
+        
+    Raises:
+        TypeError: If the input value is not a list
+    """
+    if not isinstance(current_value, list):
+        raise TypeError(f"LIMIT_LIST requires a list input. Got {type(current_value).__name__}.")
+    
+    limit = int(config.operand)  # Already validated to be numeric
+    return current_value[:limit]
+
+def _transform_sort_list(current_value: Any, config: SingleFieldTransformationSchema, count: Optional[int]) -> Any:
+    """
+    Transformation: Sorts a list based on specified keys and order, placing None values last.
+
+    The operand for this operation is an optional dictionary:
+    {
+        "key": Optional[Union[str, List[str]]],  # Dot-notation path(s) within list elements. If None, sort elements directly.
+        "order": Optional[Union[str, int]]      # 'ascending', 1 (default) or 'descending', -1.
+    }
+    If operand is None or empty, defaults to direct element sorting in ascending order.
+
+    Args:
+        current_value: The list to sort.
+        config: Configuration containing the optional operand dictionary.
+        count: Not used for this transformation.
+
+    Returns:
+        A new list containing the sorted elements with None values placed at the end.
+
+    Raises:
+        TypeError: If the input value is not a list, if the provided operand is not a dictionary,
+                   or if elements are not comparable for the given key(s).
+        ValueError: If the operand format is invalid (e.g., invalid 'key' or 'order').
+    """
+    logger = get_prefect_or_regular_python_logger(f"{__name__}._transform_sort_list")
+
+    if not isinstance(current_value, list):
+        raise TypeError(f"SORT_LIST requires a list input. Got {type(current_value).__name__}.")
+
+    operand = config.operand
+    # Default values if operand is None or empty dict
+    key_spec = None
+    order_spec: Union[str, int] = "ascending" # Default sort order
+
+    # Parse operand if it's provided and valid
+    if operand is not None:
+        if not isinstance(operand, dict):
+             raise TypeError(f"SORT_LIST operand must be a dictionary or None. Got {type(operand).__name__}.")
+        key_spec = operand.get("key")
+        # Only override default order if 'order' is explicitly present in the operand
+        if "order" in operand:
+            order_spec = operand["order"]
+
+    # --- Normalize Key Paths ---
+    key_paths: Optional[List[str]] = None
+    if isinstance(key_spec, str) and key_spec.strip():
+        key_paths = [key_spec.strip()]
+    elif isinstance(key_spec, list):
+        key_paths = [p.strip() for p in key_spec if isinstance(p, str) and p.strip()]
+        if not key_paths: # Handle list of empty strings or non-strings
+            key_paths = None
+    elif key_spec is not None: # If key_spec is provided but invalid type
+        raise ValueError(f"Invalid 'key' format in SORT_LIST operand: must be string, list of strings, or None. Got {type(key_spec).__name__}")
+
+    # --- Normalize Sort Order ---
+    sort_reverse = False
+    if isinstance(order_spec, str):
+        order_lower = order_spec.lower()
+        if order_lower == "descending":
+            sort_reverse = True
+        elif order_lower != "ascending":
+            raise ValueError(f"Invalid 'order' string in SORT_LIST operand: must be 'ascending' or 'descending'. Got '{order_spec}'")
+    elif isinstance(order_spec, int):
+        if order_spec == -1:
+            sort_reverse = True
+        elif order_spec != 1:
+            raise ValueError(f"Invalid 'order' integer in SORT_LIST operand: must be 1 (ascending) or -1 (descending). Got {order_spec}")
+    elif order_spec is not None: # Should only be None if operand was missing 'order' or None itself
+         raise ValueError(f"Invalid 'order' type in SORT_LIST operand: must be string or integer. Got {type(order_spec).__name__}")
+
+    # --- Define Sort Key Function (Handles None Last) ---
+    def get_sort_key(item: Any) -> Any:
+        """
+        Generates the actual key used for sorting, ensuring Nones are handled last.
+        Returns a tuple where the first element indicates if the primary value is None.
+        """
+        def none_sort_value(item):
+            return item is not None if sort_reverse else item is None
+        
+        if not key_paths:
+            # Sort elements directly
+            return (none_sort_value(item), none_sort_value(item), item)
+        elif len(key_paths) == 1:
+            # Sort by a single nested key
+            value, _ = _get_nested_obj(item, key_paths[0])
+            return (none_sort_value(value), none_sort_value(item), value)
+        else:
+            # Sort by multiple nested keys
+            # Create a tuple of (is_none, value) for each key path
+            # This ensures multi-key sort stability with Nones pushed last at each level
+            key_values = tuple(_get_nested_obj(item, p)[0] for p in key_paths)
+            item_none_sort_value = none_sort_value(item)
+            comparison_tuple = tuple((none_sort_value(v), item_none_sort_value, v) for v in key_values)
+            return comparison_tuple
+
+    # --- Perform Sort ---
+    try:
+        # Use the generated key function
+        sorted_list = sorted(current_value, key=get_sort_key, reverse=sort_reverse)
+        logger.info(f"Successfully sorted list (None last). Original count: {len(current_value)}, Sorted count: {len(sorted_list)}")
+        return sorted_list
+    except TypeError as e:
+        logger.error(f"TypeError during sorting (None last): {e}. Check element types and key paths.")
+        raise TypeError(f"Cannot sort list: Elements are not comparable for the specified key(s) even with None handling. Original error: {e}")
+    except Exception as e:
+        logger.error(f"Unexpected error during sorting (None last): {e}")
+        raise
+
 # Map enum values to transformation functions
 TRANSFORMATION_FUNCTIONS: Dict[SingleFieldOperationType, TransformationFunc] = {
     SingleFieldOperationType.RECURSIVE_FLATTEN_LIST: _transform_recursive_flatten_list,
@@ -540,6 +671,8 @@ TRANSFORMATION_FUNCTIONS: Dict[SingleFieldOperationType, TransformationFunc] = {
     SingleFieldOperationType.DIVIDE: _transform_divide,
     SingleFieldOperationType.ADD: _transform_add,
     SingleFieldOperationType.SUBTRACT: _transform_subtract,
+    SingleFieldOperationType.LIMIT_LIST: _transform_limit_list,
+    SingleFieldOperationType.SORT_LIST: _transform_sort_list,
 }
 
 
@@ -618,22 +751,55 @@ class ReducePhaseConfigSchema(BaseSchema):
 class SingleFieldTransformationSchema(BaseSchema):
     """Configuration for a single post-merge transformation."""
     operation_type: SingleFieldOperationType = Field(..., description="The type of operation to perform.")
-    operand: Optional[Any] = Field(None, description="The operand for the operation (e.g., number to multiply by). Required for non-AVERAGE ops.")
+    operand: Optional[Any] = Field(
+        None,
+        description="Operand for the operation. Type depends on 'operation_type'. "
+                    "Required for MULTIPLY, DIVIDE, ADD, SUBTRACT, LIMIT_LIST (numeric operand); "
+                    "Optional for SORT_LIST (dict operand: {'key': Optional[str|List[str]], 'order': Optional[str|int]}); "
+                    "Not used for AVERAGE, RECURSIVE_FLATTEN_LIST."
+    )
 
     @model_validator(mode='after')
-    def check_operand_needed(self) -> 'SingleFieldTransformationSchema':
-        """Validates that operand is provided and numeric if required by the operation type."""
-        is_numeric_op = self.operation_type in [
+    def check_operand_requirements(self) -> 'SingleFieldTransformationSchema':
+        """Validates that operand is provided and has the correct type if required by the operation type."""
+        op_type = self.operation_type
+        operand = self.operand # Use self.operand for checks
+
+        # Numeric operand operations
+        if op_type in [
             SingleFieldOperationType.MULTIPLY,
             SingleFieldOperationType.DIVIDE,
             SingleFieldOperationType.ADD,
-            SingleFieldOperationType.SUBTRACT
-        ]
-        if is_numeric_op:
-            if self.operand is None:
-                 raise ValueError(f"Operand must be provided for operation type '{self.operation_type}'.")
-            if not isinstance(self.operand, numbers.Number):
-                 raise TypeError(f"Operand must be numeric for operation type '{self.operation_type}'. Got {type(self.operand).__name__}.")
+            SingleFieldOperationType.SUBTRACT,
+            SingleFieldOperationType.LIMIT_LIST
+        ]:
+            if operand is None:
+                 raise ValueError(f"Operand must be provided for operation type '{op_type}'.")
+            if not isinstance(operand, numbers.Number):
+                 raise TypeError(f"Operand must be numeric for operation type '{op_type}'. Got {type(operand).__name__}.")
+            # Specific check for DIVIDE
+            if op_type == SingleFieldOperationType.DIVIDE and operand == 0:
+                 raise ValueError("Operand cannot be zero for DIVIDE operation.")
+            # Specific check for LIMIT_LIST
+            if op_type == SingleFieldOperationType.LIMIT_LIST and (not isinstance(operand, int) or operand < 0):
+                 raise ValueError("Operand must be a non-negative integer for LIMIT_LIST operation.")
+
+        # Sort list operation (optional dict operand)
+        elif op_type == SingleFieldOperationType.SORT_LIST:
+            # Operand is optional (can be None). If provided, it MUST be a dictionary.
+            if operand is not None and not isinstance(operand, dict):
+                 raise TypeError(f"Operand for operation type '{op_type}' must be a dictionary or None. Got {type(operand).__name__}.")
+            # Further validation of the dict structure (key, order) happens within _transform_sort_list
+
+        # Operations that do not require an operand
+        elif op_type in [
+             SingleFieldOperationType.AVERAGE,
+             SingleFieldOperationType.RECURSIVE_FLATTEN_LIST
+        ]:
+            if operand is not None:
+                # Optional: Warn or raise if operand is provided but not used? Let's allow it silently.
+                pass
+
         return self
 
 class MergeStrategySchema(BaseSchema):
@@ -1055,36 +1221,30 @@ class MergeAggregateNode(BaseDynamicNode):
                                 self.warning(f"    Warning: Unknown transformation type '{transform_config.operation_type}'. Skipping for key '{dest_key}'.")
                                 
                     else: # Apply transforms directly to the non-dictionary merged_result
-                        # We assume only one transformation can apply to the single output value.
-                        # Take the first transformation defined (or warn if multiple are defined for non-dict merge)
-                        if len(strategy.post_merge_transformations) > 1:
-                            self.warning(f"  Warning: Multiple post-merge transformations defined for non-dictionary output '{output_field}'. Only the first one found will be applied.")
-                        
-                        # Use .items() and next() to get the first one without knowing the key
-                        first_transform_item = next(iter(strategy.post_merge_transformations.items()), None)
-
-                        if first_transform_item:
-                            transform_key, transform_config = first_transform_item # Key is ignored here, config is used
-                            current_value = merged_result # The result is the value itself
-                            transform_func = TRANSFORMATION_FUNCTIONS.get(transform_config.operation_type)
+                        # Apply all transformations in sequence to the single output value
+                        if strategy.post_merge_transformations:
+                            current_value = merged_result
+                            self.info(f"  Applying {len(strategy.post_merge_transformations)} transformations to non-dictionary output '{output_field}'")
                             
-                            if transform_func:
-                                final_value = None
-                                try:
-                                    # Get count for AVERAGE if needed, using the count from the non-dict reduction
-                                    count_for_avg = merged_counts_for_op.get(output_field) if transform_config.operation_type == SingleFieldOperationType.AVERAGE else None
-                                    final_value = transform_func(current_value, transform_config, count_for_avg)
-                                    self.info(f"    - Applied {transform_config.operation_type.value} to final non-dictionary result -> {final_value}")
-                                    merged_result = final_value # Update the final result directly
-                                except Exception as e:
-                                    merged_result = self._handle_transformation_error(e, strategy.transformation_error_strategy, output_field, current_value)
-                                    if strategy.transformation_error_strategy == ErrorHandlingStrategy.FAIL_NODE:
-                                        raise # Re-raise if handler raised
-                            else:
-                                self.warning(f"    Warning: Unknown transformation type '{transform_config.operation_type}' specified for non-dictionary output '{output_field}'. Skipping transformation.")
-                        elif strategy.post_merge_transformations: # If dict is not empty but next returned None (shouldn't happen)
-                             self.warning(f"    Warning: Could not retrieve transformation config for non-dictionary output '{output_field}'. Skipping transformations.")
-
+                            # Iterate through all transformations and apply them in sequence
+                            for transform_key, transform_config in strategy.post_merge_transformations.items():
+                                transform_func = TRANSFORMATION_FUNCTIONS.get(transform_config.operation_type)
+                                
+                                if transform_func:
+                                    try:
+                                        # Get count for AVERAGE if needed, using the count from the non-dict reduction
+                                        count_for_avg = merged_counts_for_op.get(output_field) if transform_config.operation_type == SingleFieldOperationType.AVERAGE else None
+                                        current_value = transform_func(current_value, transform_config, count_for_avg)
+                                        self.info(f"    - Applied {transform_config.operation_type.value} transformation -> {current_value}")
+                                    except Exception as e:
+                                        current_value = self._handle_transformation_error(e, strategy.transformation_error_strategy, output_field, current_value)
+                                        if strategy.transformation_error_strategy == ErrorHandlingStrategy.FAIL_NODE:
+                                            raise  # Re-raise if handler raised
+                                else:
+                                    self.warning(f"    Warning: Unknown transformation type '{transform_config.operation_type}' for output '{output_field}'. Skipping this transformation.")
+                            
+                            # Update the final merged result after all transformations
+                            merged_result = current_value
 
                 # Store final result for this operation
                 final_output_data[output_field] = merged_result

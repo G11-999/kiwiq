@@ -1138,7 +1138,9 @@ class AsyncMongoDBClient:
         value_filter: Optional[Dict[str, Any]] = None,
         allowed_prefixes: Optional[List[List[str]]] = None,
         value_sort_by: Optional[List[Tuple[str, int]]] = None,
-        include_fields: Optional[List[str]] = None
+        include_fields: Optional[List[str]] = None,
+        skip: Optional[int] = None,
+        limit: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """
         Searches objects by pattern, text search, and value filters.
@@ -1207,7 +1209,10 @@ class AsyncMongoDBClient:
             if projection:
                 find_kwargs["projection"] = projection
             
-            cursor = collection.find(final_query, **find_kwargs)
+            if skip:
+                find_kwargs["skip"] = skip
+            if limit:
+                find_kwargs["limit"] = limit
             
             # Add sort for text search relevance if needed
             value_sort_by = value_sort_by or []
@@ -1216,7 +1221,12 @@ class AsyncMongoDBClient:
                 value_sort_by.append(("score", {"$meta": "textScore"}))
             
             if value_sort_by:
-                cursor = cursor.sort(value_sort_by)
+                find_kwargs["sort"] = value_sort_by
+
+            cursor = collection.find(final_query, **find_kwargs)
+            
+            # if value_sort_by:
+            #     cursor = cursor.sort(value_sort_by)
             
             results = []
             async for doc in cursor:

@@ -1929,6 +1929,8 @@ class CustomerDataService:
         limit: int = 100,
         on_behalf_of_user_id: Optional[uuid.UUID] = None,
         include_system_entities: bool = False,
+        sort_by: Optional[schemas.CustomerDataSortBy] = None,
+        sort_order: Optional[schemas.SortOrder] = schemas.SortOrder.DESC,
     ) -> List[schemas.CustomerDocumentMetadata]:
         """
         List documents accessible to the user.
@@ -1943,6 +1945,8 @@ class CustomerDataService:
             limit: Maximum number of documents to return
             on_behalf_of_user_id: Optional user ID to act on behalf of (superusers only)
             include_system_entities: Whether to include system entities (superusers only)
+            sort_by: Field to sort results by
+            sort_order: Order to sort results (ASC or DESC)
             
         Returns:
             List of document metadata
@@ -2007,6 +2011,17 @@ class CustomerDataService:
             # Process each pattern and combine results
             all_docs = {}
             customer_data_logger.debug(f"Patterns: {patterns}")
+            
+            # Define sort options based on provided parameters
+            sort_direction = 1 if sort_order == schemas.SortOrder.ASC else -1
+            value_sort_by = None
+            
+            if sort_by:
+                if sort_by == schemas.CustomerDataSortBy.CREATED_AT:
+                    value_sort_by = [("created_at", sort_direction)]
+                elif sort_by == schemas.CustomerDataSortBy.UPDATED_AT:
+                    value_sort_by = [("updated_at", sort_direction)]
+            
             for pattern in patterns:
                 customer_data_logger.debug(f"Processing pattern: {pattern}")
                 docs = await self.versioned_mongo_client.client.search_objects(
@@ -2014,6 +2029,9 @@ class CustomerDataService:
                     key_pattern=pattern + [None] * len(self.versioned_mongo_client.VERSION_SEGMENT_NAMES),
                     allowed_prefixes=allowed_prefixes,
                     include_fields=self.versioned_mongo_client.segment_names + [self.mongo_client.DOC_TYPE_KEY],
+                    skip=skip,
+                    limit=limit,
+                    value_sort_by=value_sort_by
                 )
                 customer_data_logger.debug(f"Found {len(docs)} documents for pattern: {pattern}")
                 all_docs.update(
@@ -2073,10 +2091,8 @@ class CustomerDataService:
             
             customer_data_logger.debug(f"Unique result count: {len(unique_result)}")
             
-            # Apply pagination
-            paginated_result = unique_result[skip:skip + limit]
-            customer_data_logger.debug(f"Paginated result count: {len(paginated_result)} (skip={skip}, limit={limit})")
-            return paginated_result
+            # Return unique result (sorting and pagination is now done by the search_objects function)
+            return unique_result
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

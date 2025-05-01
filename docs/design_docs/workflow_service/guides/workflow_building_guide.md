@@ -81,11 +81,12 @@ Each task in your workflow is a node, defined within the `nodes` dictionary of t
     *   An `llm` node needs `llm_config` (model, temperature, max_tokens), `output_schema` (for structured output), `tool_calling_config` & `tools` (for tool use), `web_search_options`, etc.
     *   A `filter_data` node needs `targets` defining filter conditions.
     *   A `transform_data` node needs `mappings` defining data restructuring.
-    *   A `load_customer_data` node needs `load_paths` specifying which documents to fetch. It implicitly uses the **runtime context** (see Section 6) to determine the user and organization for access control.
-    *   A `store_customer_data` node needs `store_configs` defining data sources and target locations. It also uses the **runtime context** for access control.
+    *   A `load_customer_data` node needs `load_paths` specifying which documents to fetch. It implicitly uses the **runtime context** (see Section 6) to determine the user and organization for access control. It supports resolving paths using `input_namespace_field_pattern` and `input_docname_field_pattern` based on other input data.
+    *   A `store_customer_data` node needs `store_configs` defining data sources and target locations. It also uses the **runtime context** for access control. It supports resolving paths using `input_namespace_field_pattern` and `input_docname_field_pattern` based on other input data.
+    *   A `load_multiple_customer_data` node needs filters (`namespace_filter`, `include_shared`, etc.), pagination (`skip`, `limit`), sorting (`sort_by`, `sort_order`), and an `output_field_name`. It uses runtime context for authorization.
     *   A `prompt_constructor` node needs `prompt_templates` (defining static `template` or dynamic `template_load_config`, `variables` for defaults/requirements, and optionally `construct_options` for path-based variable sourcing) and optionally `global_construct_options` for fallback path sourcing.
     *   A `linkedin_scraping` node needs `jobs` defining scraping tasks (profile info, posts, search). Each job defines parameters (static or dynamic via `InputSource` object, which supports `static_value`, `input_field_path`, and `expand_list`), limits (using system defaults if omitted), and an `output_field_name`. It can be run in `test_mode` to validate configs. See its guide for details on job types, credit consumption, defaults, and the output structure (`execution_summary`, `scraping_results`).
-    *   A `merge_aggregate` node needs `operations`. Each operation defines `select_paths` (data sources), an `output_field_name`, and a `merge_strategy` (containing `map_phase`, `reduce_phase`, and optional `post_merge_transformations`) to intelligently combine objects. See its guide for details on strategies and reducers.
+    *   A `merge_aggregate` node needs `operations`. Each operation defines `select_paths` (data sources), an `output_field_name`, and a `merge_strategy` (containing `map_phase`, `reduce_phase`, and optional `post_merge_transformations`) to intelligently combine objects. Supports sequential transformations on non-dictionary results. See its guide for details on strategies and reducers.
     *   *Deprecated:* `load_prompt_templates` node (use `prompt_constructor` with `template_load_config` instead).
 -   **`private_input_mode` / `private_output_mode` (Boolean, Optional):** Advanced settings primarily used with `map_list_router_node` for parallel processing. See Section 9.
 -   **`dynamic_input_schema` / `dynamic_output_schema` (Object, Optional):** Advanced settings for explicitly defining expected data structures, often used by dynamic nodes like `InputNode`, `OutputNode`, `HITLNode`, `PromptConstructorNode`. Defining these is highly recommended for dynamic nodes. See Section 7.
@@ -628,7 +629,7 @@ To process each item in a list independently (and potentially in parallel), use 
 -   **Use Meaningful IDs:** Choose descriptive `node_id`s.
 -   **Consult Node Guides:** Each node has unique `node_config` requirements.
 -   **Validate Mappings:** Ensure `src_field` exists and `dst_field` matches expectations. For nodes using path lookups (like `construct_options`), ensure the *container object* holding the start of the path is mapped correctly.
--   **Leverage Runtime Context:** Avoid passing user/org IDs via mappings; rely on the runtime context (Section 6) for nodes that need it (e.g., `load/store_customer_data`).
+-   **Leverage Runtime Context:** Avoid passing user/org IDs via mappings; rely on the runtime context (Section 6) for nodes that need it (e.g., `load/store/load_multiple_customer_data`).
 -   **Start Simple:** Build and test core paths first.
 -   **Handle Errors:** Consider error paths and logging.
 -   **Central State vs. Direct Mapping:** Use central state (`"$graph_state"`) for shared/persistent data, direct mappings for sequential flow.

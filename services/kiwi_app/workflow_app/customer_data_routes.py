@@ -762,6 +762,8 @@ async def list_documents(
     on_behalf_of_user_id: Optional[uuid.UUID] = Query(None, description="Optional user ID to act on behalf of (superusers only)."),
     skip: int = Query(0, ge=0, description="Number of documents to skip."),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of documents to return."),
+    sort_by: Optional[schemas.CustomerDataSortBy] = Query(None, description="Field to sort by."),
+    sort_order: Optional[schemas.CustomerDataSortBy] = Query(None, description="Sort order."),
     active_org_id: uuid.UUID = Depends(get_active_org_id),
     current_user: User = Depends(get_current_active_verified_user),
     service: CustomerDataService = Depends(get_customer_data_service_dependency),
@@ -783,6 +785,8 @@ async def list_documents(
         include_user_specific=include_user_specific,
         skip=skip,
         limit=limit,
+        sort_by=sort_by,
+        sort_order=sort_order,
         on_behalf_of_user_id=on_behalf_of_user_id,
         include_system_entities=include_system_entities,
     )

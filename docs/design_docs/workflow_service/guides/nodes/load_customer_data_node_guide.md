@@ -47,7 +47,7 @@ You **cannot** provide both `load_paths` and `load_configs_input_path`.
             "namespace_pattern": "{item[type]}_{item[year]}",
             
             # OR Pattern with specific input field
-            "input_namespace_field_pattern": "{item[category]}",
+            "input_namespace_field_pattern": "ns_{item[category]}",
             
             # --- DOCNAME OPTIONS (choose ONE of these) ---
             # Static docname (simplest approach)
@@ -60,7 +60,7 @@ You **cannot** provide both `load_paths` and `load_configs_input_path`.
             "docname_pattern": "{item[type]}_report_{item[quarter]}",
             
             # OR Pattern with specific input field
-            "input_docname_field_pattern": "report_{item[topic]}"
+            "input_docname_field_pattern": "doc_{item[topic]}"
         },
         
         # Required field: where to place the loaded document in output
@@ -217,8 +217,8 @@ You **cannot** provide both `load_paths` and `load_configs_input_path`.
 4.  **Inside each `load_paths` item** (whether defined statically or loaded dynamically):
     *   **`filename_config`**: **Required**. Defines *how* to find the document name and its namespace (like a folder). Exactly one method must be chosen for namespace and one for docname:
         *   `static_namespace` / `static_docname`: Provide fixed string values for the namespace and document name.
-        *   `input_namespace_field` / `input_docname_field`: Provide a dot-notation path (e.g., `"input.customer_id"`, `"details.report_name"`) to a field *within the node's input data*. The value of that field will be used as the namespace or docname.
-        *   `namespace_pattern` / `docname_pattern`: (Less common for loading, more for storing lists) Provide an f-string like template (e.g., `"user_{item[user_id]}"`). This is primarily useful when the node is processing a list and needs context from the specific `item` being processed.
+        *   `input_namespace_field` / `input_docname_field`: Provide a dot-notation path (e.g., `"input.customer_id"`, `"details.report_name"`) to a field *within the node's input data*. The value of that field will be used as the namespace or docname. **Note:** This path is also used to fetch data for the `input_*_field_pattern` options below.
+        *   `namespace_pattern` / `docname_pattern`: (Less common for loading, more for storing lists) Provide an f-string like template (e.g., `"user_{item[user_id]}"`). This is primarily useful when the node is processing a list and needs context from the specific `item` being processed. Uses context `{'item': current_item_data, 'index': item_index}`.
         *   `input_namespace_field_pattern` / `input_docname_field_pattern`: **New!** An f-string like template that uses data found at the path specified by `input_namespace_field` or `input_docname_field` respectively. The context provided to the format string is `{'item': retrieved_data}`. This allows determining the load path based on metadata located elsewhere in the input. **Note:** If you use `input_..._field_pattern`, you *must* also provide the corresponding `input_..._field` to specify where to get the data for the pattern.
     *   **`output_field_name`**: **Required**. The name of the field where the loaded document's content will be placed in the node's output data. **Important:** This name cannot start with an underscore (`_`).
     *   **`is_shared`** (Optional bool): Overrides `global_is_shared` for this specific load path.

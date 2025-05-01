@@ -46,14 +46,15 @@ Here are the core node types available for building workflows (refer to their in
     *   `hitl_node__default` (or other `hitl_*`): Pauses for human input or review. ([Guide](nodes/hitl_node_guide.md))
 *   **Routing:**
     *   `router_node`: Routes workflow to different next steps based on simple data equality checks. ([Guide](nodes/dynamic_router_node_guide.md))
-    *   `map_list_router_node`: Distributes items from a list to other nodes for individual processing (often in parallel). ([Guide](nodes/map_list_router_node_guide.md))
+    *   `map_list_router_node`: Distributes items from a list to other nodes for individual processing (often in parallel). Supports batching items before sending and optionally wrapping them in a named field. ([Guide](nodes/map_list_router_node_guide.md))
 *   **Data Operations:**
     *   `transform_data`: Restructures or renames data fields. ([Guide](nodes/transform_node_guide.md))
     *   `data_join_data`: Combines data from different sources based on matching keys. ([Guide](nodes/data_join_node_guide.md))
-    *   `merge_aggregate`: Merges multiple data objects based on configurable strategies for mapping, conflict resolution, and transformation. ([Guide](nodes/merge_aggregate_node_guide.md))
+    *   `merge_aggregate`: Merges multiple data objects based on configurable strategies for mapping, conflict resolution, and transformation. Supports sequential transformations on non-dictionary results. ([Guide](nodes/merge_aggregate_node_guide.md))
 *   **Data Storage:**
-    *   `load_customer_data`: Fetches existing data records from storage. ([Guide](nodes/load_customer_data_node_guide.md))
-    *   `store_customer_data`: Saves workflow data back into storage. ([Guide](nodes/store_customer_data_node_guide.md))
+    *   `load_customer_data`: Fetches existing data records from storage using static or dynamic path resolution (including patterns based on input metadata). ([Guide](nodes/load_customer_data_node_guide.md))
+    *   `store_customer_data`: Saves workflow data back into storage using static or dynamic path resolution (including patterns based on input metadata). ([Guide](nodes/store_customer_data_node_guide.md))
+    *   `load_multiple_customer_data`: Lists and loads multiple documents based on criteria like namespace, shared status, and pagination. ([Guide](nodes/load_multiple_customer_node_guide.md))
 *   **LLM & Prompts:**
     *   `prompt_constructor`: Builds text prompts using templates and variables. Can define templates statically (`template`) or load them dynamically from the database (`template_load_config`). Supports sourcing variables via input paths (`construct_options`) or direct mappings. ([Guide](nodes/prompt_constructor_node_guide.md))
     *   `llm`: Interacts with Large Language Models (like GPT, Claude, Gemini), supporting text/structured output, tool calling, and web search. ([Guide](nodes/llm_node_guide.md))
@@ -220,16 +221,16 @@ Here are examples of how nodes work together:
 -   **Processing List Items:**
     `LoadCustomerDataNode` -> `MapListRouterNode` -> (`ProcessItemNode` & `LogItemNode`)
     *   `LoadCustomerDataNode` fetches a list (e.g., `product_list`).
-    *   `MapListRouterNode` config specifies `source_path: "product_list"` and `destinations: ["ProcessItemNode", "LogItemNode"]`.
+    *   `MapListRouterNode` config specifies `source_path: "product_list"` and `destinations: ["ProcessItemNode", "LogItemNode"]`. May also specify `batch_size` and `batch_field_name`.
     *   Crucially, edges from `MapListRouterNode` to `ProcessItemNode` and `LogItemNode` define how *each item* is mapped (e.g., sending `item.id` and `item.price` to `ProcessItemNode`).
-    *   `ProcessItemNode` and `LogItemNode` likely run with `private_input_mode: true` to handle items independently/in parallel.
+    *   `ProcessItemNode` and `LogItemNode` likely run with `private_input_mode: true` to handle items/batches independently/in parallel.
 
 -   **Merging Multiple Data Sources:**
     (`SourceANode` & `SourceBNode`) -> `MergeAggregateNode` -> `OutputNode`
     *   `SourceANode` and `SourceBNode` produce data objects (e.g., `crm_data`, `activity_data`).
     *   Edges map these outputs to the `MergeAggregateNode`.
     *   `MergeAggregateNode` `node_config` defines one or more `operations` with `select_paths` pointing to the input data (`crm_data`, `activity_data`).
-    *   The `merge_strategy` within the operation specifies how to map fields, resolve conflicts (e.g., keep newest, sum values, extend lists), and potentially transform the result.
+    *   The `merge_strategy` within the operation specifies how to map fields, resolve conflicts (e.g., keep newest, sum values, extend lists), and potentially transform the result (including sequential non-dictionary transforms).
     *   Edge maps the desired output field from `MergeAggregateNode`'s `merged_data` (e.g., `src_field: "merged_data.consolidated_record"`) to the `OutputNode`.
 
 ## 7. Tips for Building Workflows
