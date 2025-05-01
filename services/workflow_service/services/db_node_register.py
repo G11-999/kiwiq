@@ -23,6 +23,9 @@ from services.workflow_service.registry.nodes.db.customer_data import (
     LoadCustomerDataNode,
     StoreCustomerDataNode,
 )
+from services.workflow_service.registry.nodes.db.load_multiple_customer_node import (
+    LoadMultipleCustomerDataNode,
+)
 from workflow_service.registry.nodes.core.router_node import RouterNode
 from workflow_service.registry.nodes.scraping.linkedin_scraping import LinkedInScrapingNode
 
@@ -46,6 +49,7 @@ async def register_node_templates(db_registry: DBRegistry):
         # Customer / System Data
         LoadCustomerDataNode,
         StoreCustomerDataNode,
+        LoadMultipleCustomerDataNode,
         # LLM
         LLMNode,
         PromptConstructorNode,
