@@ -313,14 +313,14 @@ workflow_graph_schema = {
                 }
             ]
         },
-        "dynamic_input_schema": {  # NOTE: CRITICAL: this needs to be explicitly defined so its type is not incorrectly inferred at runtime since it will be a dict/boject rather than list!
-          "fields": {
-              "all_classifications_batches": {
-                  "type": "list", "required": True,
-                  "description": "A list of lists of PostClassificationSchema objects."
-              }
-          }
-        },
+        # "dynamic_input_schema": {  # NOTE: CRITICAL: this needs to be explicitly defined so its type is not incorrectly inferred at runtime since it will be a dict/boject rather than list!
+        #   "fields": {
+        #       "all_classifications_batches": {
+        #           "type": "list", "required": True,
+        #           "description": "A list of lists of PostClassificationSchema objects."
+        #       }
+        #   }
+        # },
         # Input: {"all_classifications_batches": [[batch1_results], [batch2_results], ...]} (from state)
         # Output: merged_data --> {"flat_classifications": [result1, result2, ...]}
     },
@@ -469,12 +469,12 @@ workflow_graph_schema = {
             ]
         },
          # Define input schema for clarity (needs a static value source)
-        "dynamic_input_schema": {
-             "fields": {
-                 "all_reports_list": {"type": "list", "required": True},
-                 "entity_name": {"type": "str", "required": True}, 
-             }
-         }
+        # "dynamic_input_schema": {
+        #      "fields": {
+        #         "all_reports_list": {"type": "list", "required": True},
+        #          "entity_name": {"type": "str", "required": True}, 
+        #      }
+        #  }
         # Input: all_reports_list (from state: all_theme_reports), entity_name (from state), static_summary (provided statically or from another node)
         # Output: transformed_data -> fin
     },
@@ -508,12 +508,12 @@ workflow_graph_schema = {
       "node_id": "output_node",
       "node_name": "output_node",
       "node_config": {},
-      "dynamic_input_schema": {
-          "fields": {
-              "analysis_storage_path": { "type": "list", "required": False, "description": "Path where the final analysis report was stored." },
-              "processed_entity_name": { "type": "str", "required": False, "description": "The name of the entity processed." }
-          }
-        }
+      # "dynamic_input_schema": {
+      #     "fields": {
+      #         "analysis_storage_path": { "type": "list", "required": False, "description": "Path where the final analysis report was stored." },
+      #         "processed_entity_name": { "type": "str", "required": False, "description": "The name of the entity processed." }
+      #     }
+      #   }
     }
   },
 

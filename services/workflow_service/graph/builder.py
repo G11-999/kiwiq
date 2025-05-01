@@ -128,13 +128,20 @@ class GraphBuilder:
                 if reducer_from_metadata:
                     reducer = reducer_from_metadata
                 
+                annotation_to_set = field_info.annotation
+                field_info_to_set = copy(field_info)
                 # override reducer if specified in graph schema metadata
                 if GRAPH_STATE_SPECIAL_NODE_NAME in graph_schema.metadata and CONFIG_REDUCER_KEY in graph_schema.metadata[GRAPH_STATE_SPECIAL_NODE_NAME]:
                     reducer_name = graph_schema.metadata[GRAPH_STATE_SPECIAL_NODE_NAME][CONFIG_REDUCER_KEY].get(central_state_field_name, None)
                     if reducer_name:
                         reducer = ReducerRegistry.get_reducer(reducer_name)
-                
-                field_to_set = (Annotated[field_info.annotation, reducer], copy(field_info))
+                        if ReducerType(reducer_name.lower()) == ReducerType.COLLECT_VALUES:
+                            annotation_to_set = Any
+                            field_info_to_set = FieldInfo(
+                                default=None,
+                                annotation=Any,
+                            )
+                field_to_set = (Annotated[annotation_to_set, reducer], field_info_to_set)
                 if central_state_field_key in central_state_fields:
                     assert central_state_fields[central_state_field_key][0] == field_to_set[0], f"Central state field '{central_state_field_key}' has multiple different types of edges to/from it!"
                 central_state_fields[central_state_field_key] = field_to_set
@@ -332,10 +339,18 @@ class GraphBuilder:
             
             # hack to set Any type on unavailable field!
             if not field_info:
-                field_info = FieldInfo(
-                    default=None,
-                    annotation=Any,
-                )
+                can_set_any_type = False
+                if not is_central_state_special_node(other_node_id):
+                    other_node_config = graph_schema.nodes.get(other_node_id, None)
+                    if self.registry.is_dynamic_node(other_node_config.node_name):
+                        can_set_any_type = True
+                else:
+                    can_set_any_type = True
+                if can_set_any_type:
+                    field_info = FieldInfo(
+                        default=None,
+                        annotation=Any,
+                    )
 
             if field_info:
                 copy_field_info_to_fields_dict(node_id, field_name, fields_dict, field_info)
@@ -353,13 +368,21 @@ class GraphBuilder:
             if central_state_field_key not in central_state_fields:
                 # Add to central state fields
                 reducer = ReducerRegistry.get_reducer_for_type(field_info.annotation)
+                annotation_to_set = field_info.annotation
+                field_info_to_set = copy(field_info)
                 if GRAPH_STATE_SPECIAL_NODE_NAME in graph_schema.metadata and CONFIG_REDUCER_KEY in graph_schema.metadata[GRAPH_STATE_SPECIAL_NODE_NAME]:
                     reducer_name = graph_schema.metadata[GRAPH_STATE_SPECIAL_NODE_NAME][CONFIG_REDUCER_KEY].get(field_name, None)
                     if reducer_name:
                         reducer = ReducerRegistry.get_reducer(reducer_name)
+                        if ReducerType(reducer_name.lower()) == ReducerType.COLLECT_VALUES:
+                            annotation_to_set = Any
+                            field_info_to_set = FieldInfo(
+                                default=None,
+                                annotation=Any,
+                            )
                 central_state_fields[central_state_field_key] = (
-                    Annotated[field_info.annotation, reducer], 
-                    copy(field_info)
+                    Annotated[annotation_to_set, reducer], 
+                    field_info_to_set
                 )
         
         for edge in graph_schema.edges:

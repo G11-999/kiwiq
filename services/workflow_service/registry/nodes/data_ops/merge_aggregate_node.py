@@ -376,6 +376,7 @@ def _reduce_append(left_val: Any, right_val: Any, is_init: bool=False) -> Any:
 
 def _reduce_extend(left_val: Any, right_val: Any, is_init: bool=False) -> Any:
     if is_init: return right_val
+    if (not left_val) or (not right_val): return left_val or right_val
     if isinstance(left_val, list) and isinstance(right_val, list):
         new_list = copy.copy(left_val)
         new_list.extend(right_val)
@@ -458,7 +459,13 @@ REDUCER_FUNCTIONS: Dict[ReducerType, ReducerFunc] = {
 
 # --- Transformation Implementations ---
 
-def _transform_average(current_value: Any, config: SingleFieldTransformationSchema, count: Optional[int]) -> Any:
+def _resolve_operand(input_dict: Dict[str, Any], config: SingleFieldTransformationSchema) -> Any:
+    """Resolve the operand value from the current value using the operand path."""
+    if config.operand_path:
+        return _get_nested_obj(input_dict, config.operand_path)[0]
+    return config.operand
+
+def _transform_average(current_value: Any, config: SingleFieldTransformationSchema, count: Optional[int], resolved_operand: Any) -> Any:
     """Transformation: Calculate average."""
     if count is None or count <= 0:
         raise ZeroDivisionError("Cannot calculate average, count is zero or undefined.")
@@ -466,7 +473,7 @@ def _transform_average(current_value: Any, config: SingleFieldTransformationSche
         raise TypeError(f"Cannot calculate average. Value is not numeric ({type(current_value).__name__}).")
     return current_value / count
 
-def _transform_recursive_flatten_list(current_value: Any, config: SingleFieldTransformationSchema, count: Optional[int]) -> Any:
+def _transform_recursive_flatten_list(current_value: Any, config: SingleFieldTransformationSchema, count: Optional[int], resolved_operand: Any) -> Any:
     """
     Transformation: Flatten nested lists into a single-level list.
     
@@ -504,37 +511,33 @@ def _transform_recursive_flatten_list(current_value: Any, config: SingleFieldTra
     return result
 
 
-def _transform_multiply(current_value: Any, config: SingleFieldTransformationSchema, count: Optional[int]) -> Any:
+def _transform_multiply(current_value: Any, config: SingleFieldTransformationSchema, count: Optional[int], resolved_operand: Any) -> Any:
     """Transformation: Multiply value by operand."""
-    operand = config.operand # Already validated to be numeric
     if not isinstance(current_value, numbers.Number):
         raise TypeError(f"MULTIPLY requires a numeric value. Got {type(current_value).__name__}.")
-    return current_value * operand
+    return current_value * resolved_operand
 
-def _transform_divide(current_value: Any, config: SingleFieldTransformationSchema, count: Optional[int]) -> Any:
+def _transform_divide(current_value: Any, config: SingleFieldTransformationSchema, count: Optional[int], resolved_operand: Any) -> Any:
     """Transformation: Divide value by operand."""
-    operand = config.operand # Already validated to be numeric
-    if operand == 0:
+    if resolved_operand == 0:
         raise ZeroDivisionError("Division by zero in transformation.")
     if not isinstance(current_value, numbers.Number):
         raise TypeError(f"DIVIDE requires a numeric value. Got {type(current_value).__name__}.")
-    return current_value / operand
+    return current_value / resolved_operand
 
-def _transform_add(current_value: Any, config: SingleFieldTransformationSchema, count: Optional[int]) -> Any:
+def _transform_add(current_value: Any, config: SingleFieldTransformationSchema, count: Optional[int], resolved_operand: Any) -> Any:
     """Transformation: Add operand to value."""
-    operand = config.operand # Already validated to be numeric
     if not isinstance(current_value, numbers.Number):
         raise TypeError(f"ADD requires a numeric value. Got {type(current_value).__name__}.")
-    return current_value + operand
+    return current_value + resolved_operand
 
-def _transform_subtract(current_value: Any, config: SingleFieldTransformationSchema, count: Optional[int]) -> Any:
+def _transform_subtract(current_value: Any, config: SingleFieldTransformationSchema, count: Optional[int], resolved_operand: Any) -> Any:
     """Transformation: Subtract operand from value."""
-    operand = config.operand # Already validated to be numeric
     if not isinstance(current_value, numbers.Number):
         raise TypeError(f"SUBTRACT requires a numeric value. Got {type(current_value).__name__}.")
-    return current_value - operand
+    return current_value - resolved_operand
 
-def _transform_limit_list(current_value: Any, config: SingleFieldTransformationSchema, count: Optional[int]) -> Any:
+def _transform_limit_list(current_value: Any, config: SingleFieldTransformationSchema, count: Optional[int], resolved_operand: Any) -> Any:
     """
     Transformation: Limit a list to a specified number of items.
     
@@ -552,10 +555,10 @@ def _transform_limit_list(current_value: Any, config: SingleFieldTransformationS
     if not isinstance(current_value, list):
         raise TypeError(f"LIMIT_LIST requires a list input. Got {type(current_value).__name__}.")
     
-    limit = int(config.operand)  # Already validated to be numeric
+    limit = int(resolved_operand)  # Already validated to be numeric
     return current_value[:limit]
 
-def _transform_sort_list(current_value: Any, config: SingleFieldTransformationSchema, count: Optional[int]) -> Any:
+def _transform_sort_list(current_value: Any, config: SingleFieldTransformationSchema, count: Optional[int], resolved_operand: Any) -> Any:
     """
     Transformation: Sorts a list based on specified keys and order, placing None values last.
 
@@ -584,7 +587,7 @@ def _transform_sort_list(current_value: Any, config: SingleFieldTransformationSc
     if not isinstance(current_value, list):
         raise TypeError(f"SORT_LIST requires a list input. Got {type(current_value).__name__}.")
 
-    operand = config.operand
+    operand = resolved_operand
     # Default values if operand is None or empty dict
     key_spec = None
     order_spec: Union[str, int] = "ascending" # Default sort order
@@ -758,12 +761,25 @@ class SingleFieldTransformationSchema(BaseSchema):
                     "Optional for SORT_LIST (dict operand: {'key': Optional[str|List[str]], 'order': Optional[str|int]}); "
                     "Not used for AVERAGE, RECURSIVE_FLATTEN_LIST."
     )
+    operand_path: Optional[str] = Field(
+        None,
+        description="Dot-notation path in the main input data to dynamically fetch the operand value. "
+                    "Use this OR 'operand', but not both. "
+                    "Required for MULTIPLY, DIVIDE, ADD, SUBTRACT, LIMIT_LIST if 'operand' is not set. "
+                    "Optional for SORT_LIST. Not used for AVERAGE, RECURSIVE_FLATTEN_LIST."
+    )
 
     @model_validator(mode='after')
     def check_operand_requirements(self) -> 'SingleFieldTransformationSchema':
         """Validates that operand is provided and has the correct type if required by the operation type."""
         op_type = self.operation_type
         operand = self.operand # Use self.operand for checks
+
+        if self.operand_path and self.operand:
+            raise ValueError("Cannot provide both 'operand' and 'operand_path'.")
+        if self.operand_path:
+            return self
+        
 
         # Numeric operand operations
         if op_type in [
@@ -1201,12 +1217,13 @@ class MergeAggregateNode(BaseDynamicNode):
                                 continue
                             
                             transform_func = TRANSFORMATION_FUNCTIONS.get(transform_config.operation_type)
+                            resolved_operand = _resolve_operand(prepared_input, transform_config)
                             if transform_func:
                                 final_value = None
                                 try:
                                     # Get count for AVERAGE if needed, based on dictionary merge counts
                                     count_for_avg = merged_counts_for_op.get(dest_key) if transform_config.operation_type == SingleFieldOperationType.AVERAGE else None
-                                    final_value = transform_func(current_value, transform_config, count_for_avg)
+                                    final_value = transform_func(current_value, transform_config, count_for_avg, resolved_operand)
                                     self.info(f"    - Applied {transform_config.operation_type.value} to '{dest_key}' -> {final_value}")
                                 except Exception as e:
                                     final_value = self._handle_transformation_error(e, strategy.transformation_error_strategy, dest_key, current_value)
@@ -1229,12 +1246,13 @@ class MergeAggregateNode(BaseDynamicNode):
                             # Iterate through all transformations and apply them in sequence
                             for transform_key, transform_config in strategy.post_merge_transformations.items():
                                 transform_func = TRANSFORMATION_FUNCTIONS.get(transform_config.operation_type)
+                                resolved_operand = _resolve_operand(prepared_input, transform_config)
                                 
                                 if transform_func:
                                     try:
                                         # Get count for AVERAGE if needed, using the count from the non-dict reduction
                                         count_for_avg = merged_counts_for_op.get(output_field) if transform_config.operation_type == SingleFieldOperationType.AVERAGE else None
-                                        current_value = transform_func(current_value, transform_config, count_for_avg)
+                                        current_value = transform_func(current_value, transform_config, count_for_avg, resolved_operand)
                                         self.info(f"    - Applied {transform_config.operation_type.value} transformation -> {current_value}")
                                     except Exception as e:
                                         current_value = self._handle_transformation_error(e, strategy.transformation_error_strategy, output_field, current_value)

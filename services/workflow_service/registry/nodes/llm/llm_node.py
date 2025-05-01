@@ -1107,7 +1107,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                 
         
         current_messages=current_messages + [response]
-        metadata.iteration_count = self._get_iteration_count(current_messages)
+        metadata.iteration_count = self._get_iteration_count(message_history + current_messages)
         # import ipdb; ipdb.set_trace()
         return LLMNodeOutputSchema(
             current_messages=current_messages,

@@ -127,8 +127,22 @@ You configure the `FilterNode` within the `node_config` field of its entry in th
             "filter_target": "person.age",
             "filter_mode": "allow",
             "condition_groups": [{ "conditions": [{ "field": "person.age", "operator": "is_not_empty" }] }]
+          },
+          // Rule 3: Example using value_path for dynamic comparison
+          {
+            "filter_target": "orders",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  // Compare order.value against order.threshold_value dynamically
+                  { "field": "value", "operator": "greater_than", "value_path": "threshold_value" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
           }
-          // Any other fields under 'person' would be removed implicitly because they weren't explicitly allowed.
         ]
       }
       // dynamic_input_schema / dynamic_output_schema usually not needed unless interacting with dynamic graph state
@@ -175,6 +189,7 @@ You configure the `FilterNode` within the `node_config` field of its entry in th
                 *   `"is_empty"`: Field value is `null` (None), `""` (empty string), `[]` (empty list), or `{}` (empty dict). Ignores `value`. **Returns `true` if the field path does not exist.**
                 *   `"is_not_empty"`: Field value is not empty. Ignores `value`. **Returns `false` if the field path does not exist.**
             *   **`value`** (Any | `null`): The value to compare against. Required for most operators. For `equals_any_of`, this must be a list. Not used for `is_empty` / `is_not_empty`.
+            *   **`value_path`** (String, Optional): Instead of providing a static `value`, you can specify a dot-notation path to another field in the data to use as the comparison value. This allows for dynamic comparisons between fields (e.g., `{"field": "order.total", "operator": "greater_than", "value_path": "order.minimum_threshold"}`). Note: You cannot provide both `value` and `value_path` in the same condition.
             *   **`apply_to_each_value_in_list_field`** (Boolean, Default: `false`): **Important for checking list contents.** If the `field` points to a list (e.g., `"user.tags"`) and this is `true`, the `operator` (like `equals`, `greater_than`) and `value` will be applied to *each individual item* within that list. The results from each item are combined using `list_field_logical_operator`. If `false` (default), the operator applies to the list *as a whole* (e.g., `contains` checks if the `value` exists *anywhere* in the list). See Example 5 vs `test_nested_list_cond_path_single_list_or`.
             *   **`list_field_logical_operator`** (String: `"and"` or `"or"`, Default: `"and"`): Used only when `apply_to_each_value_in_list_field` is `true`. Determines how the results from checking each list item are combined to give the final result for this condition. `and` means the condition passes only if it's true for *all* items in the list. `or` means it passes if true for *at least one* item.
     *   **`nested_list_logical_operator`** (String: `"and"` or `"or"`, Default: `"and"`): How to combine results when evaluating conditions on nested lists *within* list items (e.g., if filtering `orders` and a condition checks `order.items.category == 'X'`). Defines if *all* nested items must match (`and`) or *any* (`or`).
@@ -235,6 +250,21 @@ The node produces data matching the `FilterOutputSchema`:
             "filter_target": "user.age",
             "filter_mode": "deny", // Remove if condition passes (always passes here)
             "condition_groups": [{ "conditions": [{ "field": "user.age", "operator": "is_not_empty"}]}]
+          },
+          // Rule 3: Example using value_path for dynamic comparison
+          {
+            "filter_target": "orders",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  // Compare order.value against order.threshold_value dynamically
+                  { "field": "value", "operator": "greater_than", "value_path": "threshold_value" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
           }
         ]
       }
@@ -275,6 +305,7 @@ The node produces data matching the `FilterOutputSchema`:
     -   `field`: Which piece of data are you looking at? (e.g., `"customer_status"`, `"order_total"`, `"tags"`)
     -   `operator`: How are you comparing it? (e.g., `equals`, `greater_than`, `contains`, `is_empty`, `starts_with`)
     -   `value`: What are you comparing it to? (e.g., `"active"`, `100`, `"important"`, `["admin", "editor"]` for `equals_any_of`)
+    -   `value_path`: Instead of a fixed value, use the value from another field in your data (e.g., compare `"current_spend"` against `"budget_limit"`).
 -   You can group conditions with `and` (all must be true) or `or` (at least one must be true).
 -   Use `apply_to_each_value_in_list_field: true` with an operator like `equals` or `greater_than` if you want to check *every item* inside a list field (like checking if *any* tag in a `tags` list is `"urgent"` using `logical_operator: "or"`).
 -   If a field in your condition doesn't exist, the rule usually fails (unless using `is_empty`).

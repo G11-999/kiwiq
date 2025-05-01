@@ -656,6 +656,173 @@ class TestMergeAggregateNode(BaseMergeNodeTest):
         }
         self.assertEqual(result.merged_data, expected)
 
+    # --- Tests for operand_path ---
+
+    async def test_transform_operand_path_multiply_add(self):
+        """Test MULTIPLY and ADD transformations using operand_path."""
+        data_with_operands = {
+            "sourceData": {"value_to_transform": 50, "another_value": 10},
+            "configValues": {"multiplier": 3, "adder": 7}
+        }
+        config = {
+            "operations": [
+                {
+                    "output_field_name": "transformed_via_path",
+                    "select_paths": ["sourceData"],
+                    "merge_strategy": {
+                        "map_phase": {
+                            "key_mappings": [
+                                {"source_keys": ["value_to_transform"], "destination_key": "multiplied_result"},
+                                {"source_keys": ["another_value"], "destination_key": "added_result"}
+                            ],
+                            "unspecified_keys_strategy": UnspecifiedKeysStrategy.IGNORE
+                        },
+                        "post_merge_transformations": {
+                            "multiplied_result": {
+                                "operation_type": SingleFieldOperationType.MULTIPLY,
+                                "operand_path": "configValues.multiplier" # Path to 3
+                            },
+                            "added_result": {
+                                "operation_type": SingleFieldOperationType.ADD,
+                                "operand_path": "configValues.adder" # Path to 7
+                            }
+                        }
+                    }
+                }
+            ]
+        }
+        node = MergeAggregateNode(config=config, node_id="merge_transform_path")
+        result = await node.process(data_with_operands)
+        # multiplied_result = 50 * 3 = 150
+        # added_result = 10 + 7 = 17
+        expected = {
+            "transformed_via_path": {
+                "multiplied_result": 150.0,
+                "added_result": 17
+            }
+        }
+        self.assertEqual(result.merged_data, expected)
+
+    async def test_transform_operand_path_divide_subtract(self):
+        """Test DIVIDE and SUBTRACT transformations using operand_path."""
+        data_with_operands = {
+            "calc_input": {"total": 100, "deduction": 15},
+            "calc_params": {"divisor": 4, "subtrahend": 5}
+        }
+        config = {
+            "operations": [
+                {
+                    "output_field_name": "calculated_results",
+                    "select_paths": ["calc_input"],
+                    "merge_strategy": {
+                        "map_phase": {
+                            "key_mappings": [
+                                {"source_keys": ["total"], "destination_key": "divided_val"},
+                                {"source_keys": ["deduction"], "destination_key": "subtracted_val"}
+                            ],
+                            "unspecified_keys_strategy": UnspecifiedKeysStrategy.IGNORE
+                        },
+                        "post_merge_transformations": {
+                            "divided_val": {
+                                "operation_type": SingleFieldOperationType.DIVIDE,
+                                "operand_path": "calc_params.divisor" # Path to 4
+                            },
+                            "subtracted_val": {
+                                "operation_type": SingleFieldOperationType.SUBTRACT,
+                                "operand_path": "calc_params.subtrahend" # Path to 5
+                            }
+                        }
+                    }
+                }
+            ]
+        }
+        node = MergeAggregateNode(config=config, node_id="merge_div_sub_path")
+        result = await node.process(data_with_operands)
+        # divided_val = 100 / 4 = 25
+        # subtracted_val = 15 - 5 = 10
+        expected = {
+            "calculated_results": {
+                "divided_val": 25.0,
+                "subtracted_val": 10
+            }
+        }
+        self.assertEqual(result.merged_data, expected)
+
+    async def test_non_dict_transform_operand_path_limit_list(self):
+        """Test LIMIT_LIST transformation using operand_path for non-dict merge."""
+        data_with_limit = {
+            "full_list": [10, 20, 30, 40, 50],
+            "settings": {"list_limit": 3}
+        }
+        config = {
+            "operations": [
+                {
+                    "output_field_name": "limited_list_via_path",
+                    "select_paths": ["full_list"],
+                    "merge_each_object_in_selected_list": False, # Treat full_list as one item
+                    "merge_strategy": {
+                        "reduce_phase": {"default_reducer": "replace_right"},
+                        "post_merge_transformations": {
+                            "limit_op": {
+                                "operation_type": "limit_list",
+                                "operand_path": "settings.list_limit" # Path to 3
+                            }
+                        }
+                    }
+                }
+            ]
+        }
+        node = MergeAggregateNode(config=config, node_id="merge_limit_path")
+        result = await node.process(data_with_limit)
+        # List [10, 20, 30, 40, 50] limited by 3 -> [10, 20, 30]
+        expected = {"limited_list_via_path": [10, 20, 30]}
+        self.assertEqual(result.merged_data, expected)
+
+    async def test_non_dict_transform_operand_path_sort_list(self):
+        """Test SORT_LIST transformation using operand_path for non-dict merge."""
+        data_with_sort_config = {
+            "unsorted_users": [
+                {"id": 3, "name": "C"},
+                {"id": 1, "name": "A"},
+                {"id": 2, "name": "B"},
+            ],
+            "sort_options": {
+                "key": "id",
+                "order": "descending"
+            }
+        }
+        config = {
+            "operations": [
+                {
+                    "output_field_name": "sorted_list_via_path",
+                    "select_paths": ["unsorted_users"],
+                    "merge_each_object_in_selected_list": False,
+                    "merge_strategy": {
+                        "reduce_phase": {"default_reducer": "replace_right"},
+                        "post_merge_transformations": {
+                            "sort_op": {
+                                "operation_type": "sort_list",
+                                # Load the entire sort config dict dynamically
+                                "operand_path": "sort_options"
+                            }
+                        }
+                    }
+                }
+            ]
+        }
+        node = MergeAggregateNode(config=config, node_id="merge_sort_path")
+        result = await node.process(data_with_sort_config)
+        # Sort by id descending -> [ {"id": 3, "name": "C"}, {"id": 2, "name": "B"}, {"id": 1, "name": "A"} ]
+        expected = {"sorted_list_via_path": [
+            {"id": 3, "name": "C"},
+            {"id": 2, "name": "B"},
+            {"id": 1, "name": "A"},
+        ]}
+        self.assertEqual(result.merged_data, expected)
+
+    # --- End Tests for operand_path ---
+
+
     async def test_reduction_error_handling_skip(self):
         """Test SKIP_OPERATION error handling during reduction (e.g., sum incompatible types)."""
         config = {

@@ -96,13 +96,17 @@ class FilterCondition(BaseSchema):
         ..., 
         description="Dot-notation path to the field to evaluate (e.g., 'user.profile.name')"
     )
-    operator: FilterOperator = Field(
-        ...,
+    operator: Optional[FilterOperator] = Field(
+        None,
         description="The comparison operator to apply"
     )
     value: Optional[Any] = Field(
         None,
         description="The value to compare against (optional for some operators like IS_EMPTY)"
+    )
+    value_path: Optional[str] = Field(
+        None,
+        description="The path to the value to compare against. Only used if operator is not provided."
     )
     apply_to_each_value_in_list_field: bool = Field(
         False,
@@ -112,6 +116,15 @@ class FilterCondition(BaseSchema):
         default=LogicalOperator.AND,
         description="How to combine results when evaluating conditions on each value in a list field."
     )
+
+    def populate_value(self, data: Dict[str, Any]) -> Any:
+        """
+        Populates the value based on the value_path.
+        """
+        if self.value_path:
+            val, _ = _get_nested_obj(data, self.value_path)
+            self.value = val
+        return self.value
 
     @model_validator(mode='before')
     @classmethod
@@ -130,6 +143,11 @@ class FilterCondition(BaseSchema):
         """
         op = values.get('operator')
         val = values.get('value')
+        val_path = values.get('value_path')
+        if val_path and val:
+            raise ValueError("Cannot provide both value and value_path")
+        if val_path:
+            return values
         unary = {FilterOperator.IS_EMPTY, FilterOperator.IS_NOT_EMPTY}
         if op and op not in unary and val is None:
             if op != FilterOperator.EQUALS_ANY_OF:
@@ -147,6 +165,9 @@ class FilterCondition(BaseSchema):
         Raises:
             ValueError: If the value type is incompatible with the operator
         """
+        if self.value_path:
+            return self
+        
         if self.operator == FilterOperator.EQUALS_ANY_OF:
              if self.value is None:
                  raise ValueError(f"Value for '{self.operator}' cannot be None.")
@@ -561,9 +582,14 @@ def evaluate_condition_recursive(
                 sub_path_parts = path_parts[i:]
                 sub_path = '.'.join(sub_path_parts)
                 sub_condition = condition.model_copy(update={"field": sub_path})
-                return evaluate_condition_recursive(
+                result = evaluate_condition_recursive(
                     item_context, full_data, sub_condition, list_op, None, None
                 )
+                print("\n\n--------------------------------")
+                print(json.dumps(item_context, indent=4))
+                print(f"SUB CONDITION result: {result} -- > {sub_condition.model_dump_json(indent=4)}")
+                print("--------------------------------\n\n")
+                return result
             else:
                 path_existed = False
                 break
@@ -656,6 +682,10 @@ def evaluate_filter_config_for_list_item(
                 target_item_index=item_index
             )
             condition_results.append(result)
+            print("\n\n--------------------------------")
+            print(json.dumps(target_list_instance, indent=4))
+            print(f"Condition result for item {item_index}: {result} -- > {condition.model_dump_json(indent=4)}")
+            print("--------------------------------\n\n")
             
         # Combine condition results based on group's logical operator
         group_passed = all(condition_results) if group.logical_operator == LogicalOperator.AND else any(condition_results)
@@ -899,7 +929,12 @@ class FilterNode(BaseDynamicNode):
             # Resolve and validate the configuration
             active_config = self.config
             # Create a separate copy to modify during filtering
-            result_data = copy.deepcopy(original_input_dict) 
+            result_data = copy.deepcopy(original_input_dict)
+
+            for target_config in active_config.targets:
+                for condition_group in target_config.condition_groups:
+                    for condition in condition_group.conditions:
+                        condition.populate_value(original_input_dict)
 
             # --- Pass 0: Object-Level Filtering ---
             # Check if the entire object should be filtered out based on top-level conditions
@@ -948,7 +983,10 @@ class FilterNode(BaseDynamicNode):
             processed_list_paths = set() 
 
             # Sort paths by length to process outer lists first (helps with nested structures)
+            mapped_lists = {}
             for list_path in sorted(list(all_target_list_paths), key=len):
+                if list_path not in mapped_lists:
+                    mapped_lists[list_path] = set()
                 if list_path in processed_list_paths: 
                     continue  # Skip if already processed
 
@@ -981,6 +1019,7 @@ class FilterNode(BaseDynamicNode):
                         item_passed = evaluate_filter_config_for_list_item(
                             original_input_dict, config, original_list_instance, i
                         )
+                        print(f"\n\nItem {i} passed: {original_list_instance[i]} -- {item_passed}!\n\n")
 
                         # Determine action based on whether config targets the item or a field within
                         if config.filter_target == list_path:  # Targets the entire item
@@ -1000,41 +1039,58 @@ class FilterNode(BaseDynamicNode):
                     # If we decided not to keep the item, add its index to removal list
                     if not keep_item:
                         indices_to_remove.add(i)
+                        mapped_lists[list_path].add(i)
 
                 # --- Step 2b: Apply removals to the list in result_data ---
                 # Process removals in reverse order to maintain correct indices
-                for i_orig in range(original_length - 1, -1, -1):
-                    if i_orig in indices_to_remove:
-                        # Calculate the current index in the result list that corresponds to this original index
-                        # This accounts for items that were already removed
-                        num_kept_before = sum(1 for i in range(i_orig) if i not in indices_to_remove)
-                        current_idx_to_remove = num_kept_before
 
-                        # Remove the item if the calculated index is valid
-                        if 0 <= current_idx_to_remove < len(target_list_in_result):
-                            del target_list_in_result[current_idx_to_remove]
-                        else:
-                            self.warning(f"Calculated index {current_idx_to_remove} for removal (original {i_orig}) out of bounds for list {list_path} (len={len(target_list_in_result)}). Item might have been removed by other matching conditions.")
+                # for i_orig in range(original_length - 1, -1, -1):
+                #     if i_orig in indices_to_remove:
+                #         # Calculate the current index in the result list that corresponds to this original index
+                #         # This accounts for items that were already removed
+                #         num_kept_before = sum(1 for i in range(i_orig) if i not in indices_to_remove)
+                #         print(f"Removing item {i_orig} -- {target_list_in_result[i_orig]} -- because it's index is {num_kept_before} in the result list")
+                #         current_idx_to_remove = num_kept_before
+
+                #         # Remove the item if the calculated index is valid
+                #         if 0 <= current_idx_to_remove < len(target_list_in_result):
+                #             del target_list_in_result[current_idx_to_remove]
+                #         else:
+                #             self.warning(f"Calculated index {current_idx_to_remove} for removal (original {i_orig}) out of bounds for list {list_path} (len={len(target_list_in_result)}). Item might have been removed by other matching conditions.")
 
                 # --- Step 2c: Apply field removals within the remaining items ---
                 current_result_idx = 0  # Track position in the modified result list
                 for i_orig in range(original_length):
-                    if i_orig not in indices_to_remove:
-                        # This item was kept, so apply any field removals
-                        if current_result_idx < len(target_list_in_result):
-                             item_in_result = target_list_in_result[current_result_idx]
-                             if i_orig in field_removals_per_index:
-                                 # Process field removals in reverse length order (deeper paths first)
-                                 paths_to_remove = sorted(list(field_removals_per_index[i_orig]), key=len, reverse=True)
-                                 for rel_path in paths_to_remove:
-                                     _remove_nested_path(item_in_result, rel_path)
-                             current_result_idx += 1
-                        else:
-                             self.warning(f"Result list '{list_path}' length mismatch during field removal (original index {i_orig}).")
+                    # if current_result_idx in mapped_lists[list_path]:
+                    #     continue
+                    # This item was kept, so apply any field removals
+                    if current_result_idx < len(target_list_in_result):
+                            item_in_result = target_list_in_result[current_result_idx]
+                            if i_orig in field_removals_per_index:
+                                # Process field removals in reverse length order (deeper paths first)
+                                paths_to_remove = sorted(list(field_removals_per_index[i_orig]), key=len, reverse=True)
+                                for rel_path in paths_to_remove:
+                                    _remove_nested_path(item_in_result, rel_path)
+                            current_result_idx += 1
+                    else:
+                            self.warning(f"Result list '{list_path}' length mismatch during field removal (original index {i_orig}).")
 
                 # Mark this list as processed
                 processed_list_paths.add(list_path)
+            
+            for list_path, removal_indices in mapped_lists.items():
+                target_list_in_result, result_list_found = _get_nested_obj(result_data, list_path)
+                if not result_list_found:
+                    continue
+                for idx in sorted(removal_indices, reverse=True):
+                    if idx < len(target_list_in_result):
+                        del target_list_in_result[idx]
+                    else:
+                        self.warning(f"Index {idx} for removal out of bounds for list {list_path} (len={len(target_list_in_result)}).")
 
+                # print(f"List {list_path} has {len(removal_indices)} items to remove: {removal_indices}")
+
+            
             # --- Pass 3: Process Non-List Field Filters ---
             # Handle fields that aren't within lists
             # Sort by path length in reverse to process deeper paths first
@@ -1128,6 +1184,12 @@ class IfElseConditionNode(BaseDynamicNode):
             active_config = self.config
             # Track results for each tagged condition
             tag_results: Dict[str, bool] = {}
+
+            # Populate the values for each condition
+            for tagged_conf in active_config.tagged_conditions:
+                for condition_group in tagged_conf.condition_groups:
+                    for condition in condition_group.conditions:
+                        condition.populate_value(input_dict_copy)
             
             # Evaluate each tagged condition
             for tagged_conf in active_config.tagged_conditions:

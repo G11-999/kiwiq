@@ -1208,6 +1208,340 @@ class TestFilterNodeUnittest(BaseNodeTest):
         with self.assertRaisesRegex(ValueError, "Duplicate filter_target path found: 'user.name'"):
             FilterTargets(**config_dict)
 
+    async def test_filter_with_dynamic_value_from_path(self):
+        """
+        Test filtering using values dynamically loaded from an input path.
+        
+        This test verifies that FilterNode can use another field's value as the comparison value
+        by specifying value_path instead of a static value.
+        """
+        # Create test data with threshold values and data to filter
+        test_data = {
+            "thresholds": {
+                "min_age": 25,
+                "min_order_value": 100.0,
+                "allowed_statuses": ["completed", "shipped"]
+            },
+            "users": [
+                {"id": 1, "name": "Alice", "age": 30, "status": "active"},
+                {"id": 2, "name": "Bob", "age": 22, "status": "inactive"},
+                {"id": 3, "name": "Charlie", "age": 27, "status": "active"}
+            ],
+            "orders": [
+                {"id": 101, "status": "pending", "value": 75.0},
+                {"id": 102, "status": "completed", "value": 150.0},
+                {"id": 103, "status": "shipped", "value": 95.0}
+            ]
+        }
+        
+        # Config to:
+        # 1. Filter users whose age is less than the threshold in thresholds.min_age
+        # 2. Filter orders whose value is less than the threshold in thresholds.min_order_value
+        config = {
+            "targets": [
+                # Filter users based on dynamic age threshold
+                {
+                    "filter_target": "users",
+                    "condition_groups": [{
+                        "conditions": [{
+                            "field": "users.age",
+                            "operator": "greater_than_or_equals",
+                            "value_path": "thresholds.min_age"
+                        }]
+                    }],
+                    "filter_mode": "allow"
+                },
+                # Filter orders based on dynamic value threshold
+                {
+                    "filter_target": "orders",
+                    "condition_groups": [{
+                        "conditions": [{
+                            "field": "orders.value",
+                            "operator": "greater_than_or_equals",
+                            "value_path": "thresholds.min_order_value"
+                        }]
+                    }],
+                    "filter_mode": "allow"
+                }
+            ]
+        }
+        
+        # Create and process the node
+        node = FilterNode(config=config, node_id="dynamic_filter", prefect_mode=False)
+        result = await node.process(test_data)
+        
+        # Expected results after filtering
+        expected_users = [
+            {"id": 1, "name": "Alice", "age": 30, "status": "active"},
+            {"id": 3, "name": "Charlie", "age": 27, "status": "active"}
+        ]
+        expected_orders = [
+            {"id": 102, "status": "completed", "value": 150.0}
+        ]
+        
+        # Verify results
+        self.assertEqual(len(result.filtered_data["users"]), 2)
+        self.assertEqual(result.filtered_data["users"], expected_users)
+        self.assertEqual(len(result.filtered_data["orders"]), 1)
+        self.assertEqual(result.filtered_data["orders"], expected_orders)
+        
+    async def test_filter_with_multiple_value_paths(self):
+        """
+        Test filtering using multiple conditions with different value paths.
+        
+        This test verifies that multiple conditions can use different value paths
+        in a single filter configuration.
+        """
+        # Create test data with reference values and data to filter
+        test_data = {
+            "reference": {
+                "criteria": {
+                    "min_stock": 10,
+                    "max_price": 50.0,
+                    "featured_category": "electronics"
+                }
+            },
+            "products": [
+                {"id": "p1", "name": "Laptop", "category": "electronics", "price": 899.99, "stock": 15},
+                {"id": "p2", "name": "T-shirt", "category": "clothing", "price": 19.99, "stock": 25},
+                {"id": "p3", "name": "Headphones", "category": "electronics", "price": 49.99, "stock": 10},
+                {"id": "p4", "name": "Smartphone", "category": "electronics", "price": 499.99, "stock": 12}
+            ]
+        }
+        
+        # Config to filter products based on multiple dynamic criteria:
+        # - Category equals featured_category
+        # - Stock >= min_stock
+        # - Price <= max_price
+        config = {
+            "targets": [
+                {
+                    "filter_target": "products",
+                    "condition_groups": [{
+                        "conditions": [
+                            {
+                                "field": "products.category",
+                                "operator": "equals",
+                                "value_path": "reference.criteria.featured_category"
+                            },
+                            {
+                                "field": "products.stock",
+                                "operator": "greater_than_or_equals",
+                                "value_path": "reference.criteria.min_stock"
+                            },
+                            {
+                                "field": "products.price",
+                                "operator": "less_than_or_equals",
+                                "value_path": "reference.criteria.max_price"
+                            }
+                        ],
+                        "logical_operator": "and"
+                    }],
+                    "filter_mode": "allow"
+                }
+            ]
+        }
+        
+        # Create and process the node
+        node = FilterNode(config=config, node_id="multi_path_filter", prefect_mode=False)
+        result = await node.process(test_data)
+        
+        # Expected: Only one product meets all criteria
+        expected_products = [
+            {"id": "p3", "name": "Headphones", "category": "electronics", "price": 49.99, "stock": 10}
+        ]
+        
+        # Verify results - should have filtered to only products that match all criteria
+        self.assertEqual(len(result.filtered_data["products"]), 1)
+        
+        # Verify the specific product that was kept
+        self.assertEqual(result.filtered_data["products"][0]["id"], "p3")
+        self.assertEqual(result.filtered_data["products"][0]["name"], "Headphones")
+    
+    async def test_filter_with_value_path_in_nested_structures(self):
+        """
+        Test filtering using value paths within complex nested structures.
+        
+        This test verifies that value paths can navigate complex nested data structures
+        and correctly extract comparison values.
+        """
+        # Create test data with deeply nested reference values
+        test_data = {
+            "settings": {
+                "filters": {
+                    "user": {
+                        "permissions": {
+                            "minimum_level": 3,
+                            "required_roles": ["admin", "editor"]
+                        }
+                    },
+                    "content": {
+                        "visibility": {
+                            "public_only": True
+                        }
+                    }
+                }
+            },
+            "users": [
+                {
+                    "id": "u1",
+                    "name": "Admin User",
+                    "access": {
+                        "level": 5,
+                        "roles": ["admin", "viewer"]
+                    }
+                },
+                {
+                    "id": "u2",
+                    "name": "Basic User",
+                    "access": {
+                        "level": 1,
+                        "roles": ["viewer"]
+                    }
+                },
+                {
+                    "id": "u3",
+                    "name": "Editor",
+                    "access": {
+                        "level": 3,
+                        "roles": ["editor", "viewer"]
+                    }
+                }
+            ],
+            "content_items": [
+                {
+                    "id": "c1",
+                    "title": "Public Article",
+                    "visibility": "public"
+                },
+                {
+                    "id": "c2",
+                    "title": "Internal Document",
+                    "visibility": "private"
+                },
+                {
+                    "id": "c3",
+                    "title": "Draft Post",
+                    "visibility": "draft"
+                }
+            ]
+        }
+        
+        # Config to:
+        # 1. Filter users based on access level from nested settings
+        # 2. Filter content based on visibility setting
+        config = {
+            "targets": [
+                # Filter users based on nested access level threshold
+                {
+                    "filter_target": "users",
+                    "condition_groups": [{
+                        "conditions": [{
+                            "field": "users.access.level",
+                            "operator": "greater_than_or_equals",
+                            "value_path": "settings.filters.user.permissions.minimum_level"
+                        }]
+                    }],
+                    "filter_mode": "allow"
+                },
+                # Filter content based on deep nested visibility setting
+                {
+                    "filter_target": "content_items",
+                    "condition_groups": [{
+                        "conditions": [{
+                            "field": "content_items.visibility",
+                            "operator": "equals",
+                            "value": "public"
+                        }]
+                    }],
+                    "filter_mode": "allow"
+                }
+            ]
+        }
+        
+        # Create and process the node
+        node = FilterNode(config=config, node_id="nested_path_filter", prefect_mode=False)
+        result = await node.process(test_data)
+        
+        # Expected results after filtering
+        expected_users = [
+            {
+                "id": "u1",
+                "name": "Admin User",
+                "access": {
+                    "level": 5,
+                    "roles": ["admin", "viewer"]
+                }
+            },
+            {
+                "id": "u3",
+                "name": "Editor",
+                "access": {
+                    "level": 3,
+                    "roles": ["editor", "viewer"]
+                }
+            }
+        ]
+        
+        expected_content = [
+            {
+                "id": "c1",
+                "title": "Public Article",
+                "visibility": "public"
+            }
+        ]
+        
+        # Verify results
+        self.assertEqual(len(result.filtered_data["users"]), 2)
+        self.assertEqual(result.filtered_data["users"], expected_users)
+        self.assertEqual(len(result.filtered_data["content_items"]), 1)
+        self.assertEqual(result.filtered_data["content_items"], expected_content)
+
+    async def test_filter_with_nonexistent_value_path(self):
+        """
+        Test filtering when the specified value_path doesn't exist in the data.
+        
+        This test verifies the behavior when a value_path points to a non-existent location.
+        """
+        # Create simple test data
+        test_data = {
+            "items": [
+                {"id": 1, "name": "Item 1", "price": 10.0},
+                {"id": 2, "name": "Item 2", "price": 20.0},
+                {"id": 3, "name": "Item 3", "price": 30.0}
+            ],
+            "config": {
+                "visible": True
+            }
+        }
+        
+        # Config with a non-existent value path
+        config = {
+            "targets": [
+                {
+                    "filter_target": "items",
+                    "condition_groups": [{
+                        "conditions": [{
+                            "field": "items.price",
+                            "operator": "greater_than",
+                            "value_path": "thresholds.min_price"  # This path doesn't exist
+                        }]
+                    }],
+                    "filter_mode": "allow"
+                }
+            ]
+        }
+        
+        # Create and process the node
+        node = FilterNode(config=config, node_id="nonexistent_path_filter", prefect_mode=False)
+        result = await node.process(test_data)
+        
+        # Expected: Since value_path doesn't exist, no items should pass the filter
+        self.assertEqual(len(result.filtered_data["items"]), 0)
+        self.assertEqual(result.filtered_data["items"], [])
+        
+        # The rest of the data should be preserved
+        self.assertEqual(result.filtered_data["config"], {"visible": True})
 
 # === IfElseNode Tests using unittest ===
 class TestIfElseNodeUnittest(BaseNodeTest):
@@ -2377,6 +2711,329 @@ class TestIfElseNodeUnittest(BaseNodeTest):
         self.assertEqual(result2.tag_results, expected_tags2)
         self.assertFalse(result2.condition_result)  # AND logic means one false makes all false
         self.assertEqual(result2.branch, BranchPath.FALSE_BRANCH)
+
+    async def test_ifelse_with_value_path(self):
+        """
+        Test IfElseConditionNode with value_path to dynamically load comparison values.
+        
+        This test verifies that IfElseConditionNode can use field values from other parts
+        of the input data for condition evaluation.
+        """
+        # Create test data with threshold values and comparison data
+        test_data = {
+            "user": {
+                "id": 123,
+                "name": "Test User",
+                "age": 35,
+                "account": {
+                    "balance": 1500,
+                    "type": "premium",
+                    "status": "active"
+                }
+            },
+            "app_config": {
+                "thresholds": {
+                    "premium_min_balance": 1000,
+                    "premium_min_age": 25,
+                    "required_status": "active"
+                }
+            },
+            "feature_flags": {
+                "enable_premium": True
+            }
+        }
+        
+        # Config to check if user qualifies for premium features based on dynamic values
+        config = {
+            "tagged_conditions": [
+                {
+                    "tag": "premium_eligible",
+                    "condition_groups": [{
+                        "conditions": [
+                            {
+                                "field": "user.account.balance",
+                                "operator": "greater_than_or_equals",
+                                "value_path": "app_config.thresholds.premium_min_balance"
+                            },
+                            {
+                                "field": "user.age",
+                                "operator": "greater_than_or_equals",
+                                "value_path": "app_config.thresholds.premium_min_age"
+                            },
+                            {
+                                "field": "user.account.status",
+                                "operator": "equals",
+                                "value_path": "app_config.thresholds.required_status"
+                            }
+                        ],
+                        "logical_operator": "and"
+                    }]
+                },
+                {
+                    "tag": "feature_enabled",
+                    "condition_groups": [{
+                        "conditions": [{
+                            "field": "feature_flags.enable_premium",
+                            "operator": "equals",
+                            "value": True
+                        }]
+                    }]
+                }
+            ],
+            "branch_logic_operator": "and"
+        }
+        
+        # Create and process the node
+        node = IfElseConditionNode(config=config, node_id="premium_check", prefect_mode=False)
+        result = await node.process(test_data)
+        
+        # Expected: User meets all premium criteria and feature is enabled
+        expected_tag_results = {
+            "premium_eligible": True,
+            "feature_enabled": True
+        }
+        
+        # Verify all conditions passed and true branch was selected
+        self.assertEqual(result.tag_results, expected_tag_results)
+        self.assertTrue(result.condition_result)
+        self.assertEqual(result.branch, BranchPath.TRUE_BRANCH)
+        
+        # Modify the test data so user doesn't meet balance threshold
+        test_data["user"]["account"]["balance"] = 500
+        
+        # Re-process with updated data
+        result_2 = await node.process(test_data)
+        
+        # Expected: User doesn't meet all criteria
+        expected_tag_results_2 = {
+            "premium_eligible": False,
+            "feature_enabled": True
+        }
+        
+        # Verify premium_eligible failed and false branch was selected
+        self.assertEqual(result_2.tag_results, expected_tag_results_2)
+        self.assertFalse(result_2.condition_result)
+        self.assertEqual(result_2.branch, BranchPath.FALSE_BRANCH)
+    
+    async def test_ifelse_with_nested_value_paths(self):
+        """
+        Test IfElseConditionNode with deeply nested value paths.
+        
+        This test verifies that the node can correctly navigate complex data structures
+        to extract comparison values from deeply nested locations.
+        """
+        # Create test data with deeply nested configuration
+        test_data = {
+            "transaction": {
+                "id": "tx123",
+                "amount": 750.0,
+                "currency": "USD",
+                "type": "purchase",
+                "user_id": "u456",
+                "risk_score": 25
+            },
+            "security": {
+                "settings": {
+                    "risk": {
+                        "thresholds": {
+                            "high_value_transaction": 500.0,
+                            "suspicious_score": 75,
+                            "verification_required": True
+                        }
+                    },
+                    "transaction_types": {
+                        "require_review": ["withdrawal", "refund"]
+                    }
+                }
+            },
+            "user": {
+                "id": "u456",
+                "verified": True,
+                "history": {
+                    "transaction_count": 12,
+                    "flags": []
+                }
+            }
+        }
+        
+        # Config to check various security conditions using nested paths
+        config = {
+            "tagged_conditions": [
+                {
+                    "tag": "high_value",
+                    "condition_groups": [{
+                        "conditions": [{
+                            "field": "transaction.amount",
+                            "operator": "greater_than",
+                            "value_path": "security.settings.risk.thresholds.high_value_transaction"
+                        }]
+                    }]
+                },
+                {
+                    "tag": "requires_review",
+                    "condition_groups": [{
+                        "conditions": [{
+                            "field": "transaction.type",
+                            "operator": "equals_any_of",
+                            "value_path": "security.settings.transaction_types.require_review"
+                        }]
+                    }]
+                },
+                {
+                    "tag": "user_verified",
+                    "condition_groups": [{
+                        "conditions": [{
+                            "field": "user.verified",
+                            "operator": "equals",
+                            "value": True
+                        }]
+                    }]
+                }
+            ],
+            "branch_logic_operator": "and"
+        }
+        
+        # Create and process the node
+        node = IfElseConditionNode(config=config, node_id="security_check", prefect_mode=False)
+        result = await node.process(test_data)
+        
+        # Expected: Transaction is high-value but doesn't require review and user is verified
+        expected_tag_results = {
+            "high_value": True,
+            "requires_review": False,
+            "user_verified": True
+        }
+        
+        # Verify that the OR operation produces the expected result
+        # Since we're using AND logic and requires_review is False, the overall result should be False
+        self.assertEqual(result.tag_results, expected_tag_results)
+        self.assertFalse(result.condition_result)
+        self.assertEqual(result.branch, BranchPath.FALSE_BRANCH)
+        
+        # Change transaction type to one that requires review
+        test_data["transaction"]["type"] = "withdrawal"
+        
+        # Re-process with updated data
+        result_2 = await node.process(test_data)
+        
+        # Expected: Now all conditions are true
+        expected_tag_results_2 = {
+            "high_value": True,
+            "requires_review": True,
+            "user_verified": True
+        }
+        
+        # Verify all conditions are now true
+        self.assertEqual(result_2.tag_results, expected_tag_results_2)
+        self.assertTrue(result_2.condition_result)
+        self.assertEqual(result_2.branch, BranchPath.TRUE_BRANCH)
+    
+    async def test_ifelse_with_mixed_value_and_value_path(self):
+        """
+        Test IfElseConditionNode with a mix of static values and dynamic value paths.
+        
+        This test verifies that conditions can mix static values and dynamically loaded values
+        from paths within the same configuration.
+        """
+        # Create test data
+        test_data = {
+            "order": {
+                "id": "ord789",
+                "total": 125.50,
+                "items": 3,
+                "status": "processing",
+                "shipping_method": "standard"
+            },
+            "customer": {
+                "id": "cust123",
+                "tier": "silver",
+                "preferences": {
+                    "shipping": "express"
+                }
+            },
+            "config": {
+                "shipping": {
+                    "free_threshold": 100.0,
+                    "express_min_total": 75.0
+                },
+                "status_flow": ["pending", "processing", "shipped", "delivered"]
+            }
+        }
+        
+        # Config to check eligibility for shipping upgrade with mixed conditions
+        config = {
+            "tagged_conditions": [
+                {
+                    "tag": "eligible_for_upgrade",
+                    "condition_groups": [{
+                        "conditions": [
+                            # Static value comparison
+                            {
+                                "field": "customer.tier",
+                                "operator": "equals",
+                                "value": "silver"
+                            },
+                            # Dynamic path comparison
+                            {
+                                "field": "order.total",
+                                "operator": "greater_than_or_equals",
+                                "value_path": "config.shipping.express_min_total"
+                            },
+                            # Another static comparison
+                            {
+                                "field": "order.shipping_method",
+                                "operator": "equals",
+                                "value": "standard"
+                            }
+                        ],
+                        "logical_operator": "and"
+                    }]
+                },
+                {
+                    "tag": "prefers_express",
+                    "condition_groups": [{
+                        "conditions": [{
+                            "field": "customer.preferences.shipping",
+                            "operator": "equals",
+                            "value": "express"
+                        }]
+                    }]
+                }
+            ],
+            "branch_logic_operator": "and"
+        }
+        
+        # Create and process the node
+        node = IfElseConditionNode(config=config, node_id="shipping_upgrade", prefect_mode=False)
+        result = await node.process(test_data)
+        
+        # Expected: Customer is eligible for upgrade and prefers express
+        expected_tag_results = {
+            "eligible_for_upgrade": True,
+            "prefers_express": True
+        }
+        
+        # Verify all conditions passed
+        self.assertEqual(result.tag_results, expected_tag_results)
+        self.assertTrue(result.condition_result)
+        self.assertEqual(result.branch, BranchPath.TRUE_BRANCH)
+        
+        # Change customer tier to one that's not eligible
+        test_data["customer"]["tier"] = "bronze"
+        
+        # Re-process with updated data
+        result_2 = await node.process(test_data)
+        
+        # Expected: Customer is no longer eligible for upgrade
+        expected_tag_results_2 = {
+            "eligible_for_upgrade": False,
+            "prefers_express": True
+        }
+        
+        # Verify eligible_for_upgrade condition failed
+        self.assertEqual(result_2.tag_results, expected_tag_results_2)
+        self.assertFalse(result_2.condition_result)
+        self.assertEqual(result_2.branch, BranchPath.FALSE_BRANCH)
 
 # === unittest execution ===
 if __name__ == '__main__':

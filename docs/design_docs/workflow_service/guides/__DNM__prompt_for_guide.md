@@ -12,6 +12,36 @@ Also store the fetched user profile to central state
 
 ## Build workflow from scratch
 
+### Content Idea Brief Draft generation
+
+Generate worklfow based on below steps:
+
+
+1. Generate content briefs for next X weeks: (X) int input optional, default 1
+2. Load list of customer context docs such as dna, strategy doc etc
+3. Load multiple user draft posts using multiple loader node within posts namespace, load latest N posts (limit and sort by updated_at, DESC); also load user preferences from onboarding namespace, user preferences doc which has user's requested posting frequency / week
+4. Load scraped posts for the user
+5. Merge both lists and limit the merged list limit using merge aggregate node; also in another operation: compute next X weeks (input) multiplied by user preferences post frequency / week (this is number of content briefs we have to generate)
+6. construct prompt for first generation (includes system prompt) with all user docs and merged list in prompt
+7. Generate 1 structured output content brief; it reads message history from LLM; this also has fields such as date / time of posting; it sends structured outputs to all_generated_briefs with reducer collect values
+8. check IF else on iteration limit, if we have generated the required number of briefs
+9. Router node to route to graph finish or store node
+10. store node stores draft briefs in separate paths using filename pattern with draft ID
+11. send all briefs to output node
+
+reference workflows:
+@test_run_content_workflow.py 
+@test_linkedin_content_analysis_workflow.py 
+@merge_aggregate_node.py 
+
+
+
+
+
+
+
+
+
 ### Complex workflow: linkedin content analysis
 
 ```

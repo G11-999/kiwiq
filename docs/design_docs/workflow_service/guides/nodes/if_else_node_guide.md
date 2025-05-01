@@ -58,6 +58,20 @@ You configure the `IfElseConditionNode` within the `node_config` field of its en
             ],
             "group_logical_operator": "and",
             "nested_list_logical_operator": "and"
+          },
+          // --- Tag 3: Compare fields dynamically using value_path ---
+          {
+            "tag": "spending_exceeds_budget",
+            "condition_groups": [
+              {
+                "conditions": [
+                  // Compare current_spend against their budget_limit dynamically
+                  { "field": "customer.current_spend", "operator": "greater_than", "value_path": "customer.budget_limit" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
           }
         ],
         // How to combine results of the *tags*: Both tags must pass.
@@ -96,6 +110,13 @@ You configure the `IfElseConditionNode` within the `node_config` field of its en
     *   **`group_logical_operator`** (String: `"and"` or `"or"`): How to combine the boolean results (`true`/`false`) of the `condition_groups` *within this tag*. `and` means all groups must pass for this tag to be true; `or` means at least one group must pass.
     *   **`nested_list_logical_operator`** (String: `"and"` or `"or"`): How to combine results when evaluating conditions on nested lists. Works exactly like in the `FilterNode`.
     *   **Conditions within `condition_groups`**: Each `condition` has `field`, `operator`, and `value` (and list options like `apply_to_each_value_in_list_field`), working exactly as described in the `FilterNode` guide. Handles non-existent fields similarly (usually evaluating to `false` except for `is_empty`).
+    *   **Inside each `condition`**:
+        *   **`field`** (String): Dot-notation path to the data field to check (e.g., `"user.id"`, `"items.price"`, `"metadata.source"`).
+        *   **`operator`** (String): The comparison to perform. See the full list of operators at the end of this guide.
+        *   **`value`** (Any | `null`): The value to compare against. Required for most operators.
+        *   **`value_path`** (String, Optional): Instead of providing a static `value`, you can specify a dot-notation path to another field in the data to use as the comparison value. This enables dynamic comparisons between fields (e.g., `{"field": "lead.score", "operator": "greater_than", "value_path": "lead.qualification_threshold"}`). Note: You cannot provide both `value` and `value_path` in the same condition.
+        *   **`apply_to_each_value_in_list_field`** (Boolean, Default: `false`): When set to `true` and the `field` points to a list, applies the operator to each value in the list and combines results with the `list_field_logical_operator`.
+        *   **`list_field_logical_operator`** (String: `"and"` or `"or"`, Default: `"and"`): Used when `apply_to_each_value_in_list_field` is `true` to combine results from evaluating each item in a list.
 3.  **`branch_logic_operator`** (String: `"and"` or `"or"`): **Crucial**. This determines how the boolean results (`true`/`false`) of *all* the `tagged_conditions` are combined to get the final overall result (`condition_result` in the output).
     *   `"and"`: The final result is `true` **only if** *all* tagged conditions evaluate to `true`.
     *   `"or"`: The final result is `true` **if** *at least one* tagged condition evaluates to `true`.
@@ -220,6 +241,7 @@ class FilterOperator(str, Enum):
 
 -   Use this node when your workflow needs to make a decision: "If X is true, go path A, otherwise go path B".
 -   `tagged_conditions`: Define your checks here. Give each check a clear `tag` name (like `"is_urgent"`). Set up the conditions (`field`, `operator`, `value`) just like in the Filter node.
+-   You can use `value_path` in your conditions to compare one field against another field dynamically, rather than against a fixed value.
 -   `branch_logic_operator`: Decide how the results of your tagged checks combine. `"and"` means *all* checks must pass to choose the 'true' path. `"or"` means only *one* check needs to pass.
 -   **Important:** This node *only* outputs the decision (`"true_branch"` or `"false_branch"`). It *doesn't* actually send the workflow down the path.
 -   **You MUST connect this node's output to a `Router` node.** The Router node reads the `branch` decision and directs the workflow to the correct next step (`assign_to_sales` or `send_to_nurturing` in the example).
