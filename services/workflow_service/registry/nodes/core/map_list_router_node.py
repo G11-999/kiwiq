@@ -46,6 +46,10 @@ class MapTargetConfig(BaseSchema):
     """
     source_path: str = Field(..., description=f"Path to the source list or dictionary in input data, using '{OBJECT_PATH_REFERENCE_DELIMITER}'.")
     destinations: List[str] = Field(..., min_length=1, description="List of target node IDs.")
+    map_dict_values_if_object_is_dict: bool = Field(
+        False,
+        description="If True, the values of a dictionary found at the source path will be mapped to the destinations instead of the entire dictionary as a single item."
+    )
     # Mappings are now defined on the edges in GraphSchema, not here.
     batch_size: int = Field(
         1,
@@ -264,7 +268,11 @@ class MapListRouterNode(DynamicRouterNode):
             if isinstance(source_collection, list):
                 items_to_process = source_collection
             elif isinstance(source_collection, dict):
-                items_to_process = source_collection.values() # Iterate over dictionary values
+                if target_config.map_dict_values_if_object_is_dict:
+                    items_to_process = source_collection.values() # Iterate over dictionary values
+                else:
+                    items_to_process = [source_collection] # Iterate over the entire dictionary as a single item
+            # NOTE: this node doesn't map primitive types i.e. non-list/non-dict!
             else:
                 self.warning(f"Source path '{target_config.source_path}' does not point to a list or dict in MapListRouterNode {self.node_id}. Found type: {type(source_collection)}. Skipping target config index {target_config_index}.")
                 continue # Skip this target_config
