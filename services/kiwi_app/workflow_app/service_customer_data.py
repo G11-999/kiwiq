@@ -152,8 +152,8 @@ class CustomerDataService:
             [str(org_id), str(user.id)],                # Their own docs
         ])
 
-        if not is_mutation:
-            prefixes.append([CustomerDataService.SYSTEM_DOC_PLACEHOLDER, self.SHARED_DOC_PLACEHOLDER])
+        # if not is_mutation:
+        #     prefixes.append([CustomerDataService.SYSTEM_DOC_PLACEHOLDER, self.SHARED_DOC_PLACEHOLDER])
             
         # Regular organization prefixes
         if user.is_superuser:
