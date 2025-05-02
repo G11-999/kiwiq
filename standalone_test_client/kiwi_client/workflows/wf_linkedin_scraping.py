@@ -263,6 +263,10 @@ workflow_graph_schema = {
         { "src_field": "scraping_results", "dst_field": "scraping_results" }
       ]
     },
+    { "src_node_id": "scrape_entity", "dst_node_id": "$graph_state", "mappings": [
+        { "src_field": "execution_summary", "dst_field": "scraping_status_summary" },
+      ]
+    },
     # State (entity_name) -> Store Raw Data: Pass entity name for doc naming pattern
     # The store_customer_data node needs entity_name in its DIRECT input to resolve input_docname_field
     { "src_node_id": "$graph_state", "dst_node_id": "store_raw_data", "mappings": [
@@ -302,7 +306,8 @@ workflow_graph_schema = {
     # },
      # State -> Output Node: Pass entity name for reference
     { "src_node_id": "$graph_state", "dst_node_id": "output_node", "mappings": [
-        { "src_field": "entity_name", "dst_field": "entity_name_processed" }
+        { "src_field": "entity_name", "dst_field": "entity_name_processed" },
+        { "src_field": "scraping_status_summary", "dst_field": "scraping_status_summary" },
       ]
     }
   ],
