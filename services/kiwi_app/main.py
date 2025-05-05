@@ -14,6 +14,7 @@ from kiwi_app.workflow_app import routes as workflow_routes
 from kiwi_app.workflow_app import customer_data_routes as customer_data_routes
 from kiwi_app.workflow_app import event_consumer
 from kiwi_app.workflow_app import dependencies as wf_deps
+from scraper_service import scraping_routes
 
 # Get a logger instance for the main application
 
@@ -120,6 +121,7 @@ app.include_router(workflow_routes.template_router, prefix=settings.API_V1_PREFI
 app.include_router(workflow_routes.notification_router, prefix=settings.API_V1_PREFIX)
 app.include_router(workflow_routes.hitl_router, prefix=settings.API_V1_PREFIX)
 app.include_router(customer_data_routes.customer_data_router, prefix=settings.API_V1_PREFIX)
+app.include_router(scraping_routes.scraping_router, prefix=settings.API_V1_PREFIX)
 
 # ... rest of your app setup ...
 

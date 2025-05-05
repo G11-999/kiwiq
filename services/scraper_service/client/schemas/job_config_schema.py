@@ -1,7 +1,7 @@
 import re
 import logging
 from enum import Enum
-from typing import List, Optional, Dict, Any, Union
+from typing import List, Optional, Dict, Any, Union, Tuple
 from pydantic import BaseModel, model_validator, Field, HttpUrl
 from datetime import datetime
 
@@ -31,6 +31,50 @@ class EntityTypeEnum(str, Enum):
     """Enum defining the type of LinkedIn entity (company or person)."""
     COMPANY = "company"
     PERSON = "person"
+
+
+def parse_linkedin_url(data: Dict[str, Any], set_in_data: bool = True) -> Tuple[str, str]:
+    """Parse a LinkedIn URL to extract the entity type and identifier."""
+    if data.get('url'):
+        url = HttpUrl(data['url'])
+        if data.get("username") or data.get("type"):
+            raise ValueError("'username' and 'type' cannot be provided if 'url' is provided.")
+        # Parse LinkedIn URLs to extract username and entity type using regex
+        if data.get('url'):
+            url_str = str(url)
+            logger.debug(f"Parsing LinkedIn URL: {url_str}")
+            
+            # Use regex to extract both entity type and username in a single pattern
+            # Pattern matches:
+            # - Group 1: Either "in" (person) or "company" (company)
+            # - Group 2: The username/company name that follows
+            linkedin_pattern = r"linkedin\.com/(?:(in|company))/([^/?#]+)"
+            match = re.search(linkedin_pattern, url_str)
+            
+            if match:
+                entity_prefix = match.group(1)
+                identifier = match.group(2).strip('/')
+                
+                if entity_prefix == "in":
+                    logger.info(f"Extracted person username '{identifier}' from URL")
+                    username = identifier
+                    _type = EntityTypeEnum.PERSON.value
+                elif entity_prefix == "company":
+                    logger.info(f"Extracted company name '{identifier}' from URL")
+                    username = identifier
+                    _type = EntityTypeEnum.COMPANY.value
+                if set_in_data:
+                    data['username'] = username
+                    data['type'] = _type
+            else:
+                # URL doesn't match expected LinkedIn profile patterns
+                logger.warning(f"URL {url_str} doesn't match expected LinkedIn profile patterns")
+                raise ValueError(
+                    "Invalid LinkedIn URL format. Expected patterns: "
+                    "https://www.linkedin.com/in/username/ or "
+                    "https://www.linkedin.com/company/company-name/"
+                )
+        return username, _type
 
 
 class ScrapingRequest(BaseModel):
@@ -134,42 +178,7 @@ class ScrapingRequest(BaseModel):
             # Ensure data is a dictionary for further processing
             raise ValueError("Request data must be a dictionary.")
 
-        if data.get('url'):
-            url = HttpUrl(data['url'])
-            if data.get("username") or data.get("type"):
-                raise ValueError("'username' and 'type' cannot be provided if 'url' is provided.")
-            # Parse LinkedIn URLs to extract username and entity type using regex
-            if data.get('url'):
-                url_str = str(url)
-                logger.debug(f"Parsing LinkedIn URL: {url_str}")
-                
-                # Use regex to extract both entity type and username in a single pattern
-                # Pattern matches:
-                # - Group 1: Either "in" (person) or "company" (company)
-                # - Group 2: The username/company name that follows
-                linkedin_pattern = r"linkedin\.com/(?:(in|company))/([^/?#]+)"
-                match = re.search(linkedin_pattern, url_str)
-                
-                if match:
-                    entity_prefix = match.group(1)
-                    identifier = match.group(2).strip('/')
-                    
-                    if entity_prefix == "in":
-                        logger.info(f"Extracted person username '{identifier}' from URL")
-                        data['username'] = identifier
-                        data['type'] = EntityTypeEnum.PERSON.value
-                    elif entity_prefix == "company":
-                        logger.info(f"Extracted company name '{identifier}' from URL")
-                        data['username'] = identifier
-                        data['type'] = EntityTypeEnum.COMPANY.value
-                else:
-                    # URL doesn't match expected LinkedIn profile patterns
-                    logger.warning(f"URL {url_str} doesn't match expected LinkedIn profile patterns")
-                    raise ValueError(
-                        "Invalid LinkedIn URL format. Expected patterns: "
-                        "https://www.linkedin.com/in/username/ or "
-                        "https://www.linkedin.com/company/company-name/"
-                    )
+        parse_linkedin_url(data, set_in_data=True)
 
         # Define the flags that represent distinct job types
         job_flags = {

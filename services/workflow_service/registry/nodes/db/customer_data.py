@@ -7,6 +7,7 @@ respecting organization, user, shared, and system data access patterns.
 """
 
 import copy
+from datetime import datetime, timezone
 import json
 import traceback
 import uuid
@@ -29,6 +30,7 @@ from workflow_service.config.constants import (
     APPLICATION_CONTEXT_KEY,
     EXTERNAL_CONTEXT_MANAGER_KEY
 )
+from global_utils.utils import datetime_now_utc
 
 # Base node/schema types
 from workflow_service.registry.schemas.base import BaseSchema
@@ -271,6 +273,11 @@ def _resolve_single_doc_path(
          logger.error("Invalid FilenameConfig state for namespace.")
          return None
 
+    DOCNAME_SPECIAL_PLACEHOLDERS = {
+        "_uuid_": lambda: str(uuid.uuid4()),
+        "_timestamp_": lambda: datetime_now_utc().isoformat() 
+    }
+
     # --- Resolve Docname ---
     if config.static_docname is not None:
         resolved_docname = config.static_docname
@@ -296,8 +303,14 @@ def _resolve_single_doc_path(
              logger.warning(f"Data for docname pattern not found at '{config.input_docname_field}' in full input data.")
              return None
         try:
+            kwargs = {
+                'item': pattern_source_data,
+            }
+            for placeholder, func in DOCNAME_SPECIAL_PLACEHOLDERS.items():
+                if f"{{{placeholder}}}" in config.input_docname_field_pattern:
+                    kwargs[placeholder] = func()
             # Use the retrieved object as 'item' in the pattern context
-            resolved_docname = config.input_docname_field_pattern.format(item=pattern_source_data)
+            resolved_docname = config.input_docname_field_pattern.format(**kwargs)
         except KeyError as e:
             logger.error(f"Error formatting input_docname_field_pattern '{config.input_docname_field_pattern}': Key {e} not found in data at '{config.input_docname_field}'.")
             return None
@@ -312,6 +325,9 @@ def _resolve_single_doc_path(
         try:
             # Provide 'item' (current item) and 'index' context for formatting
             pattern_context = {'item': current_item_data, 'index': item_index}
+            for placeholder, func in DOCNAME_SPECIAL_PLACEHOLDERS.items():
+                if f"{{{placeholder}}}" in config.docname_pattern:
+                    pattern_context[placeholder] = func()
             resolved_docname = config.docname_pattern.format(**pattern_context)
         except KeyError as e:
             logger.error(f"Error formatting docname_pattern '{config.docname_pattern}': Key {e} not found in current item data.")
