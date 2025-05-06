@@ -123,6 +123,22 @@ VERSIONED_DOC_UPSERT_URL = lambda namespace, docname: f"{CUSTOMER_DATA_BASE_URL}
 WS_RUN_BASE_URL = API_BASE_URL.replace("http", "ws") + "/ws/runs"
 WS_NOTIFICATIONS_URL = API_BASE_URL.replace("http", "ws") + "/ws/notifications"
 
+# --- URL Definitions ---
+# These should ideally come from test_config.py or a shared configuration module.
+# For demonstration, they are constructed here.
+# Ensure BASE_API_URL is correctly defined in your kiwi_client.test_config
+_USER_STATE_API_ROOT = f"{API_BASE_URL}/app-state"
+USER_STATE_INITIALIZE_URL = _USER_STATE_API_ROOT
+USER_STATE_LIST_DOCUMENTS_URL = f"{_USER_STATE_API_ROOT}/list"
+USER_STATE_ACTIVE_DOCNAMES_URL = f"{_USER_STATE_API_ROOT}/active-docnames"
+USER_STATE_DETAIL_URL = lambda docname: f"{_USER_STATE_API_ROOT}/{docname}"
+
+
+# App Artifacts (Workflow App)
+_APP_ARTIFACT_API_ROOT = f"{API_BASE_URL}/app-artifacts"
+APP_ARTIFACT_GET_WORKFLOW_URL = f"{_APP_ARTIFACT_API_ROOT}/get-workflow"
+APP_ARTIFACT_DOC_CONFIGS_URL = f"{_APP_ARTIFACT_API_ROOT}/doc-configs"
+
 
 # # Example Graph Schema (from test_worker_job.py's basic LLM graph)
 # # You might want to define more complex examples or load from files

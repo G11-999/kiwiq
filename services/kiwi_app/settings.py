@@ -118,6 +118,10 @@ class Settings(GlobalSettings):
     WEBSOCKET_AUTH_SECRET: str = Field(default="super-secret-websocket-key", env="WEBSOCKET_AUTH_SECRET")
     WEBSOCKET_TOKEN_EXPIRE_MINUTES: int = Field(default=60 * 24 * 7) # 1 week default
 
+    # --- User App State --- #
+    USER_STATE_NAMESPACE: str = Field(default="user_state", env="USER_STATE_NAMESPACE")
+    USER_STATE_DOCNAME: str = Field(default="user_state_{entity_username}", env="USER_STATE_DOCNAME")
+
     
 
 settings = Settings()
