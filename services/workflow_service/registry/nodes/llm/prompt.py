@@ -15,6 +15,8 @@ from kiwi_app.workflow_app.constants import LaunchStatus
 from kiwi_app.workflow_app import crud as wf_crud
 from db.session import get_async_db_as_manager # For database access
 
+from global_utils.utils import datetime_now_utc
+
 # Base node/schema types and helpers
 from workflow_service.config.constants import (
     OBJECT_PATH_REFERENCE_DELIMITER,
@@ -49,6 +51,11 @@ PromptConstructOptions = Dict[str, str] # Type alias for clarity: maps variable_
 
 
 # --- Helper Function for Path Resolution ---
+
+SPECIAL_VAR_MAPPING = {
+    "$current_date": lambda: datetime_now_utc().strftime("%Y-%m-%d"),
+    "$current_datetime": lambda: datetime_now_utc().strftime("%Y-%m-%d %H:%M:%S"),
+}
 
 
 def _get_nested_obj(data: Any, field_path: str) -> Tuple[Any, bool]:
@@ -559,7 +566,6 @@ class PromptConstructorNode(BaseDynamicNode):
             initial_variables[template_id] = current_variables_defaults
             self.debug(f"Prepared template '{template_id}' with initial variables: {current_variables_defaults}")
 
-
         # --- 3. Resolve Variables and Construct Prompts ---
         constructed_prompts: Dict[str, str] = {}
         construction_errors: List[Dict[str, Any]] = []
@@ -646,7 +652,6 @@ class PromptConstructorNode(BaseDynamicNode):
                 construction_errors.append(err_detail)
                 # Do NOT add to constructed_prompts if construction fails
 
-
         # --- 5. Prepare Output Dictionary for Validation ---
         output_data_for_validation: Dict[str, Any] = {}
 
@@ -670,7 +675,6 @@ class PromptConstructorNode(BaseDynamicNode):
         else:
             self.info("Completed processing successfully.")
 
-
         # Validate and return the Pydantic model instance.
         # Pydantic will raise ValidationError if required fields (defined in dynamic_output_schema)
         # are missing from output_data_for_validation (because they failed construction).
@@ -682,7 +686,6 @@ class PromptConstructorNode(BaseDynamicNode):
         except Exception as e:
             self.error(f"Output validation failed: {e}. Data: {output_data_for_validation}", exc_info=True)
             raise # Re-raise the validation error to fail the node execution
-
 
     def _build_prompt_string(self, template: str, variables: Dict[str, Any]) -> str:
         """
@@ -722,7 +725,13 @@ class PromptConstructorNode(BaseDynamicNode):
         # Use string formatting to replace placeholders with variable values
         try:
             # NOTE: this assumes that no complex / nested access is required for dict/list variables within the prompt!
-            return template.format(**{k: (json.dumps(v) if isinstance(v, (dict, list)) else v) for k, v in variables.items()})
+            resolved_variables = {}
+            for k, v in variables.items():
+                resolved_var = (json.dumps(v) if isinstance(v, (dict, list)) else v)
+                if isinstance(v, str) and v in SPECIAL_VAR_MAPPING:
+                    resolved_var = SPECIAL_VAR_MAPPING[v]()
+                resolved_variables[k] = resolved_var
+            return template.format(**resolved_variables)
         except KeyError as e:
             # This should theoretically be caught by the missing_vars check above, but keep as a safeguard.
              raise ValueError(f"Template formatting failed. Missing key: {e}. Placeholders: {placeholders}, Provided: {list(variables.keys())}") from e

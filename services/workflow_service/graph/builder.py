@@ -786,9 +786,9 @@ class GraphBuilder:
             runtime_config["external"] = {}
         runtime_config["external"]["registry"] = self.registry
 
-        if prefect_mode:
-            for node_id, node_instance in node_instances.items():
-                node_instance.prefect_mode = True
+        # if prefect_mode:
+        for node_id, node_instance in node_instances.items():
+            node_instance.prefect_mode = prefect_mode
         
         # Instantiate the GraphEntities with all components
         graph_entities = GraphEntities(

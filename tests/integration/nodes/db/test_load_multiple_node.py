@@ -121,6 +121,9 @@ class TestLoadMultipleCustomerNode(unittest.IsolatedAsyncioTestCase):
         self.customer_data_service = self.external_context.customer_data_service
         if not self.customer_data_service or not self.customer_data_service.versioned_mongo_client:
              raise unittest.SkipTest("CustomerDataService or Versioned Client could not be initialized.")
+        self.external_context.mongo.customer.add_default_fields_to_data = False
+        self.external_context.customer_data_service.mongo_client.add_default_fields_to_data = False
+        self.external_context.customer_data_service.versioned_mongo_client.return_timestamp_metadata = False
 
         # Ensure clean slate before each test by deleting potential leftovers
         await self._clean_test_data()

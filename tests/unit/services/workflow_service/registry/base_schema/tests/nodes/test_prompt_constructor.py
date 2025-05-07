@@ -1,7 +1,11 @@
 import json
 from typing import Dict, Any, Optional, Awaitable
 import unittest
+import re
+from datetime import datetime
 from pydantic import BaseModel # Import BaseModel for type hinting result
+
+from global_utils.utils import datetime_now_utc
 
 from workflow_service.config.constants import (
         INPUT_NODE_NAME,
@@ -366,6 +370,63 @@ class TestPromptConstructorNode(unittest.IsolatedAsyncioTestCase):
         self.assertIn("1 validation error for DynamicPromptConstructorNodeOutputSchema", str(cm.exception))
         self.assertIn("template1", str(cm.exception))
         self.assertIn("Field required", str(cm.exception))
+
+    async def test_special_variables_replacement(self):
+        """
+        Tests the replacement of special variables like $current_date and $current_datetime.
+        
+        Special variables are predefined strings that get replaced with dynamic values
+        when the prompt is constructed, regardless of how they were sourced
+        (construct_options, direct input, or defaults).
+        """
+        custom_config = {
+            "prompt_templates": {
+                "template1": {
+                    "id": "template1",
+                    "template": "Today's date is {date_var} and current time is {datetime_var}",
+                    "variables": {
+                        "date_var": "$current_date",        # From default (P5)
+                        "datetime_var": "$current_datetime"       # Will be overridden
+                    }
+                },
+                "template2": {
+                    "id": "template2", 
+                    "template": "Date from path: {date_var}, direct input: {datetime_var}",
+                    "variables": {
+                        "date_var": "$current_date",        # From default (P5)
+                        "datetime_var": "$current_datetime"       # Will be overridden
+                    }  # No defaults
+                }
+            },
+            "global_construct_options": {
+                "date_var": "data.special_date"  # Will be sourced through construct_options (P2)
+            }
+        }
+        
+        # Set up input with special variables through different paths
+        input_data = {
+            "datetime_var": "$current_datetime",  # Direct input (P4)
+            "data": {
+                "special_date": "$current_date"   # Via construct_options path
+            }
+        }
+        
+        result = await build_and_run_prompt_constructor_graph(input_data, custom_node_config=custom_config)
+        
+        # Verify date format in the first template (YYYY-MM-DD)
+        date_pattern = r'\d{4}-\d{2}-\d{2}'
+        datetime_pattern = r'\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}'
+        
+        # First template should have date from default and datetime from direct input
+        self.assertRegex(result['system_prompt'], f"Today's date is {date_pattern} and current time is {datetime_pattern}")
+        
+        # Second template should have date from construct_options and datetime from direct input
+        self.assertRegex(result['user_prompt'], f"Date from path: {date_pattern}, direct input: {datetime_pattern}")
+        
+        # Verify that the dates are actually today's date
+        today = datetime_now_utc().strftime("%Y-%m-%d")
+        self.assertIn(today, result['system_prompt'])
+        self.assertIn(today, result['user_prompt'])
 
 
 # Keep the main execution block
