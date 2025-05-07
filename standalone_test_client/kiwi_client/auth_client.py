@@ -6,7 +6,8 @@ Handles login, token storage, and setting necessary headers.
 """
 import httpx
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
+import uuid
 
 # Import configuration details
 from kiwi_client.test_config import (
@@ -18,7 +19,14 @@ from kiwi_client.test_config import (
     LOGIN_URL,
     REFRESH_URL,
     USERS_ME_URL,
-    CLIENT_LOG_LEVEL
+    CLIENT_LOG_LEVEL,
+    ADMIN_REGISTER_URL,
+    ORGANIZATIONS_URL,
+    ORG_DETAIL_URL
+)
+from kiwi_client.schemas.auth_schemas import (
+    UserAdminCreate,
+    OrganizationUpdate
 )
 
 # Setup logger
@@ -195,6 +203,142 @@ class AuthenticatedClient:
             logger.exception("An unexpected error occurred during token refresh.")
             return False
 
+    async def admin_register_user(
+        self,
+        email: str,
+        password: str,
+        full_name: Optional[str] = None,
+        is_verified: bool = True,
+        is_superuser: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Register a new user with admin privileges.
+        
+        This method allows superusers to create new users with specified
+        verification status and superuser privileges. The caller must
+        be authenticated as a superuser to use this endpoint.
+        
+        Args:
+            email: Email address for the new user
+            password: Password for the new user
+            full_name: Optional full name for the user
+            is_verified: Whether the user's email should be considered verified
+            is_superuser: Whether the user should have superuser privileges
+            
+        Returns:
+            Dict[str, Any]: The newly created user data
+            
+        Raises:
+            httpx.HTTPStatusError: If the request fails due to a 4xx/5xx status code
+            AuthenticationError: If the client is not authenticated
+        """
+        if not self._is_authenticated:
+            raise AuthenticationError("Client is not authenticated. Call login() first.")
+        
+        logger.info(f"Registering new user as admin: {email} (verified={is_verified}, superuser={is_superuser})")
+        
+        # Create user data using the UserAdminCreate schema
+        user_data = UserAdminCreate(
+            email=email,
+            password=password,
+            full_name=full_name,
+            is_verified=is_verified,
+            is_superuser=is_superuser
+        ).model_dump()
+        
+        try:
+            response = await self._client.post(
+                ADMIN_REGISTER_URL,
+                json=user_data
+            )
+            response.raise_for_status()
+            
+            user_result = response.json()
+            logger.info(f"Successfully registered user {email} with admin privileges")
+            return user_result
+            
+        except httpx.HTTPStatusError as e:
+            error_detail = "Unknown error"
+            try:
+                error_detail = e.response.json().get("detail", error_detail)
+            except Exception:
+                pass
+            
+            logger.error(f"Failed to register user {email} as admin: {error_detail} (Status: {e.response.status_code})")
+            raise
+            
+        except Exception as e:
+            logger.exception(f"Unexpected error registering user {email} as admin")
+            raise
+
+    async def update_organization(
+        self,
+        org_id: Union[str, uuid.UUID],
+        name: Optional[str] = None,
+        description: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Update an organization's details.
+        
+        This method allows updating the name and/or description of an organization.
+        The authenticated user must have the 'org:update' permission within the
+        organization to perform this operation.
+        
+        Args:
+            org_id: UUID of the organization to update
+            name: New name for the organization (optional)
+            description: New description for the organization (optional)
+            
+        Returns:
+            Dict[str, Any]: The updated organization data
+            
+        Raises:
+            httpx.HTTPStatusError: If the request fails due to a 4xx/5xx status code
+            AuthenticationError: If the client is not authenticated
+            ValueError: If neither name nor description is provided
+        """
+        if not self._is_authenticated:
+            raise AuthenticationError("Client is not authenticated. Call login() first.")
+            
+        if not (name or description):
+            raise ValueError("At least one of name or description must be provided")
+            
+        # Convert org_id to string if it's a UUID
+        org_id_str = str(org_id)
+        
+        # Create update data using the OrganizationUpdate schema
+        update_data = OrganizationUpdate(
+            name=name,
+            description=description
+        ).model_dump(exclude_none=True)  # Only include fields that were provided
+        
+        logger.info(f"Updating organization {org_id_str}: {update_data}")
+        
+        try:
+            response = await self._client.patch(
+                ORG_DETAIL_URL(org_id_str),
+                json=update_data
+            )
+            response.raise_for_status()
+            
+            updated_org = response.json()
+            logger.info(f"Successfully updated organization {org_id_str}")
+            return updated_org
+            
+        except httpx.HTTPStatusError as e:
+            error_detail = "Unknown error"
+            try:
+                error_detail = e.response.json().get("detail", error_detail)
+            except Exception:
+                pass
+            
+            logger.error(f"Failed to update organization {org_id_str}: {error_detail} (Status: {e.response.status_code})")
+            raise
+            
+        except Exception as e:
+            logger.exception(f"Unexpected error updating organization {org_id_str}")
+            raise
+
     async def close(self) -> None:
         """Closes the underlying httpx client."""
         await self._client.aclose()
@@ -242,6 +386,43 @@ async def main():
                 print("New Headers:", client.headers)
             else:
                 print("Token refresh failed.")
+                
+            # Example: Test admin user registration (Requires superuser permissions)
+            # Uncomment to test (makes actual API changes!)
+            
+            # try:
+            #     print("Testing admin user registration...")
+            #     new_user = await auth_client.admin_register_user(
+            #         email="newadmin@example.com",
+            #         password="SecurePassword123!",
+            #         full_name="New Admin User",
+            #         is_verified=True,
+            #         is_superuser=False  # Regular admin, not superuser
+            #     )
+            #     print(f"Successfully registered new admin user: {new_user.get('email')}")
+            # except httpx.HTTPStatusError as e:
+            #     print(f"Error registering admin user: {e.response.status_code} - {e.response.text}")
+            # except Exception as e:
+            #     print(f"An error occurred during admin registration: {e}")
+            
+            
+            # Example: Test organization update (Requires org:update permission)
+            # Uncomment to test (makes actual API changes!)
+            
+            # try:
+            #     print("Testing organization update...")
+            #     org_id = auth_client.active_org_id  # Use the current active org
+            #     updated_org = await auth_client.update_organization(
+            #         org_id=org_id,
+            #         name="Updated Organization Name",
+            #         description="This organization was updated via the API client."
+            #     )
+            #     print(f"Successfully updated organization: {updated_org.get('name')}")
+            # except httpx.HTTPStatusError as e:
+            #     print(f"Error updating organization: {e.response.status_code} - {e.response.text}")
+            # except Exception as e:
+            #     print(f"An error occurred during organization update: {e}")
+            
 
     except AuthenticationError as e:
         print(f"Authentication Error: {e}")

@@ -33,7 +33,8 @@ from kiwi_app.settings import settings # Import settings for cookie config
 from kiwi_app.auth.schemas import (
     Token, UserReadWithOrgs, UserRead, UserCreate, OrganizationRead, OrganizationCreate, RoleRead, RoleCreate, UserAssignRole, RequestEmailVerification,
     # Add new password schemas
-    AccessTokenResponse, UserChangePassword, RequestPasswordReset, ResetPassword
+    AccessTokenResponse, UserChangePassword, RequestPasswordReset, ResetPassword,
+    UserAdminCreate, UserReadWithSuperuserStatus # Added for admin user creation
 )
 
 # Create an API Router
@@ -84,9 +85,10 @@ async def register_user_endpoint(
         # Service method now handles adding email task to background
         user = await auth_service.register_new_user(
             db=db,
-            user_in=user_in,
+            user_in=user_in, # Pass data as dict
             background_tasks=background_tasks, # Pass background tasks
-            base_url=base_url
+            base_url=base_url,
+            registered_by_admin=False # Explicitly false for regular registration
         )
         auth_logger.info(f"User successfully registered: {user.email}")
         return user
@@ -598,6 +600,58 @@ async def remove_user_from_organization_endpoint(
         auth_logger.exception(f"Error removing user from org {org_id} by user {current_user.email}", exc_info=e)
         raise HTTPException(status_code=500, detail="An internal error occurred.")
 
+@router.patch("/organizations/{org_id}", response_model=schemas.OrganizationRead, tags=["organizations"])
+async def update_organization_endpoint(
+    org_id: uuid.UUID = Path(..., description="The ID of the organization to update"),
+    org_update: schemas.OrganizationUpdate = Body(..., description="The updated organization details"),
+    db: AsyncSession = Depends(get_async_db_dependency),
+    # Check permission using the SpecificOrgPermissionChecker for the org_id in path
+    # Using ORG_UPDATE instead of the incorrect ORG_EDIT from the service implementation
+    current_user: models.User = Depends(dependencies.SpecificOrgPermissionChecker([Permissions.ORG_UPDATE])),
+    auth_service: services.AuthService = Depends(dependencies.get_auth_service)
+):
+    """
+    Update an organization's details.
+    
+    This endpoint allows updating an organization's name and description. The user must have
+    the 'org:update' permission within that organization to perform this operation.
+    
+    Args:
+        org_id: UUID of the organization to update
+        org_update: The fields to update (name and/or description)
+        
+    Returns:
+        OrganizationRead: The updated organization
+        
+    Raises:
+        HTTPException: 
+            - 404 if organization not found
+            - 403 if user lacks permission (handled by dependency)
+            - 500 for unexpected errors
+    """
+    try:
+        # Call the service method to handle the update logic
+        updated_org = await auth_service.update_organization(
+            db=db, 
+            org_id=org_id, 
+            org_update=org_update, 
+            current_user=current_user
+        )
+        
+        auth_logger.info(f"Organization {org_id} updated by user '{current_user.email}'")
+        return updated_org
+        
+    except OrganizationNotFoundException as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="Organization not found"
+        )
+    except Exception as e:
+        auth_logger.exception(f"Error updating organization {org_id} by user {current_user.email}", exc_info=e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while updating the organization"
+        )
 
 # === Admin/Superuser Endpoints (Example) ===
 
@@ -641,6 +695,51 @@ async def delete_user_account_endpoint(
             detail=f"An error occurred while deleting your account: {str(e)}"
         )
 
+@router.post("/admin/users/register", response_model=schemas.UserReadWithSuperuserStatus, status_code=status.HTTP_201_CREATED, tags=["admin"])
+async def admin_register_user_endpoint(
+    *,
+    db: AsyncSession = Depends(get_async_db_dependency),
+    user_admin_in: schemas.UserAdminCreate, # Use UserAdminCreate schema for input
+    request: Request, # For base_url, though not used for email in this flow
+    background_tasks: BackgroundTasks, # Required by the service method
+    current_admin: models.User = Depends(dependencies.get_current_active_superuser),
+    auth_service: services.AuthService = Depends(dependencies.get_auth_service)
+):
+    """
+    Admin endpoint to register a new user. 
+    Allows setting is_verified and is_superuser status. 
+    Email verification is skipped.
+    """
+    auth_logger.info(f"Admin {current_admin.email} attempting to register user: {user_admin_in.email}")
+    
+    # base_url is required by register_new_user, though not used if email is skipped.
+    # Providing a dummy or actual base_url is fine.
+    # base_url = _get_base_url(request, settings.AUTH_VERIFY_EMAIL_URL) 
+
+    try:
+        user = await auth_service.register_new_user(
+            db=db,
+            user_in=user_admin_in, # Pass data as dict
+            background_tasks=background_tasks,
+            base_url=None, # Pass base_url, though email won't be sent
+            registered_by_admin=True # Explicitly true for admin registration
+        )
+        auth_logger.info(f"User {user.email} successfully registered by admin {current_admin.email}. Verified: {user.is_verified}, Superuser: {user.is_superuser}")
+        return user
+    except EmailAlreadyExistsException as e:
+        auth_logger.warning(f"Admin {current_admin.email} failed to register user {user_admin_in.email}: email already exists.")
+        raise e
+    except RoleNotFoundException as e:
+        auth_logger.critical(f"Admin {current_admin.email} failed to register user {user_admin_in.email} due to missing default role: {e.detail}")
+        # Critical setup issue if default role is missing
+        raise HTTPException(status_code=500, detail=f"Server setup error: {e.detail}")
+    except ValueError as ve:
+        # Catch specific ValueErrors, like missing password from service layer
+        auth_logger.error(f"Admin {current_admin.email} failed to register user {user_admin_in.email} due to ValueError: {ve}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
+    except Exception as e:
+        auth_logger.exception(f"Unexpected error during admin registration of user {user_admin_in.email} by admin {current_admin.email}", exc_info=e)
+        raise HTTPException(status_code=500, detail="An internal error occurred during admin user registration.")
 
 @router.get("/users", response_model=List[schemas.UserReadWithSuperuserStatus], tags=["admin"])
 async def list_users_endpoint(

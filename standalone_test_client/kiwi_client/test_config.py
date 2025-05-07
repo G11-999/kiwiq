@@ -52,6 +52,7 @@ VERIFY_PASSWORD_RESET_URL = f"{API_BASE_URL}/auth/verify-password-reset-token"
 RESET_PASSWORD_URL = f"{API_BASE_URL}/auth/reset-password"
 LINKEDIN_LOGIN_URL = f"{API_BASE_URL}/auth/linkedin/login" # Note: Testing OAuth might be complex
 LINKEDIN_CALLBACK_URL = f"{API_BASE_URL}/auth/linkedin/callback"
+ADMIN_REGISTER_URL = f"{API_BASE_URL}/auth/admin/users/register"
 
 # Users
 USERS_ME_URL = f"{API_BASE_URL}/auth/users/me"
@@ -60,6 +61,7 @@ USERS_ME_ORGS_URL = f"{API_BASE_URL}/auth/users/me/organizations"
 # Orgs
 ORGANIZATIONS_URL = f"{API_BASE_URL}/auth/organizations"
 ORG_USERS_URL = lambda org_id: f"{ORGANIZATIONS_URL}/{org_id}/users"
+ORG_DETAIL_URL = lambda org_id: f"{ORGANIZATIONS_URL}/{org_id}"
 
 # Roles (Admin)
 ROLES_URL = f"{API_BASE_URL}/auth/roles"

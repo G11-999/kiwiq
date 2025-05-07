@@ -120,6 +120,10 @@ class UserCreate(BaseModel):
     full_name: Optional[str] = None
     # User creates account, org is created automatically
 
+class UserAdminCreate(UserCreate):
+    is_verified: bool = True
+    is_superuser: bool = False
+
 class UserRead(UUIDModel, TimestampModel):
     email: EmailStr
     full_name: Optional[str] = None

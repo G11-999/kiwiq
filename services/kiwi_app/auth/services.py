@@ -39,17 +39,20 @@ class AuthService:
         self.refresh_token_dao = refresh_token_dao # Store DAO instance
 
     async def register_new_user(
-        self, db: AsyncSession, user_in: schemas.UserCreate, background_tasks: BackgroundTasks, base_url: str
+        self, db: AsyncSession, user_in: schemas.UserCreate | schemas.UserAdminCreate, background_tasks: BackgroundTasks, base_url: str, registered_by_admin: bool = False
     ) -> models.User:
         """
         Handles user registration, creates a default organization, assigns admin role,
-        and triggers email verification via background tasks.
+        and triggers email verification via background tasks if not registered by admin.
+        If registered by admin, user is marked as verified.
         """
         existing_user = await self.user_dao.get_by_email(db, email=user_in.email)
         if existing_user:
             raise EmailAlreadyExistsException()
 
         # 1. Create the user
+        if not registered_by_admin and isinstance(user_in, schemas.UserAdminCreate):
+            raise HTTPException(status_code=400, detail="Admin registration not allowed for regular users.")
         new_user = await self.user_dao.create_user(db=db, user_in=user_in)
 
         # 2. Create a default organization for the user
@@ -67,19 +70,21 @@ class AuthService:
         await self.user_dao.add_user_to_org(db=db, user=new_user, organization=default_org, role=admin_role)
 
         # 5. Trigger verification email using background tasks
-        try:
-            await email_verify.trigger_send_verification_email(
-                background_tasks=background_tasks,
-                db=db,
-                # user_dao=self.user_dao,
-                user=new_user,
-                base_url=base_url
-            )
-        except Exception as e:
-            # Log error if triggering background task fails
-            auth_logger.error(f"Failed to trigger verification email for {new_user.email}: {e}", exc_info=True)
-            # Decide if registration should fail if email task cannot be added
-            # For now, we continue registration but log the error.
+        if not registered_by_admin:
+            try:
+                await email_verify.trigger_send_verification_email(
+                    background_tasks=background_tasks,
+                    db=db,
+                    user=new_user,
+                    base_url=base_url
+                )
+            except Exception as e:
+                # Log error if triggering background task fails
+                auth_logger.error(f"Failed to trigger verification email for {new_user.email}: {e}", exc_info=True)
+                # Decide if registration should fail if email task cannot be added
+                # For now, we continue registration but log the error.
+        else:
+            auth_logger.info(f"User {new_user.email} registered by admin, skipping email verification.")
 
         # Reload user with relationships for the response
         # (get_by_email in DAO already loads relations)
@@ -783,6 +788,63 @@ class AuthService:
         except Exception as e:
             auth_logger.error(f"Database error during password reset for user {user.email}: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="Failed to reset password due to a database error.")
+
+    async def update_organization(
+        self,
+        db: AsyncSession,
+        *,
+        org_id: uuid.UUID,
+        org_update: schemas.OrganizationUpdate,
+        current_user: models.User
+    ) -> models.Organization:
+        """
+        Updates an organization's details after verifying permissions.
+        
+        This method checks if the current user has the ORG_UPDATE permission within the
+        organization, then updates the organization details.
+        
+        Args:
+            db: Database session
+            org_id: UUID of the organization to update
+            org_update: Schema containing the fields to update
+            current_user: The user requesting the update
+            
+        Returns:
+            models.Organization: The updated organization
+            
+        Raises:
+            OrganizationNotFoundException: If the organization doesn't exist
+            PermissionDeniedException: If the user lacks the required permission
+            HTTPException: If there's a database error during update
+        """
+        # 1. Check if organization exists
+        target_org = await self.org_dao.get(db, id=org_id)
+        if not target_org:
+            auth_logger.warning(f"Attempted to update non-existent organization: {org_id}")
+            raise OrganizationNotFoundException()
+        
+        # # 2. Check if user has permission to update the organization
+        # await self._check_permission(db, user=current_user, org_id=org_id, required_permission=Permissions.ORG_UPDATE)
+        
+        # 3. Perform the update
+        try:
+            # Update the organization with the provided data
+            updated_org = await self.org_dao.update(db, db_obj=target_org, obj_in=org_update)
+            
+            auth_logger.info(
+                f"Organization '{updated_org.name}' (ID: {org_id}) updated by user '{current_user.email}'"
+            )
+            return updated_org
+                
+        except Exception as e:
+            auth_logger.error(
+                f"Database error updating organization {org_id}: {e}", 
+                exc_info=True
+            )
+            raise HTTPException(
+                status_code=500, 
+                detail="Failed to update organization due to a database error"
+            )
 
 # Instantiate service for use in routers/dependencies
 # auth_service = AuthService() 
