@@ -602,8 +602,34 @@ class CustomerDocumentMetadata(BaseModel):
     is_versioned: bool = Field(..., description="Indicates if this corresponds to a versioned document entry")
     is_shared: bool = Field(..., description="Indicates if this is a shared document path accessible by all users in the organization.")
     is_system_entity: bool = Field(False, description="Whether this is a system entity. When True, document is stored in system paths instead of organization-specific paths. The is_shared flag still determines if it's shared within the organization or user-specific.")
+    version: Optional[str] = Field(None, description="The version of the document if it is versioned and this document is not just versioning metadata.")
+    # active_version: Optional[str] = Field(None, description="The active version name of the document if it is versioned. Only available if this document is the versioning metadata and not the actual document data.")
     # Add other relevant metadata like updated_at if available from the base client document
     # updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CustomerDocumentSearchResultMetadata(CustomerDocumentMetadata):
+    """
+    Schema representing metadata about a customer document (versioned or unversioned).
+    This is the metadata for the document that is returned from the search results.
+    
+    For system entities (is_system_entity=True), the document is stored in system paths
+    instead of organization-specific paths. The is_shared flag indicates whether the document
+    is shared within the organization or specific to a user.
+    """
+    is_versioning_metadata: bool = Field(..., description="Indicates if this is the versioning metadata document for a versioned document.")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CustomerDocumentSearchResult(BaseModel):
+    """
+    Schema for the result of a customer document search.
+    """
+    metadata: CustomerDocumentSearchResultMetadata = Field(..., description="The metadata for the document.")
+    data: Any = Field(..., description="The data for the document.")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -728,3 +754,20 @@ class FileUploadValidationResult(BaseModel):
     file_errors: Dict[str, List[str]] = Field(default_factory=dict, description="Dictionary mapping filenames to a list of their specific validation errors. Empty if none.")
 
     model_config = ConfigDict(extra='forbid')
+
+
+class CustomerDataSearchQuery(BaseModel):
+    """Schema for searching customer documents."""
+    namespace_filter: Optional[str] = Field(None, description="Filter by namespace (e.g., 'invoices', 'user_profiles'). Supports '*' as a wildcard for docname if namespace is specific.")
+    text_search_query: Optional[str] = Field(None, description="Optional text search query to match against document content.")
+    value_filter: Optional[Dict[str, Any]] = Field(None, description="Optional dictionary of field-value pairs to filter documents by specific data content.")
+    include_shared: bool = Field(True, description="Include documents shared within the organization.")
+    include_user_specific: bool = Field(True, description="Include documents specific to the calling user (or on_behalf_of_user_id).")
+    skip: int = Field(0, ge=0, description="Number of documents to skip for pagination.")
+    limit: int = Field(100, ge=1, le=200, description="Maximum number of documents to return.") # Max limit can be adjusted
+    on_behalf_of_user_id: Optional[uuid.UUID] = Field(None, description="Optional user ID to search on behalf of (requires superuser privileges).")
+    include_system_entities: bool = Field(False, description="Include system-level documents in the search (requires superuser privileges for non-shared system docs).")
+    sort_by: Optional[CustomerDataSortBy] = Field(None, description="Field to sort results by (e.g., 'created_at', 'updated_at').")
+    sort_order: Optional[SortOrder] = Field(SortOrder.DESC, description="Order to sort results (ASC or DESC).")
+
+    model_config = ConfigDict(from_attributes=True)

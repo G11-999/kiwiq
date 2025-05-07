@@ -1,3 +1,6 @@
+# NOTE: uncomment drop_collection to delete mongo collections and reset customer data!
+# PYTHONPATH=$(pwd):$(pwd)/services poetry run python services/workflow_service/services/external_context_manager.py
+
 from db.session import get_async_db_as_manager
 from global_config.settings import global_settings
 from mongo_client.mongo_versioned_client import AsyncMongoVersionedClient
@@ -302,6 +305,7 @@ async def get_customer_versioned_mongo_client() -> AsyncMongoVersionedClient:
     versioned_client = AsyncMongoVersionedClient(
         client=customer_mongo_client,
         segment_names=settings.MONGO_CUSTOMER_SEGMENTS, # Base segments defined in settings
+        return_timestamp_metadata=True,
     )
     return versioned_client
 
@@ -360,6 +364,9 @@ async def get_mongo_client(client_type: str, extra_segments: List[str] = []) -> 
             database=settings.MONGO_CUSTOMER_DATABASE,
             collection=settings.MONGO_CUSTOMER_COLLECTION,
             segment_names=settings.MONGO_CUSTOMER_SEGMENTS + extra_segments,
+            value_filter_fields=settings.MONGO_CUSTOMER_SEGMENTS_VALUE_FILTER_FIELDS,
+            create_sparse_value_index=True,
+            add_default_fields_to_data=True,
             text_search_fields=["name", "description"]
         )
     elif client_type == 'workflow':

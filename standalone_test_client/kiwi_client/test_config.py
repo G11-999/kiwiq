@@ -116,6 +116,7 @@ VERSIONED_DOC_RESTORE_URL = lambda namespace, docname: f"{CUSTOMER_DATA_BASE_URL
 VERSIONED_DOC_SCHEMA_URL = lambda namespace, docname: f"{CUSTOMER_DATA_BASE_URL}/versioned/{namespace}/{docname}/schema"
 UNVERSIONED_DOC_URL = lambda namespace, docname: f"{CUSTOMER_DATA_BASE_URL}/unversioned/{namespace}/{docname}"
 LIST_DOCUMENTS_URL = f"{CUSTOMER_DATA_BASE_URL}/list"
+SEARCH_DOCUMENTS_URL = f"{CUSTOMER_DATA_BASE_URL}/search"
 DOCUMENT_METADATA_URL = lambda namespace, docname: f"{CUSTOMER_DATA_BASE_URL}/metadata/{namespace}/{docname}"
 VERSIONED_DOC_UPSERT_URL = lambda namespace, docname: f"{CUSTOMER_DATA_BASE_URL}/versioned/{namespace}/{docname}/upsert"
 

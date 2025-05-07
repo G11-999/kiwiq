@@ -795,6 +795,43 @@ async def list_documents(
     customer_data_logger.debug(f"Found {len(documents)} documents for org {active_org_id}")
     return documents
 
+@customer_data_router.post(
+    "/search",
+    response_model=List[schemas.CustomerDocumentSearchResult],
+    dependencies=[Depends(RequireOrgDataReadActiveOrg)],
+    summary="Search documents",
+    description="Searches documents accessible to the user based on various criteria including namespace, text query, and value filters.",
+    tags=["customer-data-listing"],
+)
+async def search_documents_route(
+    search_query: schemas.CustomerDataSearchQuery = Body(...),
+    active_org_id: uuid.UUID = Depends(get_active_org_id),
+    current_user: User = Depends(get_current_active_verified_user),
+    service: CustomerDataService = Depends(get_customer_data_service_dependency),
+):
+    """Search documents accessible to the user based on query parameters."""
+    customer_data_logger.info(f"Searching documents for org {active_org_id} with query: {search_query.model_dump_json(indent=2)}")
+    
+    documents = await service.search_documents(
+        org_id=active_org_id,
+        user=current_user,
+        namespace_filter=search_query.namespace_filter,
+        text_search_query=search_query.text_search_query,
+        value_filter=search_query.value_filter,
+        include_shared=search_query.include_shared,
+        include_user_specific=search_query.include_user_specific,
+        skip=search_query.skip,
+        limit=search_query.limit,
+        on_behalf_of_user_id=search_query.on_behalf_of_user_id,
+        include_system_entities=search_query.include_system_entities,
+        sort_by=search_query.sort_by,
+        sort_order=search_query.sort_order,
+        # is_called_from_workflow=False # Assuming this route is not directly called from an internal workflow step
+    )
+    
+    customer_data_logger.debug(f"Found {len(documents)} documents matching search criteria for org {active_org_id}")
+    return documents
+
 @customer_data_router.get(
     "/metadata/{namespace}/{docname}",
     response_model=schemas.CustomerDocumentMetadata,

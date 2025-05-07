@@ -722,7 +722,14 @@ class CustomerDataService:
                 )
                 
             # Convert to schema objects
-            return [schemas.CustomerDataVersionInfo(**version) for version in versions]
+            return [schemas.CustomerDataVersionInfo(
+                    version=version.get("version"),
+                    is_active=version.get("is_active"),
+                    created_at=version.get(AsyncMongoVersionedClient.CREATED_AT_KEY),
+                    updated_at=version.get(AsyncMongoVersionedClient.UPDATED_AT_KEY),
+                    is_complete=version.get(AsyncMongoVersionedClient.IS_COMPLETE_KEY), # Prioritize _is_complete
+                    edit_count=version.get("edit_count")
+            ) for version in versions]
         except Exception as e:
             # Check if this is a 404 we already raised
             if isinstance(e, HTTPException):
@@ -2063,22 +2070,21 @@ class CustomerDataService:
         customer_data_logger.debug(f"Namespace filter pattern: {namespace_filter_pattern}")
         
         if include_shared or include_user_specific:
-            if include_shared:
-                customer_data_logger.debug(f"Including shared documents for org_id={org_id}")
-                patterns.append([str(org_id), self.SHARED_DOC_PLACEHOLDER, namespace_filter_pattern, "*"])
             if include_user_specific:
                 user_id = str(on_behalf_of_user_id) if on_behalf_of_user_id and user.is_superuser else str(user.id)
                 customer_data_logger.debug(f"Including user-specific documents for user_id={user_id}")
                 patterns.append([str(org_id), user_id, namespace_filter_pattern, "*"])
+            if include_shared:
+                customer_data_logger.debug(f"Including shared documents for org_id={org_id}")
+                patterns.append([str(org_id), self.SHARED_DOC_PLACEHOLDER, namespace_filter_pattern, "*"])
         
         # System patterns
-        if include_system_entities or (not user.is_superuser):  # Regular users can still see shared system docs
-            customer_data_logger.debug("Including shared system documents")
+        if include_system_entities and user.is_superuser:  # Regular users can still see shared system docs
+            # customer_data_logger.debug("Including shared system documents")
             patterns.append([CustomerDataService.SYSTEM_DOC_PLACEHOLDER, self.SHARED_DOC_PLACEHOLDER, namespace_filter_pattern, "*"])
             # Only superusers can access private system docs
-            if user.is_superuser and include_system_entities:
-                customer_data_logger.debug("Including private system documents (superuser only)")
-                patterns.append([CustomerDataService.SYSTEM_DOC_PLACEHOLDER, self.PRIVATE_DOC_PLACEHOLDER, namespace_filter_pattern, "*"])
+            # customer_data_logger.debug("Including private system documents (superuser only)")
+            patterns.append([CustomerDataService.SYSTEM_DOC_PLACEHOLDER, self.PRIVATE_DOC_PLACEHOLDER, namespace_filter_pattern, "*"])
         
         try:
             customer_data_logger.debug(f"Beginning document search with {len(patterns)} patterns")
@@ -2098,19 +2104,25 @@ class CustomerDataService:
             
             for pattern in patterns:
                 customer_data_logger.debug(f"Processing pattern: {pattern}")
-                docs = await self.versioned_mongo_client.client.search_objects(
-                    # NOTE: we only wanna fetch all docs where the version/sequence no. segments are unset!
-                    key_pattern=pattern + [None] * len(self.versioned_mongo_client.VERSION_SEGMENT_NAMES),
-                    allowed_prefixes=allowed_prefixes,
-                    include_fields=self.versioned_mongo_client.segment_names + [self.mongo_client.DOC_TYPE_KEY],
-                    skip=skip,
-                    limit=limit,
-                    value_sort_by=value_sort_by
-                )
-                customer_data_logger.debug(f"Found {len(docs)} documents for pattern: {pattern}")
-                all_docs.update(
-                    {tuple(self.versioned_mongo_client.client._segments_to_path(doc)): doc for doc in docs}
-                )
+            
+            key_patterns = []
+            for pattern in patterns:
+                key_pattern = pattern + [None] * len(self.versioned_mongo_client.VERSION_SEGMENT_NAMES)
+                key_patterns.append(key_pattern)
+             
+            docs = await self.versioned_mongo_client.client.search_objects(
+                # NOTE: we only wanna fetch all docs where the version/sequence no. segments are unset!
+                key_pattern=key_patterns,
+                allowed_prefixes=allowed_prefixes,
+                include_fields=self.versioned_mongo_client.segment_names + [self.mongo_client.DOC_TYPE_KEY],
+                skip=skip,
+                limit=limit,
+                value_sort_by=value_sort_by
+            )
+            customer_data_logger.debug(f"Found {len(docs)} documents for pattern: {pattern}")
+            all_docs.update(
+                {tuple(self.versioned_mongo_client.client._segments_to_path(doc)): doc for doc in docs}
+            )
             
             customer_data_logger.debug(f"Total unique documents found: {len(all_docs)}")
             
@@ -2168,6 +2180,242 @@ class CustomerDataService:
             # Return unique result (sorting and pagination is now done by the search_objects function)
             return unique_result
         except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to list documents: {str(e)}",
+            )
+
+
+# --- List Documents --- #
+    
+    async def search_documents(
+        self,
+        org_id: uuid.UUID,
+        user: User,
+        namespace_filter: Optional[str] = None,
+        text_search_query: Optional[str] = None,
+        value_filter: Optional[Dict[str, Any]] = None,
+        include_shared: bool = True,
+        include_user_specific: bool = True,
+        skip: int = 0,
+        limit: int = 100,
+        on_behalf_of_user_id: Optional[uuid.UUID] = None,
+        include_system_entities: bool = False,
+        sort_by: Optional[schemas.CustomerDataSortBy] = None,
+        sort_order: Optional[schemas.SortOrder] = schemas.SortOrder.DESC,
+        is_called_from_workflow: bool = False,
+    ) -> List[schemas.CustomerDocumentSearchResult]:
+        """
+        Search documents accessible to the user.
+        
+        Args:
+            org_id: Organization ID
+            user: User object
+            namespace_filter: Filter by namespace (optional)
+            text_search_query: Optional text search query
+            value_filter: Optional data field filters
+            include_shared: Include shared documents
+            include_user_specific: Include user-specific documents
+            skip: Number of documents to skip
+            limit: Maximum number of documents to return
+            on_behalf_of_user_id: Optional user ID to act on behalf of (superusers only)
+            include_system_entities: Whether to include system entities (superusers only)
+            sort_by: Field to sort results by
+            sort_order: Order to sort results (ASC or DESC)
+            is_called_from_workflow: Whether this operation is called from a workflow
+            
+        Returns:
+            Search of document search results
+        """
+        if not include_shared and not include_user_specific and not include_system_entities:
+            customer_data_logger.info("No document types included, returning empty Search")
+            return []
+         
+        # Permission checks for acting on behalf of another user or system entities
+        if on_behalf_of_user_id and not user.is_superuser:
+            customer_data_logger.warning(f"Permission denied: Non-superuser {user.id} attempted to act on behalf of {on_behalf_of_user_id}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only superusers can act on behalf of other users"
+            )
+            
+        if include_system_entities and not user.is_superuser:
+            customer_data_logger.warning(f"Permission denied: Non-superuser {user.id} attempted to Search system entities")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only superusers can Search all system entities"
+            )
+        
+        customer_data_logger.debug(f"Getting allowed prefixes for org_id={org_id}, user={user.id}, on_behalf_of_user_id={on_behalf_of_user_id}")
+        # Get allowed prefixes from our helper method
+        allowed_prefixes = self._get_allowed_prefixes(
+            org_id=org_id,
+            user=user,
+            on_behalf_of_user_id=on_behalf_of_user_id,
+            is_mutation=False,  # Searching is not a mutation operation
+            is_system_entity=False,  # Basic prefixes, specific system patterns added below
+            is_called_from_workflow=is_called_from_workflow,
+        )
+        customer_data_logger.debug(f"Allowed prefixes: {allowed_prefixes}")
+        
+        # Build patterns to search for
+        patterns = []
+        
+        # Organization patterns
+        namespace_filter_pattern = namespace_filter if namespace_filter else "*"
+        customer_data_logger.debug(f"Namespace filter pattern: {namespace_filter_pattern}")
+        
+        if include_shared or include_user_specific:
+            if include_user_specific:
+                user_id = str(on_behalf_of_user_id) if on_behalf_of_user_id and user.is_superuser else str(user.id)
+                customer_data_logger.debug(f"Including user-specific documents for user_id={user_id}")
+                patterns.append([str(org_id), user_id, namespace_filter_pattern, "*"])
+            if include_shared:
+                customer_data_logger.debug(f"Including shared documents for org_id={org_id}")
+                patterns.append([str(org_id), self.SHARED_DOC_PLACEHOLDER, namespace_filter_pattern, "*"])
+        
+        # System patterns
+        if include_system_entities and user.is_superuser:  # Regular users can still see shared system docs
+            # customer_data_logger.debug("Including shared system documents")
+            patterns.append([CustomerDataService.SYSTEM_DOC_PLACEHOLDER, self.SHARED_DOC_PLACEHOLDER, namespace_filter_pattern, "*"])
+            # Only superusers can access private system docs
+            # customer_data_logger.debug("Including private system documents (superuser only)")
+            patterns.append([CustomerDataService.SYSTEM_DOC_PLACEHOLDER, self.PRIVATE_DOC_PLACEHOLDER, namespace_filter_pattern, "*"])
+        
+        try:
+            customer_data_logger.debug(f"Beginning document search with {len(patterns)} patterns")
+            # Process each pattern and combine results
+            all_docs = {}
+            customer_data_logger.debug(f"Patterns: {patterns}")
+            
+            # Define sort options based on provided parameters
+            sort_direction = 1 if sort_order == schemas.SortOrder.ASC else -1
+            value_sort_by = None
+            
+            if sort_by:
+                if sort_by == schemas.CustomerDataSortBy.CREATED_AT:
+                    value_sort_by = [("created_at", sort_direction)]
+                elif sort_by == schemas.CustomerDataSortBy.UPDATED_AT:
+                    value_sort_by = [("updated_at", sort_direction)]
+            
+            key_patterns = []
+            for pattern in patterns:
+                customer_data_logger.debug(f"Processing pattern: {pattern}")
+                key_pattern = pattern + [None] * len(self.versioned_mongo_client.VERSION_SEGMENT_NAMES)
+                if text_search_query or value_filter:
+                    #     ALSO enable searches in versioned docs data in the version segment!
+                    key_pattern = pattern + ["*"] + [None] * (len(self.versioned_mongo_client.VERSION_SEGMENT_NAMES) - 1)
+                key_patterns.append(key_pattern)
+                
+            # # Log search query details for debugging purposes
+            # customer_data_logger.warning(
+            #     f"\n\nSearch Query Details:"
+            #     f"\n  Pattern: {pattern}"
+            #     f"\n  Key Pattern: {key_pattern}"
+            #     f"\n  Text Search Query: {text_search_query}"
+            #     f"\n  Value Filter: {value_filter}"
+            #     f"\n  Allowed Prefixes: {allowed_prefixes}"
+            #     f"\n  Skip: {skip}"
+            #     f"\n  Limit: {limit}"
+            #     f"\n  Sort By: {sort_by}"
+            #     f"\n  Sort Order: {sort_order}"
+            #     f"\n  Value Sort By: {value_sort_by}\n"
+            # )
+            
+            docs = await self.versioned_mongo_client.client.search_objects(
+                # NOTE: we only wanna fetch all docs where the version/sequence no. segments are unset!
+                key_pattern=key_patterns,
+                text_search_query=text_search_query,
+                value_filter=value_filter,
+                allowed_prefixes=allowed_prefixes,
+                # include_fields=self.versioned_mongo_client.segment_names + [self.mongo_client.DOC_TYPE_KEY],
+                skip=skip,
+                limit=limit,
+                value_sort_by=value_sort_by
+            )
+            # customer_data_logger.warning(f"\n\n\n\n***** _doc_metadata: {json.dumps(_doc_metadata, indent=4)}\n\n\n\n")
+            customer_data_logger.debug(f"Found {len(docs)} documents for pattern(s): {key_patterns}")
+            all_docs = {tuple(self.versioned_mongo_client.client._segments_to_path(doc)): doc for doc in docs}
+
+            customer_data_logger.debug(f"Total unique documents found: {len(all_docs)}")
+            
+            # Process results into metadata objects
+            result = []
+            for doc_path, _doc_metadata in all_docs.items():
+                # Skip if not a list (should not happen)
+                if not isinstance(doc_path, (list, tuple)) or len(doc_path) < 4:
+                    customer_data_logger.warning(f"Skipping invalid doc_path: {doc_path}")
+                    continue
+                    
+                # Extract path components
+                is_versioned = _doc_metadata.get(self.mongo_client.DOC_TYPE_KEY) == self.mongo_client.DOC_TYPE_VERSIONED
+                is_versioning_metadata = is_versioned
+                version = None
+                if len(doc_path) > 4:
+                    version = doc_path[4]
+                    is_versioning_metadata = False
+                org_id_str, user_id_str, namespace, docname = doc_path[:4]
+                
+                # Determine if shared and system
+                is_shared = user_id_str == self.SHARED_DOC_PLACEHOLDER
+                is_system = org_id_str == CustomerDataService.SYSTEM_DOC_PLACEHOLDER
+                
+                # Skip system entities if not requested
+                if is_system and not include_system_entities and not is_shared:
+                    customer_data_logger.debug(f"Skipping system entity not requested: {doc_path}")
+                    continue
+                
+                
+                # customer_data_logger.warning(f"\n\n\n\n***** _doc_metadata: {json.dumps(_doc_metadata, indent=4)}\n\n\n\n")
+                
+                data = {k: v for k, v in _doc_metadata.get("data", {}).items() if k not in AsyncMongoVersionedClient.INTERNAL_KEYS}
+                # handle non-dict type
+                data = data.get(AsyncMongoVersionedClient.DOCUMENT_KEY, data)
+
+                # customer_data_logger.warning(f"\n\n\n\n***** data: {json.dumps(data, indent=4)}\n\n\n\n")
+                
+                # Create metadata object
+                metadata = schemas.CustomerDocumentSearchResultMetadata(
+                    org_id=uuid.UUID(org_id_str) if not is_system else None,
+                    user_id_or_shared_placeholder=user_id_str,
+                    namespace=namespace,
+                    docname=docname,
+                    is_versioned=is_versioned,
+                    is_shared=is_shared,
+                    is_system_entity=is_system,
+                    version=version,
+                    is_versioning_metadata=is_versioning_metadata,
+                    # active_version=data.get("active_version", False),
+                )
+
+                search_result = schemas.CustomerDocumentSearchResult(
+                    metadata=metadata,
+                    data=data,
+                )
+                
+                result.append(search_result)
+            
+            customer_data_logger.debug(f"Raw result count: {len(result)}")
+            
+            # Remove duplicates (in case the same document matched multiple patterns)
+            unique_result = []
+            seen_paths = set()
+            
+            for search_result in result:
+                metadata = search_result.metadata
+                path_key = f"{metadata.org_id or CustomerDataService.SYSTEM_DOC_PLACEHOLDER}/{metadata.user_id_or_shared_placeholder}/{metadata.namespace}/{metadata.docname}/{metadata.version}"
+                if path_key not in seen_paths:
+                    seen_paths.add(path_key)
+                    unique_result.append(search_result)
+                else:
+                    customer_data_logger.debug(f"Skipping duplicate: {path_key}")
+            
+            customer_data_logger.debug(f"Unique result count: {len(unique_result)}")
+            
+            # Return unique result (sorting and pagination is now done by the search_objects function)
+            return unique_result
+        except Exception as e:
+            customer_data_logger.error(f"Error searching documents: {str(e)}", exc_info=True)
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to list documents: {str(e)}",

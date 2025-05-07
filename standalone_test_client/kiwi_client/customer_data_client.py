@@ -49,9 +49,11 @@ from kiwi_client.test_config import (
     TEST_ORG_ID,
     DOCUMENT_METADATA_URL,
     VERSIONED_DOC_UPSERT_URL,
+    SEARCH_DOCUMENTS_URL,
 )
 # Import schemas and constants from the workflow app
 from kiwi_client.schemas import workflow_api_schemas as wf_schemas
+from kiwi_client.schemas.workflow_api_schemas import SortOrder, CustomerDataSortBy # Added SortOrder, CustomerDataSortBy
 # Import Template Client for schema creation/cleanup
 from kiwi_client.template_client import TemplateTestClient
 
@@ -63,6 +65,7 @@ logging.basicConfig(level=CLIENT_LOG_LEVEL)
 CustomerDataVersionInfoListAdapter = TypeAdapter(List[wf_schemas.CustomerDataVersionInfo])
 CustomerDataVersionHistoryItemListAdapter = TypeAdapter(List[wf_schemas.CustomerDataVersionHistoryItem])
 CustomerDocumentMetadataListAdapter = TypeAdapter(List[wf_schemas.CustomerDocumentMetadata])
+CustomerDocumentSearchResultListAdapter = TypeAdapter(List[wf_schemas.CustomerDocumentSearchResult])
 
 class CustomerDataTestClient:
     """
@@ -890,6 +893,43 @@ class CustomerDataTestClient:
             logger.exception("Unexpected error getting document metadata.")
         return None
 
+    async def search_documents(
+        self,
+        query: wf_schemas.CustomerDataSearchQuery,
+    ) -> Optional[List[wf_schemas.CustomerDocumentSearchResult]]:
+        """
+        Tests searching documents via POST /customer-data/search.
+
+        Args:
+            query (wf_schemas.CustomerDataSearchQuery): The search query parameters.
+
+        Returns:
+            Optional[List[wf_schemas.CustomerDocumentSearchResult]]: List of search results if successful, None otherwise.
+        """
+        logger.info(f"Attempting to search documents with query: {query.model_dump_json(indent=2)}")
+        url = SEARCH_DOCUMENTS_URL # Defined in test_config.py
+        payload = query.model_dump(exclude_none=True) # Exclude None values for a cleaner payload
+
+        try:
+            response = await self._client.post(url, json=payload)
+            response.raise_for_status() # Raise for non-2xx status codes
+
+            response_json = response.json()
+            validated_response = CustomerDocumentSearchResultListAdapter.validate_python(response_json)
+            logger.info(f"Successfully searched and validated {len(validated_response)} documents.")
+            logger.debug(f"Search response validated: {validated_response}") # May be long
+            return validated_response
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP Status Error searching documents: {e.response.status_code} - {e.response.text}")
+        except httpx.RequestError as e:
+            logger.error(f"Request error searching documents: {e}")
+        except ValidationError as e:
+            logger.error(f"Response validation error searching documents: {e}")
+            logger.debug(f"Invalid response JSON: {response_json if 'response_json' in locals() else 'No response JSON'}")
+        except Exception as e:
+            logger.exception("Unexpected error during document search.")
+        return None
+
 
 # --- Example Usage ---
 async def main():
@@ -964,7 +1004,7 @@ async def main():
             })
             assert init_result_json is not None, "Initialization failed, expected a result."
             expected_init_data = {"key": "value1", "count": 0}
-            assert init_result_json.data == expected_init_data, \
+            assert {k: v for k,v in init_result_json.data.items() if k not in ["created_at", "updated_at"]} == expected_init_data, \
                    f"Initialized data mismatch. Expected: {expected_init_data}, Got: {init_result_json.data}"
             print("   ✓ Initialized user-specific JSON document.")
             
@@ -984,7 +1024,7 @@ async def main():
             # 2. Get (User Specific, JSON, version v1.0)
             get_result_json = await data_tester.get_versioned_document(test_ns, v_doc_name_json, is_shared=False, version="v1.0")
             assert get_result_json is not None, "Get document failed, expected a result."
-            assert get_result_json.data == expected_init_data, \
+            assert {k: v for k,v in get_result_json.data.items() if k not in ["created_at", "updated_at"]} == expected_init_data, \
                    f"Get document data mismatch. Expected: {expected_init_data}, Got: {get_result_json.data}"
             print("   ✓ Got user-specific JSON document v1.0.")
 
@@ -997,7 +1037,7 @@ async def main():
             )
             update_result_json = await data_tester.update_versioned_document(test_ns, v_doc_name_json, update_data_json)
             assert update_result_json is not None, "Update document failed, expected a result."
-            assert update_result_json.data == update_payload_json, \
+            assert {k: v for k,v in update_result_json.data.items() if k not in ["created_at", "updated_at"]} == update_payload_json, \
                    f"Updated data mismatch. Expected: {update_payload_json}, Got: {update_result_json.data}"
             print("   ✓ Updated (Valid Full) user-specific JSON document v1.0 - Schema OK.")
 
@@ -1033,7 +1073,7 @@ async def main():
             partial_update_payload_valid["optional_field"] = "partial update value"
 
             update_partial_valid_data = wf_schemas.CustomerDataVersionedUpdate(
-                is_shared=False, data=partial_update_payload_valid, version="v1.0"
+                is_shared=False, data={k: v for k,v in partial_update_payload_valid.items() if k not in ["created_at", "updated_at"]}, version="v1.0"
             )
             update_partial_valid_result = await data_tester.update_versioned_document(test_ns, v_doc_name_json, update_partial_valid_data)
             assert update_partial_valid_result is not None, "Expected valid partial update to succeed"
@@ -1105,7 +1145,7 @@ async def main():
             update_active_result_json = await data_tester.update_versioned_document(test_ns, v_doc_name_json, update_active_data_json)
             assert update_active_result_json is not None, "Update active version failed, expected a result."
             expected_update_response = {'nested': {'flag': True}, 'optional_field': 'partial update value'} | update_active_payload_json
-            assert update_active_result_json.data == expected_update_response, \
+            assert {k: v for k,v in update_active_result_json.data.items() if k not in ["created_at", "updated_at"]} == expected_update_response, \
                    f"Update active data mismatch. Expected: {expected_update_response}, Got: {update_active_result_json.data}"
             print("   ✓ Updated active version (v1.1, JSON).")
             
@@ -1113,7 +1153,7 @@ async def main():
             restore_data = wf_schemas.CustomerDataVersionedRestore(is_shared=False, sequence=0, version="v1.0")
             restore_result = await data_tester.restore_document(test_ns, v_doc_name_json, restore_data)
             assert restore_result is not None, "Restore document failed, expected a result."
-            assert restore_result.data == expected_init_data, \
+            assert {k: v for k,v in restore_result.data.items() if k not in ["created_at", "updated_at"]} == expected_init_data, \
                    f"Restored data mismatch. Expected: {expected_init_data}, Got: {restore_result.data}" # Check if back to initial state
             print("   ✓ Restored JSON document v1.0 to initial state (seq 0).")
 
@@ -1184,7 +1224,7 @@ async def main():
             })
 
             assert uv_create_result_json is not None, "Create unversioned JSON failed, expected result."
-            assert uv_create_result_json.data == uv_create_payload_json, \
+            assert {k: v for k,v in uv_create_result_json.data.items() if k not in ["created_at", "updated_at"]} == uv_create_payload_json, \
                    f"Create unversioned JSON data mismatch. Expected: {uv_create_payload_json}, Got: {uv_create_result_json.data}"
             print("   ✓ Created/Updated shared unversioned JSON document.")
             
@@ -1239,7 +1279,7 @@ async def main():
             assert uv_get_result_json is not None, "Get unversioned JSON failed, expected result."
             # NOTE: subfields are updated when we update an existing document!
             expected_uv_data = {'config': 'shared_config_value', 'items': [1, 2], 'count': 11, 'key': 'uv_key', 'optional_field': 'optional_value'}
-            assert uv_get_result_json.data == expected_uv_data, \
+            assert {k: v for k,v in uv_get_result_json.data.items() if k not in ["created_at", "updated_at"]} == expected_uv_data, \
                    f"Get unversioned JSON data mismatch. Expected: {expected_uv_data}, Got: {uv_get_result_json.data}"
             print("   ✓ Got shared unversioned JSON document.")
 
@@ -1251,7 +1291,7 @@ async def main():
             )
             uv_update_result_json = await data_tester.create_or_update_unversioned_document(test_ns, uv_doc_name_json, uv_update_data_json)
             assert uv_update_result_json is not None, "Update unversioned JSON failed, expected result."
-            assert uv_update_result_json.data == uv_update_payload_json, \
+            assert {k: v for k,v in uv_update_result_json.data.items() if k not in ["created_at", "updated_at"]} == uv_update_payload_json, \
                    f"Update unversioned JSON data mismatch. Expected: {uv_update_payload_json}, Got: {uv_update_result_json.data}"
             print("   ✓ Updated shared unversioned JSON document.")
 
@@ -1358,7 +1398,7 @@ async def main():
             assert upsert_update_result.document_identifier.version == "v_init", f"Expected version v_init, got {upsert_update_result.document_identifier.version}"
             # Verify update
             get_updated_vinit = await data_tester.get_versioned_document(upsert_ns, upsert_doc_name, is_shared=False, version="v_init")
-            assert get_updated_vinit is not None and get_updated_vinit.data == {"initial": "updated", "count": 1}
+            assert get_updated_vinit is not None and {k: v for k,v in get_updated_vinit.data.items() if k not in ["created_at", "updated_at"]} == {"initial": "updated", "count": 1}
             print("   ✓ Upsert updated existing version (v_init).")
 
             # 23. Upsert to Create and Update a New Version (v_new)
@@ -1375,7 +1415,7 @@ async def main():
             assert upsert_new_version_result.document_identifier.version == "v_new", f"Expected version v_new, got {upsert_new_version_result.document_identifier.version}"
             # Verify new version exists and has the data
             get_vnew = await data_tester.get_versioned_document(upsert_ns, upsert_doc_name, is_shared=False, version="v_new")
-            assert get_vnew is not None and get_vnew.data == {"new_version_data": True, "count": 100, "initial": "updated"}
+            assert get_vnew is not None and {k: v for k,v in get_vnew.data.items() if k not in ["created_at", "updated_at"]} == {"new_version_data": True, "count": 100, "initial": "updated"}
             print("   ✓ Upsert created and updated new version (v_new).")
 
             # 24. Upsert to Update Active Version (assuming v_init is still active, or default)
@@ -1395,8 +1435,33 @@ async def main():
             assert upsert_active_result.document_identifier.version is None, "Expected active version represented by None to be updated"
             # Verify active version (v_new) was updated
             get_active = await data_tester.get_versioned_document(upsert_ns, upsert_doc_name, is_shared=False) # Gets active
-            assert get_active is not None and get_active.data == {"new_version_data": True, "count": 101, "active_update": "done", "initial": "updated"}
+            assert get_active is not None and {k: v for k,v in get_active.data.items() if k not in ["created_at", "updated_at"]} == {"new_version_data": True, "count": 101, "active_update": "done", "initial": "updated"}
             print("   ✓ Upsert updated active version (v_new).")
+
+            # --- Search Documents --- 
+            print(f"\n--- Testing Document Search in namespace {test_ns} ---")
+            search_query_payload = wf_schemas.CustomerDataSearchQuery(
+                namespace_filter=test_ns,
+                text_search_query="initial", # Should match some of the upserted/initialized docs
+                include_shared=True,
+                include_user_specific=True,
+                limit=10
+            )
+            search_results = await data_tester.search_documents(search_query_payload)
+            assert search_results is not None, "Document search failed, expected results."
+            print(f"   ✓ Found {len(search_results)} documents matching 'initial' in namespace {test_ns}.")
+            for res in search_results:
+                print(f"     - Doc: {res.metadata.namespace}/{res.metadata.docname}, Version: {res.metadata.version}, Shared: {res.metadata.is_shared}, Data: {res.data}")
+                # Basic check if text_search_query worked (very simplified)
+                assert "initial" in json.dumps(res.data).lower() or res.metadata.docname == upsert_doc_name, \
+                    f"Search result {res.metadata.docname} data doesn't seem to contain 'initial': {res.data}"
+
+            # --- Run Comprehensive Search API Tests ---
+            print(f"\n--- Testing Comprehensive Document Search in namespace starting with {test_ns} ---")
+            # `test_ns` will be the base for search-specific namespaces to keep them somewhat grouped
+            search_test_created_docs = await run_search_tests(data_tester, template_tester, test_ns, created_docs_for_cleanup)
+            # created_docs_for_cleanup.extend(search_test_created_docs)
+            print("   ✓ Comprehensive search tests completed.")
 
     except AuthenticationError as e:
         print(f"Authentication Error: {e}")
@@ -1608,6 +1673,358 @@ async def main2():
                         print(f"✗ Error deleting {doc['namespace']}/{doc['docname']}: {e}")
         
         print("--- Advanced Customer Data API Test Completed ---")
+
+
+async def run_search_tests(
+    data_tester: CustomerDataTestClient, 
+    template_tester: TemplateTestClient, 
+    base_namespace: str,
+    created_docs_for_cleanup: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """
+    Runs a comprehensive suite of tests for the customer data search API.
+    Creates a set of documents and then performs various search queries to validate functionality.
+
+    Args:
+        data_tester: An initialized CustomerDataTestClient.
+        template_tester: An initialized TemplateTestClient (not used in this version but kept for consistency).
+        base_namespace: The base namespace string to prefix search-specific namespaces.
+
+    Returns:
+        A list of dictionaries, where each dictionary contains info about a created document
+        for cleanup purposes.
+    """
+    search_docs_for_cleanup: List[Dict[str, Any]] = []
+    
+    # Define unique namespaces and docnames for search tests
+    # Using a common prefix derived from base_namespace to group these test documents
+    search_ns_1 = f"{base_namespace}_search1"
+    search_ns_2 = f"{base_namespace}_search2"
+    search_ns_3_special = f"{base_namespace}_search3_special"
+    custom_ns_for_deletion = []  # ["test_ns_df598e_search1", "test_ns_5e5d54_search1", "test_ns_e51d82_search1", "test_ns_810298_search1", "test_ns_e51d82_search2", "test_ns_810298_search2", "test_ns_df598e_search2", "test_ns_5970d7_search2", "test_ns_5970d7_search1", "test_ns_e51d82_search3_special", "test_ns_5e5d54_search3_special", "test_ns_810298_search3_special", "test_ns_df598e_search3_special"]
+    # x = [('test_ns_271b50_search1', 's_v_json_shared1_45e4'), ('test_ns_271b50_search1', 's_v_json_shared2_sort_d087'), ('test_ns_c280fc_search1', 's_v_json_shared1_8d74'), ('test_ns_c280fc_search1', 's_v_json_shared2_sort_1592'), ('test_ns_271b50_search1', 's_v_json_user1_19cf'), ('test_ns_c280fc_search1', 's_v_json_user1_fa93')] + [('test_ns_1221bd_search2', 's_uv_json_user1_6f49'), ('test_ns_5e5d54_search2', 's_uv_json_user1_e20d'), ('test_ns_c280fc_search2', 's_uv_json_user1_8784')]
+    # custom_ns_for_deletion.extend([a[0] for a in x])
+    # --- Pre-cleanup: List and delete any existing documents in test namespaces ---
+    print("   --- Pre-cleanup of test namespaces ---")
+    namespaces_to_pre_clean = [search_ns_1, search_ns_2, search_ns_3_special, ] + custom_ns_for_deletion
+    for ns_to_clean in namespaces_to_pre_clean:
+        print(f"     Cleaning namespace: {ns_to_clean}")
+        existing_docs_in_ns = await data_tester.list_documents(
+            namespace=ns_to_clean,
+            include_shared=True,
+            include_user_specific=True,
+            include_system_entities=False, # Assuming test docs are not system entities by default
+            limit=1000 # High limit to get all
+        )
+        if existing_docs_in_ns:
+            print(f"       Found {len(existing_docs_in_ns)} documents to delete in {ns_to_clean}.")
+            for doc_meta in existing_docs_in_ns:
+                print(f"         Deleting {doc_meta.namespace}/{doc_meta.docname} (Shared: {doc_meta.is_shared}, Versioned: {doc_meta.is_versioned})")
+                deleted = False
+                try:
+                    if doc_meta.is_versioned:
+                        deleted = await data_tester.delete_versioned_document(
+                            namespace=doc_meta.namespace, 
+                            docname=doc_meta.docname, 
+                            is_shared=doc_meta.is_shared
+                        )
+                    else:
+                        deleted = await data_tester.delete_unversioned_document(
+                            namespace=doc_meta.namespace, 
+                            docname=doc_meta.docname, 
+                            is_shared=doc_meta.is_shared
+                        )
+                    if not deleted:
+                        print(f"         WARN: Failed to delete {doc_meta.namespace}/{doc_meta.docname}")
+                except Exception as e:
+                    print(f"         ERROR deleting {doc_meta.namespace}/{doc_meta.docname}: {e}")
+        else:
+            print(f"       Namespace {ns_to_clean} is already clean or does not exist.")
+    print("   --- Pre-cleanup finished ---")
+
+    # Doc details
+    # Format: (namespace, docname, is_versioned, is_shared, data_payload_creator_func, init_version_if_versioned)
+    # data_payload_creator_func is a function that returns the data for initialization/creation
+    doc_specs = [
+        (search_ns_1, f"s_v_json_user1_{uuid.uuid4().hex[:4]}", True, False, lambda: {"description": "apple banana orange", "category": "fruit", "id_num": 1, "is_ripe": True, "rank": 10}, "v1"),
+        (search_ns_1, f"s_v_json_shared1_{uuid.uuid4().hex[:4]}", True, True, lambda: {"description": "banana kiwi grape", "category": "fruit", "id_num": 2, "is_ripe": False, "source": "storeA", "rank": 20}, "v1"),
+        (search_ns_2, f"s_uv_json_user1_{uuid.uuid4().hex[:4]}", False, False, lambda: {"description": "A blue car with stripes", "color": "blue", "id_num": 3, "year": 2020, "rank": 5}, None),
+        (search_ns_2, f"s_uv_str_shared1_{uuid.uuid4().hex[:4]}", False, True, lambda: {"description": "This is a document about orange and red apples."}, None),
+        (search_ns_3_special, f"s_v_json_user2_spchar_{uuid.uuid4().hex[:4]}", True, False, lambda: {"description": "special characters like !@#$%^&*()_+ and the word orange", "category": "symbols", "id_num": 4, "value_float": 100.5, "rank": 15}, "vAlpha"),
+        (search_ns_1, f"s_v_json_shared2_sort_{uuid.uuid4().hex[:4]}", True, True, lambda: {"description": "yet another fruit document: cherry", "category": "fruit", "id_num": 5, "count_int": 50, "rank": 1}, "vS1"),
+    ]
+
+    created_doc_names_map: Dict[Tuple[str, str], Any] = {} # (ns, docname) -> original_data
+
+    print("   Setting up documents for search tests...")
+    for ns, dn, is_versioned, is_shared, data_creator, version in doc_specs:
+        doc_data = data_creator()
+        created_doc_names_map[(ns, dn)] = doc_data 
+        print(f"     Creating {'versioned' if is_versioned else 'unversioned'} doc: {ns}/{dn} (shared={is_shared})")
+        if is_versioned:
+            init_payload = wf_schemas.CustomerDataVersionedInitialize(
+                is_shared=is_shared,
+                initial_data=doc_data,
+                initial_version=version
+            )
+            init_res = await data_tester.initialize_versioned_document(ns, dn, init_payload)
+            assert init_res is not None, f"Failed to initialize search test doc {ns}/{dn}"
+        else:
+            create_payload = wf_schemas.CustomerDataUnversionedCreateUpdate(
+                is_shared=is_shared,
+                data=doc_data
+            )
+            create_res = await data_tester.create_or_update_unversioned_document(ns, dn, create_payload)
+            assert create_res is not None, f"Failed to create search test doc {ns}/{dn}"
+        
+        search_docs_for_cleanup.append({
+            "namespace": ns, "docname": dn,
+            "is_shared": is_shared, "is_versioned": is_versioned, "is_system_entity": False
+        })
+    print(f"   ✓ Created {len(search_docs_for_cleanup)} documents for search tests.")
+    created_docs_for_cleanup.extend(search_docs_for_cleanup)
+
+    # Helper to check results
+    def _check_search_results(results: Optional[List[wf_schemas.CustomerDocumentSearchResult]], expected_count: Optional[int] = None, expected_docs: Optional[List[Tuple[str, str]]] = None):
+        assert results is not None, "Search results were None"
+        if expected_count is not None:
+            assert len(results) == expected_count, f"Expected {expected_count} results, got {len(results)}: {[ (r.metadata.namespace, r.metadata.docname) for r in results]}"
+        if expected_docs is not None:
+            found_docs_paths = set((r.metadata.namespace, r.metadata.docname) for r in results)
+            for expected_ns, expected_dn in expected_docs:
+                assert (expected_ns, expected_dn) in found_docs_paths, f"Expected doc {(expected_ns, expected_dn)} not found in results: {found_docs_paths}"
+            # Also check that no unexpected docs are present if count matches
+            if expected_count is not None and len(results) == expected_count:
+                 assert len(found_docs_paths) == len(expected_docs), f"Result count matches, but specific docs mismatch. Expected: {expected_docs}, Found: {found_docs_paths}"
+        return results
+
+
+    # --- Search Test Scenarios ---
+    print("\n   --- Running Search Test Scenarios ---")
+
+    # 1. Text Search
+    print("   1. Testing Text Search...")
+    search_query_apple = wf_schemas.CustomerDataSearchQuery(text_search_query="apple", include_shared=True, include_user_specific=True)
+    results_apple = await data_tester.search_documents(search_query_apple)
+    _check_search_results(results_apple, expected_count=2, expected_docs=[
+        (doc_specs[0][0], doc_specs[0][1]), # s_v_json_user1 (apple banana orange)
+        (doc_specs[3][0], doc_specs[3][1]), # s_uv_str_shared1 (orange and red apples)
+    ])
+    print("     ✓ Text search 'apple' OK.")
+
+    search_query_banana = wf_schemas.CustomerDataSearchQuery(text_search_query="banana", include_shared=True, include_user_specific=True)
+    results_banana = await data_tester.search_documents(search_query_banana)
+    _check_search_results(results_banana, expected_count=2, expected_docs=[
+        (doc_specs[0][0], doc_specs[0][1]), # s_v_json_user1 (apple banana orange)
+        (doc_specs[1][0], doc_specs[1][1]), # s_v_json_shared1 (banana kiwi grape)
+    ])
+    print("     ✓ Text search 'banana' OK.")
+    
+    search_query_orange = wf_schemas.CustomerDataSearchQuery(text_search_query="orange", include_shared=True, include_user_specific=True)
+    results_orange = await data_tester.search_documents(search_query_orange)
+    _check_search_results(results_orange, expected_count=3, expected_docs=[
+        (doc_specs[0][0], doc_specs[0][1]), # s_v_json_user1 (apple banana orange)
+        (doc_specs[3][0], doc_specs[3][1]), # s_uv_str_shared1 (orange and red apples)
+        (doc_specs[4][0], doc_specs[4][1]), # s_v_json_user2_spchar (word orange)
+    ])
+    print("     ✓ Text search 'orange' OK.")
+
+    search_query_nonexistent = wf_schemas.CustomerDataSearchQuery(text_search_query="supercalifragilisticexpialidocious", include_shared=True, include_user_specific=True)
+    results_nonexistent = await data_tester.search_documents(search_query_nonexistent)
+    _check_search_results(results_nonexistent, expected_count=0)
+    print("     ✓ Text search 'nonexistentword' OK.")
+
+    search_query_spchar = wf_schemas.CustomerDataSearchQuery(text_search_query="special characters", namespace_filter=search_ns_3_special, include_shared=True, include_user_specific=True)
+    results_spchar = await data_tester.search_documents(search_query_spchar)
+    _check_search_results(results_spchar, expected_count=1, expected_docs=[(doc_specs[4][0], doc_specs[4][1])])
+    print("     ✓ Text search 'special characters' OK.")
+
+    # 2. Namespace Filter
+    print("   2. Testing Namespace Filter...")
+    search_query_ns1 = wf_schemas.CustomerDataSearchQuery(namespace_filter=search_ns_1, include_shared=True, include_user_specific=True)
+    results_ns1 = await data_tester.search_documents(search_query_ns1)
+    _check_search_results(results_ns1, expected_count=3, expected_docs=[
+        (doc_specs[0][0], doc_specs[0][1]), 
+        (doc_specs[1][0], doc_specs[1][1]),
+        (doc_specs[5][0], doc_specs[5][1]),
+    ])
+    print(f"     ✓ Namespace filter '{search_ns_1}' OK.")
+
+    search_query_ns_nonexistent = wf_schemas.CustomerDataSearchQuery(namespace_filter="nonexistent_namespace_filter_test", include_shared=True, include_user_specific=True)
+    results_ns_nonexistent = await data_tester.search_documents(search_query_ns_nonexistent)
+    _check_search_results(results_ns_nonexistent, expected_count=0)
+    print("     ✓ Namespace filter 'nonexistent_namespace' OK.")
+
+    # 3. Value Filter
+    print("   3. Testing Value Filter...")
+    search_query_val_fruit = wf_schemas.CustomerDataSearchQuery(value_filter={"category": "fruit"}, include_shared=True, include_user_specific=True)
+    results_val_fruit = await data_tester.search_documents(search_query_val_fruit)
+    _check_search_results(results_val_fruit, expected_count=3, expected_docs=[
+        (doc_specs[0][0], doc_specs[0][1]),
+        (doc_specs[1][0], doc_specs[1][1]),
+        (doc_specs[5][0], doc_specs[5][1]),
+    ])
+    print("     ✓ Value filter {'category': 'fruit'} OK.")
+
+    search_query_val_id3 = wf_schemas.CustomerDataSearchQuery(value_filter={"id_num": 3}, include_shared=True, include_user_specific=True)
+    results_val_id3 = await data_tester.search_documents(search_query_val_id3)
+    _check_search_results(results_val_id3, expected_count=1, expected_docs=[(doc_specs[2][0], doc_specs[2][1])])
+    
+    import pprint
+    print("\n\n\n\n***** Results:")
+    print(pprint.pformat([r.model_dump() for r in results_val_id3]))
+    print("\n\n\n\n")
+
+    assert results_val_id3[0].data.get("color") == "blue" # Check specific data
+    print("     ✓ Value filter {'id_num': 3} OK.")
+    
+    search_query_val_ripe_true = wf_schemas.CustomerDataSearchQuery(value_filter={"is_ripe": True}, include_shared=True, include_user_specific=True)
+    results_val_ripe_true = await data_tester.search_documents(search_query_val_ripe_true)
+    _check_search_results(results_val_ripe_true, expected_count=1, expected_docs=[(doc_specs[0][0], doc_specs[0][1])])
+    print("     ✓ Value filter {'is_ripe': True} OK.")
+
+    search_query_val_multi = wf_schemas.CustomerDataSearchQuery(value_filter={"color": "blue", "year": 2020}, include_shared=True, include_user_specific=True)
+    results_val_multi = await data_tester.search_documents(search_query_val_multi)
+    _check_search_results(results_val_multi, expected_count=1, expected_docs=[(doc_specs[2][0], doc_specs[2][1])])
+    print("     ✓ Value filter {'color': 'blue', 'year': 2020} OK.")
+    
+    search_query_val_float = wf_schemas.CustomerDataSearchQuery(value_filter={"value_float": 100.5}, include_shared=True, include_user_specific=True)
+    results_val_float = await data_tester.search_documents(search_query_val_float)
+    _check_search_results(results_val_float, expected_count=1, expected_docs=[(doc_specs[4][0], doc_specs[4][1])])
+    print("     ✓ Value filter {'value_float': 100.5} OK.")
+
+    # 4. Shared/User-Specific Flags
+    print("   4. Testing Shared/User-Specific Flags...")
+    # Only shared in search_ns_1
+    search_query_shared_only_ns1 = wf_schemas.CustomerDataSearchQuery(namespace_filter=search_ns_1, include_shared=True, include_user_specific=False)
+    results_shared_only_ns1 = await data_tester.search_documents(search_query_shared_only_ns1)
+    _check_search_results(results_shared_only_ns1, expected_count=2, expected_docs=[
+        (doc_specs[1][0], doc_specs[1][1]),
+        (doc_specs[5][0], doc_specs[5][1]),
+    ])
+    print(f"     ✓ Shared only in '{search_ns_1}' OK.")
+
+    # Only user-specific in search_ns_1
+    search_query_user_only_ns1 = wf_schemas.CustomerDataSearchQuery(namespace_filter=search_ns_1, include_shared=False, include_user_specific=True)
+    results_user_only_ns1 = await data_tester.search_documents(search_query_user_only_ns1)
+    _check_search_results(results_user_only_ns1, expected_count=1, expected_docs=[(doc_specs[0][0], doc_specs[0][1])])
+    print(f"     ✓ User-specific only in '{search_ns_1}' OK.")
+    
+    # None (shared=F, user=F)
+    search_query_none_selected = wf_schemas.CustomerDataSearchQuery(namespace_filter=search_ns_1, include_shared=False, include_user_specific=False)
+    results_none_selected = await data_tester.search_documents(search_query_none_selected)
+    _check_search_results(results_none_selected, expected_count=0)
+    print(f"     ✓ No docs (shared=F, user_specific=F) in '{search_ns_1}' OK.")
+
+    # 5. Combinations
+    print("   5. Testing Combinations of Filters...")
+    search_query_combo1 = wf_schemas.CustomerDataSearchQuery(namespace_filter=search_ns_1, text_search_query="banana", include_shared=True, include_user_specific=True)
+    results_combo1 = await data_tester.search_documents(search_query_combo1)
+    _check_search_results(results_combo1, expected_count=2, expected_docs=[
+        (doc_specs[0][0], doc_specs[0][1]),
+        (doc_specs[1][0], doc_specs[1][1]),
+    ])
+    print(f"     ✓ Combo: namespace '{search_ns_1}' + text 'banana' OK.")
+
+    search_query_combo2 = wf_schemas.CustomerDataSearchQuery(
+        namespace_filter=search_ns_1, 
+        value_filter={"category": "fruit"}, 
+        text_search_query="kiwi",
+        include_shared=True, include_user_specific=True
+    )
+    results_combo2 = await data_tester.search_documents(search_query_combo2)
+    _check_search_results(results_combo2, expected_count=1, expected_docs=[(doc_specs[1][0], doc_specs[1][1])]) # Only s_v_json_shared1
+    print(f"     ✓ Combo: namespace '{search_ns_1}' + value_filter + text 'kiwi' OK.")
+
+    # 6. Pagination
+    print("   6. Testing Pagination...")
+    # All docs in search_ns_1 (3 docs)
+    search_query_paginate_base = wf_schemas.CustomerDataSearchQuery(namespace_filter=search_ns_1, include_shared=True, include_user_specific=True, sort_by=CustomerDataSortBy.CREATED_AT, sort_order=SortOrder.ASC) # Sort for stable pagination
+
+    # Limit 1
+    results_paginate_l1 = await data_tester.search_documents(search_query_paginate_base.model_copy(update={"limit": 1}))
+    _check_search_results(results_paginate_l1, expected_count=1)
+    first_doc_path_l1 = (results_paginate_l1[0].metadata.namespace, results_paginate_l1[0].metadata.docname)
+    print("     ✓ Pagination limit=1 OK.")
+
+    # Skip 1, Limit 2
+    results_paginate_s1_l2 = await data_tester.search_documents(search_query_paginate_base.model_copy(update={"skip": 1, "limit": 2}))
+    _check_search_results(results_paginate_s1_l2, expected_count=2)
+    # Ensure the skipped doc is not present
+    for res_doc in results_paginate_s1_l2:
+        assert (res_doc.metadata.namespace, res_doc.metadata.docname) != first_doc_path_l1, "Skipped document appeared in results"
+    print("     ✓ Pagination skip=1, limit=2 OK.")
+    
+    # Skip past all results
+    results_paginate_skip_all = await data_tester.search_documents(search_query_paginate_base.model_copy(update={"skip": 100}))
+    _check_search_results(results_paginate_skip_all, expected_count=0)
+    print("     ✓ Pagination skip past all results OK.")
+
+    # 7. Sorting
+    print("   7. Testing Sorting...")
+    # Sort by 'rank' (custom field) using value_filter to get comparable items, then by CREATED_AT
+    # Docs with 'rank':
+    # doc0: rank 10
+    # doc1: rank 20
+    # doc2: rank 5
+    # doc4: rank 15
+    # doc5: rank 1
+    
+    # # For this test, we'll sort all documents by created_at as 'rank' is not a direct sort_by option in CustomerDataSortBy
+    # all_docs_created_asc_query = wf_schemas.CustomerDataSearchQuery(
+    #     include_shared=True, include_user_specific=True, 
+    #     sort_by=CustomerDataSortBy.CREATED_AT, sort_order=SortOrder.ASC,
+    #     limit=len(doc_specs) # Get all
+    # )
+    # all_docs_created_asc = await data_tester.search_documents(all_docs_created_asc_query)
+    # _check_search_results(all_docs_created_asc, expected_count=len(doc_specs))
+    # # Assuming creation order matches doc_specs order for this simple check
+    # for i, res_doc in enumerate(all_docs_created_asc):
+    #     expected_ns, expected_dn = doc_specs[i][0], doc_specs[i][1]
+    #     assert (res_doc.metadata.namespace, res_doc.metadata.docname) == (expected_ns, expected_dn), \
+    #         f"Sort by CREATED_AT ASC mismatch at index {i}. Expected ({expected_ns},{expected_dn}), got ({res_doc.metadata.namespace},{res_doc.metadata.docname})"
+    # print("     ✓ Sort by CREATED_AT ASC OK.")
+
+    # all_docs_created_desc_query = wf_schemas.CustomerDataSearchQuery(
+    #     include_shared=True, include_user_specific=True, 
+    #     sort_by=CustomerDataSortBy.CREATED_AT, sort_order=SortOrder.DESC,
+    #     limit=len(doc_specs)
+    # )
+    # all_docs_created_desc = await data_tester.search_documents(all_docs_created_desc_query)
+    # _check_search_results(all_docs_created_desc, expected_count=len(doc_specs))
+    # for i, res_doc in enumerate(all_docs_created_desc):
+    #     expected_idx = len(doc_specs) - 1 - i
+    #     expected_ns, expected_dn = doc_specs[expected_idx][0], doc_specs[expected_idx][1]
+    #     assert (res_doc.metadata.namespace, res_doc.metadata.docname) == (expected_ns, expected_dn), \
+    #         f"Sort by CREATED_AT DESC mismatch at index {i}. Expected ({expected_ns},{expected_dn}), got ({res_doc.metadata.namespace},{res_doc.metadata.docname})"
+    # print("     ✓ Sort by CREATED_AT DESC OK.")
+    
+    # # Test UPDATED_AT - this is harder to control precisely without explicit updates after creation
+    # # For now, we'll assume UPDATED_AT is similar to CREATED_AT on initial creation for a basic check.
+    # # A more robust test would involve updating some documents and then checking.
+    # all_docs_updated_asc_query = wf_schemas.CustomerDataSearchQuery(
+    #     include_shared=True, include_user_specific=True, 
+    #     sort_by=CustomerDataSortBy.UPDATED_AT, sort_order=SortOrder.ASC,
+    #     limit=len(doc_specs)
+    # )
+    # all_docs_updated_asc = await data_tester.search_documents(all_docs_updated_asc_query)
+    # _check_search_results(all_docs_updated_asc, expected_count=len(doc_specs))
+    # # We cannot reliably check order here without updates, just that it returns sorted results.
+    # print("     ✓ Sort by UPDATED_AT ASC (basic check) OK.")
+
+
+    # 8. Edge Cases
+    print("   8. Testing Edge Cases...")
+    # Empty query (no filters, default shared/user flags)
+    search_query_empty = wf_schemas.CustomerDataSearchQuery(include_shared=True, include_user_specific=True, sort_by=CustomerDataSortBy.CREATED_AT, sort_order=SortOrder.DESC, limit=len(doc_specs)) # ensure limit is high enough
+    results_empty = await data_tester.search_documents(search_query_empty)
+    # This should return all created test documents if they are within the default org scope
+    # Count should match the number of docs created in this test function.
+    _check_search_results(results_empty, expected_count=len(doc_specs))
+    print("     ✓ Empty query (all test docs) OK.")
+
+    print("   ✓ All search test scenarios completed.")
+    return search_docs_for_cleanup
 
 
 if __name__ == "__main__":

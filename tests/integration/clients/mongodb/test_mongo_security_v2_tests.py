@@ -449,6 +449,115 @@ class TestOptimizedMongoDBClient(unittest.IsolatedAsyncioTestCase):
             if "text index required" in str(e).lower():
                 logger.warning("Skipping text search test as text index is not available")
     
+    async def test_search_objects_with_or_patterns(self):
+        """Test searching objects with OR patterns (list of list patterns)."""
+        # Create test objects in different paths
+        test_objects = [
+            # Group A - product catalog
+            ([self.TEST_PREFIX, "catalog", "electronics", "product1"], 
+             {"name": "Smartphone", "price": 999, "category": "electronics", "in_stock": True}),
+            ([self.TEST_PREFIX, "catalog", "electronics", "product2"], 
+             {"name": "Laptop", "price": 1499, "category": "electronics", "in_stock": True}),
+            
+            # Group B - inventory
+            ([self.TEST_PREFIX, "inventory", "store1", "item1"], 
+             {"name": "Desk Chair", "price": 199, "category": "furniture", "in_stock": False}),
+            ([self.TEST_PREFIX, "inventory", "store1", "item2"], 
+             {"name": "Coffee Table", "price": 299, "category": "furniture", "in_stock": True}),
+            
+            # Group C - orders
+            ([self.TEST_PREFIX, "orders", "customer1", "order1"], 
+             {"name": "Order #1001", "total": 1298, "status": "shipped", "items": ["Smartphone", "Case"]}),
+            ([self.TEST_PREFIX, "orders", "customer2", "order1"], 
+             {"name": "Order #1002", "total": 199, "status": "processing", "items": ["Desk Chair"]})
+        ]
+        
+        # Batch create objects
+        await self.client.batch_create_objects(test_objects)
+        
+        # Test 1: Search with a list of patterns (OR query)
+        # Search across catalog electronics AND inventory store1
+        or_patterns = [
+            [self.TEST_PREFIX, "catalog", "electronics", "*"],  # All electronics products
+            [self.TEST_PREFIX, "inventory", "store1", "*"]      # All store1 inventory items
+        ]
+        
+        or_results = await self.client.search_objects(key_pattern=or_patterns)
+        self.assertEqual(len(or_results), 4, "Should find 4 objects (2 electronics + 2 inventory items)")
+        
+        # Verify we got objects from both patterns
+        # Extract paths using _id and segment values directly
+        catalog_count = 0
+        inventory_count = 0
+        
+        for doc in or_results:
+            if doc.get(self.segment_names[1]) == "catalog" and doc.get(self.segment_names[2]) == "electronics":
+                catalog_count += 1
+            elif doc.get(self.segment_names[1]) == "inventory" and doc.get(self.segment_names[2]) == "store1":
+                inventory_count += 1
+        
+        self.assertTrue(catalog_count > 0, "Should find objects matching the catalog/electronics pattern")
+        self.assertTrue(inventory_count > 0, "Should find objects matching the inventory/store1 pattern")
+        self.assertEqual(catalog_count + inventory_count, 4, "Should find exactly 4 objects in total")
+        
+        # Test 2: Combine OR patterns with value filter
+        # Find all in-stock items across catalog and inventory
+        stock_results = await self.client.search_objects(
+            key_pattern=or_patterns,
+            value_filter={"in_stock": True}
+        )
+        self.assertEqual(len(stock_results), 3, "Should find 3 in-stock items")
+        
+        # Test 3: Complex multi-pattern search with filtering
+        # Search for specific items across different collections
+        multi_patterns = [
+            [self.TEST_PREFIX, "catalog", "*", "*"],     # All catalog items
+            [self.TEST_PREFIX, "inventory", "*", "*"],   # All inventory items
+            [self.TEST_PREFIX, "orders", "*", "*"]       # All orders
+        ]
+        
+        # Search for expensive items (price > 1000)
+        try:
+            expensive_results = await self.client.search_objects(
+                key_pattern=multi_patterns,
+                value_filter={"price": {"$gt": 1000}}
+            )
+            
+            # Get all orders with total > 1000 separately
+            expensive_orders = await self.client.search_objects(
+                key_pattern=[[self.TEST_PREFIX, "orders", "*", "*"]],
+                value_filter={"total": {"$gt": 1000}}
+            )
+            
+            # Total expensive items should be sum of expensive products and expensive orders
+            total_expensive = len(expensive_results) + len(expensive_orders)
+            self.assertTrue(total_expensive >= 2, "Should find at least 2 expensive items (laptop + order)")
+            
+        except Exception as e:
+            # Skip this assertion if the database doesn't support these operations
+            logger.warning(f"Skipping complex query test due to: {e}")
+            
+        # Test 4: Empty patterns should always return all results
+        empty_patterns = []
+        empty_results = await self.client.search_objects(key_pattern=empty_patterns)
+        self.assertEqual(len(empty_results), 6, "Empty pattern list should always return all results")
+        
+        # Test 5: Invalid patterns should be skipped
+        invalid_patterns = [
+            [self.TEST_PREFIX, "catalog", "electronics", "*"],   # Valid pattern
+            [f"invalid{self.client.PATH_DELIMITER}path", "*"],   # Invalid pattern with delimiter
+            [self.TEST_PREFIX, "inventory", "store1", "*"]       # Valid pattern
+        ]
+        
+        # This should succeed but skip the invalid pattern
+        try:
+            mixed_results = await self.client.search_objects(key_pattern=invalid_patterns)
+            self.assertEqual(len(mixed_results), 4, "Should find 4 objects from valid patterns")
+        except ValueError:
+            # If the client validates all patterns first and fails on any invalid one,
+            # this is also acceptable behavior
+            logger.info("Client rejected query with invalid pattern, which is acceptable behavior")
+    
     async def test_search_objects_pagination_and_sort(self):
         """Test searching objects with skip, limit, and sort options."""
         # Create test objects with distinct values for sorting

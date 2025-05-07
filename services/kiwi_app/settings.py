@@ -108,10 +108,10 @@ class Settings(GlobalSettings):
     MONGO_CUSTOMER_DATABASE: str = Field(default="kiwiq_customer_db", env="MONGO_CUSTOMER_DATABASE")
     MONGO_CUSTOMER_COLLECTION: str = Field(default="customer_data", env="MONGO_CUSTOMER_COLLECTION")
     MONGO_CUSTOMER_SEGMENTS: List[str] = Field(default=["org_id", "user_id", "namespace", "docname"])
-    # MONGO_CUSTOMER_SEGMENTS_VALUE_FILTER_FIELDS: Optional[List[str]] = Field(
-    #     default=["namespace", "docname"],  # Allow filtering by namespace/docname
-    #     env="MONGO_CUSTOMER_SEGMENTS_VALUE_FILTER_FIELDS"
-    # )
+    MONGO_CUSTOMER_SEGMENTS_VALUE_FILTER_FIELDS: Optional[List[str]] = Field(
+        default=["created_at", "updated_at"],  # Allow filtering by namespace/docname
+        env="MONGO_CUSTOMER_SEGMENTS_VALUE_FILTER_FIELDS"
+    )
     
     # --- WebSocket Settings --- #
     # Secret for potentially encoding/decoding WebSocket auth tokens

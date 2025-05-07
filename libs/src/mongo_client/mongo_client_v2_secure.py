@@ -1,3 +1,4 @@
+from datetime import datetime
 from pymongo import AsyncMongoClient
 
 import logging
@@ -7,6 +8,7 @@ from bson import ObjectId
 import uuid
 
 from global_config.logger import get_logger
+from global_utils.utils import datetime_now_utc
 
 # Configure logging
 logger = get_logger(__name__)
@@ -38,6 +40,7 @@ class AsyncMongoDBClient:
     DOC_TYPE_KEY = "__doc_type__"
     DOC_TYPE_UNVERSIONED = "unversioned"
     DOC_TYPE_VERSIONED = "versioned"
+    DEFAULT_INDICES_NEVER_SPARSE = ["created_at", "updated_at"]
 
     def __init__(
         self, 
@@ -47,7 +50,9 @@ class AsyncMongoDBClient:
         segment_names: Optional[List[str]] = None,
         text_search_fields: Optional[List[str]] = None,
         value_filter_fields: Optional[List[str]] = None,  # fields within document such as `xyz` which will be stored under `data.xyz`; only specify xyz!
+        create_sparse_value_index: bool = False,
         version_mode: Optional[str] = DOC_TYPE_UNVERSIONED,
+        add_default_fields_to_data: bool = False,
         **kwargs
     ):
         """
@@ -60,6 +65,10 @@ class AsyncMongoDBClient:
             segment_names: Optional list of segment field names. If not provided,
                           segments will be named "segment_0", "segment_1", etc.
             text_search_fields: Fields within 'data' to include in text index
+            value_filter_fields: Fields within 'data' to include in value filter index
+            create_sparse_value_index: Whether to create sparse value index
+            version_mode: Version mode to use
+            add_default_fields_to_data: Whether to add default fields to data such as created_at, updated_at
             **kwargs: Additional motor client options
         """
         self.uri = uri
@@ -68,8 +77,10 @@ class AsyncMongoDBClient:
         self.segment_names = segment_names or []
         self.text_search_fields = text_search_fields or []
         self.value_filter_fields = value_filter_fields or []
+        self.create_sparse_value_index = create_sparse_value_index
         self.connection_params = kwargs
         self.version_mode = version_mode
+        self.add_default_fields_to_data = add_default_fields_to_data
         
         # Connection objects (initialized lazily)
         self._client = None
@@ -372,7 +383,7 @@ class AsyncMongoDBClient:
             MongoDB query dictionary
         
         NOTE: TODO: query if segments unset!
-        # all docs where “myField” is not present
+        # all docs where "myField" is not present
         cursor = collection.find({ "myField": { "$exists": False } })
 
         # matches docs where myField == null OR myField is missing
@@ -524,6 +535,13 @@ class AsyncMongoDBClient:
             Prepared document
         """
         segments = self._path_to_segments(path)
+
+        if self.add_default_fields_to_data and isinstance(data, dict):
+            timestamp = datetime_now_utc()
+            if "created_at" not in data:
+                data["created_at"] = timestamp
+            if "updated_at" not in data:
+                data["updated_at"] = timestamp
         
         return {
             "_id": self._path_to_id(path),
@@ -629,9 +647,17 @@ class AsyncMongoDBClient:
                 else:
                     logger.info(f"Compound index '{compound_index_name}' already exists.")
             
+            
+            # Create sparse index if requested
+            index_suffix = ""
+            index_kwargs = {}
+            if self.create_sparse_value_index:
+                index_suffix = "_sparse"
+                index_kwargs["sparse"] = True
+            
             # Create text index if text search fields are configured
             if self.text_search_fields:
-                text_index_name = "data_text_idx"
+                text_index_name = f"data_text_idx{index_suffix}"
                 text_index_keys = [(f"data.{field}", "text") for field in self.text_search_fields]
                 
                 # Get current indexes
@@ -643,7 +669,8 @@ class AsyncMongoDBClient:
                         text_index_keys,
                         name=text_index_name,
                         default_language='english',
-                        background=True
+                        background=True,
+                        **index_kwargs
                     )
                     logger.info("Text index created.")
                 else:
@@ -652,7 +679,13 @@ class AsyncMongoDBClient:
             # Create indexes on value filter fields if configured
             if self.value_filter_fields:
                 for field in self.value_filter_fields:
-                    value_index_name = f"data_{field}_idx"
+                    index_suffix = ""
+                    index_kwargs = {}
+                    if (field not in self.DEFAULT_INDICES_NEVER_SPARSE) and self.create_sparse_value_index:
+                        index_suffix = "_sparse"
+                        index_kwargs["sparse"] = True
+
+                    value_index_name = f"data_{field}_idx{index_suffix}"
                     
                     # Get current indexes if we haven't already
                     indexes = await collection.index_information()
@@ -662,7 +695,8 @@ class AsyncMongoDBClient:
                         await collection.create_index(
                             [(f"data.{field}", 1)],
                             name=value_index_name,
-                            background=True
+                            background=True,
+                            **index_kwargs
                         )
                         logger.info(f"Value filter index '{value_index_name}' created.")
                     else:
@@ -1133,7 +1167,7 @@ class AsyncMongoDBClient:
     
     async def search_objects(
         self,
-        key_pattern: List[str] = ["*", "*"],
+        key_pattern: Union[List[str], List[List[str]]] = ["*", "*"],
         text_search_query: Optional[str] = None,
         value_filter: Optional[Dict[str, Any]] = None,
         allowed_prefixes: Optional[List[List[str]]] = None,
@@ -1149,12 +1183,14 @@ class AsyncMongoDBClient:
         1. One round trip to search for documents
         
         Args:
-            key_pattern: Path pattern with wildcards as list
+            key_pattern: Path pattern with wildcards as list, or list of such patterns to OR together
             text_search_query: Optional text search query
             value_filter: Optional data field filters
             allowed_prefixes: Optional list of allowed path prefixes as lists
             value_sort_by: Optional list of sort fields and directions
             include_fields: Optional list of fields to include in the results
+            skip: Optional integer for pagination (number of documents to skip)
+            limit: Optional integer for pagination (maximum number of documents to return)
             
         Returns:
             List of matching documents
@@ -1162,14 +1198,36 @@ class AsyncMongoDBClient:
         Raises:
             ValueError: If pattern format is invalid
         """
-        # Validate pattern
-        self._validate_pattern(key_pattern)
-        
         collection = await self._get_collection()
         
         try:
-            # Build pattern query
-            pattern_query = self._build_segment_query(key_pattern)
+            # Check if key_pattern is a list of lists (multiple patterns to OR)
+            if key_pattern and isinstance(key_pattern, list) and key_pattern and isinstance(key_pattern[0], list):
+                # Build OR query with multiple patterns
+                pattern_queries = []
+                
+                for pattern in key_pattern:
+                    # Validate each pattern
+                    self._validate_pattern(pattern)
+                    # Build query for this pattern
+                    pattern_query = self._build_segment_query(pattern)
+                    if pattern_query:  # Only add non-empty queries
+                        pattern_queries.append(pattern_query)
+                
+                if not pattern_queries:
+                    pattern_query = {}  # Empty query if no valid patterns
+                elif len(pattern_queries) == 1:
+                    pattern_query = pattern_queries[0]  # Just one pattern
+                else:
+                    pattern_query = {"$or": pattern_queries}  # OR multiple patterns
+                    
+                logger.debug(f"Built OR query for {len(key_pattern)} patterns: {pattern_query}")
+            else:
+                # Single pattern (original behavior)
+                # Validate pattern
+                self._validate_pattern(key_pattern)
+                # Build pattern query
+                pattern_query = self._build_segment_query(key_pattern)
             
             # Build text search query if provided
             text_query = {}

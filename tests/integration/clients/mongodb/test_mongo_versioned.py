@@ -73,7 +73,8 @@ class TestMongoVersionedClient(unittest.IsolatedAsyncioTestCase):
         # Initialize the versioned client
         self.versioned_client = AsyncMongoVersionedClient(
             client=self.client,
-            segment_names=self.base_segment_names # Pass only the base segments
+            segment_names=self.base_segment_names, # Pass only the base segments
+            return_timestamp_metadata=False
         )
         
         logger.info(f"Versioned test setup complete with prefix: {self.TEST_PREFIX}")
@@ -127,10 +128,18 @@ class TestMongoVersionedClient(unittest.IsolatedAsyncioTestCase):
         # Verify version data object exists
         version_data = await self.versioned_client._get_version_data(base_path, initial_version)
         self.assertIsNotNone(version_data, "Version data object should exist")
-        self.assertEqual(version_data.get("min_sequence"), 0, "Initial min sequence should be 0")
-        self.assertEqual(version_data.get("max_sequence"), -1, "Initial max sequence should be -1")
-        self.assertFalse(version_data.get("is_complete"), "Initial document should not be complete")
-        self.assertEqual(version_data.get("document"), {}, "Initial document data should be empty dict")
+        # Internal keys should be present directly in version_data
+        self.assertEqual(version_data.get(AsyncMongoVersionedClient.MIN_SEQUENCE_KEY), 0, "Initial min sequence should be 0")
+        self.assertEqual(version_data.get(AsyncMongoVersionedClient.MAX_SEQUENCE_KEY), -1, "Initial max sequence should be -1")
+        self.assertFalse(version_data.get(AsyncMongoVersionedClient.IS_COMPLETE_KEY), "Initial document should not be complete")
+        
+        # User document part of version_data should be empty
+        user_document_part = {
+            k: v for k, v in version_data.items() 
+            if k not in AsyncMongoVersionedClient.ALL_KEYS and k != AsyncMongoVersionedClient.DOCUMENT_KEY
+        }
+        self.assertEqual(user_document_part, {}, "Initial user document part should be empty")
+        self.assertNotIn(AsyncMongoVersionedClient.DOCUMENT_KEY, version_data, "DOCUMENT_KEY should not be present for initial empty dict")
 
     async def test_initialize_existing_document(self):
         """Test attempting to initialize a document that already exists."""
@@ -159,7 +168,14 @@ class TestMongoVersionedClient(unittest.IsolatedAsyncioTestCase):
         self.assertIn("v2", metadata["versions"], "v2 should be in versions list")
         v2_data = await self.versioned_client._get_version_data(base_path, "v2")
         self.assertIsNotNone(v2_data, "v2 data object should exist")
-        self.assertEqual(v2_data["document"], {}, "v2 should be initialized empty (like v1)")
+        
+        # User document part of v2_data should be empty as it's branched from an empty v1
+        v2_user_document_part = {
+            k: v for k, v in v2_data.items() 
+            if k not in AsyncMongoVersionedClient.ALL_KEYS and k != AsyncMongoVersionedClient.DOCUMENT_KEY
+        }
+        self.assertEqual(v2_user_document_part, {}, "v2 user document part should be initialized empty (like v1)")
+        self.assertNotIn(AsyncMongoVersionedClient.DOCUMENT_KEY, v2_data, "DOCUMENT_KEY should not be present for v2 initially")
 
         # Create v3 branching specifically from v1
         created_v3 = await self.versioned_client.create_version(base_path, "v3", from_version="v1")
@@ -494,7 +510,7 @@ class TestMongoVersionedClient(unittest.IsolatedAsyncioTestCase):
 
         # Verify version metadata max_sequence
         version_data = await self.versioned_client._get_version_data(base_path, "v1") # Assuming default v1
-        self.assertEqual(version_data["max_sequence"], 1, "Max sequence should be updated to 1 after restore")
+        self.assertEqual(version_data[AsyncMongoVersionedClient.MAX_SEQUENCE_KEY], 1, "Max sequence should be updated to 1 after restore")
 
     # =========================================================================
     # Schema Validation Tests
@@ -629,8 +645,8 @@ class TestMongoVersionedClient(unittest.IsolatedAsyncioTestCase):
         # Verify min_sequence in version data
         version_data = await self.versioned_client._get_version_data(base_path, "v1") # Assuming default v1
         expected_min_sequence = num_updates - self.versioned_client.MAX_HISTORY_LENGTH
-        self.assertEqual(version_data["min_sequence"], expected_min_sequence, "min_sequence should be updated after pruning")
-        self.assertEqual(version_data["max_sequence"], num_updates - 1, "max_sequence should be correct")
+        self.assertEqual(version_data[AsyncMongoVersionedClient.MIN_SEQUENCE_KEY], expected_min_sequence, "min_sequence should be updated after pruning")
+        self.assertEqual(version_data[AsyncMongoVersionedClient.MAX_SEQUENCE_KEY], num_updates - 1, "max_sequence should be correct")
 
         # Test preview restore after pruning (should work for remaining history)
         preview = await self.versioned_client.preview_restore(base_path, sequence=expected_min_sequence)
@@ -878,8 +894,8 @@ class TestMongoVersionedClient(unittest.IsolatedAsyncioTestCase):
         await self.versioned_client.update_document(base_path, {"v": 2}) # seq 2 (min_seq=1, max_seq=2)
         
         version_data = await self.versioned_client._get_version_data(base_path, "v1")
-        self.assertEqual(version_data["min_sequence"], 1)
-        self.assertEqual(version_data["max_sequence"], 2)
+        self.assertEqual(version_data[AsyncMongoVersionedClient.MIN_SEQUENCE_KEY], 1)
+        self.assertEqual(version_data[AsyncMongoVersionedClient.MAX_SEQUENCE_KEY], 2)
         history = await self.versioned_client.get_version_history(base_path)
         self.assertEqual(len(history), 2)
         self.assertEqual(history[0]["sequence"], 2)
@@ -902,8 +918,8 @@ class TestMongoVersionedClient(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(history_after_restore), 1)
         self.assertEqual(history_after_restore[0]["sequence"], 1)
         version_data_after = await self.versioned_client._get_version_data(base_path, "v1")
-        self.assertEqual(version_data_after["min_sequence"], 1) # Min sequence shouldn't change here
-        self.assertEqual(version_data_after["max_sequence"], 1)
+        self.assertEqual(version_data_after[AsyncMongoVersionedClient.MIN_SEQUENCE_KEY], 1) # Min sequence shouldn't change here
+        self.assertEqual(version_data_after[AsyncMongoVersionedClient.MAX_SEQUENCE_KEY], 1)
 
     async def test_empty_and_null_data(self):
         """Test handling of empty strings, lists, dicts and None values."""
