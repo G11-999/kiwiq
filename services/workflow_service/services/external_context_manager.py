@@ -383,7 +383,7 @@ async def get_mongo_client(client_type: str, extra_segments: List[str] = []) -> 
                          f"Must be one of: 'customer', 'workflow'")
     
     # Initialize client
-    # setup_success = await client.drop_collection(confirm=True)
+    setup_success = await client.drop_collection(confirm=True)
     await client.setup()
     
     # Cache client in global storage
