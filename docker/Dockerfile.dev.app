@@ -29,7 +29,7 @@ RUN pip install --upgrade pip \
  && pip config --global set global.retries 5
 
 # Install dependencies with Poetry (no virtualenv since we're in a container)
-RUN poetry config virtualenvs.create false && poetry install --no-interaction --no-ansi
+RUN poetry config virtualenvs.create false && poetry install --without dev --no-interaction --no-ansi
 
 # Copy the rest of the application code
 COPY . .
