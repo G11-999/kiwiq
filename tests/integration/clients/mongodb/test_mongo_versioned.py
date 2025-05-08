@@ -1016,6 +1016,239 @@ class TestMongoVersionedClient(unittest.IsolatedAsyncioTestCase):
         deleted_version = await self.versioned_client.delete_version(base_path, "v1")
         self.assertFalse(deleted_version)
 
+    async def test_update_document_create_only_fields(self):
+        """
+        Test the create_only_fields and keep_create_fields_if_missing parameters in update_document.
+        
+        This test verifies:
+        1. Fields in create_only_fields are preserved during document creation
+        2. Fields in create_only_fields are removed during document update
+        3. keep_create_fields_if_missing controls behavior when fields don't exist in original document
+        4. Behavior with multiple versions and branches
+        """
+        # Scenario 1: Create document with create_only_fields, then update
+        base_path1 = self._get_test_path("create_only_fields_doc1")
+        await self.versioned_client.initialize_document(base_path1)
+        
+        # Initial data with create_only fields
+        initial_data1 = {
+            "title": "Test Document",
+            "created_by": "user123",  # Field that should only be included during creation
+            "created_timestamp": 12345,  # Field that should only be included during creation
+            "content": "Initial content"
+        }
+        
+        # Create document with create_only_fields
+        await self.versioned_client.update_document(
+            base_path1,
+            initial_data1,
+            create_only_fields=["created_by", "created_timestamp"],
+            keep_create_fields_if_missing=True,
+        )
+        
+        # Verify all fields are present in initial document
+        doc1 = await self.versioned_client.get_document(base_path1)
+        self.assertEqual(doc1["title"], "Test Document")
+        self.assertEqual(doc1["created_by"], "user123")
+        self.assertEqual(doc1["created_timestamp"], 12345)
+        self.assertEqual(doc1["content"], "Initial content")
+        
+        # Update document with create_only_fields
+        update_data1 = {
+            "title": "Updated Document",
+            "created_by": "different_user",  # Should be removed from update
+            "created_timestamp": 67890,      # Should be removed from update
+            "content": "Updated content"
+        }
+        
+        await self.versioned_client.update_document(
+            base_path1,
+            update_data1,
+            create_only_fields=["created_by", "created_timestamp"]
+        )
+        
+        # Verify create_only_fields were preserved with original values
+        updated_doc1 = await self.versioned_client.get_document(base_path1)
+        self.assertEqual(updated_doc1["title"], "Updated Document")
+        self.assertEqual(updated_doc1["created_by"], "user123")  # Original value preserved
+        self.assertEqual(updated_doc1["created_timestamp"], 12345)  # Original value preserved
+        self.assertEqual(updated_doc1["content"], "Updated content")
+        
+        # Scenario 2: Document without create_only_fields, update with keep_create_fields_if_missing=True
+        base_path2 = self._get_test_path("create_only_fields_doc2")
+        await self.versioned_client.initialize_document(base_path2)
+        
+        # Initial document without create_only fields
+        initial_data2 = {
+            "title": "Second Document",
+            "content": "Second content"
+        }
+        
+        await self.versioned_client.update_document(base_path2, initial_data2)
+        
+        # Verify initial state
+        doc2 = await self.versioned_client.get_document(base_path2)
+        self.assertEqual(doc2["title"], "Second Document")
+        self.assertNotIn("created_by", doc2)
+        self.assertNotIn("created_timestamp", doc2)
+        
+        # Update with keep_create_fields_if_missing=True
+        update_data2 = {
+            "title": "Updated Second Document",
+            "created_by": "user456",
+            "created_timestamp": 54321,
+            "content": "Updated second content"
+        }
+        
+        await self.versioned_client.update_document(
+            base_path2,
+            update_data2,
+            create_only_fields=["created_by", "created_timestamp"],
+            keep_create_fields_if_missing=True
+        )
+        
+        # Verify create_only_fields were added because they were missing and keep_create_fields_if_missing=True
+        updated_doc2 = await self.versioned_client.get_document(base_path2)
+        self.assertEqual(updated_doc2["title"], "Updated Second Document")
+        self.assertEqual(updated_doc2["created_by"], "user456")  # Should be added
+        self.assertEqual(updated_doc2["created_timestamp"], 54321)  # Should be added
+        self.assertEqual(updated_doc2["content"], "Updated second content")
+        
+        # Scenario 3: Document without create_only_fields, update with keep_create_fields_if_missing=False
+        base_path3 = self._get_test_path("create_only_fields_doc3")
+        await self.versioned_client.initialize_document(base_path3)
+        
+        # Initial document without create_only fields
+        initial_data3 = {
+            "title": "Third Document",
+            "content": "Third content"
+        }
+        
+        await self.versioned_client.update_document(base_path3, initial_data3)
+        
+        # Update with keep_create_fields_if_missing=False (default)
+        update_data3 = {
+            "title": "Updated Third Document",
+            "created_by": "user789",
+            "created_timestamp": 98765,
+            "content": "Updated third content"
+        }
+        
+        await self.versioned_client.update_document(
+            base_path3,
+            update_data3,
+            create_only_fields=["created_by", "created_timestamp"],
+            keep_create_fields_if_missing=False
+        )
+        
+        # Verify create_only_fields were NOT added since keep_create_fields_if_missing=False
+        updated_doc3 = await self.versioned_client.get_document(base_path3)
+        self.assertEqual(updated_doc3["title"], "Updated Third Document")
+        self.assertNotIn("created_by", updated_doc3)  # Should NOT be added
+        self.assertNotIn("created_timestamp", updated_doc3)  # Should NOT be added
+        self.assertEqual(updated_doc3["content"], "Updated third content")
+        
+        # Scenario 4: Test with multiple versions and branches
+        base_path4 = self._get_test_path("create_only_fields_versioned")
+        await self.versioned_client.initialize_document(base_path4, initial_version="main")
+        
+        # Create initial document with create_only fields
+        initial_data4 = {
+            "title": "Versioned Document",
+            "created_by": "main_user",
+            "created_timestamp": 11111,
+            "content": "Main branch content"
+        }
+        
+        await self.versioned_client.update_document(
+            base_path4,
+            initial_data4,
+            create_only_fields=["created_by", "created_timestamp"],
+            keep_create_fields_if_missing=True,
+        )
+        
+        # Create feature branch
+        await self.versioned_client.create_version(base_path4, "feature", from_version="main")
+        
+        # Update main branch - should preserve create_only fields
+        await self.versioned_client.update_document(
+            base_path4,
+            {"title": "Updated Main", "content": "Updated main content"},
+            version="main",
+            create_only_fields=["created_by", "created_timestamp"]
+        )
+        
+        # Update feature branch with different create_only values
+        await self.versioned_client.update_document(
+            base_path4,
+            {
+                "title": "Feature Branch", 
+                "content": "Feature content",
+                "created_by": "feature_user",  # Should be ignored in update
+                "created_timestamp": 22222     # Should be ignored in update
+            },
+            version="feature",
+            create_only_fields=["created_by", "created_timestamp"]
+        )
+        
+        # Verify main branch
+        main_doc = await self.versioned_client.get_document(base_path4, version="main")
+        self.assertEqual(main_doc["title"], "Updated Main")
+        self.assertEqual(main_doc["created_by"], "main_user")  # Preserved from original
+        self.assertEqual(main_doc["created_timestamp"], 11111)  # Preserved from original
+        self.assertEqual(main_doc["content"], "Updated main content")
+        
+        # Verify feature branch - should have inherited create_only fields from main
+        feature_doc = await self.versioned_client.get_document(base_path4, version="feature")
+        self.assertEqual(feature_doc["title"], "Feature Branch")
+        self.assertEqual(feature_doc["created_by"], "main_user")  # Inherited from main, preserved
+        self.assertEqual(feature_doc["created_timestamp"], 11111)  # Inherited from main, preserved
+        self.assertEqual(feature_doc["content"], "Feature content")
+        
+        # Scenario 5: Edge case - create_only_fields with primitive types
+        base_path5 = self._get_test_path("create_only_fields_primitive")
+        await self.versioned_client.initialize_document(base_path5)
+        
+        # Create document with a dict
+        await self.versioned_client.update_document(
+            base_path5,
+            {"field": "value", "created_by": "user"},
+            create_only_fields=["created_by"],
+            keep_create_fields_if_missing=True,
+        )
+        
+        # Update with a primitive type
+        await self.versioned_client.update_document(
+            base_path5,
+            "primitive string",  # This replaces everything
+            create_only_fields=["created_by"]  # Should have no effect with primitive types
+        )
+        
+        # Verify primitive value replaced everything
+        doc5 = await self.versioned_client.get_document(base_path5)
+        self.assertEqual(doc5, "primitive string")
+        
+        # Scenario 6: Update with empty create_only_fields list
+        base_path6 = self._get_test_path("empty_create_only")
+        await self.versioned_client.initialize_document(base_path6)
+        
+        # Create initial document
+        initial_data6 = {"name": "Test", "created_by": "user"}
+        await self.versioned_client.update_document(base_path6, initial_data6)
+        
+        # Update with empty create_only_fields list
+        update_data6 = {"name": "Updated", "created_by": "new_user"}
+        await self.versioned_client.update_document(
+            base_path6,
+            update_data6,
+            create_only_fields=[]  # Empty list
+        )
+        
+        # Verify all fields were updated
+        doc6 = await self.versioned_client.get_document(base_path6)
+        self.assertEqual(doc6["name"], "Updated")
+        self.assertEqual(doc6["created_by"], "new_user")  # Should be updated since not in create_only_fields
+
 def run_async_tests():
     unittest.main()
 

@@ -307,7 +307,7 @@ class TestCustomerDataNodes(unittest.IsolatedAsyncioTestCase):
             print(f"DEBUG: Expected data: {expected_data}")
             self.fail(f"Failed assertion or error getting document '{namespace}/{docname}' (version: {version_to_check or 'active/N/A'}): {e}")
 
-    # --- Store Node Tests ---
+    # # --- Store Node Tests ---
 
     async def test_store_unversioned_static_path(self):
         """Test storing a simple unversioned document with static path."""
@@ -3002,6 +3002,337 @@ class TestCustomerDataNodes(unittest.IsolatedAsyncioTestCase):
     # --- End of Extra Fields and UUID Generation Tests --- #
 
     # --- Load/Store Interaction Tests --- #
+
+    # --- UUID Generation During Updates Tests --- #
+
+    async def test_store_update_add_uuid_when_missing(self):
+        """Test that UUID is added when updating an object that doesn't have one."""
+        # 1. Create initial document without UUID
+        doc_name = self.test_docname_base + "add_uuid_on_update"
+        initial_data = {"name": "test item", "value": 100}
+        input_data_initial = {"initial_doc": initial_data}
+        
+        # Store without UUID generation first
+        store_node_initial = self._get_store_node({
+            "store_configs": [{
+                "input_field_path": "initial_doc",
+                "target_path": {
+                    "filename_config": {
+                        "static_namespace": self.test_namespace,
+                        "static_docname": doc_name
+                    }
+                },
+                "versioning": {"is_versioned": False, "operation": "upsert"},
+                "generate_uuid": False  # Explicitly disable UUID
+            }]
+        })
+        await store_node_initial.process(input_data_initial, runtime_config=self.runtime_config_regular)
+        
+        # Verify initial document doesn't have UUID
+        initial_stored = await self.customer_data_service.get_unversioned_document(
+            org_id=self.test_org_id, namespace=self.test_namespace, docname=doc_name,
+            is_shared=False, user=self.user_regular
+        )
+        self.assertEqual(initial_stored, initial_data)
+        self.assertNotIn("uuid", initial_stored, "Initial document should not have UUID")
+        
+        # 2. Update the document with UUID generation enabled
+        update_data = {"name": "test item", "value": 200}  # Updated value
+        input_data_update = {"update_doc": update_data}
+        
+        store_node_update = self._get_store_node({
+            "store_configs": [{
+                "input_field_path": "update_doc",
+                "target_path": {
+                    "filename_config": {
+                        "static_namespace": self.test_namespace,
+                        "static_docname": doc_name
+                    }
+                },
+                "versioning": {"is_versioned": False, "operation": "upsert"},
+                "generate_uuid": True  # Enable UUID generation
+            }]
+        })
+        await store_node_update.process(input_data_update, runtime_config=self.runtime_config_regular)
+        
+        # 3. Verify UUID was added during update
+        updated_stored = await self.customer_data_service.get_unversioned_document(
+            org_id=self.test_org_id, namespace=self.test_namespace, docname=doc_name,
+            is_shared=False, user=self.user_regular
+        )
+        self.assertEqual(updated_stored["name"], "test item")
+        self.assertEqual(updated_stored["value"], 200)
+        self.assertIn("uuid", updated_stored, "UUID should be added during update")
+        self.assertTrue(isinstance(updated_stored["uuid"], str), "UUID should be a string")
+        try:
+            uuid_obj = uuid.UUID(updated_stored["uuid"])
+            self.assertEqual(uuid_obj.version, 4, "Should be a valid UUIDv4")
+        except ValueError:
+            self.fail("UUID is not a valid UUID string")
+
+    async def test_store_update_preserve_existing_uuid(self):
+        """Test that an existing UUID is preserved when updating an object."""
+        # 1. Create initial document with UUID
+        doc_name = self.test_docname_base + "preserve_uuid"
+        initial_data = {"name": "preserve test", "count": 5}
+        input_data_initial = {"initial_doc": initial_data}
+        
+        store_node_initial = self._get_store_node({
+            "store_configs": [{
+                "input_field_path": "initial_doc",
+                "target_path": {
+                    "filename_config": {
+                        "static_namespace": self.test_namespace,
+                        "static_docname": doc_name
+                    }
+                },
+                "versioning": {"is_versioned": False, "operation": "upsert"},
+                "generate_uuid": True  # Generate UUID for initial document
+            }]
+        })
+        await store_node_initial.process(input_data_initial, runtime_config=self.runtime_config_regular)
+        
+        # Get the initial document to capture the UUID
+        initial_stored = await self.customer_data_service.get_unversioned_document(
+            org_id=self.test_org_id, namespace=self.test_namespace, docname=doc_name,
+            is_shared=False, user=self.user_regular
+        )
+        self.assertIn("uuid", initial_stored, "Initial document should have UUID")
+        original_uuid = initial_stored["uuid"]
+        
+        # 2. Update the document with UUID generation still enabled
+        update_data = {"name": "preserve test", "count": 10}  # Updated count
+        input_data_update = {"update_doc": update_data}
+        
+        store_node_update = self._get_store_node({
+            "store_configs": [{
+                "input_field_path": "update_doc",
+                "target_path": {
+                    "filename_config": {
+                        "static_namespace": self.test_namespace,
+                        "static_docname": doc_name
+                    }
+                },
+                "versioning": {"is_versioned": False, "operation": "upsert"},
+                "generate_uuid": True  # Still enabled for update
+            }]
+        })
+        await store_node_update.process(input_data_update, runtime_config=self.runtime_config_regular)
+        
+        # 3. Verify the UUID remained the same after update
+        updated_stored = await self.customer_data_service.get_unversioned_document(
+            org_id=self.test_org_id, namespace=self.test_namespace, docname=doc_name,
+            is_shared=False, user=self.user_regular
+        )
+        self.assertEqual(updated_stored["name"], "preserve test")
+        self.assertEqual(updated_stored["count"], 10)  # Verify update worked
+        self.assertIn("uuid", updated_stored, "Updated document should still have UUID")
+        self.assertEqual(updated_stored["uuid"], original_uuid, "UUID should be preserved during update")
+
+    async def test_store_versioned_update_add_uuid_when_missing(self):
+        """Test UUID generation for versioned documents when updating without existing UUID."""
+        # 1. Create initial versioned document without UUID
+        doc_name = self.test_docname_base + "versioned_add_uuid"
+        version_name = "v1.0"
+        initial_data = {"title": "Versioned Doc", "status": "draft"}
+        
+        # Initialize without UUID
+        await self.customer_data_service.initialize_versioned_document(
+            db=None, org_id=self.test_org_id, namespace=self.test_namespace, docname=doc_name,
+            is_shared=False, user=self.user_regular, initial_version=version_name, 
+            initial_data=initial_data
+        )
+        
+        # Verify initial document doesn't have UUID
+        initial_doc = await self.customer_data_service.get_versioned_document(
+            org_id=self.test_org_id, namespace=self.test_namespace, docname=doc_name,
+            is_shared=False, user=self.user_regular, version=version_name
+        )
+        self.assertNotIn("uuid", initial_doc, "Initial versioned document should not have UUID")
+        
+        # 2. Update with UUID generation enabled
+        update_data = {"title": "Versioned Doc", "status": "updated"}
+        input_data_update = {"versioned_update": update_data}
+        
+        store_node_update = self._get_store_node({
+            "store_configs": [{
+                "input_field_path": "versioned_update",
+                "target_path": {
+                    "filename_config": {
+                        "static_namespace": self.test_namespace,
+                        "static_docname": doc_name
+                    }
+                },
+                "versioning": {
+                    "is_versioned": True, 
+                    "operation": "update",
+                    "version": version_name
+                },
+                "generate_uuid": True  # Enable UUID generation
+            }]
+        })
+        await store_node_update.process(input_data_update, runtime_config=self.runtime_config_regular)
+        
+        # 3. Verify UUID was added
+        updated_doc = await self.customer_data_service.get_versioned_document(
+            org_id=self.test_org_id, namespace=self.test_namespace, docname=doc_name,
+            is_shared=False, user=self.user_regular, version=version_name
+        )
+        self.assertEqual(updated_doc["title"], "Versioned Doc")
+        self.assertEqual(updated_doc["status"], "updated")
+        self.assertIn("uuid", updated_doc, "UUID should be added to versioned document")
+        self.assertTrue(isinstance(updated_doc["uuid"], str), "UUID should be a string")
+
+    async def test_store_update_list_items_add_uuids(self):
+        """Test adding UUIDs when updating a list of items where some already have UUIDs."""
+        # 1. Create initial list of documents, some with and some without UUIDs
+        namespace = self.test_namespace + "/uuid_list_update"
+        
+        # Item with UUID
+        item1_id = "item_with_uuid"
+        item1_data = {"id": item1_id, "value": 10, "uuid": str(uuid.uuid4())}
+        
+        # Item without UUID
+        item2_id = "item_without_uuid"
+        item2_data = {"id": item2_id, "value": 20}  # No UUID
+        
+        # Store initial items
+        await self.customer_data_service.create_or_update_unversioned_document(
+            db=None, org_id=self.test_org_id, namespace=namespace, docname=item1_id,
+            is_shared=False, user=self.user_regular, data=item1_data
+        )
+        await self.customer_data_service.create_or_update_unversioned_document(
+            db=None, org_id=self.test_org_id, namespace=namespace, docname=item2_id,
+            is_shared=False, user=self.user_regular, data=item2_data
+        )
+        
+        # 2. Update both items with updates to their values
+        update_items = [
+            {"id": item1_id, "value": 15},  # Update with new value, should preserve UUID
+            {"id": item2_id, "value": 25}   # Update with new value, should add UUID
+        ]
+        input_data = {"items_to_update": update_items}
+        
+        # Store node for updating items
+        store_node = self._get_store_node({
+            "store_configs": [{
+                "input_field_path": "items_to_update",
+                "target_path": {
+                    "filename_config": {
+                        "static_namespace": namespace,
+                        "input_docname_field": "id"  # Use item ID as document name
+                    }
+                },
+                "versioning": {"is_versioned": False, "operation": "upsert"},
+                "process_list_items_separately": True,
+                "generate_uuid": True  # Enable UUID generation
+            }]
+        })
+        await store_node.process(input_data, runtime_config=self.runtime_config_regular)
+        
+        # 3. Verify results
+        # Check item 1 - should have preserved its UUID
+        updated_item1 = await self.customer_data_service.get_unversioned_document(
+            org_id=self.test_org_id, namespace=namespace, docname=item1_id,
+            is_shared=False, user=self.user_regular
+        )
+        self.assertEqual(updated_item1["value"], 15)  # Value updated
+        self.assertIn("uuid", updated_item1)  # Still has UUID
+        self.assertEqual(updated_item1["uuid"], item1_data["uuid"])  # Same UUID as before
+        
+        # Check item 2 - should have gained a UUID
+        updated_item2 = await self.customer_data_service.get_unversioned_document(
+            org_id=self.test_org_id, namespace=namespace, docname=item2_id,
+            is_shared=False, user=self.user_regular
+        )
+        self.assertEqual(updated_item2["value"], 25)  # Value updated
+        self.assertIn("uuid", updated_item2)  # Now has UUID
+        self.assertTrue(isinstance(updated_item2["uuid"], str))  # Valid UUID string
+
+    async def test_store_mixed_update_add_uuid_conditional(self):
+        """Test UUID generation on multiple docs with a mix of creation and updates."""
+        namespace = self.test_namespace + "/mixed_uuid_ops"
+        
+        # 1. Set up - create one document without UUID
+        existing_doc_name = "existing_doc"
+        existing_data = {"type": "existing", "counter": 1}
+        
+        await self.customer_data_service.create_or_update_unversioned_document(
+            db=None, org_id=self.test_org_id, namespace=namespace, docname=existing_doc_name,
+            is_shared=False, user=self.user_regular, data=existing_data
+        )
+        
+        # Verify existing doc has no UUID
+        initial_doc = await self.customer_data_service.get_unversioned_document(
+            org_id=self.test_org_id, namespace=namespace, docname=existing_doc_name,
+            is_shared=False, user=self.user_regular
+        )
+        self.assertNotIn("uuid", initial_doc)
+        
+        # 2. Perform mixed operations - update existing doc and create new doc
+        new_doc_name = "new_doc"
+        update_doc_data = {"type": "existing", "counter": 2}  # Update existing
+        new_doc_data = {"type": "new", "counter": 1}  # Create new
+        
+        input_data = {
+            "update_item": update_doc_data,
+            "new_item": new_doc_data
+        }
+        
+        # Process update operation
+        update_node = self._get_store_node({
+            "store_configs": [{
+                "input_field_path": "update_item",
+                "target_path": {
+                    "filename_config": {
+                        "static_namespace": namespace,
+                        "static_docname": existing_doc_name
+                    }
+                },
+                "versioning": {"is_versioned": False, "operation": "upsert"},
+                "generate_uuid": True
+            }]
+        })
+        await update_node.process(input_data, runtime_config=self.runtime_config_regular)
+        
+        # Process creation operation
+        create_node = self._get_store_node({
+            "store_configs": [{
+                "input_field_path": "new_item",
+                "target_path": {
+                    "filename_config": {
+                        "static_namespace": namespace,
+                        "static_docname": new_doc_name
+                    }
+                },
+                "versioning": {"is_versioned": False, "operation": "upsert"},
+                "generate_uuid": True
+            }]
+        })
+        await create_node.process(input_data, runtime_config=self.runtime_config_regular)
+        
+        # 3. Verify both documents now have UUIDs
+        updated_doc = await self.customer_data_service.get_unversioned_document(
+            org_id=self.test_org_id, namespace=namespace, docname=existing_doc_name,
+            is_shared=False, user=self.user_regular
+        )
+        new_doc = await self.customer_data_service.get_unversioned_document(
+            org_id=self.test_org_id, namespace=namespace, docname=new_doc_name,
+            is_shared=False, user=self.user_regular
+        )
+        
+        # Updated doc should have UUID added
+        self.assertEqual(updated_doc["counter"], 2)
+        self.assertIn("uuid", updated_doc, "Updated document should have UUID added")
+        
+        # New doc should have UUID
+        self.assertEqual(new_doc["counter"], 1)
+        self.assertIn("uuid", new_doc, "Newly created document should have UUID")
+        
+        # UUIDs should be different
+        self.assertNotEqual(updated_doc["uuid"], new_doc["uuid"], "Documents should have different UUIDs")
+
+    # --- End of UUID Generation During Updates Tests --- #
 
 
 # ... main execution block ...

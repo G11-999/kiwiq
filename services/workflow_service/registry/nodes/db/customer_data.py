@@ -1105,8 +1105,11 @@ class StoreCustomerDataNode(BaseDynamicNode):
         # Generate UUID if configured
         generated_uuid = None
         should_generate_uuid = store_cfg.generate_uuid if store_cfg.generate_uuid is not None else self.config.global_generate_uuid
+        create_only_fields = []
+        keep_create_fields_if_missing = True
         if should_generate_uuid:
             generated_uuid = str(uuid.uuid4())
+            create_only_fields = ["uuid"]
             
             # Apply UUID to document data
             if isinstance(doc_data, dict):
@@ -1173,7 +1176,9 @@ class StoreCustomerDataNode(BaseDynamicNode):
                             schema_definition=schema_opts.schema_definition,
                             is_system_entity=is_system_entity,
                             on_behalf_of_user_id=on_behalf_of_user_id_uuid, # Pass UUID
-                            is_called_from_workflow=True
+                            is_called_from_workflow=True,
+                            create_only_fields=create_only_fields,
+                            keep_create_fields_if_missing=keep_create_fields_if_missing,
                         )
                         success_flag = True # create_or_update generally doesn't fail unless db error
                         operation_str = f"upsert_unversioned (created: {created})"
@@ -1189,7 +1194,9 @@ class StoreCustomerDataNode(BaseDynamicNode):
                             schema_definition=schema_opts.schema_definition,
                             is_system_entity=is_system_entity,
                             on_behalf_of_user_id=on_behalf_of_user_id_uuid, # Pass UUID
-                            is_called_from_workflow=True
+                            is_called_from_workflow=True,
+                            create_only_fields=create_only_fields,
+                            keep_create_fields_if_missing=keep_create_fields_if_missing,
                             # update_only=True # Hypothetical flag if service supported it
                         )
                         success_flag = True # Assume success from service perspective
@@ -1237,7 +1244,9 @@ class StoreCustomerDataNode(BaseDynamicNode):
                             schema_definition=schema_opts.schema_definition,
                             is_system_entity=is_system_entity,
                             on_behalf_of_user_id=on_behalf_of_user_id_uuid, # Pass UUID
-                            is_called_from_workflow=True
+                            is_called_from_workflow=True,
+                            create_only_fields=create_only_fields,
+                            keep_create_fields_if_missing=keep_create_fields_if_missing,
                         )
                         if success:
                             success_flag = True
@@ -1267,7 +1276,9 @@ class StoreCustomerDataNode(BaseDynamicNode):
                                 schema_definition=schema_opts.schema_definition,
                                 on_behalf_of_user_id=on_behalf_of_user_id_uuid, # Pass UUID
                                 is_system_entity=is_system_entity,
-                                is_called_from_workflow=True
+                                is_called_from_workflow=True,
+                                create_only_fields=create_only_fields,
+                                keep_create_fields_if_missing=keep_create_fields_if_missing,
                             )
                             # If the service call succeeds without raising an exception, mark success
                             success_flag = True
@@ -1306,7 +1317,9 @@ class StoreCustomerDataNode(BaseDynamicNode):
                                 schema_definition=schema_opts.schema_definition,
                                 is_system_entity=is_system_entity,
                                 on_behalf_of_user_id=on_behalf_of_user_id_uuid, # Pass UUID
-                                is_called_from_workflow=True
+                                is_called_from_workflow=True,
+                                create_only_fields=create_only_fields,
+                                keep_create_fields_if_missing=keep_create_fields_if_missing,
                             )
                             if update_success:
                                 success_flag = True

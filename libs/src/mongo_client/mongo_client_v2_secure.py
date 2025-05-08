@@ -922,7 +922,9 @@ class AsyncMongoDBClient:
         path: List[str], 
         data: Dict[str, Any],
         allowed_prefixes: Optional[List[List[str]]] = None,
-        update_subfields: bool = False
+        update_subfields: bool = False,
+        create_only_fields: List[str] = [],
+        keep_create_fields_if_missing: bool = False,
     ) -> Tuple[str, bool]:
         """
         Creates a document if it doesn't exist, or updates existing document.
@@ -937,6 +939,11 @@ class AsyncMongoDBClient:
             path: Path as list of segments
             data: Data to store
             allowed_prefixes: Optional list of allowed path prefixes as lists
+            update_subfields: If True, updates only specified subfields within data
+                              using dot notation (data.field_name) instead of replacing
+                              the entire data object
+            create_only_fields: List of fields in data which should be removed if the operation is an update rather than creation
+            keep_create_fields_if_missing: If True, keep create_only_fields in data if they don't exist in `existing object` during update
             
         Returns:
             Tuple of (document ID, was_created)
@@ -961,7 +968,7 @@ class AsyncMongoDBClient:
         collection = await self._get_collection()
         try:
             # Check if document exists
-            existing = await collection.find_one({"_id": doc_id}, {"_id": 1})
+            existing = await collection.find_one({"_id": doc_id}, {"_id": 1} if (not keep_create_fields_if_missing) else None)
             was_created = existing is None
             
             if was_created:
@@ -970,6 +977,13 @@ class AsyncMongoDBClient:
                 logger.info(f"Created document for path '{path}', ID: {doc_id}")
             else:
                 # Update existing document
+                if create_only_fields:
+                    for field in create_only_fields:
+                        existing_data = existing.get("data", {})
+                        if (not keep_create_fields_if_missing) or (isinstance(existing_data, dict) and field in existing_data and update_subfields):
+                            if isinstance(data, dict) and field in data:
+                                del data[field]
+
                 doc_id = await self.update_object(
                     path=path, 
                     data=data,

@@ -697,7 +697,9 @@ class AsyncMongoVersionedClient:
         data: Any,
         version: Optional[str] = None,
         is_complete: Optional[bool] = None,
-        allowed_prefixes: Optional[List[List[str]]] = None
+        allowed_prefixes: Optional[List[List[str]]] = None,
+        create_only_fields: List[str] = [],
+        keep_create_fields_if_missing: bool = False,
     ) -> bool:
         """
         Update a document at a specific version.
@@ -708,7 +710,9 @@ class AsyncMongoVersionedClient:
             version: The version identifier, or None to use the active version
             is_complete: Whether the document is now complete (for validation purposes)
             allowed_prefixes: Optional list of allowed path prefixes for permission checking
-            
+            create_only_fields: List of fields in data which should be removed from data since this operation is an update
+            keep_create_fields_if_missing: If True, keep create_only_fields in data if they don't exist in `existing object`
+
         Returns:
             True if the document was updated successfully
         """
@@ -741,13 +745,21 @@ class AsyncMongoVersionedClient:
         current_is_complete = version_data.get(AsyncMongoVersionedClient.IS_COMPLETE_KEY, False)
         
         # Handle different data types
+        if isinstance(data, dict):
+            for field in create_only_fields:
+                if field in data and (not keep_create_fields_if_missing):
+                    del data[field]
         if isinstance(data, dict) and isinstance(current_document, dict):
             # For dictionaries, merge the update with the current document
             new_document = copy.deepcopy(current_document)
+            for field in create_only_fields:
+                if field in new_document and field in data:
+                    del data[field]
             new_document.update(data)
         else:
             # For other types, replace the entire document
             new_document = data
+            
         
         # Validate against schema if provided
         schema = metadata.get("schema")
@@ -1121,11 +1133,11 @@ class AsyncMongoVersionedClient:
             if AsyncMongoVersionedClient.DOCUMENT_KEY in new_version_store_after_restore:
                 del new_version_store_after_restore[AsyncMongoVersionedClient.DOCUMENT_KEY]
             
-            if any(k in restored_document for k in AsyncMongoVersionedClient.RESERVED_KEYS):
-                 logger.warning(f"Restored document contains reserved keys: {', '.join(k for k in restored_document if k in AsyncMongoVersionedClient.RESERVED_KEYS)}")
+            if any(k in restored_document for k in AsyncMongoVersionedClient.ALL_KEYS):
+                 logger.warning(f"Restored document contains reserved keys: {', '.join(k for k in restored_document if k in AsyncMongoVersionedClient.ALL_KEYS)}")
             new_version_store_after_restore.update({ 
                 k: v for k, v in restored_document.items() 
-                if k not in AsyncMongoVersionedClient.RESERVED_KEYS 
+                if k not in AsyncMongoVersionedClient.ALL_KEYS 
             })
 
         logger.info(f"Updating version data for path {base_path}, version {target_version} to sequence {sequence}")

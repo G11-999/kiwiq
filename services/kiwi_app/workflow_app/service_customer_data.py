@@ -380,6 +380,8 @@ class CustomerDataService:
         on_behalf_of_user_id: Optional[uuid.UUID] = None,
         is_system_entity: bool = False,
         is_called_from_workflow: bool = False,
+        create_only_fields: List[str] = [],
+        keep_create_fields_if_missing: bool = False,
     ) -> bool:
         """
         Update a versioned document.
@@ -400,7 +402,9 @@ class CustomerDataService:
             on_behalf_of_user_id: Optional user ID to act on behalf of (superusers only)
             is_system_entity: Whether this is a system entity (superusers only)
             is_called_from_workflow: Whether this operation is called from a workflow
-            
+            create_only_fields: List of fields in data which should be removed from data since this operation is an update
+            keep_create_fields_if_missing: If True, keep create_only_fields in data if they don't exist in `existing object`
+
         Returns:
             True if document was updated successfully
         """
@@ -468,6 +472,8 @@ class CustomerDataService:
                 version=version,
                 is_complete=is_complete,
                 allowed_prefixes=allowed_prefixes,
+                create_only_fields=create_only_fields,
+                keep_create_fields_if_missing=keep_create_fields_if_missing,
             )
             if not success:
                 raise HTTPException(
@@ -1253,6 +1259,8 @@ class CustomerDataService:
         set_active_version: bool = True,
         is_system_entity: bool = False,
         is_called_from_workflow: bool = False,
+        create_only_fields: List[str] = [],
+        keep_create_fields_if_missing: bool = False,
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Upserts a versioned document: updates if exists, initializes if not.
@@ -1279,6 +1287,8 @@ class CustomerDataService:
             on_behalf_of_user_id: Optional user ID to act on behalf of (superusers only).
             is_system_entity: Whether this is a system entity (superusers only).
             is_called_from_workflow: Whether this operation is called from a workflow
+            create_only_fields: List of fields in data which should be removed if the operation is an update rather than creation
+            keep_create_fields_if_missing: If True, keep create_only_fields in data if they don't exist in `existing object` during update
 
         Returns:
             Tuple[str, Dict[str, Any]]:
@@ -1465,6 +1475,8 @@ class CustomerDataService:
                     data=data,
                     version=version,
                     is_complete=is_complete,
+                    create_only_fields=create_only_fields,
+                    keep_create_fields_if_missing=keep_create_fields_if_missing,
                 )
                 # If update_versioned_document succeeds without raising an exception
                 operation_performed = f"updated_{version or '$active'}"
@@ -1497,6 +1509,8 @@ class CustomerDataService:
                                 data=data,
                                 version=version, # Target the newly created version
                                 is_complete=is_complete,
+                                create_only_fields=create_only_fields,
+                                keep_create_fields_if_missing=keep_create_fields_if_missing,
                             )
                             operation_performed = f"created_and_updated_version_{version}"
                             final_version = version
@@ -1620,6 +1634,8 @@ class CustomerDataService:
         on_behalf_of_user_id: Optional[uuid.UUID] = None,
         is_system_entity: bool = False,
         is_called_from_workflow: bool = False,
+        create_only_fields: List[str] = [],
+        keep_create_fields_if_missing: bool = False,
     ) -> Tuple[str, bool]:
         """
         Create or update an unversioned document.
@@ -1638,7 +1654,9 @@ class CustomerDataService:
             on_behalf_of_user_id: Optional user ID to act on behalf of (superusers only)
             is_system_entity: Whether this is a system entity (superusers only)
             is_called_from_workflow: Whether this operation is called from a workflow
-            
+            create_only_fields: List of fields in data which should be removed if the operation is an update rather than creation
+            keep_create_fields_if_missing: If True, keep create_only_fields in data if they don't exist in `existing object` during update
+
         Returns:
             Tuple of (document_id, is_created)
         """
@@ -1707,6 +1725,8 @@ class CustomerDataService:
                 data=data,
                 allowed_prefixes=allowed_prefixes,
                 update_subfields=True,
+                create_only_fields=create_only_fields,
+                keep_create_fields_if_missing=keep_create_fields_if_missing,
             )
             
             return result

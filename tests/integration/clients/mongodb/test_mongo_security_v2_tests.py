@@ -1617,6 +1617,219 @@ class TestOptimizedMongoDBClient(unittest.IsolatedAsyncioTestCase):
             if isinstance(obj["data"], str):
                 self.assertIsInstance(obj["data"], str, "Data should be a string")
 
+    async def test_create_only_fields(self):
+        """
+        Tests the create_only_fields and keep_create_fields_if_missing parameters
+        in create_or_update_object method.
+        
+        This test validates:
+        1. Fields in create_only_fields are preserved during document creation
+        2. Fields in create_only_fields are removed during document update
+        3. The keep_create_fields_if_missing parameter controls whether create_only_fields
+           are removed when they don't exist in the original document
+        4. When keep_create_fields_if_missing=True and the original document has the field,
+           the original value is preserved even if update data tries to change it
+        """
+        client = self.client
+        
+        # Test case 1: Create a document with create_only_fields
+        path = ["test_org", "test_project", "create_only_test"]
+        initial_data = {
+            "name": "Test Document",
+            "created_by": "user123",  # This field should only be included during creation
+            "timestamp": 12345,       # This field should only be included during creation
+            "regular_field": "value"  # This field should always be included
+        }
+        
+        # Create document with create_only_fields
+        doc_id, was_created = await client.create_or_update_object(
+            path=path,
+            data=initial_data.copy(),
+            create_only_fields=["created_by", "timestamp"],
+            update_subfields=True,
+        )
+        
+        self.assertTrue(was_created)
+        
+        # Verify all fields are present after creation
+        doc = await client.fetch_object(path=path)
+        self.assertIsNotNone(doc)
+        self.assertEqual(doc["data"]["name"], "Test Document")
+        self.assertEqual(doc["data"]["created_by"], "user123")
+        self.assertEqual(doc["data"]["timestamp"], 12345)
+        self.assertEqual(doc["data"]["regular_field"], "value")
+        
+        # Test case 2: Update the document with create_only_fields
+        update_data = {
+            "name": "Updated Document",
+            "created_by": "different_user",  # This should be removed during update
+            "timestamp": 67890,              # This should be removed during update
+            "regular_field": "new_value"     # This should be updated
+        }
+        
+        # Update document with create_only_fields
+        doc_id, was_created = await client.create_or_update_object(
+            path=path,
+            data=update_data.copy(),
+            create_only_fields=["created_by", "timestamp"],
+            update_subfields=True,
+        )
+        
+        self.assertFalse(was_created)
+        
+        # Verify create_only_fields weren't updated
+        doc = await client.fetch_object(path=path)
+        self.assertIsNotNone(doc)
+        self.assertEqual(doc["data"]["name"], "Updated Document")
+        self.assertEqual(doc["data"]["created_by"], "user123")  # Should retain original value
+        self.assertEqual(doc["data"]["timestamp"], 12345)       # Should retain original value
+        self.assertEqual(doc["data"]["regular_field"], "new_value")
+        
+        # Test case 3: Create a new document for testing keep_create_fields_if_missing
+        path2 = ["test_org", "test_project", "create_only_test2"]
+        initial_data2 = {
+            "name": "Test Document 2",
+            "regular_field": "value"
+        }
+        
+        # Create document without the create_only_fields
+        doc_id2, was_created2 = await client.create_or_update_object(
+            path=path2,
+            data=initial_data2.copy(),
+            update_subfields=True,
+        )
+        
+        self.assertTrue(was_created2)
+        
+        # Verify initial state
+        doc2 = await client.fetch_object(path=path2)
+        self.assertIsNotNone(doc2)
+        self.assertEqual(doc2["data"]["name"], "Test Document 2")
+        self.assertNotIn("created_by", doc2["data"])
+        self.assertNotIn("timestamp", doc2["data"])
+        
+        # Test case 4: Update with keep_create_fields_if_missing=True
+        update_data2 = {
+            "name": "Updated Document 2",
+            "created_by": "user456",
+            "timestamp": 54321,
+            "regular_field": "new_value"
+        }
+        
+        # Update with keep_create_fields_if_missing=True
+        doc_id2, was_created2 = await client.create_or_update_object(
+            path=path2,
+            data=update_data2.copy(),
+            create_only_fields=["created_by", "timestamp"],
+            keep_create_fields_if_missing=True,
+            update_subfields=True,
+        )
+        
+        self.assertFalse(was_created2)
+        
+        # Verify create_only_fields were added because they were missing
+        doc2 = await client.fetch_object(path=path2)
+        self.assertIsNotNone(doc2)
+        self.assertEqual(doc2["data"]["name"], "Updated Document 2")
+        self.assertEqual(doc2["data"]["created_by"], "user456")  # Should be added
+        self.assertEqual(doc2["data"]["timestamp"], 54321)       # Should be added
+        self.assertEqual(doc2["data"]["regular_field"], "new_value")
+        
+        # Test case 5: Update with keep_create_fields_if_missing=False
+        path3 = ["test_org", "test_project", "create_only_test3"]
+        initial_data3 = {
+            "name": "Test Document 3",
+            "regular_field": "value"
+        }
+        
+        # Create document without the create_only_fields
+        doc_id3, was_created3 = await client.create_or_update_object(
+            path=path3,
+            data=initial_data3.copy(),
+            update_subfields=True,
+        )
+        
+        self.assertTrue(was_created3)
+        
+        update_data3 = {
+            "name": "Updated Document 3",
+            "created_by": "user789",
+            "timestamp": 98765,
+            "regular_field": "new_value"
+        }
+        
+        # Update with keep_create_fields_if_missing=False (default)
+        doc_id3, was_created3 = await client.create_or_update_object(
+            path=path3,
+            data=update_data3.copy(),
+            create_only_fields=["created_by", "timestamp"],
+            keep_create_fields_if_missing=False,
+            update_subfields=True,
+        )
+        
+        self.assertFalse(was_created3)
+        
+        # Verify create_only_fields were NOT added because keep_create_fields_if_missing=False
+        doc3 = await client.fetch_object(path=path3)
+        self.assertIsNotNone(doc3)
+        self.assertEqual(doc3["data"]["name"], "Updated Document 3")
+        self.assertNotIn("created_by", doc3["data"])  # Should NOT be added
+        self.assertNotIn("timestamp", doc3["data"])   # Should NOT be added
+        self.assertEqual(doc3["data"]["regular_field"], "new_value")
+        
+        # Test case 6: Update a document with existing create_only_fields using keep_create_fields_if_missing=True
+        # This tests that when a field already exists and is in create_only_fields, the original value is preserved
+        # even when keep_create_fields_if_missing=True and update data contains new values for those fields
+        path4 = ["test_org", "test_project", "create_only_test4"]
+        initial_data4 = {
+            "name": "Test Document 4",
+            "created_by": "original_user",  # Will be marked as create_only_field
+            "timestamp": 11111,             # Will be marked as create_only_field
+            "regular_field": "value"
+        }
+        
+        # Create document with fields that will later be designated as create_only_fields
+        doc_id4, was_created4 = await client.create_or_update_object(
+            path=path4,
+            data=initial_data4.copy(),
+            update_subfields=True,
+        )
+        
+        self.assertTrue(was_created4)
+        
+        # Verify initial state
+        doc4 = await client.fetch_object(path=path4)
+        self.assertIsNotNone(doc4)
+        self.assertEqual(doc4["data"]["created_by"], "original_user")
+        self.assertEqual(doc4["data"]["timestamp"], 11111)
+        
+        # Now update with new values for create_only_fields while setting keep_create_fields_if_missing=True
+        update_data4 = {
+            "name": "Updated Document 4",
+            "created_by": "attempted_new_user",  # Should not change the original value
+            "timestamp": 22222,                  # Should not change the original value
+            "regular_field": "new_value"
+        }
+        
+        # Update with create_only_fields and keep_create_fields_if_missing=True
+        doc_id4, was_created4 = await client.create_or_update_object(
+            path=path4,
+            data=update_data4.copy(),
+            create_only_fields=["created_by", "timestamp"],
+            keep_create_fields_if_missing=True,
+            update_subfields=True,
+        )
+        
+        self.assertFalse(was_created4)
+        
+        # Verify create_only_fields values were NOT changed despite keep_create_fields_if_missing=True
+        doc4 = await client.fetch_object(path=path4)
+        self.assertIsNotNone(doc4)
+        self.assertEqual(doc4["data"]["name"], "Updated Document 4")
+        self.assertEqual(doc4["data"]["created_by"], "original_user")  # Should retain original value
+        self.assertEqual(doc4["data"]["timestamp"], 11111)             # Should retain original value
+        self.assertEqual(doc4["data"]["regular_field"], "new_value")
+
 def run_async_tests():
     unittest.main()
 

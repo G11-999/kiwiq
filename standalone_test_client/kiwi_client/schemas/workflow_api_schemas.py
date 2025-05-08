@@ -455,6 +455,8 @@ class CustomerDataVersionedUpdate(BaseModel):
     schema_template_version: Optional[str] = Field(None, description="Optional: Version of the SchemaTemplate. Defaults to latest if name is provided.")
     is_system_entity: bool = Field(False, description="Whether this is a system entity (superusers only). When True, data is accessed from system paths instead of organization-specific paths. The is_shared parameter still applies normally to determine if it's shared with the org or user-specific.")
     on_behalf_of_user_id: Optional[uuid.UUID] = Field(None, description="Optional user ID to act on behalf of (superusers only). Note: This parameter only works with user-specific documents and is ignored for system entities or shared documents.")
+    create_only_fields: List[str] = Field(default_factory=list, description="List of fields in data which should be removed since this operation is an update rather than creation")
+    keep_create_fields_if_missing: bool = Field(default=False, description="If True, keep create_only_fields in data if they don't exist in `existing object` during this update operation")
 
 
 class CustomerDataRead(BaseModel):
@@ -576,6 +578,8 @@ class CustomerDataUnversionedCreateUpdate(BaseModel):
     schema_template_version: Optional[str] = Field(None, description="Optional version of the SchemaTemplate. Defaults to latest if name is provided.")
     is_system_entity: bool = Field(False, description="Whether this is a system entity (superusers only). When True, data is stored in system paths instead of organization-specific paths. The is_shared parameter still applies normally to determine if it's shared with the org or user-specific.")
     on_behalf_of_user_id: Optional[uuid.UUID] = Field(None, description="Optional user ID to act on behalf of (superusers only). Note: This parameter only works with user-specific documents and is ignored for system entities or shared documents.")
+    create_only_fields: List[str] = Field(default_factory=list, description="List of fields in data which should be removed if the operation is an update rather than creation")
+    keep_create_fields_if_missing: bool = Field(default=False, description="If True, keep create_only_fields in data if they don't exist in `existing object` during update")
 
 
 class CustomerDataUnversionedRead(BaseModel):
@@ -655,6 +659,8 @@ class CustomerDataVersionedUpsert(BaseModel):
     is_system_entity: bool = Field(False, description="Target a system entity (superusers only).")
     on_behalf_of_user_id: Optional[uuid.UUID] = Field(None, description="Act on behalf of another user (superusers only, requires is_shared=False).")
     set_active_version: bool = Field(True, description="Set the active version after the operation.")
+    create_only_fields: List[str] = Field(default_factory=list, description="List of fields in data which should be removed if the operation is an update rather than creation")
+    keep_create_fields_if_missing: bool = Field(default=False, description="If True, keep create_only_fields in data if they don't exist in `existing object` during update")
 
 
 class CustomerDocumentIdentifier(BaseModel):
@@ -757,6 +763,7 @@ class FileUploadValidationResult(BaseModel):
     file_errors: Dict[str, List[str]] = Field(default_factory=dict, description="Dictionary mapping filenames to a list of their specific validation errors. Empty if none.")
 
     model_config = ConfigDict(extra='forbid')
+
 
 class CustomerDataSearchQuery(BaseModel):
     """Schema for searching customer documents."""

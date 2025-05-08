@@ -121,6 +121,8 @@ async def update_versioned_document(
         schema_template_version=data.schema_template_version,
         on_behalf_of_user_id=data.on_behalf_of_user_id,
         is_system_entity=data.is_system_entity,
+        create_only_fields=data.create_only_fields,
+        keep_create_fields_if_missing=data.keep_create_fields_if_missing,
     )
     
     # Get the updated document to return it
@@ -612,6 +614,8 @@ async def upsert_versioned_document_route(
             on_behalf_of_user_id=data.on_behalf_of_user_id,
             is_system_entity=data.is_system_entity,
             set_active_version=data.set_active_version,
+            create_only_fields=data.create_only_fields,
+            keep_create_fields_if_missing=data.keep_create_fields_if_missing,
         )
 
         customer_data_logger.info(f"Upsert successful for {namespace}/{docname}. Operation: {operation_performed}")
@@ -673,6 +677,8 @@ async def create_or_update_unversioned_document(
         schema_template_version=data.schema_template_version,
         on_behalf_of_user_id=data.on_behalf_of_user_id,
         is_system_entity=data.is_system_entity,
+        create_only_fields=data.create_only_fields,
+        keep_create_fields_if_missing=data.keep_create_fields_if_missing,
     )
     
     action = "Created" if is_created else "Updated"
