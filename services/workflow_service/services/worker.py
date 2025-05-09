@@ -497,12 +497,15 @@ async def run_graph(
                                 # Redact potentially sensitive data such as shared system docs / prompts
                                 restricted_node_names = ["prompt_constructor", "load_customer_data", ]  # , "llm"
                                 user = initial_runtime_config[APPLICATION_CONTEXT_KEY].get("user", None)
-                                # logger.warning(f"PROCESSING NODE: {node_id}")
-                                node_name = workflow_run_job.graph_schema.nodes.get(node_id).node_name
-                                if (not user.is_superuser) and node_name in restricted_node_names:
-                                    payload["node_output"] = "DATA_REDACTED"
-                                    if "central_state_update" in payload:
-                                        payload["central_state_update"] = "DATA_REDACTED"
+                                
+                                try:
+                                    node_name = workflow_run_job.graph_schema.nodes.get(node_id).node_name
+                                    if (not user.is_superuser) and node_name in restricted_node_names:
+                                        payload["node_output"] = "DATA_REDACTED"
+                                        if "central_state_update" in payload:
+                                            payload["central_state_update"] = "DATA_REDACTED"
+                                except Exception as e:
+                                    logger.warning(f"Error getting node name for {node_id}: {e}")
 
                                 output_event = WorkflowRunNodeOutputEvent(
                                     **base_event_data,
