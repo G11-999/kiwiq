@@ -1144,8 +1144,8 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                         temp_text_content = t
                         if isinstance(t, dict):
                             temp_text_content = t.get('input')
-                            temp_text_content = t or t.get('partial_json')
-                            temp_text_content = t or t.get('json')
+                            temp_text_content = temp_text_content or t.get('partial_json')
+                            temp_text_content = temp_text_content or t.get('json')
                         temp_text_content = str(temp_text_content)
                         filtered_content.append({'type': 'text', 'text': temp_text_content})
                 response.content = filtered_content
