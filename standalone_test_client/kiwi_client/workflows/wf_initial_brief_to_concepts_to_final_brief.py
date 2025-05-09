@@ -481,7 +481,8 @@ workflow_graph_schema = {
                         "input_field_path": "updated_brief", # Mapped from LLM output
                         "target_path": {
                             "filename_config": {
-                                "static_namespace": CONTENT_BRIEF_NAMESPACE_TEMPLATE,
+                                "input_namespace_field_pattern": CONTENT_BRIEF_NAMESPACE_TEMPLATE, 
+                                "input_namespace_field": "entity_username",
                                 "input_docname_field": "brief_docname"
                             }
                         },
@@ -975,7 +976,7 @@ async def main_test_idea_to_brief_workflow():
     predefined_hitl_inputs = []
     
     # VALID HUMAN INPUTS FOR MANUAL TESTING:
-    # {"approval_status": "select_concepts", "selected_concepts": ["contrarian1"]}
+    # {"approval_status": "select_concepts", "selected_concepts": ["concept_01"]}
     # {"approval_status": "regenerate", "feedback_text": "Please generate more contrarian concepts"}
     # {"approval_status": "restart_from_idea_generation"}
 
@@ -1018,7 +1019,7 @@ async def main_test_idea_to_brief_workflow():
         hitl_inputs=predefined_hitl_inputs,
         setup_docs=setup_docs,
         cleanup_docs=cleanup_docs,
-        cleanup_docs_created_by_setup=True,
+        cleanup_docs_created_by_setup=False,
         validate_output_func=validate_brief_output,
         stream_intermediate_results=True,
         poll_interval_sec=5,
