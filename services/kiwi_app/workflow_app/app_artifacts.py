@@ -166,9 +166,9 @@ USER_DOCUMENTS_CONFIG_JSON_STR = """
       "is_system_entity": false
     },
     "draft": {
-      "docname_template": "draft_{_uuid_}",
+      "docname_template": "draft_{post_uuid}",
       "namespace_template": "post_drafts_{entity_username}",
-      "docname_template_vars": {},
+      "docname_template_vars": {"post_uuid": null},
       "namespace_template_vars": {"entity_username": null},
       "is_shared": false,
       "is_versioned": true,

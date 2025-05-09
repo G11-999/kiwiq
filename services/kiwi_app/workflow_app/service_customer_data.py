@@ -2393,9 +2393,13 @@ class CustomerDataService:
                 
                 # customer_data_logger.warning(f"\n\n\n\n***** _doc_metadata: {json.dumps(_doc_metadata, indent=4)}\n\n\n\n")
                 
-                data = {k: v for k, v in _doc_metadata.get("data", {}).items() if k not in AsyncMongoVersionedClient.INTERNAL_KEYS}
-                # handle non-dict type
-                data = data.get(AsyncMongoVersionedClient.DOCUMENT_KEY, data)
+                data_dict = _doc_metadata.get("data", {}) or {}
+                if isinstance(data_dict, dict):
+                    data = {k: v for k, v in data_dict.items() if k not in AsyncMongoVersionedClient.INTERNAL_KEYS}
+                    # handle non-dict type
+                    data = data.get(AsyncMongoVersionedClient.DOCUMENT_KEY, data)
+                else:
+                    data = data_dict
 
                 # customer_data_logger.warning(f"\n\n\n\n***** data: {json.dumps(data, indent=4)}\n\n\n\n")
                 

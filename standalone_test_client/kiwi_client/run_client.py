@@ -73,7 +73,8 @@ class WorkflowRunTestClient:
                          graph_schema: Optional[GraphSchema] = None,
                          inputs: Dict[str, Any] = EXAMPLE_BASIC_LLM_RUN_INPUTS,
                          resume_run_id: Optional[Union[str, uuid.UUID]] = None,
-                         force_resume_experimental_option: Optional[bool] = False) -> Optional[wf_schemas.WorkflowRunRead]:
+                         force_resume_experimental_option: Optional[bool] = False,
+                         on_behalf_of_user_id: Optional[Union[str, uuid.UUID]] = None) -> Optional[wf_schemas.WorkflowRunRead]:
         """
         Tests submitting a new workflow run via POST /runs/.
 
@@ -87,6 +88,8 @@ class WorkflowRunTestClient:
             graph_schema (Optional[GraphSchema]): A graph schema for an ad-hoc run.
             inputs (Dict[str, Any]): The input data for the workflow run.
             resume_run_id (Optional[Union[str, uuid.UUID]]): The ID of a previous run to resume.
+            force_resume_experimental_option (Optional[bool]): Whether to force resume a run even if not in WAITING_HITL state.
+            on_behalf_of_user_id (Optional[Union[str, uuid.UUID]]): User ID to act on behalf of (requires superuser privileges).
 
         Returns:
             Optional[wf_schemas.WorkflowRunRead]: The parsed and validated response body of the submitted run
@@ -113,6 +116,11 @@ class WorkflowRunTestClient:
         else:
             logger.error("Submission error: Provide exactly one of workflow_id or graph_schema, or provide resume_run_id.")
             return None
+
+        # Add on_behalf_of_user_id to payload if provided
+        if on_behalf_of_user_id:
+            payload["on_behalf_of_user_id"] = str(on_behalf_of_user_id)  # Ensure string for JSON
+            logger.info(f"Run will be submitted on behalf of user ID: {on_behalf_of_user_id}")
 
         try:
             # Endpoint returns 202 Accepted, body contains WorkflowRunRead schema
@@ -455,6 +463,8 @@ async def main():
             submitted_run: Optional[wf_schemas.WorkflowRunRead] = await run_tester.submit_run(
                 workflow_id=workflow_id_to_run,
                 inputs=example_inputs
+                # Uncomment to test submitting on behalf of another user (requires superuser privileges)
+                # on_behalf_of_user_id=uuid.UUID("00000000-0000-0000-0000-000000000000")  # Replace with actual user ID
             )
             if submitted_run:
                 created_run_id = submitted_run.id

@@ -1,6 +1,7 @@
 import json
 import asyncio
 from typing import List, Optional, Dict, Any, Literal
+from functools import partial
 
 # --- Target Schema Definitions (for reference) ---
 
@@ -70,9 +71,9 @@ from typing import List, Optional, Dict, Any, Literal
 # --- Workflow Constants ---
 
 from kiwi_client.workflows.document_models.customer_docs import (
-    LINKEDIN_SCRAPING_NAMESPACE,
-    LINKEDIN_PROFILE_DOCNAME_PATTERN,
-    LINKEDIN_POST_DOCNAME_PATTERN
+    LINKEDIN_SCRAPING_NAMESPACE_TEMPLATE,
+    LINKEDIN_PROFILE_DOCNAME,
+    LINKEDIN_POST_DOCNAME
 )
 
 POST_LIMIT = 50
@@ -88,7 +89,7 @@ workflow_graph_schema = {
       "dynamic_output_schema": {
           "fields": {
               "entity_url": { "type": "str", "required": True, "description": "URL of the LinkedIn entity (person or company)." },
-              "entity_name": { "type": "str", "required": True, "description": "Name of the entity (used for saving doc names)." },
+              "entity_username": { "type": "str", "required": True, "description": "Name of the entity (used for saving doc names)." },
           }
         }
     },
@@ -137,10 +138,9 @@ workflow_graph_schema = {
             "input_field_path": "scraping_results.scraped_profile_job",
             "target_path": {
               "filename_config": {
-                "static_namespace": LINKEDIN_SCRAPING_NAMESPACE,
-                # Use entity_name (from node input, mapped from $graph_state) for the pattern context
-                "input_docname_field": "entity_name", # Field in node's input containing the value
-                "input_docname_field_pattern": LINKEDIN_PROFILE_DOCNAME_PATTERN  # 'item' here will be the value of entity_name
+                  "input_namespace_field_pattern": LINKEDIN_SCRAPING_NAMESPACE_TEMPLATE, 
+                  "input_namespace_field": "entity_username",
+                  "static_docname": LINKEDIN_PROFILE_DOCNAME,
               }
             }
           },
@@ -149,10 +149,9 @@ workflow_graph_schema = {
             "input_field_path": "scraping_results.scraped_posts_job",
             "target_path": {
               "filename_config": {
-                "static_namespace": LINKEDIN_SCRAPING_NAMESPACE,
-                # Use entity_name (from node input, mapped from $graph_state) for the pattern context
-                "input_docname_field": "entity_name", # Field in node's input containing the value
-                "input_docname_field_pattern": LINKEDIN_POST_DOCNAME_PATTERN # 'item' here will be the value of entity_name
+                "input_namespace_field_pattern": LINKEDIN_SCRAPING_NAMESPACE_TEMPLATE, 
+                  "input_namespace_field": "entity_username",
+                  "static_docname": LINKEDIN_POST_DOCNAME,
               }
             }
           }
@@ -207,7 +206,7 @@ workflow_graph_schema = {
     #           "filename_config": {
     #             "static_namespace": TARGET_NAMESPACE,
     #              # Use entity_name (from node input, mapped from $graph_state) for the pattern context
-    #             "input_docname_field": "entity_name", # Field in node's input containing the value
+    #             "input_docname_field": "entity_username", # Field in node's input containing the value
     #             "input_docname_field_pattern": "profile_filtered_{item}" # 'item' here will be the value of entity_name
     #           }
     #         }
@@ -220,7 +219,7 @@ workflow_graph_schema = {
     #           "filename_config": {
     #             "static_namespace": TARGET_NAMESPACE,
     #              # Use entity_name (from node input, mapped from $graph_state) for the pattern context
-    #             "input_docname_field": "entity_name", # Field in node's input containing the value
+    #             "input_docname_field": "entity_username", # Field in node's input containing the value
     #             "input_docname_field_pattern": "posts_filtered_{item}" # 'item' here will be the value of entity_name
     #           }
     #         }
@@ -240,7 +239,7 @@ workflow_graph_schema = {
     #       "fields": {
     #           "raw_data_paths": { "type": "list", "required": False, "description": "Paths where raw scraped data was stored." },
     #         #   "transformed_data_paths": { "type": "list", "required": False, "description": "Paths where transformed data was stored." },
-    #           "entity_name_processed": { "type": "str", "required": False, "description": "The name of the entity processed." }
+    #           "entity_username": { "type": "str", "required": False, "description": "The name of the entity processed." }
     #       }
     #     }
     }
@@ -250,7 +249,7 @@ workflow_graph_schema = {
   "edges": [
     # Input -> State: Store entity_name globally for use in doc names
     { "src_node_id": "input_node", "dst_node_id": "$graph_state", "mappings": [
-        { "src_field": "entity_name", "dst_field": "entity_name" }
+        { "src_field": "entity_username", "dst_field": "entity_username" }
       ]
     },
     # Input -> Scrape Entity: Pass URL and Type
@@ -270,7 +269,7 @@ workflow_graph_schema = {
     # State (entity_name) -> Store Raw Data: Pass entity name for doc naming pattern
     # The store_customer_data node needs entity_name in its DIRECT input to resolve input_docname_field
     { "src_node_id": "$graph_state", "dst_node_id": "store_raw_data", "mappings": [
-        { "src_field": "entity_name", "dst_field": "entity_name" }
+        { "src_field": "entity_username", "dst_field": "entity_username" }
       ]
     },
     # # Scrape Entity -> Transform Combined Data: Pass profile and posts data under specific keys
@@ -291,7 +290,7 @@ workflow_graph_schema = {
     #  # State (entity_name) -> Store Transformed Data: Pass entity name for doc naming pattern
     #  # The store_customer_data node needs entity_name in its DIRECT input to resolve input_docname_field
     # { "src_node_id": "$graph_state", "dst_node_id": "store_transformed_data", "mappings": [
-    #     { "src_field": "entity_name", "dst_field": "entity_name" }
+    #     { "src_field": "entity_username", "dst_field": "entity_username" }
     #   ]
     # },
     # Store Raw Data -> Output Node (Optional): Pass processed paths
@@ -306,7 +305,7 @@ workflow_graph_schema = {
     # },
      # State -> Output Node: Pass entity name for reference
     { "src_node_id": "$graph_state", "dst_node_id": "output_node", "mappings": [
-        { "src_field": "entity_name", "dst_field": "entity_name_processed" },
+        { "src_field": "entity_username", "dst_field": "entity_username" },
         { "src_field": "scraping_status_summary", "dst_field": "scraping_status_summary" },
       ]
     }
@@ -321,7 +320,7 @@ workflow_graph_schema = {
 #      "description": "Workflow to scrape LinkedIn profile and posts, store raw data, attempt transformation, and store transformed data.",
 #      "state_reducers": {
 #        # Default reducer is 'replace', which is suitable for entity_name stored once.
-#        "entity_name": { "reducer_type": "replace" }
+#        "entity_username": { "reducer_type": "replace" }
 #      }
 #   }
 }
@@ -352,15 +351,8 @@ from kiwi_client.schemas.workflow_constants import WorkflowRunStatus
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=CLIENT_LOG_LEVEL)
 
-# --- Inputs for the LinkedIn Scraping Workflow ---
-# These inputs match the 'input_node' dynamic_output_schema
-LINKEDIN_SCRAPING_WORKFLOW_INPUTS = {
-    # Replace with a valid LinkedIn profile URL for testing
-    "entity_url": "https://www.linkedin.com/in/sytalal/",
-    "entity_name": "Talal Syed", # Used for document naming in the workflow
-}
 
-async def validate_linkedin_scraping_output(outputs: Optional[Dict[str, Any]]) -> bool:
+async def validate_linkedin_scraping_output(outputs: Optional[Dict[str, Any]], linkedin_scraping_inputs: Dict[str, Any]) -> bool:
     """
     Custom validation function for the LinkedIn scraping workflow outputs.
 
@@ -378,25 +370,24 @@ async def validate_linkedin_scraping_output(outputs: Optional[Dict[str, Any]]) -
 
     # Check for expected keys based on the workflow's output_node edges
     assert 'raw_data_paths' in outputs, "Validation Failed: 'raw_data_paths' key missing in outputs."
-    assert 'entity_name_processed' in outputs, "Validation Failed: 'entity_name_processed' key missing in outputs."
+    assert "entity_username" in outputs, "Validation Failed: \"entity_username\" key missing in outputs."
 
     # Check if the processed entity name matches the input
-    assert outputs['entity_name_processed'] == LINKEDIN_SCRAPING_WORKFLOW_INPUTS['entity_name'], \
-        f"Validation Failed: Expected entity_name '{LINKEDIN_SCRAPING_WORKFLOW_INPUTS['entity_name']}' but got '{outputs['entity_name_processed']}'."
+    assert outputs["entity_username"] == linkedin_scraping_inputs["entity_username"], \
+        f"Validation Failed: Expected entity_name '{linkedin_scraping_inputs["entity_username"]}' but got '{outputs["entity_username"]}'."
 
     # Optional: Check structure of raw_data_paths if needed
     assert isinstance(outputs['raw_data_paths'], list), "Validation Failed: 'raw_data_paths' should be a list."
     # Example: Check if expected filenames are present (adjust patterns based on workflow)
-    expected_profile_path_part = LINKEDIN_SCRAPING_WORKFLOW_INPUTS['entity_name']
-    expected_posts_path_part = LINKEDIN_SCRAPING_WORKFLOW_INPUTS['entity_name']
+    expected_profile_path_part = linkedin_scraping_inputs["entity_username"]
+    expected_posts_path_part = linkedin_scraping_inputs["entity_username"]
     found_profile = any(expected_profile_path_part in str(p) for p in outputs['raw_data_paths'])
     found_posts = any(expected_posts_path_part in str(p) for p in outputs['raw_data_paths'])
     assert found_profile, f"Validation Failed: Expected profile path containing '{expected_profile_path_part}' not found in {outputs['raw_data_paths']}."
     assert found_posts, f"Validation Failed: Expected posts path containing '{expected_posts_path_part}' not found in {outputs['raw_data_paths']}."
 
-
     logger.info(f"   Found 'raw_data_paths': {outputs.get('raw_data_paths')}")
-    logger.info(f"   Found 'entity_name_processed': {outputs.get('entity_name_processed')} (Matches Input: ✓)")
+    logger.info(f"   Found 'entity_username': {outputs.get("entity_username")} (Matches Input: ✓)")
     logger.info("✓ Output structure and content validation passed.")
     return True
 
@@ -406,21 +397,28 @@ async def main_test_linkedin_scraping():
     Tests the LinkedIn Scraping Workflow using the run_workflow_test helper function.
     Includes cleanup for generated documents and output validation.
     """
+    # --- Inputs for the LinkedIn Scraping Workflow ---
+    # These inputs match the 'input_node' dynamic_output_schema
+    LINKEDIN_SCRAPING_WORKFLOW_INPUTS = {
+        # Replace with a valid LinkedIn profile URL for testing
+        "entity_url": "https://www.linkedin.com/in/sytalal/",
+        "entity_username": "sytalal", # Used for document naming in the workflow
+    }
     test_name = "LinkedIn Scraping Test via Helper"
     print(f"--- Starting {test_name} --- ")
 
-    entity_name = LINKEDIN_SCRAPING_WORKFLOW_INPUTS['entity_name']
+    entity_name = LINKEDIN_SCRAPING_WORKFLOW_INPUTS["entity_username"]
 
     # Define documents created by the workflow for cleanup
     profile_cleanup_doc: CleanupDocInfo = {
-        'namespace': LINKEDIN_SCRAPING_NAMESPACE,
+        'namespace': LINKEDIN_SCRAPING_NAMESPACE_TEMPLATE,
         'docname': f"profile_{entity_name}", # Docname pattern from the workflow
         'is_shared': False, # Matches store_raw_data node config
         'is_versioned': False, # Matches store_raw_data node config
         'is_system_entity': False
     }
     posts_cleanup_doc: CleanupDocInfo = {
-        'namespace': LINKEDIN_SCRAPING_NAMESPACE,
+        'namespace': LINKEDIN_SCRAPING_NAMESPACE_TEMPLATE,
         'docname': f"posts_{entity_name}", # Docname pattern from the workflow
         'is_shared': False, # Matches store_raw_data node config
         'is_versioned': False, # Matches store_raw_data node config
@@ -440,7 +438,7 @@ async def main_test_linkedin_scraping():
         # Add the documents created by the workflow to the cleanup list
         # cleanup_docs=[profile_cleanup_doc, posts_cleanup_doc],
         # Pass the custom validation function
-        validate_output_func=validate_linkedin_scraping_output,
+        validate_output_func=partial(validate_linkedin_scraping_output, linkedin_scraping_inputs=LINKEDIN_SCRAPING_WORKFLOW_INPUTS),
         stream_intermediate_results=True, # Keep streaming enabled
         poll_interval_sec=3,
         timeout_sec=300 # Keep timeout relatively high for scraping
@@ -473,4 +471,3 @@ if __name__ == "__main__":
 
     print("\nRun this script from the project root directory using:")
     print("PYTHONPATH=. python standalone_test_client/kiwi_client/workflows/test_linkedin_scraping_workflow.py")
-
