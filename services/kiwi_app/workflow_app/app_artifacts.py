@@ -244,7 +244,7 @@ USER_DOCUMENTS_CONFIG_JSON_STR = """
 ALL_WORKFLOWS_CONFIG_JSON_STR = """
 {
   "all_workflows": {
-    "linkedin_scraping": {
+    "linkedin_scraping_workflow": {
       "name": "linkedin_scraping_workflow",
       "version": null,
       "inputs": {
@@ -255,7 +255,7 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
       },
       "template_specific": false
     },
-    "linkedin_content_analysis": {
+    "linkedin_content_analysis_workflow": {
       "name": "linkedin_content_analysis_workflow",
       "version": null,
       "inputs": {
@@ -275,7 +275,7 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
       },
       "template_specific": false
     },
-    "sources_extraction": {
+    "sources_extraction_workflow": {
       "name": "sources_extraction_workflow",
       "version": null,
       "inputs": {
@@ -288,7 +288,7 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
       },
       "template_specific": false
     },
-    "content_strategy": {
+    "content_strategy_workflow": {
       "name": "content_strategy_workflow",
       "version": null,
       "inputs": {
@@ -321,7 +321,7 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
       },
       "template_specific": false
     },
-    "user_dna": {
+    "user_dna_workflow": {
       "name": "user_dna_workflow",
       "version": null,
       "inputs": {
@@ -391,7 +391,7 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
       },
       "template_specific": false
     },
-    "content_calendar": {
+    "content_calendar_entry_workflow": {
       "name": "content_calendar_entry_workflow",
       "version": null,
       "inputs": {
@@ -436,7 +436,7 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
       "user_documents_config_variables": {},
       "template_specific": false
     },
-    "content_creation": {
+    "content_creation_workflow": {
       "name": "content_creation_workflow",
       "version": null,
       "inputs": {
@@ -465,7 +465,7 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
       "user_documents_config_variables": {},
       "template_specific": false
     },
-    "brief_to_concepts": {
+    "initial_brief_to_concepts_workflow": {
       "name": "initial_brief_to_concepts_workflow",
       "version": null,
       "inputs": {
