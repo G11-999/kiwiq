@@ -1070,6 +1070,17 @@ rpds-py = ">=0.7.0"
 typing-extensions = {version = ">=4.4.0", markers = "python_version < \"3.13\""}
 
 [[package]]
+name = "rel"
+version = "0.4.9.20"
+description = "Registered Event Listener. Provides standard (pyevent) interface and functionality without external dependencies"
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "rel-0.4.9.20-py3-none-any.whl", hash = "sha256:d37650d4f8c8d7549d8b1471391b055d302180ba7339ab2945a881f47f9895da"},
+]
+
+[[package]]
 name = "requests"
 version = "2.32.3"
 description = "Python HTTP for Humans."
@@ -1352,6 +1363,23 @@ files = [
 ]
 
 [[package]]
+name = "websocket-client"
+version = "1.8.0"
+description = "WebSocket client for Python with low level API options"
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "websocket_client-1.8.0-py3-none-any.whl", hash = "sha256:17b44cc997f5c498e809b22cdf2d9c7a9e71c02c8cc2b6c56e7c2d1239bfa526"},
+    {file = "websocket_client-1.8.0.tar.gz", hash = "sha256:3239df9f44da632f96012472805d40a23281a991027ce11d2f45a6f24ac4c3da"},
+]
+
+[package.extras]
+docs = ["Sphinx (>=6.0)", "myst-parser (>=2.0.0)", "sphinx-rtd-theme (>=1.1.0)"]
+optional = ["python-socks", "wsaccel"]
+test = ["websockets"]
+
+[[package]]
 name = "zstandard"
 version = "0.23.0"
 description = "Zstandard bindings for Python"
@@ -1467,4 +1495,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.14"
-content-hash = "464990420ff05f03a676302e60e8f502733da00d436fd74a89bf052acab627f0"
+content-hash = "e446c4b12bad8960ca55ff6595f6cf0d265f413c1adb0cb5ff5a942d9790b025"

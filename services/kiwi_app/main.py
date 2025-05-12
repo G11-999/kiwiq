@@ -4,8 +4,9 @@
 import asyncio
 import logging # Import logging
 from contextlib import asynccontextmanager # Import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from kiwi_app.utils import get_kiwi_logger
 from kiwi_app import auth
 from kiwi_app.settings import settings # Import settings
@@ -17,6 +18,7 @@ from kiwi_app.workflow_app import dependencies as wf_deps
 from scraper_service import scraping_routes
 from kiwi_app.workflow_app import app_state as app_state_routes
 from kiwi_app.workflow_app import app_artifacts as app_artifacts_routes
+from kiwi_app.workflow_app import websockets as websocket_routes
 
 # Get a logger instance for the main application
 
@@ -126,6 +128,7 @@ app.include_router(customer_data_routes.customer_data_router, prefix=settings.AP
 app.include_router(scraping_routes.scraping_router, prefix=settings.API_V1_PREFIX)
 app.include_router(app_state_routes.app_state_router, prefix=settings.API_V1_PREFIX)
 app.include_router(app_artifacts_routes.artifact_router, prefix=settings.API_V1_PREFIX)
+app.include_router(websocket_routes.websocket_router, prefix=settings.API_V1_PREFIX)
 
 # ... rest of your app setup ...
 

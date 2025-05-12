@@ -14,17 +14,22 @@ from db.session import get_async_db_dependency
 from global_config.logger import get_logger
 
 # Auth Dependencies - using standard auth instead of custom tokens
-from kiwi_app.auth.dependencies import get_current_active_verified_user, get_active_org_id
+from kiwi_app.auth.dependencies import _check_permissions_for_org, get_current_user_non_dependency, get_user_dao
+from kiwi_app.workflow_app.constants import WorkflowPermissions
 from kiwi_app.auth.models import User
 
 # Workflow App Dependencies
 from kiwi_app.workflow_app import crud, models, dependencies as wf_deps
 from kiwi_app.workflow_app.dependencies import get_workflow_run_for_org
 
-# Setup Router
-websocket_router = APIRouter(prefix="/ws", tags=["WebSocket Connections"])
+from kiwi_app.utils import get_kiwi_logger
 
-logger = get_logger(__name__)
+logger = get_kiwi_logger(name="kiwi.websockets")
+
+# Setup Router
+websocket_router = APIRouter(tags=["WebSocket Stream & Notifications"])
+
+
 
 
 class ConnectionManager:
@@ -238,7 +243,7 @@ class ConnectionManager:
         
         # Send the message to all target connections
         disconnected_sockets = []
-        logger.debug(f"Sending JSON to {len(target_connections)} connections with filters: user_id={user_id_str}, run_id={run_id_str}")
+        # logger.debug(f"Sending JSON to {len(target_connections)} connections with filters: user_id={user_id_str}, run_id={run_id_str}")
         
         try:
             message = json.dumps(data)
@@ -259,15 +264,13 @@ class ConnectionManager:
 websocket_manager = ConnectionManager()
 
 
-@websocket_router.websocket("/{run_id}")
+@websocket_router.websocket("/ws/runs/{run_id}")
 async def websocket_endpoint(
     websocket: WebSocket,
     run_id: uuid.UUID = Path(..., description="The ID of the workflow run to subscribe to"),
-    # user: User = Depends(get_current_active_verified_user),
-    run: models.WorkflowRun = Depends(wf_deps.get_workflow_run_for_org),
-    current_user: User = Depends(wf_deps.RequireRunReadActiveOrg),
-    # active_org_id: uuid.UUID = Depends(get_active_org_id),
-    # db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
+    token: str = Query(..., description="The JWT token for the user"),
+    active_org_id: uuid.UUID = Query(..., description="The active organization ID"),
+    db: AsyncSession = Depends(get_async_db_dependency),
 ):
     """
     WebSocket endpoint for real-time notifications for a specific workflow run.
@@ -278,11 +281,75 @@ async def websocket_endpoint(
     Args:
         websocket: The WebSocket connection
         run_id: The ID of the workflow run to subscribe to
-        user: The authenticated user
+        token: The JWT token for authentication
         active_org_id: The active organization ID
-        db_manager: The database session manager
+        db: The database session
     """
-    user_id = str(current_user.id)
+    # Log connection attempt with details
+    # logger.debug(f"WebSocket connection attempt to run {run_id}")
+    # logger.debug(f"Request headers: {websocket.headers}")
+    # logger.debug(f"Active org ID from query: {active_org_id}")
+    # logger.debug(f"Token received (first 10 chars): {token[:10]}...")
+    
+    # Authenticate the user from the token
+    try:
+        # logger.debug(f"Attempting to authenticate user with token")
+        user = await get_current_user_non_dependency(db, token)
+        if not user:
+            logger.warning(f"Invalid token for WebSocket connection to run {run_id}")
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+        
+        # logger.debug(f"User authenticated successfully: {user.email} (ID: {user.id})")
+            
+        # Verify user is active and verified
+        if not user.is_active:
+            logger.warning(f"Inactive user {user.id} attempted WebSocket connection")
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+        
+        # logger.debug(f"User is active: {user.is_active}")
+            
+        if not user.is_verified:
+            logger.warning(f"Unverified user {user.id} attempted WebSocket connection")
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+        
+        # logger.debug(f"User is verified: {user.is_verified}")
+            
+        # Check permission directly using _check_permissions_for_org
+        user_dao = get_user_dao()
+        # logger.debug(f"Checking permissions for user {user.id} in org {active_org_id}")
+        try:
+            await _check_permissions_for_org(
+                db=db,
+                user_dao=user_dao,
+                user=user,
+                org_id=active_org_id,
+                required_permissions=[WorkflowPermissions.RUN_READ]
+            )
+            # logger.debug(f"Permission check passed for user {user.id} in org {active_org_id}")
+        except Exception as e:
+            logger.warning(f"Permission denied: User {user.id} cannot access run {run_id}: {str(e)}")
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+        
+        # Verify the run exists and belongs to the active organization
+        workflow_run_dao = crud.WorkflowRunDAO()
+        # logger.debug(f"Verifying run {run_id} exists and belongs to org {active_org_id}")
+        run = await workflow_run_dao.get_run_by_id_and_org(db, run_id=run_id, org_id=active_org_id)
+        if not run:
+            logger.warning(f"Run {run_id} not found or not accessible by user {user.id}")
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+        
+        # logger.debug(f"Run {run_id} found and belongs to org {active_org_id}")
+    except Exception as e:
+        logger.error(f"Error during WebSocket authentication or permission check: {e}", exc_info=True)
+        await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
+        return
+    
+    user_id = str(user.id)
     run_id_str = str(run_id)
     
     # # Verify the run exists and belongs to the active organization
@@ -306,13 +373,16 @@ async def websocket_endpoint(
     #     logger.error(f"Error verifying run access: {e}", exc_info=True)
     #     await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
     #     return
+    # logger.debug(f"All authentication and permission checks passed. Accepting WebSocket connection for user {user_id}")
     
     try:
         # Register the connection
         await websocket_manager.connect(websocket, user_id)
+        # logger.debug(f"WebSocket connection registered for user {user_id}")
         
         # Automatically subscribe to the run specified in the path
         await websocket_manager.subscribe_to_run(websocket, user_id, run_id_str)
+        # logger.debug(f"User {user_id} subscribed to run {run_id_str}")
         
         # Send a connection confirmation
         await websocket_manager.send_personal_message(
@@ -323,10 +393,12 @@ async def websocket_endpoint(
             }),
             websocket
         )
+        # logger.debug(f"Connection confirmation sent to user {user_id}")
         
         # Process client messages
         while True:
             data = await websocket.receive_json()
+            # logger.debug(f"Received message from user {user_id}: {data}")
             
             if data.get("request") == "ping":
                 await websocket_manager.send_personal_message(
@@ -375,6 +447,7 @@ async def websocket_endpoint(
             #             }),
             #             websocket
             #         )
+                # logger.debug(f"Sent pong response to user {user_id}")
             
             # Small delay to prevent tight loops
             await asyncio.sleep(0.1)
@@ -396,11 +469,10 @@ async def websocket_endpoint(
             pass
 
 
-@websocket_router.websocket("/notifications")
+@websocket_router.websocket("/ws/notifications")
 async def notifications_websocket_endpoint(
     websocket: WebSocket,
-    user: User = Depends(get_current_active_verified_user),
-    # active_org_id: uuid.UUID = Depends(get_active_org_id),
+    token: str = Query(..., description="The JWT token for the user"),
     db: AsyncSession = Depends(get_async_db_dependency),
 ):
     """
@@ -412,15 +484,52 @@ async def notifications_websocket_endpoint(
     
     Args:
         websocket: The WebSocket connection
-        user: The authenticated user
-        active_org_id: The active organization ID
+        token: The JWT token for authentication
         db: The database session
     """
+    # Log connection attempt with details
+    # logger.debug(f"WebSocket connection attempt to general notifications")
+    # logger.debug(f"Request headers: {websocket.headers}")
+    # logger.debug(f"Token received (first 10 chars): {token[:10]}...")
+    
+    # Authenticate the user from the token
+    try:
+        # logger.debug(f"Attempting to authenticate user with token")
+        user = await get_current_user_non_dependency(db, token)
+        if not user:
+            logger.warning("Invalid token for WebSocket general notifications connection")
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+        
+        # logger.debug(f"User authenticated successfully: {user.email} (ID: {user.id})")
+            
+        # Verify user is active and verified
+        if not user.is_active:
+            logger.warning(f"Inactive user {user.id} attempted WebSocket connection")
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+        
+        # logger.debug(f"User is active: {user.is_active}")
+            
+        if not user.is_verified:
+            logger.warning(f"Unverified user {user.id} attempted WebSocket connection")
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+        
+        # logger.debug(f"User is verified: {user.is_verified}")
+            
+    except Exception as e:
+        logger.error(f"Error during WebSocket authentication: {e}", exc_info=True)
+        await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
+        return
+        
     user_id = str(user.id)
+    # logger.debug(f"All authentication checks passed. Accepting WebSocket connection for user {user_id}")
     
     try:
         # Register the connection for the user
         await websocket_manager.connect(websocket, user_id)
+        # logger.debug(f"WebSocket connection registered for user {user_id}")
         
         # Send a connection confirmation
         await websocket_manager.send_personal_message(
@@ -432,10 +541,12 @@ async def notifications_websocket_endpoint(
             }),
             websocket
         )
+        # logger.debug(f"Connection confirmation sent to user {user_id}")
         
         # Process client messages
         while True:
             data = await websocket.receive_json()
+            # logger.debug(f"Received message from user {user_id}: {data}")
             
             # Handle ping/pong for connection health checks
             if data.get("request") == "ping":
@@ -443,6 +554,7 @@ async def notifications_websocket_endpoint(
                     json.dumps({"event": "pong"}),
                     websocket
                 )
+                # logger.debug(f"Sent pong response to user {user_id}")
             
             # Add other message handlers as needed
             

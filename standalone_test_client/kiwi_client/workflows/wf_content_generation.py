@@ -279,11 +279,11 @@ workflow_graph_schema = {
         "node_id": "route_on_limit_check",
         "node_name": "router_node",
         "node_config": {
-            "choices": ["interpret_feedback", "output_node"], # Node IDs to route to
+            "choices": ["route_to_initial_or_additional_prompt", "output_node"], # Node IDs to route to
             "allow_multiple": False,
             "choices_with_conditions": [
                 {
-                    "choice_id": "interpret_feedback", # Continue loop
+                    "choice_id": "route_to_initial_or_additional_prompt", # Continue loop
                     "input_path": "if_else_condition_tag_results::iteration_limit_check", # Path WITHIN the node's input data
                     "target_value": True # Value output by check_iteration_limit
                 },
@@ -302,7 +302,7 @@ workflow_graph_schema = {
         }
         # Reads: if_else_condition_tag_results, `route_on_limit_check`, iteration_branch_result from `check_iteration_limit`
         # Outgoing edges
-        #   - Routes execution (no mapping in outgoing edges) to ["interpret_feedback", "output_node"].
+        #   - Routes execution (no mapping in outgoing edges) to ["route_to_initial_or_additional_prompt", "output_node"].
     },
 
 
@@ -622,7 +622,7 @@ workflow_graph_schema = {
     # State -> Interpret Feedback: Provide necessary context for feedback analysis
     { "src_node_id": "$graph_state", "dst_node_id": "interpret_feedback", "mappings": [
         { "src_field": "feedback_messages_history", "dst_field": "messages_history", "description": "Pass message history for LLM context."},
-        { "src_field": "current_feedback_text", "dst_field": "user_prompt", "description": "Pass the user's feedback as the main input user_prompt for analysis."} # Assuming the LLM node expects 'prompt_for_feedback_analysis' based on its config comments
+        # { "src_field": "current_feedback_text", "dst_field": "user_prompt", "description": "Pass the user's feedback as the main input user_prompt for analysis."} # Assuming the LLM node expects 'prompt_for_feedback_analysis' based on its config comments
       ]
     },
     # Interpret Feedback -> Construct Rewrite Prompt: Send structured feedback interpretation

@@ -136,6 +136,31 @@ async def get_current_user(
         raise UserNotFoundException(detail="User associated with token not found")
     return user
 
+async def get_current_user_non_dependency(
+    db: AsyncSession,
+    token: str,  # oauth2_authorization_code_scheme  oauth2_scheme
+) -> models.User:
+    """
+    Dependency to get the current user from the JWT token (UUID sub).
+    Loads basic user info, but *not* detailed org/role/permission links by default.
+    Those are loaded dynamically by permission checkers when needed.
+    """
+    try:
+        token_data = security.decode_access_token(token)
+    except CredentialsException as e:
+        raise e
+
+    # Fetch user by UUID using the injected DAO
+    # Do not load relationships here by default for performance.
+    user_dao = get_user_dao()
+    user = await user_dao.get(db, id=token_data.sub)
+
+    # Explicit relationship loading removed - handled by permission checks if needed
+
+    if user is None:
+        raise UserNotFoundException(detail="User associated with token not found")
+    return user
+
 
 async def get_current_active_user_with_orgs(
     db: AsyncSession = Depends(get_async_db_dependency),

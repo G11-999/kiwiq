@@ -111,7 +111,7 @@ class RabbitMQContext(BaseModel):
             # Serialize the Pydantic model to a dictionary suitable for JSON encoding
             message_body = event
             if isinstance(event, WorkflowBaseEvent):
-                message_body = event.model_dump(mode='json', exclude_defaults=True)
+                message_body = event.model_dump(mode='json', exclude_none=True)
 
             # TODO: Confirm publishing mechanism for streams.
             # If self.stream represents a true RabbitMQ Stream, publishing might require
@@ -146,7 +146,7 @@ class RabbitMQContext(BaseModel):
             # FastStream's publish method handles dictionary serialization (usually to JSON)
             message_body = notification
             if isinstance(notification, WorkflowBaseEvent):
-                message_body = notification.model_dump(mode='json', exclude_defaults=True)
+                message_body = notification.model_dump(mode='json', exclude_none=True)
             await self.broker.publish(
                 message=message_body,
                 queue=self.notifications_queue, # Target the specific queue object

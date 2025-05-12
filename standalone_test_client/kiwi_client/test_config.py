@@ -123,8 +123,9 @@ VERSIONED_DOC_UPSERT_URL = lambda namespace, docname: f"{CUSTOMER_DATA_BASE_URL}
 # WebSockets (Base URLs - specific paths depend on run_id etc.)
 # Note: httpx doesn't handle cookies automatically for websockets in the same way
 #       as HTTP requests. Token needs to be passed manually if required by endpoint.
-WS_RUN_BASE_URL = API_BASE_URL.replace("http", "ws") + "/ws/runs"
-WS_NOTIFICATIONS_URL = API_BASE_URL.replace("http", "ws") + "/ws/notifications"
+WS_RUN_BASE_URL = lambda run_id: API_BASE_URL.replace("https", "wss").replace("http", "ws") + f"/ws/runs/{run_id}"
+# WS_NOTIFICATIONS_URL = API_BASE_URL.replace("https", "wss").replace("http", "ws") + "/ws/notifications"
+WS_NOTIFICATIONS_URL = API_BASE_URL.replace("https", "wss").replace("http", "ws") + "/ws/notifications"
 
 # --- URL Definitions ---
 # These should ideally come from test_config.py or a shared configuration module.

@@ -50,7 +50,7 @@ from workflow_service.services import events as event_schemas
 # TODO: FIX: circular imports!
 # from workflow_service.graph.graph import GraphSchema
 
-from kiwi_app.workflow_app.websockets import websocket_router
+# from kiwi_app.workflow_app.websockets import websocket_router
 # from kiwi_app.workflow_app.utils import workflow_logger
 from kiwi_app.utils import get_kiwi_logger
 
@@ -66,7 +66,7 @@ run_router = APIRouter(prefix="/runs", tags=["Workflow Runs"])
 template_router = APIRouter(prefix="/templates", tags=["Templates"])
 notification_router = APIRouter(prefix="/notifications", tags=["User Notifications"])
 hitl_router = APIRouter(prefix="/hitl", tags=["HITL Jobs"])
-notification_router.include_router(websocket_router, tags=["WebSocket Stream & Notifications"])
+# notification_router.include_router(websocket_router, tags=["WebSocket Stream & Notifications"])
 
 # === Template Endpoints ===
 
