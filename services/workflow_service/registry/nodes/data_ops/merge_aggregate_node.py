@@ -32,7 +32,7 @@ from global_config.logger import get_prefect_or_regular_python_logger
 from pydantic import Field, model_validator, field_validator, BaseModel, ValidationError, validator
 
 from kiwi_app.workflow_app.constants import LaunchStatus
-from workflow_service.registry.schemas.base import BaseSchema
+from workflow_service.registry.schemas.base import BaseSchema, BaseNodeConfig
 from workflow_service.registry.nodes.core.dynamic_nodes import DynamicSchema, BaseDynamicNode
 # Reuse helpers from transform_node - assuming they are accessible
 # If not, they need to be copied or imported properly.
@@ -683,7 +683,7 @@ TRANSFORMATION_FUNCTIONS: Dict[SingleFieldOperationType, TransformationFunc] = {
 # --- CONFIGURATION SCHEMAS ---
 # ==============================================
 
-class KeyMappingSchema(BaseSchema):
+class KeyMappingSchema(BaseNodeConfig):
     """
     Defines how a specific key in the merged output should be populated.
     """
@@ -724,7 +724,7 @@ class KeyMappingSchema(BaseSchema):
         return self
 
 
-class MapPhaseConfigSchema(BaseSchema):
+class MapPhaseConfigSchema(BaseNodeConfig):
     """Configuration for the mapping phase of a merge operation."""
     key_mappings: List[KeyMappingSchema] = Field(
         default_factory=list,
@@ -735,7 +735,7 @@ class MapPhaseConfigSchema(BaseSchema):
         description="Strategy for handling keys not covered by explicit mappings."
     )
 
-class ReducePhaseConfigSchema(BaseSchema):
+class ReducePhaseConfigSchema(BaseNodeConfig):
     """Configuration for the reduction phase of a merge operation."""
     reducers: Dict[str, ReducerType] = Field(
         default_factory=dict,
@@ -751,7 +751,7 @@ class ReducePhaseConfigSchema(BaseSchema):
     )
 
 # Moved definition earlier for type hints
-class SingleFieldTransformationSchema(BaseSchema):
+class SingleFieldTransformationSchema(BaseNodeConfig):
     """Configuration for a single post-merge transformation."""
     operation_type: SingleFieldOperationType = Field(..., description="The type of operation to perform.")
     operand: Optional[Any] = Field(
@@ -818,7 +818,7 @@ class SingleFieldTransformationSchema(BaseSchema):
 
         return self
 
-class MergeStrategySchema(BaseSchema):
+class MergeStrategySchema(BaseNodeConfig):
     """Defines the mapping, reduction, and transformation strategy for a merge operation."""
     map_phase: MapPhaseConfigSchema = Field(default_factory=MapPhaseConfigSchema)
     reduce_phase: ReducePhaseConfigSchema = Field(default_factory=ReducePhaseConfigSchema)
@@ -833,7 +833,7 @@ class MergeStrategySchema(BaseSchema):
     )
 
 
-class MergeOperationConfigSchema(BaseSchema):
+class MergeOperationConfigSchema(BaseNodeConfig):
     """Configuration for a single merge operation within the node."""
     output_field_name: str = Field(
         ...,
@@ -871,7 +871,7 @@ class MergeOperationConfigSchema(BaseSchema):
         return stripped_paths
 
 
-class MergeObjectsConfigSchema(BaseSchema):
+class MergeObjectsConfigSchema(BaseNodeConfig):
     """Top-level configuration for the MergeObjectsNode."""
     operations: List[MergeOperationConfigSchema] = Field(
         ...,

@@ -167,7 +167,7 @@ workflow_graph_schema = {
 
             # Loading options (default)
             "global_version_config": None, # Load active version if versioned
-            "global_schema_options": {"load_schema": False},
+            "global_schema_options": {"load_schema": False,},
 
             # Output field name
             "output_field_name": "draft_posts" # The list will be under this key

@@ -1108,6 +1108,8 @@ class BaseSchema(BaseModel, ABC):
         return create_dynamic_schema_with_fields(cls, fields, schema_name)
 
 
+class BaseNodeConfig(BaseSchema, ABC):
+    model_config = ConfigDict(extra='forbid')
 
 
 # class InnerSchema(BaseSchema):

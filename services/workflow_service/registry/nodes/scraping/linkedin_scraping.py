@@ -18,7 +18,7 @@ from pydantic import Field, model_validator, BaseModel, ValidationError
 from kiwi_app.workflow_app.constants import LaunchStatus
 from kiwi_app.workflow_app.schemas import WorkflowRunJobCreate
 from workflow_service.config.constants import APPLICATION_CONTEXT_KEY, EXTERNAL_CONTEXT_MANAGER_KEY
-from workflow_service.registry.schemas.base import BaseSchema
+from workflow_service.registry.schemas.base import BaseSchema, BaseNodeConfig
 from workflow_service.registry.nodes.core.dynamic_nodes import DynamicSchema, BaseDynamicNode
 
 # Scraping service imports
@@ -115,7 +115,7 @@ class InputSource(BaseSchema):
         return self
 
 
-class JobDefinition(BaseSchema):
+class JobDefinition(BaseNodeConfig):
     """
     Defines how to construct the parameters for one or more ScrapingRequest jobs.
     Allows specifying static values or retrieving values dynamically from the node's input data.
@@ -199,7 +199,7 @@ class JobDefinition(BaseSchema):
 
         return self
 
-class LinkedInScrapingConfig(BaseSchema):
+class LinkedInScrapingConfig(BaseNodeConfig):
     """Configuration schema for the LinkedInScrapingNode."""
     jobs: List[JobDefinition] = Field(
         ...,

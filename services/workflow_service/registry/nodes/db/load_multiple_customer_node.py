@@ -25,7 +25,7 @@ from workflow_service.config.constants import (
 )
 
 # Base node/schema types and sibling node components
-from workflow_service.registry.schemas.base import BaseSchema
+from workflow_service.registry.schemas.base import BaseSchema, BaseNodeConfig
 from workflow_service.registry.nodes.core.dynamic_nodes import DynamicSchema, BaseDynamicNode
 from workflow_service.registry.nodes.db.customer_data import (
     VersionConfig,
@@ -36,7 +36,7 @@ from workflow_service.registry.nodes.db.customer_data import (
 
 # --- Configuration Schemas ---
 
-class LoadMultipleCustomerDataConfig(BaseSchema):
+class LoadMultipleCustomerDataConfig(BaseNodeConfig):
     """
     Configuration schema for the LoadMultipleCustomerDataNode.
 

@@ -6,7 +6,8 @@ import httpx
 import logging
 import uuid
 import time
-from typing import Dict, Any, Optional, List, Union
+import os
+from typing import Dict, Any, Optional, List, Union, Tuple
 
 # Import pydantic for validation
 from pydantic import ValidationError, TypeAdapter
@@ -18,6 +19,9 @@ from kiwi_client.test_config import (
     RUN_DETAIL_URL,
     RUN_DETAILS_URL,
     RUN_STREAM_URL,
+    RUN_LOGS_URL,
+    RUN_STATE_URL,
+    DATA_DIR,
     EXAMPLE_BASIC_LLM_GRAPH_CONFIG,
     EXAMPLE_BASIC_LLM_RUN_INPUTS,
     CLIENT_LOG_LEVEL,
@@ -359,6 +363,121 @@ class WorkflowRunTestClient:
             logger.exception(f"Unexpected error getting stream for run {run_id_str}.")
         return None
 
+    async def get_run_logs(self, 
+                         run_id: Union[str, uuid.UUID], 
+                         save_to_file: bool = True,
+                         output_filename: Optional[str] = None,
+                         test_name: Optional[str] = None) -> Optional[Tuple[Dict[str, Any], str]]:
+        """
+        Gets the logs of a specific workflow run via GET /runs/{run_id}/logs.
+
+        Corresponds to the `get_run_logs` route which returns `schemas.WorkflowRunLogs`.
+        
+        Args:
+            run_id (Union[str, uuid.UUID]): The ID of the run to retrieve logs for.
+            save_to_file (bool): Whether to save logs to a file.
+            output_filename (Optional[str]): Filename to save logs to. If None, a default name is used.
+            test_name (Optional[str]): Test name to include in the default filename if output_filename is None.
+            
+        Returns:
+            Optional[Tuple[Dict[str, Any], str]]: The logs response and output path, or None on failure.
+        """
+        run_id_str = str(run_id)
+        logger.info(f"Attempting to get logs for run ID: {run_id_str}")
+        url = RUN_LOGS_URL(run_id_str)
+        
+        try:
+            # Endpoint returns 200 OK with logs
+            response = await self._client.get(url)
+            response.raise_for_status()
+            logs_data = response.json()
+            
+            logger.info(f"Successfully retrieved logs for run ID: {run_id_str} ({len(logs_data.get('logs', []))} log entries)")
+            
+            # Save to file if requested
+            if save_to_file:
+                if output_filename is None:
+                    # Include test_name in filename if provided
+                    if test_name:
+                        test_name_safe = test_name.replace(" ", "_").replace("/", "_").lower()
+                        output_filename = f"{test_name_safe}_run_{run_id_str}_logs.json"
+                    else:
+                        output_filename = f"run_{run_id_str}_logs.json"
+                output_path = os.path.join(DATA_DIR, output_filename)
+                
+                with open(output_path, 'w') as f:
+                    json.dump(logs_data, f, indent=2)
+                logger.info(f"Saved logs to {output_path}")
+            
+            return logs_data, output_path
+            
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Error getting logs for run {run_id_str}: {e.response.status_code} - {e.response.text}")
+        except httpx.RequestError as e:
+            logger.error(f"Request error getting logs for run {run_id_str}: {e}")
+        except Exception as e:
+            logger.exception(f"Unexpected error getting logs for run {run_id_str}.")
+        return None
+
+    async def get_run_state(self, 
+                           run_id: Union[str, uuid.UUID],
+                           save_to_file: bool = True,
+                           output_filename: Optional[str] = None,
+                           test_name: Optional[str] = None) -> Optional[Tuple[Dict[str, Any], str]]:
+        """
+        Gets the state of a specific workflow run via GET /runs/{run_id}/state.
+        
+        This endpoint is primarily for debugging and is typically only accessible to superusers.
+        Corresponds to the `get_run_state` route which returns `schemas.WorkflowRunState`.
+        
+        Args:
+            run_id (Union[str, uuid.UUID]): The ID of the run to retrieve state for.
+            save_to_file (bool): Whether to save state to a file.
+            output_filename (Optional[str]): Filename to save state to. If None, a default name is used.
+            test_name (Optional[str]): Test name to include in the default filename if output_filename is None.
+            
+        Returns:
+            Optional[Tuple[Dict[str, Any], str]]: The state response and output path, or None on failure.
+        """
+        run_id_str = str(run_id)
+        logger.info(f"Attempting to get state for run ID: {run_id_str}")
+        url = RUN_STATE_URL(run_id_str)
+        
+        try:
+            # Endpoint returns 200 OK with state (only accessible to superusers)
+            response = await self._client.get(url)
+            response.raise_for_status()
+            state_data = response.json()
+            
+            logger.info(f"Successfully retrieved state for run ID: {run_id_str}")
+            
+            # Save to file if requested
+            if save_to_file:
+                if output_filename is None:
+                    # Include test_name in filename if provided
+                    if test_name:
+                        test_name_safe = test_name.replace(" ", "_").replace("/", "_").lower()
+                        output_filename = f"{test_name_safe}_run_{run_id_str}_state.json"
+                    else:
+                        output_filename = f"run_{run_id_str}_state.json"
+                output_path = os.path.join(DATA_DIR, output_filename)
+                
+                with open(output_path, 'w') as f:
+                    json.dump(state_data, f, indent=2)
+                logger.info(f"Saved state to {output_path}")
+            
+            return state_data, output_path
+            
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Error getting state for run {run_id_str}: {e.response.status_code} - {e.response.text}")
+            if e.response.status_code == 403:
+                logger.error("This endpoint is typically only accessible to superusers.")
+        except httpx.RequestError as e:
+            logger.error(f"Request error getting state for run {run_id_str}: {e}")
+        except Exception as e:
+            logger.exception(f"Unexpected error getting state for run {run_id_str}.")
+        return None
+
     async def wait_for_run_completion(self, run_id: Union[str, uuid.UUID], timeout_sec: int = 60, poll_interval_sec: int = 3) -> Optional[wf_schemas.WorkflowRunRead]:
         """
         Polls the run status (using `get_run_status`) until it reaches a terminal state
@@ -560,6 +679,32 @@ async def main():
                          print(f"   Details: Status={details_obj.status}, Events={event_count}, Output={output_sample}...")
                     else:
                          print("   Failed to get run details.")
+                    
+                    # Get logs and state data and save to files
+                    print(f"\n5. Getting logs for run {created_run_id}...")
+                    logs_data, logs_path = await run_tester.get_run_logs(
+                        run_id=created_run_id, 
+                        save_to_file=True,
+                        test_name="Example_Basic_LLM_Test"
+                    )
+                    if logs_data:
+                        log_count = len(logs_data.get("logs", []))
+                        print(f"   Successfully retrieved {log_count} log entries for run {created_run_id}")
+                        print(f"   Saved logs to file: Example_Basic_LLM_Test_run_{created_run_id}_logs.json \nPATH: {logs_path}\n")
+                    else:
+                        print(f"   Failed to retrieve logs for run {created_run_id}")
+                    
+                    print(f"\n6. Getting state for run {created_run_id} (requires superuser)...")
+                    state_data, state_path = await run_tester.get_run_state(
+                        run_id=created_run_id, 
+                        save_to_file=True,
+                        test_name="Example_Basic_LLM_Test"
+                    )
+                    if state_data:
+                        print(f"   Successfully retrieved state for run {created_run_id}")
+                        print(f"   Saved state to file: Example_Basic_LLM_Test_run_{created_run_id}_state.json \nPATH: {state_path}\n")
+                    else:
+                        print(f"   Failed to retrieve state for run {created_run_id} (likely not a superuser)")
                     # --- End Handle Direct Completion ---
 
                 elif intermediate_status_obj:

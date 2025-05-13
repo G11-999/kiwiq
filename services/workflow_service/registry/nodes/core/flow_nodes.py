@@ -22,7 +22,7 @@ from pydantic import Field, model_validator, field_validator, BaseModel, Validat
 from global_config.logger import get_prefect_or_regular_python_logger
 
 from kiwi_app.workflow_app.constants import LaunchStatus
-from workflow_service.registry.schemas.base import BaseSchema
+from workflow_service.registry.schemas.base import BaseSchema, BaseNodeConfig
 # from workflow_service.registry.nodes.core.base import BaseNode # Not used directly
 from workflow_service.registry.nodes.core.dynamic_nodes import DynamicSchema, BaseDynamicNode
 
@@ -83,7 +83,7 @@ class FilterMode(str, Enum):
     DENY = "deny"    # Remove target if condition passes (keep if fails)
 
 # --- Condition Schemas (REVISED VALIDATOR) ---
-class FilterCondition(BaseSchema):
+class FilterCondition(BaseNodeConfig):
     """
     Defines a single filter condition with a field path, operator, and optional value.
     
@@ -188,7 +188,7 @@ class FilterCondition(BaseSchema):
              raise ValueError(f"Cannot perform string operation '{self.operator}' with None value")
         return self
 
-class FilterConditionGroup(BaseSchema):
+class FilterConditionGroup(BaseNodeConfig):
     """
     Groups multiple filter conditions with a logical operator.
     
@@ -207,7 +207,7 @@ class FilterConditionGroup(BaseSchema):
     )
 
 # --- FilterNode Schemas (REVISED: Added filter_mode) ---
-class FilterConfigSchema(BaseSchema):
+class FilterConfigSchema(BaseNodeConfig):
     """
     Configuration for a single filter operation.
     
@@ -240,7 +240,7 @@ class FilterConfigSchema(BaseSchema):
         description="Whether to ALLOW (keep) or DENY (remove) items that match the conditions"
     )
 
-class FilterTargets(BaseSchema):
+class FilterTargets(BaseNodeConfig):
     """
     Container for multiple filter configurations.
     
@@ -297,7 +297,7 @@ class FilterOutputSchema(BaseSchema):
     )
 
 # --- IfElseNode Schemas ---
-class IfElseConditionConfig(BaseSchema):
+class IfElseConditionConfig(BaseNodeConfig):
     """
     Configuration for a tagged condition in the IfElseNode.
     
@@ -325,7 +325,7 @@ class IfElseConditionConfig(BaseSchema):
         description="How to combine results when evaluating conditions on nested lists when the field points to subfields of objects within a list (doesn't apply when field itself is a list)."
     )
 
-class IfElseConfigSchema(BaseSchema):
+class IfElseConfigSchema(BaseNodeConfig):
     """
     Configuration for the IfElseConditionNode.
     

@@ -19,7 +19,7 @@ from pydantic import Field, model_validator, field_validator, BaseModel, Validat
 from global_config.logger import get_prefect_or_regular_python_logger
 
 from kiwi_app.workflow_app.constants import LaunchStatus
-from workflow_service.registry.schemas.base import BaseSchema
+from workflow_service.registry.schemas.base import BaseSchema, BaseNodeConfig
 from workflow_service.registry.nodes.core.dynamic_nodes import DynamicSchema, BaseDynamicNode
 from workflow_service.registry.nodes.core.flow_nodes import _get_nested_obj # Reuse helper
 
@@ -84,7 +84,7 @@ def _set_nested_obj(data: Dict[str, Any], path: str, value: Any, create_missing:
 # --- TRANSFORMER NODE ---
 # ==============================================
 
-class TransformMappingSchema(BaseSchema):
+class TransformMappingSchema(BaseNodeConfig):
     """
     Defines a single mapping from a source path to a destination path.
 
@@ -103,7 +103,7 @@ class TransformMappingSchema(BaseSchema):
             raise ValueError("Path cannot be empty.")
         return v.strip()
 
-class TransformerConfigSchema(BaseSchema):
+class TransformerConfigSchema(BaseNodeConfig):
     """
     Configuration for the TransformerNode.
 
@@ -262,7 +262,7 @@ class JoinType(str, Enum):
     ONE_TO_MANY = "one_to_many"
 
 
-class MapperJoinConfigSchema(BaseSchema):
+class MapperJoinConfigSchema(BaseNodeConfig):
     """
     Configuration for a single join operation within the MapperNode.
 
@@ -300,7 +300,7 @@ class MapperJoinConfigSchema(BaseSchema):
         return v.strip()
 
 
-class MapperConfigSchema(BaseSchema):
+class MapperConfigSchema(BaseNodeConfig):
     """
     Configuration for the MapperNode, containing one or more join operations.
 

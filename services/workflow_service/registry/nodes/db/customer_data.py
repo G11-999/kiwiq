@@ -33,7 +33,7 @@ from workflow_service.config.constants import (
 from global_utils.utils import datetime_now_utc
 
 # Base node/schema types
-from workflow_service.registry.schemas.base import BaseSchema
+from workflow_service.registry.schemas.base import BaseSchema, BaseNodeConfig
 from workflow_service.registry.nodes.core.dynamic_nodes import DynamicSchema, BaseDynamicNode
 
 
@@ -84,7 +84,7 @@ def _get_nested_obj(data: Any, field_path: str) -> Tuple[Any, bool]:
 
 # --- New Filename Configuration Schema and Helper ---
 
-class FilenameConfig(BaseSchema):
+class FilenameConfig(BaseNodeConfig):
     """
     Configuration for determining the namespace and docname for a customer data operation.
 
@@ -368,14 +368,14 @@ class StoreOperation(str, Enum):
 
 # --- Common Schemas ---
 
-class VersionConfig(BaseSchema):
+class VersionConfig(BaseNodeConfig):
     """Configuration for specifying a document version."""
     version: Optional[str] = Field(
         None,
         description="The specific version name to load or store (e.g., 'default', 'v1.2')."
     )
 
-class SchemaOptions(BaseSchema):
+class SchemaOptions(BaseNodeConfig):
     """Options for handling document schemas during load/store."""
     load_schema: bool = Field(
         False,
@@ -405,7 +405,7 @@ class SchemaOptions(BaseSchema):
 
 # --- Extra Field Configuration for Store Customer Data ---
 
-class ExtraFieldConfig(BaseSchema):
+class ExtraFieldConfig(BaseNodeConfig):
     """
     Configuration for adding extra fields to objects before storing.
     
@@ -493,7 +493,7 @@ def _add_extra_fields(
 
 # --- Load Customer Data Node ---
 
-class LoadPathConfig(BaseSchema):
+class LoadPathConfig(BaseNodeConfig):
     """Configuration for loading a single document or pattern."""
     filename_config: FilenameConfig = Field(
         ...,
@@ -532,7 +532,7 @@ class LoadPathConfig(BaseSchema):
             raise ValueError(f"output_field_name '{self.output_field_name}' cannot start with underscore (_) as it may conflict with Pydantic reserved fields.")
         return self
 
-class LoadCustomerDataConfig(BaseSchema):
+class LoadCustomerDataConfig(BaseNodeConfig):
     """
     Configuration schema for the LoadCustomerDataNode.
 
@@ -886,14 +886,14 @@ class LoadCustomerDataNode(BaseDynamicNode):
 
 # --- Store Customer Data Node ---
 
-class TargetPathConfig(BaseSchema):
+class TargetPathConfig(BaseNodeConfig):
     """Configuration for the target path where data will be stored."""
     filename_config: FilenameConfig = Field(
         ...,
         description="Configuration defining how to determine the document's namespace and docname."
     )
 
-class VersioningInfo(BaseSchema):
+class VersioningInfo(BaseNodeConfig):
     """Configuration for how to handle versioning during storage."""
     is_versioned: bool = Field(
         True, description="Whether the target document path uses versioning."
@@ -952,7 +952,7 @@ class VersioningInfo(BaseSchema):
         return self
 
 
-class StoreConfig(BaseSchema):
+class StoreConfig(BaseNodeConfig):
     """Configuration for storing a single document or a list of documents."""
     input_field_path: str = Field(
         ...,
@@ -1000,7 +1000,7 @@ class StoreConfig(BaseSchema):
         description="If True, keep create_only_fields in data if they don't exist in `existing object` during update. NOTE: this also effects any generated uuids and they are discarded if this is False and the operation is an update."
     )
 
-class StoreCustomerDataConfig(BaseSchema):
+class StoreCustomerDataConfig(BaseNodeConfig):
     """Configuration schema for the StoreCustomerDataNode."""
     store_configs: List[StoreConfig] = Field(
         None, # Changed from ... to None, making it optional

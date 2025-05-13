@@ -9,12 +9,12 @@ from typing import Any, Dict, List, Optional, Type, ClassVar, Union, Tuple
 from pydantic import Field, model_validator, BaseModel
 
 from kiwi_app.workflow_app.constants import LaunchStatus
-from workflow_service.registry.schemas.base import BaseSchema
+from workflow_service.registry.schemas.base import BaseSchema, BaseNodeConfig
 from workflow_service.registry.nodes.core.dynamic_nodes import DynamicSchema, BaseDynamicNode, RouterSchema as BaseRouterSchema, DynamicRouterNode
 from workflow_service.config.constants import TEMP_STATE_UPDATE_KEY, ROUTER_CHOICE_KEY, OBJECT_PATH_REFERENCE_DELIMITER
 
 
-class RouterChoiceCondition(BaseSchema):
+class RouterChoiceCondition(BaseNodeConfig):
     """
     Defines a single condition for a routing choice.
 

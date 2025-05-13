@@ -23,7 +23,7 @@ from workflow_service.config.constants import (
     APPLICATION_CONTEXT_KEY,
     EXTERNAL_CONTEXT_MANAGER_KEY
 )
-from workflow_service.registry.nodes.core.base import BaseSchema
+from workflow_service.registry.schemas.base import BaseSchema, BaseNodeConfig
 from workflow_service.registry.nodes.core.dynamic_nodes import DynamicSchema, BaseDynamicNode
 
 from typing import Any, Dict, Optional, Type, ClassVar, Union, List, Tuple
@@ -39,7 +39,6 @@ from global_config.logger import get_prefect_or_regular_python_logger
 # from workflow_service.registry.nodes.db.customer_data import _get_nested_obj 
 
 # Base node/schema types
-from workflow_service.registry.schemas.base import BaseSchema
 from workflow_service.registry.nodes.core.dynamic_nodes import DynamicSchema, BaseDynamicNode
 from workflow_service.config.constants import (
     APPLICATION_CONTEXT_KEY,
@@ -213,7 +212,7 @@ def _resolve_template_path(
 
 # --- Configuration Schemas ---
 
-class PromptTemplatePathConfig(BaseSchema):
+class PromptTemplatePathConfig(BaseNodeConfig):
     """
     Configuration for resolving a prompt template's name and version.
     Supports static values or dynamic retrieval from input fields.
@@ -243,7 +242,7 @@ class PromptTemplatePathConfig(BaseSchema):
 
 # --- Configuration Schemas ---
 
-class PromptTemplateLoadEntryConfig(BaseSchema):
+class PromptTemplateLoadEntryConfig(BaseNodeConfig):
     """
     Configuration for dynamically loading a single prompt template.
     Mirroring PromptTemplateLoadEntry from the loader node, but just the config part.
@@ -253,7 +252,7 @@ class PromptTemplateLoadEntryConfig(BaseSchema):
     )
     # output_key_name is not needed here, the key is the template ID in the main config dict
 
-class PromptTemplateDefinition(BaseSchema):
+class PromptTemplateDefinition(BaseNodeConfig):
     """
     Defines a single prompt template, either statically or via dynamic loading.
     Allows specifying custom paths within the input data to source variable values.
@@ -291,7 +290,7 @@ class PromptTemplateDefinition(BaseSchema):
             raise ValueError(f"PromptTemplateDefinition '{self.id}': Cannot provide both 'template' and 'template_load_config'.")
         return self
 
-class PromptConstructorConfig(BaseSchema):
+class PromptConstructorConfig(BaseNodeConfig):
     """
     Configuration schema for the enhanced PromptConstructorNode.
     Allows defining multiple prompt templates, either statically or by loading them.

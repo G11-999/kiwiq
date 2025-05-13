@@ -16,6 +16,10 @@ load_dotenv()
 BASE_HOST = "http://127.0.0.1:8000" if os.getenv("TEST_ENV") == "local" else "https://api.prod.kiwiq.ai"
 API_BASE_URL = f"{BASE_HOST}/api/v1" # Example: http://localhost:8000
 
+# Data directory for output files
+DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+os.makedirs(DATA_DIR, exist_ok=True)  # Create the directory if it doesn't exist
+
 # Replace with your test user credentials
 TEST_USER_EMAIL = os.getenv("TEST_USER_EMAIL", "admin@example.com")
 TEST_USER_PASSWORD = os.getenv("TEST_USER_PASSWORD", "testpass")
@@ -91,6 +95,8 @@ RUNS_URL = f"{API_BASE_URL}/runs"
 RUN_DETAIL_URL = lambda run_id: f"{RUNS_URL}/{run_id}"
 RUN_DETAILS_URL = lambda run_id: f"{RUNS_URL}/{run_id}/details"
 RUN_STREAM_URL = lambda run_id: f"{RUNS_URL}/{run_id}/stream"
+RUN_LOGS_URL = lambda run_id: f"{RUNS_URL}/{run_id}/logs"
+RUN_STATE_URL = lambda run_id: f"{RUNS_URL}/{run_id}/state"
 # RUN_CANCEL_URL = lambda run_id: f"{RUNS_URL}{run_id}/cancel" # If implemented
 
 # Notifications
@@ -227,13 +233,6 @@ EXAMPLE_BASIC_LLM_GRAPH_CONFIG = {
                 },
                 "default_system_prompt": None,
                 "thinking_tokens_in_prompt": "all",
-                "api_key_override": None,
-                "cache_responses": True,
-                "output_schema": {
-                    "schema_from_registry": None,
-                    "dynamic_schema_spec": None
-                },
-                "stream": True,
                 "tool_calling_config": {
                     "enable_tool_calling": False,
                     "tool_choice": None,

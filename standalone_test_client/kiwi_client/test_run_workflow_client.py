@@ -646,6 +646,7 @@ async def run_workflow_test(
     cleanup_created_schemas: bool = True,
     validate_output_func: Optional[Callable[[Optional[Dict[str, Any]]], Awaitable[bool]]] = None,
     stream_intermediate_results: bool = True,
+    dump_artifacts: bool = True,
     poll_interval_sec: int = 3,
     timeout_sec: int = 600,
 ) -> Tuple[Optional[wf_schemas.WorkflowRunRead], Optional[Dict[str, Any]]]:
@@ -688,6 +689,8 @@ async def run_workflow_test(
                               function raises an exception, it's treated as a validation failure.
         stream_intermediate_results: If True, events and intermediate results from the
                                    workflow run will be printed to standard output.
+        dump_artifacts: If True, saves logs and state data to files in the data directory
+                        with filenames that include the test name and run ID.
         poll_interval_sec: The interval in seconds at which the client polls the API
                            for workflow status updates.
         timeout_sec: The maximum time in seconds to wait for the workflow run to reach
@@ -977,6 +980,45 @@ async def run_workflow_test(
             print(f"   Actual Final Status: {final_status}")
             if error_message:
                 print(f"   Error Message: {error_message}")
+
+            # --- 3a. Dump Logs and State --- #
+            if dump_artifacts:
+                print(f"\n--- [{test_name}] Dumping Run Artifacts ---")
+                try:
+                    # Create a run client for fetching logs and state
+                    run_client = BaseWorkflowRunTestClient(auth_client)
+                    
+                    # Get and save logs
+                    print(f"   Fetching and saving run logs...")
+                    logs_data, logs_path = await run_client.get_run_logs(
+                        run_id=run_id,
+                        save_to_file=True,
+                        test_name=test_name
+                    )
+                    
+                    if logs_data:
+                        log_count = len(logs_data.get("logs", []))
+                        print(f"   ✓ Saved {log_count} log entries to data directory \nPATH: {logs_path}\n")
+                    else:
+                        print(f"   ✗ Failed to retrieve logs")
+                        
+                    # Try getting state data (might fail for non-superusers)
+                    print(f"   Fetching and saving run state...")
+                    state_data, state_path = await run_client.get_run_state(
+                        run_id=run_id,
+                        save_to_file=True,
+                        test_name=test_name
+                    )
+                    
+                    if state_data:
+                        print(f"   ✓ Saved state data to data directory \nPATH: {state_path}\n")
+                    else:
+                        print(f"   ✗ Failed to retrieve state data (possibly not a superuser)")
+                        
+                except Exception as artifact_err:
+                    logger.exception(f"[{test_name}] Error dumping artifacts: {artifact_err}")
+                    print(f"   ✗ Error dumping artifacts: {artifact_err}")
+                    # Continue with validation - don't fail the test just because of artifact dumps
 
             # Core validation: Does the actual status match the expected status?
             assert final_status == expected_final_status, \

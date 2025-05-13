@@ -17,7 +17,7 @@ from db.session import get_async_db_as_manager # For database access
 from workflow_service.registry.nodes.db.customer_data import _get_nested_obj 
 
 # Base node/schema types
-from workflow_service.registry.schemas.base import BaseSchema
+from workflow_service.registry.schemas.base import BaseSchema, BaseNodeConfig
 from workflow_service.registry.nodes.core.dynamic_nodes import DynamicSchema, BaseDynamicNode
 from workflow_service.services.external_context_manager import ExternalContextManager
 from workflow_service.config.constants import (
@@ -140,7 +140,7 @@ def _resolve_template_path(
 
 # --- Configuration Schemas ---
 
-class PromptTemplatePathConfig(BaseSchema):
+class PromptTemplatePathConfig(BaseNodeConfig):
     """
     Configuration for resolving a prompt template's name and version.
     Supports static values or dynamic retrieval from input fields.
@@ -167,7 +167,7 @@ class PromptTemplatePathConfig(BaseSchema):
         #     raise ValueError("Either static_version or input_version_field_path must be provided.")
         return self
 
-class PromptTemplateLoadEntry(BaseSchema):
+class PromptTemplateLoadEntry(BaseNodeConfig):
     """
     Defines a single prompt template loading operation within the node's config.
     """
@@ -179,7 +179,7 @@ class PromptTemplateLoadEntry(BaseSchema):
         description="Optional key name for the loaded template in the output dictionary. Defaults to the resolved template name."
     )
 
-class LoadPromptTemplatesConfig(BaseSchema):
+class LoadPromptTemplatesConfig(BaseNodeConfig):
     """
     Configuration schema for the enhanced LoadPromptTemplatesNode.
     Allows loading multiple prompt templates based on static or dynamic paths.

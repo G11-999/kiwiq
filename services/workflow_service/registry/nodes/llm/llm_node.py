@@ -52,7 +52,8 @@ from global_utils.json_schema_to_pydantic import convert_json_schema_to_pydantic
 from kiwi_app.workflow_app.constants import LaunchStatus
 from workflow_service.config.settings import settings
 from workflow_service.registry.registry import DBRegistry
-from workflow_service.registry.nodes.core.base import BaseNode, BaseSchema
+from workflow_service.registry.nodes.core.base import BaseNode
+from workflow_service.registry.schemas.base import BaseSchema, BaseNodeConfig
 from workflow_service.registry.nodes.core.dynamic_nodes import ConstructDynamicSchema, DynamicSchema
 from workflow_service.registry.nodes.llm.config import LLMModelProvider, PROVIDER_MODEL_MAP, AnthropicModels, AWS_REGION, ModelMetadata, THINKING_MESSAGE_TYPES, REDACED_THINKING_MESSAGE_TYPES, GEMINI_PARAM_KEY_OVERRIDES, PARAM_KEY_OVERRIDES, AI_MESSAGE_TYPES
 from workflow_service.registry.schemas.base import create_dynamic_schema_with_fields
@@ -173,7 +174,7 @@ class LLMNodeOutputSchema(BaseSchema):
 ###########################
 
 
-class ModelSpec(BaseSchema):
+class ModelSpec(BaseNodeConfig):
     """Combined model specification with provider and model name."""
     provider: LLMModelProvider = Field(
         default=LLMModelProvider.ANTHROPIC,
@@ -239,13 +240,13 @@ class ModelSpec(BaseSchema):
         return v
 
 
-class SchemaFromRegistryConfig(BaseSchema):
+class SchemaFromRegistryConfig(BaseNodeConfig):
     """Schema configuration."""
     schema_name: str = Field(description="Schema Unique name")
     schema_version: Optional[str] = Field(None, description="Schema version")
 
 
-class LLMStructuredOutputSchema(BaseSchema):
+class LLMStructuredOutputSchema(BaseNodeConfig):
     """Output format types. Defines how the structured output schema is specified.
 
     Exactly one of the following must be provided:
@@ -369,7 +370,7 @@ class LLMStructuredOutputSchema(BaseSchema):
         return response
 
 
-class ToolConfig(BaseSchema):
+class ToolConfig(BaseNodeConfig):
     """Configuration for a tool. (Pulled from ToolRegistry)
     NOTE: this tool is configured in the tool caller node and it has the config default / set by user. 
     This config in LLM node only receives input_overwrites so that it can determine which parts of the input schema go into the tool call.
@@ -381,7 +382,7 @@ class ToolConfig(BaseSchema):
     additional_tool_config_fields: Optional[ConstructDynamicSchema] = Field(None, description="Additional fields for the tool. They could contain additional config fields for the tool not part of standard input schema.")
 
 
-class LLMModelConfig(BaseSchema):
+class LLMModelConfig(BaseNodeConfig):
     """Configuration schema for the LLM model."""
     model_spec: ModelSpec = Field(
         default=ModelSpec(),
@@ -435,7 +436,7 @@ class ThinkingTokensInPrompt(Enum):
     NONE = "none"
 
 
-class ToolCallingConfig(BaseSchema):
+class ToolCallingConfig(BaseNodeConfig):
     """Configuration for tool calling."""
     enable_tool_calling: bool = Field(
         default=False,
@@ -450,7 +451,7 @@ class ToolCallingConfig(BaseSchema):
         description="Whether to enable parallel tool calls"
     )
 
-class WebSearchConfig(BaseSchema):
+class WebSearchConfig(BaseNodeConfig):
     """Extends base LLM config with web search parameters."""
     search_recency_filter: Optional[Literal["day", "week", "month", "year"]] = Field(None, description="""Recency filter for search.
     Options: 'day', 'week', 'month', 'year'
@@ -478,7 +479,7 @@ class WebSearchConfig(BaseSchema):
     }                                                
     """)
 
-class LLMNodeConfigSchema(BaseSchema):
+class LLMNodeConfigSchema(BaseNodeConfig):
     """Configuration schema for the LLM node."""
     # Model Config
     llm_config: Optional[LLMModelConfig] = Field(

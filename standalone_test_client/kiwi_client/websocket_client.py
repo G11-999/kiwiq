@@ -31,7 +31,7 @@ from kiwi_client.test_config import (
     # EXAMPLE_RUN_ID,
 )
 
-EXAMPLE_RUN_ID = ""
+EXAMPLE_RUN_ID = "7ffb3e79-05f0-4390-ba31-d764f5b2f83e"
 ENABLE_WEBSOCKET_TRACE = False
 
 # Setup logger

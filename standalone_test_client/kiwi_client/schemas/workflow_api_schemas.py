@@ -147,6 +147,17 @@ class WorkflowRunUpdate(BaseModel):
     ended_at: Optional[datetime] = None
     thread_id: Optional[uuid.UUID] = None
 
+class LogEntry(BaseModel):
+    """Schema for a log entry with simplified fields."""
+    level: str = Field(..., description="Log level as string (e.g., 'INFO', 'ERROR')")
+    message: str = Field(..., description="The log message")
+    timestamp: datetime = Field(..., description="The log timestamp")
+    flow_run_id: uuid.UUID | None = Field(None, description="The Prefect flow run ID")
+
+class WorkflowRunLogs(BaseModel):
+    """Schema for reading a WorkflowRun logs."""
+    logs: List[LogEntry] = Field(..., description="List of log entries with level, message, and timestamp")
+
 class WorkflowRunRead(WorkflowRunBase):
     """Schema for reading a WorkflowRun summary (SQL data mainly)."""
     id: uuid.UUID
@@ -157,6 +168,7 @@ class WorkflowRunRead(WorkflowRunBase):
     ended_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+    # prefect_run_ids: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

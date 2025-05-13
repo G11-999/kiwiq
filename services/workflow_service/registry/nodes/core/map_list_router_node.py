@@ -14,7 +14,7 @@ from langgraph.types import Command, Send
 
 from kiwi_app.workflow_app.constants import LaunchStatus
 from workflow_service.graph.graph import EdgeMapping # Import EdgeMapping for type hint
-from workflow_service.registry.schemas.base import BaseSchema
+from workflow_service.registry.schemas.base import BaseSchema, BaseNodeConfig
 from workflow_service.registry.nodes.core.dynamic_nodes import DynamicSchema, DynamicRouterNode, RouterSchema as BaseRouterSchema
 from workflow_service.config.constants import TEMP_STATE_UPDATE_KEY, ROUTER_CHOICE_KEY, OBJECT_PATH_REFERENCE_DELIMITER, NODE_EXECUTION_ORDER_KEY
 from workflow_service.utils.utils import get_central_state_field_key
@@ -25,7 +25,7 @@ from workflow_service.config.constants import GRAPH_STATE_SPECIAL_NODE_NAME, STA
 
 # Removed MapperMapping as mappings are now defined on edges
 
-class MapTargetConfig(BaseSchema):
+class MapTargetConfig(BaseNodeConfig):
     """
     Configuration for mapping items from a specific source path to destinations.
     Transformations are now defined by the mappings on the outgoing edges in the graph schema.
