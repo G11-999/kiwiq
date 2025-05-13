@@ -811,7 +811,7 @@ async def main_test_content_workflow_with_client():
             },
             'is_shared': False,
             'is_versioned': USER_DNA_IS_VERSIONED,
-            # 'initial_version': "default",
+            'initial_version': "default",
             'is_system_entity': False
         },
         
