@@ -9,6 +9,8 @@ The ingestion process involves several key steps for properly importing workflow
 ### Workflow Ingestion Steps
 
 1. **Preparation and Configuration**
+   - Prepare .env to have email, password, org ID for admin@example.com superuser and KIWIQ org (fetch orgs for admin@example.com from [api.prod.kiwiq.ai/docs](https://api.prod.kiwiq.ai/docs) )
+
    - Define workflow configurations with required properties:
      - `workflow_key`: The unique identifier for the workflow (reference the [Workflow Config](https://www.notion.so/Workflow-Config-1ef12cba067e8074b16aeecb3498c4fa))
      - `module_path`: Path to the Python module containing the workflow schema
@@ -67,6 +69,46 @@ If testing is enabled through the `run_test` flag:
 4. **Documentation**
    - Log results of ingestion and testing process
    - Record workflow ID for future reference
+
+
+From client `test_run_workflow_client.py` import and use the below function as follows while providing the appropriate workflow inputs
+
+```python
+import asyncio
+from kiwi_client.schemas.workflow_constants import WorkflowRunStatus
+from kiwi_client.test_run_workflow_client import run_workflow_test
+
+test_name = 
+workflow_key = 
+workflow_inputs = 
+predefined_hitl_inputs = []
+validate_workflow_output = None
+
+async def test():
+    final_run_status_obj, final_run_outputs = await run_workflow_test(
+        test_name=test_name,
+        
+        workflow_key=workflow_key,
+        initial_inputs=workflow_inputs,
+        
+        # OPTIONAL: if not provided, user is prompted to enter input in JSON during workflow execution
+        hitl_inputs=predefined_hitl_inputs,
+
+        # OPTIONAL: can be None, a function to assert and only to validate final workflow output
+        validate_output_func=validate_workflow_output,
+
+        # Don't change unless necessary
+        expected_final_status=WorkflowRunStatus.COMPLETED,
+        stream_intermediate_results=True,
+        poll_interval_sec=3,
+        timeout_sec=600
+    )
+
+if __name__ == "__main__":
+    asyncio.run(test())
+
+```
+
 
 ### Example Code for Workflow Ingestion
 

@@ -548,26 +548,30 @@ async def main():
         # First workflow - content creation workflow
         {
             "workflow_key": "content_creation_workflow",
-            "module_path": "kiwi_client.workflows.wf_content_generation",
-            "run_test": True,
-            "test_inputs_override": {
-                "post_uuid": "test_post_uuid",
-                "brief_docname": "brief_docname",
-                "entity_username": "example-user",
-            },
-            "hitl_inputs": [
-                # First HITL step - request revisions
-                {
-                    "approval_status": "needs_work",
-                    "feedback_text": "The content is good but needs to be more specific to SaaS companies. Also, can you add more statistics to back up the claims and make the call to action stronger?"
-                },
-                # Second HITL step - approve
-                {
-                    "approval_status": "approved",
-                    "feedback_text": ""
-                }
-            ]
+            "module_path": "kiwi_client.workflows.wf_linkedin_scraping",
         },
+        # {
+        #     "workflow_key": "content_creation_workflow",
+        #     "module_path": "kiwi_client.workflows.wf_content_generation",
+        #     "run_test": True,
+        #     "test_inputs_override": {
+        #         "post_uuid": "test_post_uuid",
+        #         "brief_docname": "brief_docname",
+        #         "entity_username": "example-user",
+        #     },
+        #     "hitl_inputs": [
+        #         # First HITL step - request revisions
+        #         {
+        #             "approval_status": "needs_work",
+        #             "feedback_text": "The content is good but needs to be more specific to SaaS companies. Also, can you add more statistics to back up the claims and make the call to action stronger?"
+        #         },
+        #         # Second HITL step - approve
+        #         {
+        #             "approval_status": "approved",
+        #             "feedback_text": ""
+        #         }
+        #     ]
+        # },
         # Second workflow - example of another workflow (commented out for now)
         # {
         #     "workflow_key": "user_dna_workflow",

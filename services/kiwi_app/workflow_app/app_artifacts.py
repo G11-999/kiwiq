@@ -248,7 +248,8 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
       "name": "linkedin_scraping_workflow",
       "version": null,
       "inputs": {
-        "entity_username": null
+        "entity_username": null,
+        "entity_url": null
       },
       "user_documents_config_variables": {
         "entity_username": null
