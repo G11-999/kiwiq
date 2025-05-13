@@ -82,41 +82,41 @@ class AppArtifactTestClient:
             logger.exception(f"Unexpected error getting workflow {request_data.workflow_key}.")
         return None
 
-    async def get_workflow_processing_info(
-        self,
-        request_data: aa_schemas.WorkflowInfoRequest
-    ) -> Optional[aa_schemas.WorkflowInfoResponse]:
-        """
-        Gets information about unresolved inputs and variables for a predefined workflow.
-        Corresponds to OPTIONS /app-artifacts/get-workflow.
+    # async def get_workflow_processing_info(
+    #     self,
+    #     request_data: aa_schemas.WorkflowInfoRequest
+    # ) -> Optional[aa_schemas.WorkflowInfoResponse]:
+    #     """
+    #     Gets information about unresolved inputs and variables for a predefined workflow.
+    #     Corresponds to OPTIONS /app-artifacts/get-workflow.
 
-        Args:
-            request_data (aa_schemas.WorkflowInfoRequest): The request payload.
+    #     Args:
+    #         request_data (aa_schemas.WorkflowInfoRequest): The request payload.
 
-        Returns:
-            Optional[aa_schemas.WorkflowInfoResponse]: The workflow analysis or None on failure.
-        """
-        logger.info(f"Attempting to get workflow processing info for: {request_data.workflow_key}")
-        try:
-            payload = request_data.model_dump(exclude_none=True)
-            # FastAPI maps OPTIONS requests with a JSON body, httpx client needs to send it via json param.
-            response = await self._client.request("OPTIONS", APP_ARTIFACT_GET_WORKFLOW_URL, json=payload)
-            response.raise_for_status()
-            response_json = response.json()
+    #     Returns:
+    #         Optional[aa_schemas.WorkflowInfoResponse]: The workflow analysis or None on failure.
+    #     """
+    #     logger.info(f"Attempting to get workflow processing info for: {request_data.workflow_key}")
+    #     try:
+    #         payload = request_data.model_dump(exclude_none=True)
+    #         # FastAPI maps OPTIONS requests with a JSON body, httpx client needs to send it via json param.
+    #         response = await self._client.request("OPTIONS", APP_ARTIFACT_GET_WORKFLOW_URL, json=payload)
+    #         response.raise_for_status()
+    #         response_json = response.json()
 
-            validated_response = aa_schemas.WorkflowInfoResponse.model_validate(response_json)
-            logger.info(f"Successfully retrieved workflow info for: {validated_response.workflow_name}")
-            logger.debug(f"Get workflow info response: {validated_response.model_dump_json(indent=2)}")
-            return validated_response
-        except httpx.HTTPStatusError as e:
-            logger.error(f"Error getting workflow info for {request_data.workflow_key}: {e.response.status_code} - {e.response.text}")
-        except httpx.RequestError as e:
-            logger.error(f"Request error getting workflow info for {request_data.workflow_key}: {e}")
-        except ValidationError as e:
-            logger.error(f"Response validation error for workflow info {request_data.workflow_key}: {e}")
-        except Exception as e:
-            logger.exception(f"Unexpected error getting workflow info for {request_data.workflow_key}.")
-        return None
+    #         validated_response = aa_schemas.WorkflowInfoResponse.model_validate(response_json)
+    #         logger.info(f"Successfully retrieved workflow info for: {validated_response.workflow_name}")
+    #         logger.debug(f"Get workflow info response: {validated_response.model_dump_json(indent=2)}")
+    #         return validated_response
+    #     except httpx.HTTPStatusError as e:
+    #         logger.error(f"Error getting workflow info for {request_data.workflow_key}: {e.response.status_code} - {e.response.text}")
+    #     except httpx.RequestError as e:
+    #         logger.error(f"Request error getting workflow info for {request_data.workflow_key}: {e}")
+    #     except ValidationError as e:
+    #         logger.error(f"Response validation error for workflow info {request_data.workflow_key}: {e}")
+    #     except Exception as e:
+    #         logger.exception(f"Unexpected error getting workflow info for {request_data.workflow_key}.")
+    #     return None
 
     async def get_built_document_configurations(
         self,
@@ -247,17 +247,17 @@ async def main():
             else:
                 print("   Failed to get built document configurations.")
 
-            # 3. Get Workflow Processing Info (OPTIONS /get-workflow)
-            # Assuming 'user_dna' is a valid workflow key in DEFAULT_ALL_WORKFLOWS
-            test_workflow_key_info = "user_dna"
-            print(f"\n3. Getting Workflow Processing Info for workflow: '{test_workflow_key_info}'...")
-            workflow_info_req = aa_schemas.WorkflowInfoRequest(workflow_key=test_workflow_key_info)
-            workflow_info_resp = await artifact_tester.get_workflow_processing_info(workflow_info_req)
-            if workflow_info_resp:
-                print(f"   Retrieved info for workflow: {workflow_info_resp.workflow_name}")
-                # print(f"   Unresolved analysis: {workflow_info_resp.unresolved_inputs_analysis}")
-            else:
-                print(f"   Failed to get workflow processing info for '{test_workflow_key_info}'.")
+            # # 3. Get Workflow Processing Info (OPTIONS /get-workflow)
+            # # Assuming 'user_dna' is a valid workflow key in DEFAULT_ALL_WORKFLOWS
+            # test_workflow_key_info = "user_dna"
+            # print(f"\n3. Getting Workflow Processing Info for workflow: '{test_workflow_key_info}'...")
+            # workflow_info_req = aa_schemas.WorkflowInfoRequest(workflow_key=test_workflow_key_info)
+            # workflow_info_resp = await artifact_tester.get_workflow_processing_info(workflow_info_req)
+            # if workflow_info_resp:
+            #     print(f"   Retrieved info for workflow: {workflow_info_resp.workflow_name}")
+            #     # print(f"   Unresolved analysis: {workflow_info_resp.unresolved_inputs_analysis}")
+            # else:
+            #     print(f"   Failed to get workflow processing info for '{test_workflow_key_info}'.")
 
             # 4. Get Workflow (POST /get-workflow)
             # Assuming 'content_strategy' is a valid workflow key
