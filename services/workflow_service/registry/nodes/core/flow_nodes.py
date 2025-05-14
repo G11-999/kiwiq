@@ -246,11 +246,16 @@ class FilterTargets(BaseNodeConfig):
     
     Attributes:
         targets: List of filter configurations to apply
+        non_target_fields_mode: Controls whether fields not explicitly targeted should be allowed or denied
     """
     targets: List[FilterConfigSchema] = Field(
         ..., 
         min_length=1,
         description="List of filter configurations to apply"
+    )
+    non_target_fields_mode: FilterMode = Field(
+        default=FilterMode.ALLOW,
+        description="Controls whether fields not explicitly targeted should be allowed (default) or denied in the final output"
     )
     
     @model_validator(mode='after')
@@ -937,6 +942,14 @@ class FilterNode(BaseDynamicNode):
                     for condition in condition_group.conditions:
                         condition.populate_value(original_input_dict)
 
+            # Track explicitly targeted fields when using DENY mode for non-targets
+            explicitly_allowed_paths = set()
+            if active_config.non_target_fields_mode == FilterMode.DENY:
+                # Collect all explicitly targeted paths with ALLOW mode
+                for target_config in active_config.targets:
+                    if target_config.filter_target is not None and target_config.filter_mode == FilterMode.ALLOW:
+                        explicitly_allowed_paths.add(target_config.filter_target)
+
             # --- Pass 0: Object-Level Filtering ---
             # Check if the entire object should be filtered out based on top-level conditions
             for target_config in active_config.targets:
@@ -1108,6 +1121,128 @@ class FilterNode(BaseDynamicNode):
                  if should_remove:
                       # Remove the field from the result data
                       _remove_nested_path(result_data, target_path)
+
+            # --- Pass 4: Handle Non-Target Fields Mode ---
+            if active_config.non_target_fields_mode == FilterMode.DENY:
+                # If non_target_fields_mode is DENY, we need to remove all fields that weren't explicitly allowed
+                # We'll create a clean data structure with only the allowed fields
+                
+                # First handle the case where we have no explicit allows - return empty dict
+                if not explicitly_allowed_paths:
+                    result_data = {}
+                else:
+                    # Create a new result dictionary with only allowed fields
+                    new_result = {}
+                    
+                    # First, organize the allowed paths by their base structure
+                    # This helps us handle nested lists correctly
+                    list_paths_with_allowed_fields = {}  # {list_path: [fields_within_list]}
+                    regular_paths = set()  # Non-list paths
+                    
+                    for path in explicitly_allowed_paths:
+                        # Check if this path is for a field within a list
+                        in_list = False
+                        base_list_path = None
+                        
+                        for list_path in all_target_list_paths:
+                            # If this is a list itself or a field directly in a list
+                            if path == list_path or path.startswith(list_path + '.'):
+                                in_list = True
+                                base_list_path = list_path
+                                break
+                                
+                        if in_list and base_list_path:
+                            # For the list path itself
+                            if path == base_list_path:
+                                # Add the entire list path (but we'll filter its contents later)
+                                list_paths_with_allowed_fields.setdefault(base_list_path, set())
+                            else:
+                                # For fields within a list
+                                # Extract the field path relative to the list items
+                                relative_field = path[len(base_list_path) + 1:]  # +1 for the dot
+                                list_paths_with_allowed_fields.setdefault(base_list_path, set()).add(relative_field)
+                        else:
+                            # Regular non-list path
+                            regular_paths.add(path)
+                    
+                    # Process regular paths first
+                    for path in regular_paths:
+                        value, found = _get_nested_obj(result_data, path)
+                        if found:
+                            # Build the nested structure to this field
+                            parts = path.split('.')
+                            current = new_result
+                            
+                            # Create the nested structure
+                            for i, part in enumerate(parts[:-1]):
+                                if part not in current:
+                                    current[part] = {}
+                                current = current[part]
+                                
+                            # Set the actual value
+                            current[parts[-1]] = value
+                    
+                    # Now process list paths and their allowed fields
+                    for list_path, allowed_fields in list_paths_with_allowed_fields.items():
+                        list_value, found = _get_nested_obj(result_data, list_path)
+                        
+                        if found and isinstance(list_value, list):
+                            # Build the nested structure to the list
+                            parts = list_path.split('.')
+                            current = new_result
+                            
+                            # Create the nested structure to the list
+                            for i, part in enumerate(parts[:-1]):
+                                if part not in current:
+                                    current[part] = {}
+                                current = current[part]
+                            
+                            # Create the list in the result if it doesn't exist
+                            if parts[-1] not in current:
+                                current[parts[-1]] = []
+                            
+                            # Reference to the list in our result
+                            result_list = current[parts[-1]]
+                            
+                            # Process each list item
+                            for item in list_value:
+                                # If we have no fields to keep within items, preserve empty items
+                                if not allowed_fields:
+                                    result_list.append(item)
+                                else:
+                                    # Create a filtered version of this list item
+                                    filtered_item = {}
+                                    
+                                    # Add only allowed fields to the item
+                                    for field in allowed_fields:
+                                        # Handle nested fields within the item
+                                        field_parts = field.split('.')
+                                        item_current = item
+                                        result_current = filtered_item
+                                        field_exists = True
+                                        
+                                        # Navigate to the nested field in the original item
+                                        for i, part in enumerate(field_parts[:-1]):
+                                            if part in item_current and isinstance(item_current[part], dict):
+                                                item_current = item_current[part]
+                                                
+                                                # Create corresponding structure in result
+                                                if part not in result_current:
+                                                    result_current[part] = {}
+                                                result_current = result_current[part]
+                                            else:
+                                                field_exists = False
+                                                break
+                                        
+                                        # Add the final field value if it exists
+                                        if field_exists and field_parts[-1] in item_current:
+                                            result_current[field_parts[-1]] = item_current[field_parts[-1]]
+                                    
+                                    # Add the filtered item to our result list
+                                    result_list.append(filtered_item)
+                    
+                    # Replace the result data with our filtered version
+                    result_data = new_result
 
             # Return the filtered data
             return FilterOutputSchema(filtered_data=result_data)

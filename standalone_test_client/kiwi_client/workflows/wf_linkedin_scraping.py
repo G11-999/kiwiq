@@ -73,7 +73,9 @@ from functools import partial
 from kiwi_client.workflows.document_models.customer_docs import (
     LINKEDIN_SCRAPING_NAMESPACE_TEMPLATE,
     LINKEDIN_PROFILE_DOCNAME,
-    LINKEDIN_POST_DOCNAME
+    LINKEDIN_POST_DOCNAME,
+    LINKEDIN_PROFILE_RAW_DOCNAME,
+    LINKEDIN_POST_RAW_DOCNAME,
 )
 
 POST_LIMIT = 50
@@ -140,7 +142,7 @@ workflow_graph_schema = {
               "filename_config": {
                   "input_namespace_field_pattern": LINKEDIN_SCRAPING_NAMESPACE_TEMPLATE, 
                   "input_namespace_field": "entity_username",
-                  "static_docname": LINKEDIN_PROFILE_DOCNAME,
+                  "static_docname": LINKEDIN_PROFILE_RAW_DOCNAME,
               }
             }
           },
@@ -151,7 +153,7 @@ workflow_graph_schema = {
               "filename_config": {
                 "input_namespace_field_pattern": LINKEDIN_SCRAPING_NAMESPACE_TEMPLATE, 
                   "input_namespace_field": "entity_username",
-                  "static_docname": LINKEDIN_POST_DOCNAME,
+                  "static_docname": LINKEDIN_POST_RAW_DOCNAME,
               }
             }
           }
@@ -161,87 +163,546 @@ workflow_graph_schema = {
       # Output: passthrough_data, paths_processed
     },
 
-    # # --- 4. Transform Combined Data ---
-    # "transform_combined_data": {
-    #   "node_id": "transform_combined_data",
-    #   "node_name": "transform_data",
-    #   "node_config": {
-    #     "mappings": [
-    #       # Profile Mappings (prefixed with input field name)
-    #       # NOTE: Limitations of transform_data still apply (no combining fields, complex logic).
-    #       { "source_path": "input_profile_data.firstName", "destination_path": "profile.first_name" },
-    #       { "source_path": "input_profile_data.lastName", "destination_path": "profile.last_name" },
-    #       { "source_path": "input_profile_data.headline", "destination_path": "profile.headline" },
-    #       { "source_path": "input_profile_data.geo.full", "destination_path": "profile.location" }, # Assumes person schema
-    #       { "source_path": "input_profile_data.summary", "destination_path": "profile.about" }, # Assumes person schema
-    #       { "source_path": "input_profile_data.position.0.companyName", "destination_path": "profile.current_company_name" }, # Risky assumption
-    #       { "source_path": "input_profile_data.position.0.companyIndustry", "destination_path": "profile.current_company_industry" }, # Risky assumption
-    #       { "source_path": "input_profile_data.position", "destination_path": "profile.experiences_raw" }, # Raw list
-    #       { "source_path": "input_profile_data.educations", "destination_path": "profile.educations_raw" }, # Raw list
 
-    #       # Posts Mappings (prefixed with input field name)
-    #       # NOTE: Still just copying the raw list due to transform_data limitations.
-    #       { "source_path": "input_posts_data", "destination_path": "posts.raw_list" }
-    #       # Example if transforming specific fields was possible:
-    #       # { "source_path": "input_posts_data.0.text", "destination_path": "posts.first_post_text" },
-    #     ]
-    #   }
-    #   # Input fields expected: input_profile_data, input_posts_data (mapped from scrape_entity)
-    #   # Output: transformed_data (containing fields like profile.first_name, posts.raw_list etc.)
-    # },
 
-    # # --- 5. Store Transformed Data ---
-    # "store_transformed_data": {
-    #   "node_id": "store_transformed_data",
-    #   "node_name": "store_customer_data",
-    #   "node_config": {
-    #     "global_versioning": { "is_versioned": False, "operation": "upsert" },
-    #     "global_is_shared": False,
-    #     "store_configs": [
-    #       # Config 1: Store Transformed Profile (from the combined output)
-    #       {
-    #         # Access the 'profile' sub-object within the transform_combined_data output
-    #         "input_field_path": "transformed_data.profile",
-    #         "target_path": {
-    #           "filename_config": {
-    #             "static_namespace": TARGET_NAMESPACE,
-    #              # Use entity_name (from node input, mapped from $graph_state) for the pattern context
-    #             "input_docname_field": "entity_username", # Field in node's input containing the value
-    #             "input_docname_field_pattern": "profile_filtered_{item}" # 'item' here will be the value of entity_name
-    #           }
-    #         }
-    #       },
-    #       # Config 2: Store Transformed Posts (from the combined output)
-    #       {
-    #         # Access the 'posts' sub-object within the transform_combined_data output
-    #         "input_field_path": "transformed_data.posts",
-    #         "target_path": {
-    #           "filename_config": {
-    #             "static_namespace": TARGET_NAMESPACE,
-    #              # Use entity_name (from node input, mapped from $graph_state) for the pattern context
-    #             "input_docname_field": "entity_username", # Field in node's input containing the value
-    #             "input_docname_field_pattern": "posts_filtered_{item}" # 'item' here will be the value of entity_name
-    #           }
-    #         }
-    #       }
-    #     ]
-    #   }
-    #   # Input fields expected: transformed_data (from transform_combined_data), entity_name (from $graph_state)
-    #   # Output: passthrough_data, paths_processed
-    # },
+    # --- 5. Filter Posts Data ---
+    "filter_scraped_data": {
+      "node_id": "filter_scraped_data",
+      "node_name": "filter_data",
+      "node_config": {
+        "non_target_fields_mode": "deny",
+        "targets": [
+            # PROFILE FILTERING
+            # Keep username field
+          {
+            "filter_target": "data_to_filter.scraped_profile_job.username",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_profile_job.username", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          # Keep firstName field
+          {
+            "filter_target": "data_to_filter.scraped_profile_job.firstName",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_profile_job.firstName", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          # Keep lastName field
+          {
+            "filter_target": "data_to_filter.scraped_profile_job.lastName",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_profile_job.lastName", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          # Keep summary field
+          {
+            "filter_target": "data_to_filter.scraped_profile_job.summary",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_profile_job.summary", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          # Keep headline field
+          {
+            "filter_target": "data_to_filter.scraped_profile_job.headline",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_profile_job.headline", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          # Keep geo fields
+          {
+            "filter_target": "data_to_filter.scraped_profile_job.geo",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_profile_job.geo", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          # Keep geo.country field
+          {
+            "filter_target": "data_to_filter.scraped_profile_job.geo.country",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_profile_job.geo.country", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          # Keep geo.city field
+          {
+            "filter_target": "data_to_filter.scraped_profile_job.geo.city",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_profile_job.geo.city", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          # Keep geo.full field
+          {
+            "filter_target": "data_to_filter.scraped_profile_job.geo.full",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_profile_job.geo.full", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          # Keep educations array
+          {
+            "filter_target": "data_to_filter.scraped_profile_job.educations",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_profile_job.educations", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          # Education nested fields
+          # Start date fields
+          {
+            "filter_target": "data_to_filter.scraped_profile_job.educations.start",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_profile_job.educations.start", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          {
+            "filter_target": "data_to_filter.scraped_profile_job.educations.start.year",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_profile_job.educations.start.year", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          {
+            "filter_target": "data_to_filter.scraped_profile_job.educations.start.month",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_profile_job.educations.start.month", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          {
+            "filter_target": "data_to_filter.scraped_profile_job.educations.start.day",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_profile_job.educations.start.day", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          # End date fields
+          {
+            "filter_target": "data_to_filter.scraped_profile_job.educations.end",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_profile_job.educations.end", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          {
+            "filter_target": "data_to_filter.scraped_profile_job.educations.end.year",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_profile_job.educations.end.year", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          {
+            "filter_target": "data_to_filter.scraped_profile_job.educations.end.month",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_profile_job.educations.end.month", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          {
+            "filter_target": "data_to_filter.scraped_profile_job.educations.end.day",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_profile_job.educations.end.day", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          # Other education fields
+          {
+            "filter_target": "data_to_filter.scraped_profile_job.educations.fieldOfStudy",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_profile_job.educations.fieldOfStudy", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          {
+            "filter_target": "data_to_filter.scraped_profile_job.educations.degree",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_profile_job.educations.degree", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          {
+            "filter_target": "data_to_filter.scraped_profile_job.educations.grade",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_profile_job.educations.grade", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          {
+            "filter_target": "data_to_filter.scraped_profile_job.educations.schoolName",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_profile_job.educations.schoolName", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          {
+            "filter_target": "data_to_filter.scraped_profile_job.educations.description",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_profile_job.educations.description", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          # Keep positions array
+          {
+            "filter_target": "data_to_filter.scraped_profile_job.position",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_profile_job.position", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          # Position nested fields
+          {
+            "filter_target": "data_to_filter.scraped_profile_job.position.companyName",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_profile_job.position.companyName", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          {
+            "filter_target": "data_to_filter.scraped_profile_job.position.companyIndustry",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_profile_job.position.companyIndustry", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          {
+            "filter_target": "data_to_filter.scraped_profile_job.position.location",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_profile_job.position.location", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          {
+            "filter_target": "data_to_filter.scraped_profile_job.position.description",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_profile_job.position.description", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          # For each post in the list, keep only specific fields
+          {
+            "filter_target": "data_to_filter.scraped_posts_job.text",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_posts_job.text", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          {
+            "filter_target": "data_to_filter.scraped_posts_job.reposted",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_posts_job.reposted", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          {
+            "filter_target": "data_to_filter.scraped_posts_job.isBrandPartnership",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_posts_job.isBrandPartnership", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          {
+            "filter_target": "data_to_filter.scraped_posts_job.postedDate",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_posts_job.postedDate", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          {
+            "filter_target": "data_to_filter.scraped_posts_job.postedDateTimestamp",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_posts_job.postedDateTimestamp", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          {
+            "filter_target": "data_to_filter.scraped_posts_job.totalReactionCount",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_posts_job.totalReactionCount", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          {
+            "filter_target": "data_to_filter.scraped_posts_job.commentsCount",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_posts_job.commentsCount", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          {
+            "filter_target": "data_to_filter.scraped_posts_job.repostsCount",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_posts_job.repostsCount", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          }
+        ]
+      }
+    },
 
-    # --- 6. Output Node ---
+    # --- 6. Store Filtered Data ---
+    "store_filtered_data": {
+      "node_id": "store_filtered_data",
+      "node_name": "store_customer_data",
+      # "enable_node_fan_in": True,
+      "node_config": {
+        # Use upsert unversioned for simplicity in this example
+        "global_versioning": { "is_versioned": False, "operation": "upsert" },
+        "global_is_shared": False, # Assume user-specific storage
+        "store_configs": [
+          # Config 1: Store Filtered Profile
+          {
+            "input_field_path": "filtered_data.data_to_filter.scraped_profile_job",
+            "target_path": {
+              "filename_config": {
+                  "input_namespace_field_pattern": LINKEDIN_SCRAPING_NAMESPACE_TEMPLATE, 
+                  "input_namespace_field": "entity_username",
+                  "static_docname": LINKEDIN_PROFILE_DOCNAME,
+              }
+            }
+          },
+          # Config 2: Store Filtered Posts
+          {
+            "input_field_path": "filtered_data.data_to_filter.scraped_posts_job",
+            "target_path": {
+              "filename_config": {
+                "input_namespace_field_pattern": LINKEDIN_SCRAPING_NAMESPACE_TEMPLATE, 
+                  "input_namespace_field": "entity_username",
+                  "static_docname": LINKEDIN_POST_DOCNAME,
+              }
+            }
+          }
+        ]
+      }
+    },
+
+    # --- 7. Output Node ---
     "output_node": {
       "node_id": "output_node",
       "node_name": "output_node",
       "node_config": {},
-    #    "dynamic_output_schema": {
-    #       "fields": {
-    #           "raw_data_paths": { "type": "list", "required": False, "description": "Paths where raw scraped data was stored." },
-    #         #   "transformed_data_paths": { "type": "list", "required": False, "description": "Paths where transformed data was stored." },
-    #           "entity_username": { "type": "str", "required": False, "description": "The name of the entity processed." }
-    #       }
-    #     }
     }
   },
 
@@ -267,43 +728,37 @@ workflow_graph_schema = {
       ]
     },
     # State (entity_name) -> Store Raw Data: Pass entity name for doc naming pattern
-    # The store_customer_data node needs entity_name in its DIRECT input to resolve input_docname_field
     { "src_node_id": "$graph_state", "dst_node_id": "store_raw_data", "mappings": [
         { "src_field": "entity_username", "dst_field": "entity_username" }
       ]
     },
-    # # Scrape Entity -> Transform Combined Data: Pass profile and posts data under specific keys
-    # { "src_node_id": "scrape_entity", "dst_node_id": "transform_combined_data", "mappings": [
-    #     # Map profile job result to 'input_profile_data' field in transform node input
-    #     { "src_field": "scraping_results.scraped_profile_job", "dst_field": "input_profile_data" },
-    #     # Map posts job result to 'input_posts_data' field in transform node input
-    #     { "src_field": "scraping_results.scraped_posts_job", "dst_field": "input_posts_data" }
-    #   ]
-    # },
-    # # Transform Combined Data -> Store Transformed Data: Pass the unified transformed output
-    # { "src_node_id": "transform_combined_data", "dst_node_id": "store_transformed_data", "mappings": [
-    #     # The output of transform_data is under the 'transformed_data' key by default
-    #     # This key now contains both profile and posts structured data
-    #     { "src_field": "transformed_data", "dst_field": "transformed_data" }
-    #   ]
-    # },
-    #  # State (entity_name) -> Store Transformed Data: Pass entity name for doc naming pattern
-    #  # The store_customer_data node needs entity_name in its DIRECT input to resolve input_docname_field
-    # { "src_node_id": "$graph_state", "dst_node_id": "store_transformed_data", "mappings": [
-    #     { "src_field": "entity_username", "dst_field": "entity_username" }
-    #   ]
-    # },
-    # Store Raw Data -> Output Node (Optional): Pass processed paths
+    # Scrape Entity -> Filter Posts Data: Pass posts data for filtering
+    { "src_node_id": "scrape_entity", "dst_node_id": "filter_scraped_data", "mappings": [
+        { "src_field": "scraping_results", "dst_field": "data_to_filter" }
+      ]
+    },
+
+    # Filter Posts Data -> Store Filtered Data: Pass filtered posts data
+    { "src_node_id": "filter_scraped_data", "dst_node_id": "store_filtered_data", "mappings": [
+        { "src_field": "filtered_data", "dst_field": "filtered_data" }
+      ]
+    },
+    # State (entity_name) -> Store Filtered Data: Pass entity name for doc naming pattern
+    { "src_node_id": "$graph_state", "dst_node_id": "store_filtered_data", "mappings": [
+        { "src_field": "entity_username", "dst_field": "entity_username" }
+      ]
+    },
+    # Store Raw Data -> Output Node: Pass processed paths
     { "src_node_id": "store_raw_data", "dst_node_id": "output_node", "mappings": [
         { "src_field": "paths_processed", "dst_field": "raw_data_paths" }
       ]
     },
-    #  # Store Transformed Data -> Output Node: Pass processed paths
-    # { "src_node_id": "store_transformed_data", "dst_node_id": "output_node", "mappings": [
-    #     { "src_field": "paths_processed", "dst_field": "transformed_data_paths" }
-    #   ]
-    # },
-     # State -> Output Node: Pass entity name for reference
+    # Store Filtered Data -> Output Node: Pass processed paths
+    { "src_node_id": "store_filtered_data", "dst_node_id": "output_node", "mappings": [
+        { "src_field": "paths_processed", "dst_field": "filtered_data_paths" }
+      ]
+    },
+    # State -> Output Node: Pass entity name for reference
     { "src_node_id": "$graph_state", "dst_node_id": "output_node", "mappings": [
         { "src_field": "entity_username", "dst_field": "entity_username" },
         { "src_field": "scraping_status_summary", "dst_field": "scraping_status_summary" },
@@ -314,15 +769,6 @@ workflow_graph_schema = {
   # --- Define Start and End ---
   "input_node_id": "input_node",
   "output_node_id": "output_node",
-
-#   # --- Optional Metadata ---
-#   "metadata": {
-#      "description": "Workflow to scrape LinkedIn profile and posts, store raw data, attempt transformation, and store transformed data.",
-#      "state_reducers": {
-#        # Default reducer is 'replace', which is suitable for entity_name stored once.
-#        "entity_username": { "reducer_type": "replace" }
-#      }
-#   }
 }
 
 
@@ -370,6 +816,7 @@ async def validate_linkedin_scraping_output(outputs: Optional[Dict[str, Any]], l
 
     # Check for expected keys based on the workflow's output_node edges
     assert 'raw_data_paths' in outputs, "Validation Failed: 'raw_data_paths' key missing in outputs."
+    assert 'filtered_data_paths' in outputs, "Validation Failed: 'filtered_data_paths' key missing in outputs."
     assert "entity_username" in outputs, "Validation Failed: \"entity_username\" key missing in outputs."
 
     # Check if the processed entity name matches the input
@@ -378,15 +825,23 @@ async def validate_linkedin_scraping_output(outputs: Optional[Dict[str, Any]], l
 
     # Optional: Check structure of raw_data_paths if needed
     assert isinstance(outputs['raw_data_paths'], list), "Validation Failed: 'raw_data_paths' should be a list."
+    assert isinstance(outputs['filtered_data_paths'], list), "Validation Failed: 'filtered_data_paths' should be a list."
+    
     # Example: Check if expected filenames are present (adjust patterns based on workflow)
     expected_profile_path_part = linkedin_scraping_inputs["entity_username"]
     expected_posts_path_part = linkedin_scraping_inputs["entity_username"]
     found_profile = any(expected_profile_path_part in str(p) for p in outputs['raw_data_paths'])
     found_posts = any(expected_posts_path_part in str(p) for p in outputs['raw_data_paths'])
+    found_filtered_profile = any(expected_profile_path_part in str(p) for p in outputs['filtered_data_paths'])
+    found_filtered_posts = any(expected_posts_path_part in str(p) for p in outputs['filtered_data_paths'])
+    
     assert found_profile, f"Validation Failed: Expected profile path containing '{expected_profile_path_part}' not found in {outputs['raw_data_paths']}."
     assert found_posts, f"Validation Failed: Expected posts path containing '{expected_posts_path_part}' not found in {outputs['raw_data_paths']}."
+    assert found_filtered_profile, f"Validation Failed: Expected filtered profile path containing '{expected_profile_path_part}' not found in {outputs['filtered_data_paths']}."
+    assert found_filtered_posts, f"Validation Failed: Expected filtered posts path containing '{expected_posts_path_part}' not found in {outputs['filtered_data_paths']}."
 
     logger.info(f"   Found 'raw_data_paths': {outputs.get('raw_data_paths')}")
+    logger.info(f"   Found 'filtered_data_paths': {outputs.get('filtered_data_paths')}")
     logger.info(f"   Found 'entity_username': {outputs.get("entity_username")} (Matches Input: ✓)")
     logger.info("✓ Output structure and content validation passed.")
     return True

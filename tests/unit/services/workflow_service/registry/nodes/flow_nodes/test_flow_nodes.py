@@ -1543,6 +1543,467 @@ class TestFilterNodeUnittest(BaseNodeTest):
         # The rest of the data should be preserved
         self.assertEqual(result.filtered_data["config"], {"visible": True})
 
+    async def test_non_target_fields_mode_default_allow(self):
+        """
+        Test the default behavior of non_target_fields_mode="allow".
+        
+        This test verifies that when non_target_fields_mode is "allow" (default),
+        fields not explicitly targeted remain in the output.
+        """
+        # Create test data with multiple fields
+        test_data = {
+            "user": {
+                "id": "user123",
+                "name": "John Doe",
+                "email": "john@example.com",
+                "phone": "555-1234",
+                "address": {
+                    "street": "123 Main St",
+                    "city": "Anytown",
+                    "zip": "12345"
+                },
+                "preferences": {
+                    "theme": "dark",
+                    "notifications": True
+                }
+            },
+            "orders": [
+                {"id": "ord1", "total": 100, "items": 3},
+                {"id": "ord2", "total": 50, "items": 1}
+            ],
+            "metadata": {
+                "source": "web",
+                "timestamp": "2023-10-15T10:30:00Z"
+            }
+        }
+        
+        # Configure to only target a few fields explicitly
+        config = {
+            "targets": [
+                # Deny user.phone
+                {
+                    "filter_target": "user.phone", 
+                    "filter_mode": "deny",
+                    "condition_groups": [{
+                        "conditions": [{"field": "user.phone", "operator": "is_not_empty"}]
+                    }]
+                },
+                # Deny user.address
+                {
+                    "filter_target": "user.address", 
+                    "filter_mode": "deny",
+                    "condition_groups": [{
+                        "conditions": [{"field": "user.address", "operator": "is_not_empty"}]
+                    }]
+                }
+                # No targets for other fields
+            ],
+            # Default is allow, but let's be explicit for the test
+            "non_target_fields_mode": "allow"
+        }
+        
+        # Create and process the node
+        node = FilterNode(config=config, node_id="allow_mode", prefect_mode=False)
+        result = await node.process(test_data)
+        
+        # Expected: Only targeted fields (phone and address) should be removed,
+        # all other fields should remain intact
+        expected_data = {
+            "user": {
+                "id": "user123",
+                "name": "John Doe",
+                "email": "john@example.com",
+                "preferences": {
+                    "theme": "dark",
+                    "notifications": True
+                }
+            },
+            "orders": [
+                {"id": "ord1", "total": 100, "items": 3},
+                {"id": "ord2", "total": 50, "items": 1}
+            ],
+            "metadata": {
+                "source": "web",
+                "timestamp": "2023-10-15T10:30:00Z"
+            }
+        }
+        
+        # Verify results
+        self.assertEqual(result.filtered_data, expected_data)
+        
+        # Verify removed fields are not present
+        self.assertNotIn("phone", result.filtered_data["user"])
+        self.assertNotIn("address", result.filtered_data["user"])
+        
+        # Verify non-targeted fields are present
+        self.assertIn("name", result.filtered_data["user"])
+        self.assertIn("email", result.filtered_data["user"])
+        self.assertIn("orders", result.filtered_data)
+        self.assertIn("metadata", result.filtered_data)
+
+    async def test_non_target_fields_mode_deny(self):
+        """
+        Test the behavior of non_target_fields_mode="deny".
+        
+        This test verifies that when non_target_fields_mode is "deny",
+        only fields explicitly targeted with filter_mode="allow" remain in the output.
+        """
+        # Create test data with multiple fields
+        test_data = {
+            "user": {
+                "id": "user123",
+                "name": "John Doe",
+                "email": "john@example.com",
+                "phone": "555-1234",
+                "address": {
+                    "street": "123 Main St",
+                    "city": "Anytown",
+                    "zip": "12345"
+                },
+                "preferences": {
+                    "theme": "dark",
+                    "notifications": True
+                }
+            },
+            "orders": [
+                {"id": "ord1", "total": 100, "items": 3},
+                {"id": "ord2", "total": 50, "items": 1}
+            ],
+            "metadata": {
+                "source": "web",
+                "timestamp": "2023-10-15T10:30:00Z"
+            }
+        }
+        
+        # Configure to only keep a few specific fields
+        config = {
+            "targets": [
+                # Allow user.id
+                {
+                    "filter_target": "user.id", 
+                    "filter_mode": "allow",
+                    "condition_groups": [{
+                        "conditions": [{"field": "user.id", "operator": "is_not_empty"}]
+                    }]
+                },
+                # Allow user.name
+                {
+                    "filter_target": "user.name", 
+                    "filter_mode": "allow",
+                    "condition_groups": [{
+                        "conditions": [{"field": "user.name", "operator": "is_not_empty"}]
+                    }]
+                },
+                # Allow metadata
+                {
+                    "filter_target": "metadata", 
+                    "filter_mode": "allow",
+                    "condition_groups": [{
+                        "conditions": [{"field": "metadata", "operator": "is_not_empty"}]
+                    }]
+                }
+            ],
+            "non_target_fields_mode": "deny"  # Only keep explicitly allowed fields
+        }
+        
+        # Create and process the node
+        node = FilterNode(config=config, node_id="deny_mode", prefect_mode=False)
+        result = await node.process(test_data)
+        
+        # Expected: Only explicitly allowed fields should remain
+        expected_data = {
+            "user": {
+                "id": "user123",
+                "name": "John Doe"
+            },
+            "metadata": {
+                "source": "web",
+                "timestamp": "2023-10-15T10:30:00Z"
+            }
+        }
+        
+        # Verify results
+        self.assertEqual(result.filtered_data, expected_data)
+        
+        # Verify only explicitly allowed fields are present
+        self.assertIn("id", result.filtered_data["user"])
+        self.assertIn("name", result.filtered_data["user"])
+        self.assertIn("metadata", result.filtered_data)
+        
+        # Verify non-targeted fields are removed
+        self.assertNotIn("email", result.filtered_data["user"])
+        self.assertNotIn("phone", result.filtered_data["user"])
+        self.assertNotIn("address", result.filtered_data["user"])
+        self.assertNotIn("preferences", result.filtered_data["user"])
+        self.assertNotIn("orders", result.filtered_data)
+
+    async def test_non_target_fields_mode_deny_with_no_allows(self):
+        """
+        Test the behavior of non_target_fields_mode="deny" when no fields have filter_mode="allow".
+        
+        This test verifies that when non_target_fields_mode is "deny" and no fields are explicitly
+        allowed, the output is an empty dictionary.
+        """
+        # Create test data
+        test_data = {
+            "user": {"name": "John", "email": "john@example.com"},
+            "settings": {"theme": "dark"},
+            "metrics": {"visits": 42}
+        }
+        
+        # Configure with deny mode but no explicit allows
+        config = {
+            "targets": [
+                # Only have deny targets
+                {
+                    "filter_target": "user.email", 
+                    "filter_mode": "deny",
+                    "condition_groups": [{
+                        "conditions": [{"field": "user.email", "operator": "contains", "value": "@"}]
+                    }]
+                }
+            ],
+            "non_target_fields_mode": "deny"
+        }
+        
+        # Create and process the node
+        node = FilterNode(config=config, node_id="deny_no_allows", prefect_mode=False)
+        result = await node.process(test_data)
+        
+        # Expected: Empty dictionary since no fields were explicitly allowed
+        expected_data = {}
+        
+        # Verify results
+        self.assertEqual(result.filtered_data, expected_data)
+
+    async def test_non_target_fields_mode_deny_with_nested_lists(self):
+        """
+        Test the behavior of non_target_fields_mode="deny" with fields inside nested lists.
+        
+        This test verifies that when non_target_fields_mode is "deny" and fields within list items
+        are explicitly allowed, those fields properly appear in the output.
+        """
+        # Create test data with nested lists
+        test_data = {
+            "user": {
+                "id": "user123",
+                "name": "John Doe",
+                "email": "john@example.com"
+            },
+            "orders": [
+                {
+                    "id": "ord1", 
+                    "date": "2023-10-01",
+                    "total": 100.00,
+                    "items": [
+                        {"product_id": "p1", "name": "Product 1", "price": 50.00, "quantity": 1},
+                        {"product_id": "p2", "name": "Product 2", "price": 50.00, "quantity": 1}
+                    ],
+                    "shipping": {
+                        "method": "express",
+                        "address": "123 Main St",
+                        "cost": 10.00
+                    }
+                },
+                {
+                    "id": "ord2", 
+                    "date": "2023-10-15",
+                    "total": 75.50,
+                    "items": [
+                        {"product_id": "p3", "name": "Product 3", "price": 75.50, "quantity": 1}
+                    ],
+                    "shipping": {
+                        "method": "standard",
+                        "address": "456 Oak Ave",
+                        "cost": 5.00
+                    }
+                }
+            ],
+            "settings": {
+                "notifications": True,
+                "theme": "dark"
+            }
+        }
+        
+        # Configure to only keep specific fields, including fields inside lists
+        config = {
+            "targets": [
+                # Allow user.id and user.name
+                {"filter_target": "user.id", "filter_mode": "allow", "condition_groups": [
+                    {"conditions": [{"field": "user.id", "operator": "is_not_empty"}]}
+                ]},
+                {"filter_target": "user.name", "filter_mode": "allow", "condition_groups": [
+                    {"conditions": [{"field": "user.name", "operator": "is_not_empty"}]}
+                ]},
+                
+                # Allow orders list and specific fields within orders
+                {"filter_target": "orders", "filter_mode": "allow", "condition_groups": [
+                    {"conditions": [{"field": "orders", "operator": "is_not_empty"}]}
+                ]},
+                {"filter_target": "orders.id", "filter_mode": "allow", "condition_groups": [
+                    {"conditions": [{"field": "orders.id", "operator": "is_not_empty"}]}
+                ]},
+                {"filter_target": "orders.total", "filter_mode": "allow", "condition_groups": [
+                    {"conditions": [{"field": "orders.total", "operator": "is_not_empty"}]}
+                ]},
+                
+                # Allow settings.theme
+                {"filter_target": "settings.theme", "filter_mode": "allow", "condition_groups": [
+                    {"conditions": [{"field": "settings.theme", "operator": "is_not_empty"}]}
+                ]}
+            ],
+            "non_target_fields_mode": "deny"  # Only keep explicitly allowed fields
+        }
+        
+        # Create and process the node
+        node = FilterNode(config=config, node_id="nested_lists_deny", prefect_mode=False)
+        result = await node.process(test_data)
+        
+        # Expected: Only explicitly allowed fields should remain, including fields within list items
+        expected_data = {
+            "user": {
+                "id": "user123",
+                "name": "John Doe"
+            },
+            "orders": [
+                {
+                    "id": "ord1",
+                    "total": 100.00
+                },
+                {
+                    "id": "ord2",
+                    "total": 75.50
+                }
+            ],
+            "settings": {
+                "theme": "dark"
+            }
+        }
+        
+        # IMPORTANT: This test currently fails because fields inside lists (orders.id and orders.total)
+        # aren't properly included in the output when non_target_fields_mode="deny"
+        
+        # Verify results
+        self.assertEqual(result.filtered_data, expected_data)
+        
+        # Verify only explicitly allowed fields are present
+        self.assertIn("id", result.filtered_data["user"])
+        self.assertIn("name", result.filtered_data["user"])
+        self.assertIn("orders", result.filtered_data)
+        self.assertEqual(len(result.filtered_data["orders"]), 2)
+        
+        # Verify fields inside list items
+        self.assertIn("id", result.filtered_data["orders"][0])
+        self.assertIn("total", result.filtered_data["orders"][0])
+        self.assertNotIn("date", result.filtered_data["orders"][0])
+        self.assertNotIn("items", result.filtered_data["orders"][0])
+        self.assertNotIn("shipping", result.filtered_data["orders"][0])
+
+    async def test_non_target_fields_mode_deny_with_list_preservation(self):
+        """
+        Test that when non_target_fields_mode="deny" and a list is explicitly allowed
+        but no specific fields within it are allowed, the entire list items are preserved.
+        
+        This verifies that lists act as self-contained units where list filtering has already
+        been applied separately, preserving the full content of any remaining items.
+        """
+        # Create test data with nested lists
+        test_data = {
+            "user": {
+                "id": "user123",
+                "name": "John Doe",
+                "email": "john@example.com"
+            },
+            "orders": [
+                {
+                    "id": "ord1", 
+                    "status": "completed",
+                    "total": 100.00,
+                    "items": [
+                        {"product_id": "p1", "name": "Product 1", "price": 50.00, "quantity": 1},
+                        {"product_id": "p2", "name": "Product 2", "price": 50.00, "quantity": 1}
+                    ]
+                },
+                {
+                    "id": "ord2", 
+                    "status": "pending",
+                    "total": 75.50,
+                    "items": [
+                        {"product_id": "p3", "name": "Product 3", "price": 75.50, "quantity": 1}
+                    ]
+                }
+            ],
+            "settings": {
+                "notifications": True,
+                "theme": "dark"
+            }
+        }
+        
+        # Configure to only allow the user.id field and the orders list
+        # Note: We're explicitly allowing the orders list but NOT any specific fields within it
+        config = {
+            "targets": [
+                # Allow user.id only
+                {"filter_target": "user.id", "filter_mode": "allow", "condition_groups": [
+                    {"conditions": [{"field": "user.id", "operator": "is_not_empty"}]}
+                ]},
+                
+                # Allow the entire orders list (but filter it first based on status)
+                {"filter_target": "orders", "filter_mode": "allow", "condition_groups": [
+                    {"conditions": [{"field": "orders.status", "operator": "equals", "value": "completed"}]}
+                ]},
+                
+                # Allow settings.theme
+                {"filter_target": "settings.theme", "filter_mode": "allow", "condition_groups": [
+                    {"conditions": [{"field": "settings.theme", "operator": "is_not_empty"}]}
+                ]}
+            ],
+            "non_target_fields_mode": "deny"  # Only keep explicitly allowed fields
+        }
+        
+        # Create and process the node
+        node = FilterNode(config=config, node_id="list_preservation", prefect_mode=False)
+        result = await node.process(test_data)
+        
+        # Expected: Regular fields should be filtered to only keep explicitly allowed ones
+        # But the orders list should contain complete items that passed the filter condition
+        expected_data = {
+            "user": {
+                "id": "user123"
+            },
+            "orders": [
+                {
+                    "id": "ord1", 
+                    "status": "completed",
+                    "total": 100.00,
+                    "items": [
+                        {"product_id": "p1", "name": "Product 1", "price": 50.00, "quantity": 1},
+                        {"product_id": "p2", "name": "Product 2", "price": 50.00, "quantity": 1}
+                    ]
+                }
+                # ord2 is filtered out because status != "completed"
+            ],
+            "settings": {
+                "theme": "dark"
+            }
+        }
+        
+        # Verify results
+        self.assertEqual(result.filtered_data, expected_data)
+        
+        # Verify only explicitly allowed fields are present at top level
+        self.assertIn("id", result.filtered_data["user"])
+        self.assertNotIn("name", result.filtered_data["user"])
+        self.assertNotIn("email", result.filtered_data["user"])
+        
+        # Verify orders list preserves all fields in remaining items
+        self.assertEqual(len(result.filtered_data["orders"]), 1)  # Only one order passes the filter
+        order = result.filtered_data["orders"][0]
+        self.assertEqual(order["id"], "ord1")
+        self.assertEqual(order["status"], "completed")
+        self.assertEqual(order["total"], 100.00)
+        self.assertEqual(len(order["items"]), 2)  # All nested data preserved
+
 # === IfElseNode Tests using unittest ===
 class TestIfElseNodeUnittest(BaseNodeTest):
 

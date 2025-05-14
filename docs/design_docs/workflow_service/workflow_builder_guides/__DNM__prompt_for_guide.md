@@ -1,6 +1,78 @@
 
 # Workflows
 
+## Add node to linkedin scraping workflow
+
+```
+Add a filter_data node in @wf_linkedin_scraping.py to filter profile data and post data to contain only the below fields:
+
+Also add additional saver node to save the raw data in diff raw docname
+
+Posts:
+
+"text": "string",                            // The full content of the post
+
+  "reposted": false,                       // Whether the post is a reshared post
+  "isBrandPartnership": false,             // If the post is marked as brand partnership
+
+  "postedDate": "string (ISO timestamp)",      // Full posted date (UTC)
+  "postedDateTimestamp": "number",  
+  "totalReactionCount": "number",              // Sum of all reactions
+  "commentsCount": "number",                   // Number of comments
+  "repostsCount": "number",                    // Number of reshares
+
+
+Profile:
+
+
+{
+  "data": {
+    "username": "string",                     // LinkedIn public handle
+    "firstName": "string",                    // First name of the profile owner
+    "lastName": "string",                     // Last name of the profile owner
+    "summary": "string",                      // Summary/bio section
+    "headline": "string",                     // Professional headline (title or positioning)
+
+    "geo": {                                  // Geographic location info
+      "country": "string",
+      "city": "string",
+      "full": "string"
+    },
+
+    "educations": [                           // List of education entries
+      {
+        "start": {
+          "year": "number",
+          "month": "number",
+          "day": "number"
+        },
+        "end": {
+          "year": "number",
+          "month": "number",
+          "day": "number"
+        },
+        "fieldOfStudy": "string",
+        "degree": "string",
+        "grade": "string",
+        "schoolName": "string",
+        "description": "string"
+      }
+    ],
+
+    "positions": [                            // List of key job experiences
+      {
+        "companyName": "string",
+        "companyIndustry": "string",
+        "location": "string",
+        "description": "string"
+      }
+    ]
+  }
+}
+
+@flow_nodes.py @filter_node_guide.md 
+```
+
 ## Add node to workflow (best to iteratively add nodes to a workflow ensuring valid flow??)
 
 add Linkedin scraping node which fetches a user profile given their username fetched from the input field and passes to initial prompt constructor to generate a personalized linkedin post referencing the linkedin profile of the user ; modify prompts and how prompt is consturcted and create appropriate edges input -> scraping node -> prompt constructor; toggle fan in in prompt constructor by setting enable_node_fan_in=True in node_config (not nested node_config)

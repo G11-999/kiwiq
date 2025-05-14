@@ -143,7 +143,8 @@ You configure the `FilterNode` within the `node_config` field of its entry in th
             ],
             "group_logical_operator": "and"
           }
-        ]
+        ],
+        "non_target_fields_mode": "allow" // Controls whether fields not explicitly targeted should be allowed (default) or denied
       }
       // dynamic_input_schema / dynamic_output_schema usually not needed unless interacting with dynamic graph state
     }
@@ -156,7 +157,10 @@ You configure the `FilterNode` within the `node_config` field of its entry in th
 ### Key Configuration Sections:
 
 1.  **`targets`** (List): A list where each item defines a specific filtering rule. Rules are applied sequentially. Object-level filters (`filter_target: null`) run first, then list filters, then field filters.
-2.  **Inside each `target`**:
+2.  **`non_target_fields_mode`** (String: `"allow"` or `"deny"`, Default: `"allow"`): Controls how fields not explicitly targeted by filter rules are handled:
+    *   `"allow"` (Default): Keep all fields that aren't explicitly targeted in the final output. Only fields specifically targeted with conditions that fail will be removed.
+    *   `"deny"`: Remove all fields that aren't explicitly targeted with `filter_mode: "allow"`. This creates a "whitelist" approach where only fields explicitly allowed will appear in the output.
+3.  **Inside each `target`**:
     *   **`filter_target`** (String | `null`):
         *   `null`: The rule applies to the *entire input data object*. Use this to decide if the whole object passes or gets filtered out based on conditions evaluated against the full data. Only one target can have `filter_target: null`.
         *   `"path.to.list"`: The rule applies to *items within the list* found at this path (e.g., `"orders"`). Conditions will be evaluated against each item in the list. Use this to remove specific list items.
@@ -203,6 +207,92 @@ You configure the `FilterNode` within the `node_config` field of its entry in th
     -   `not_equals` might evaluate to `true` (since `None != value`).
     -   `not_contains` will evaluate to `true`.
 -   **Target Fields:** If a `filter_target` path does not exist in the data, that specific target rule is skipped gracefully without error. The rest of the data remains unchanged by that rule.
+
+## Using Non-Target Fields Mode for Comprehensive Field Filtering
+
+The `non_target_fields_mode` configuration provides a powerful way to control which fields appear in the filtered output:
+
+### Default Behavior (non_target_fields_mode = "allow")
+
+By default, the filter only removes fields explicitly targeted and filtered by rules. All other fields remain untouched.
+
+### Whitelist Pattern (non_target_fields_mode = "deny")
+
+When set to `"deny"`, any field not explicitly targeted with `filter_mode: "allow"` will be removed from the output. This creates a whitelist pattern where you must explicitly specify each field to keep.
+
+```json
+{
+  "node_config": {
+    "targets": [
+      {"filter_target": "user.name", "filter_mode": "allow", "condition_groups": [
+        {"conditions": [{"field": "user.name", "operator": "is_not_empty"}]}
+      ]},
+      {"filter_target": "user.email", "filter_mode": "allow", "condition_groups": [
+        {"conditions": [{"field": "user.email", "operator": "is_not_empty"}]}
+      ]}
+    ],
+    "non_target_fields_mode": "deny"
+  }
+}
+```
+
+With this configuration, only `user.name` and `user.email` will appear in the output if they pass their conditions. All other fields (like `user.address`, `user.phone`, etc.) will be removed even if they weren't explicitly targeted by a rule.
+
+This is particularly useful for:
+- Creating strict data schemas for downstream nodes
+- Implementing comprehensive PII removal
+- Ensuring only explicitly allowed fields pass through
+
+#### Handling Fields Within Nested Lists
+
+When using `non_target_fields_mode: "deny"` with nested lists, you have two options:
+
+**Option 1: Preserve the entire list item structure**
+
+If you explicitly allow the list itself but don't specify any fields within its items, the list will be treated as a self-contained unit. Each list item that passes any filter conditions will be preserved completely with all its original fields and nested structures.
+
+```json
+{
+  "node_config": {
+    "targets": [
+      // Allow the orders list - only orders with status="completed" will remain
+      {"filter_target": "orders", "filter_mode": "allow", "condition_groups": [
+        {"conditions": [{"field": "orders.status", "operator": "equals", "value": "completed"}]}
+      ]}
+    ],
+    "non_target_fields_mode": "deny"
+  }
+}
+```
+
+This will keep only orders with status="completed", but each remaining order item will retain all its original fields (id, total, items, shipping, etc.). This approach treats the list as already pre-filtered by its own conditions.
+
+**Option 2: Select specific fields within list items**
+
+Alternatively, you can explicitly allow both the list and specific fields within its items:
+
+```json
+{
+  "node_config": {
+    "targets": [
+      // Allow the orders list
+      {"filter_target": "orders", "filter_mode": "allow", "condition_groups": [
+        {"conditions": [{"field": "orders", "operator": "is_not_empty"}]}
+      ]},
+      // Allow specific fields within orders
+      {"filter_target": "orders.id", "filter_mode": "allow", "condition_groups": [
+        {"conditions": [{"field": "orders.id", "operator": "is_not_empty"}]}
+      ]},
+      {"filter_target": "orders.total", "filter_mode": "allow", "condition_groups": [
+        {"conditions": [{"field": "orders.total", "operator": "is_not_empty"}]}
+      ]}
+    ],
+    "non_target_fields_mode": "deny"
+  }
+}
+```
+
+This will preserve the `orders` list but keep only the `id` and `total` fields within each order item. Other fields like `orders.date` or `orders.shipping` will be removed from each item.
 
 ## Input (`DynamicSchema`)
 
@@ -266,7 +356,8 @@ The node produces data matching the `FilterOutputSchema`:
             ],
             "group_logical_operator": "and"
           }
-        ]
+        ],
+        "non_target_fields_mode": "allow" // Default behavior: keep fields not explicitly targeted
       }
     },
     "process_filtered_data": { /* ... node that uses the filtered data ... */ }
@@ -301,6 +392,12 @@ The node produces data matching the `FilterOutputSchema`:
 -   `filter_mode`:
     -   `"allow"`: **Keep ONLY IF** rules match. Good for selecting specific things.
     -   `"deny"`: **REMOVE IF** rules match. Good for excluding bad data or sensitive fields.
+-   `non_target_fields_mode`:
+    -   `"allow"` (default): Fields you didn't mention in your rules stay untouched.
+    -   `"deny"`: Only fields you explicitly targeted with `"allow"` remain in your data; everything else gets removed.
+    -   **When working with lists**: If you use `"deny"` mode with lists (like `"customers"` or `"orders"`), you have two options:
+        -   **Option 1 - Keep everything in list items**: If you only allow the list itself (e.g., `"orders"`), any list items that pass your filter conditions will keep all their fields intact. This is useful when you want to filter which items appear but keep their complete structure.
+        -   **Option 2 - Pick specific fields in list items**: If you allow both the list (e.g., `"orders"`) AND specific fields within it (e.g., `"orders.id"`, `"orders.total"`), only those specific fields will be kept in each list item.
 -   `conditions`: These are your rules.
     -   `field`: Which piece of data are you looking at? (e.g., `"customer_status"`, `"order_total"`, `"tags"`)
     -   `operator`: How are you comparing it? (e.g., `equals`, `greater_than`, `contains`, `is_empty`, `starts_with`)

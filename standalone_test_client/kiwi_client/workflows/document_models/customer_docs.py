@@ -13,6 +13,8 @@ CONTENT_STRATEGY_IS_VERSIONED = True
 LINKEDIN_SCRAPING_NAMESPACE_TEMPLATE = "scraping_results_{item}"
 LINKEDIN_PROFILE_DOCNAME = "linkedin_scraped_profile_doc"  # item refers to entity name input to workflow
 LINKEDIN_POST_DOCNAME = "linkedin_scraped_posts_doc"  # item refers to entity name input to workflow
+LINKEDIN_PROFILE_RAW_DOCNAME = "linkedin_scraped_profile_raw_doc"  # item refers to entity name input to workflow
+LINKEDIN_POST_RAW_DOCNAME = "linkedin_scraped_posts_raw_doc"  # item refers to entity name input to workflow
 
 # User Preferences
 
