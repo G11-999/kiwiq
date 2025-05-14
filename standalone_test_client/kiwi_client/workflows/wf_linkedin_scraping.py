@@ -555,6 +555,19 @@ workflow_graph_schema = {
           },
           # For each post in the list, keep only specific fields
           {
+            "filter_target": "data_to_filter.scraped_posts_job.urn",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "data_to_filter.scraped_posts_job.urn", "operator": "is_not_empty" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          {
             "filter_target": "data_to_filter.scraped_posts_job.text",
             "filter_mode": "allow",
             "condition_groups": [

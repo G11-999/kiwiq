@@ -20,70 +20,28 @@ batch ID -> 10 posts
 """
 
 from kiwi_client.workflows.document_models.customer_docs import (
-    LINKEDIN_PROFILE_DOCNAME,
     LINKEDIN_POST_DOCNAME,
     # Namespace and docname for storing the final analysis result
     LINKEDIN_SCRAPING_NAMESPACE_TEMPLATE,
+    CONTENT_ANALYSIS_DOCNAME,
+    CONTENT_ANALYSIS_NAMESPACE_TEMPLATE,
 )
 
-ANALYSIS_OUTPUT_NAMESPACE = "linkedin_analysis"
-ANALYSIS_OUTPUT_DOCNAME_PATTERN = "content_analysis_{item}"
+from kiwi_client.workflows.llm_inputs.linkedin_content_analysis import (
+    EXTRACTED_THEMES_SCHEMA,
+    BATCH_CLASSIFICATION_SCHEMA,
+    THEME_ANALYSIS_REPORT_SCHEMA,
+    THEME_EXTRACTION_USER_PROMPT_TEMPLATE,
+    THEME_EXTRACTION_SYSTEM_PROMPT_TEMPLATE,
+    POST_CLASSIFICATION_USER_PROMPT_TEMPLATE,
+    POST_CLASSIFICATION_SYSTEM_PROMPT_TEMPLATE,
+    THEME_ANALYSIS_USER_PROMPT_TEMPLATE,
+    THEME_ANALYSIS_SYSTEM_PROMPT_TEMPLATE,
+)
 
 import json
 import asyncio
 from typing import List, Optional, Dict, Any, Literal
-
-# --- Pydantic Schemas for LLM Outputs (Examples) ---
-from pydantic import BaseModel, Field
-
-# --- Internal Imports ---
-# Assuming DataJoinNode is available via registry
-# from workflow_service.registry.nodes.data_ops.transform_node import JoinType
-
-# --- Mock JoinType if not importable ---
-from enum import Enum
-class JoinType(str, Enum):
-    ONE_TO_ONE = "one_to_one"
-    ONE_TO_MANY = "one_to_many"
-# --- End Mock ---
-
-
-class ThemeSchema(BaseModel):
-    """Schema for a single extracted theme."""
-    theme_id: str = Field(..., description="Unique identifier for the theme (e.g., 'theme_1', 'theme_2').")
-    theme_name: str = Field(..., description="Concise name or title for the theme.")
-    theme_description: str = Field(..., description="Brief description of the theme's core idea based on the posts.")
-
-class ExtractedThemesOutput(BaseModel):
-    """Schema for the output of the theme extraction LLM."""
-    # NOTE: openAI fails with custom schema
-    themes: List[ThemeSchema] = Field(..., description="List of extracted themes, up to 5.")
-
-class PostClassificationSchema(BaseModel):
-    """Schema for classifying a single post."""
-    post_id: str = Field(..., description="The unique identifier (URN) of the post being classified.")
-    reasoning: str = Field(..., description="Brief explanation for why the theme was assigned.")
-    assigned_theme_id: str = Field(..., description="The theme_id from the provided list that best fits this post.")
-    confidence_score: float = Field(..., description="Confidence score (0.0 to 1.0) for the theme assignment.")
-
-class BatchClassificationOutput(BaseModel):
-    """Schema for the output of the batch classification LLM."""
-    classifications: List[PostClassificationSchema] = Field(..., description="List of classifications for each post in the batch.")
-
-class ThemeAnalysisReportSchema(BaseModel):
-    """Schema for the output of the theme group analysis LLM."""
-    theme_id: str = Field(..., description="The ID of the theme being analyzed.")
-    theme_name: str = Field(..., description="The name of the theme being analyzed.")
-    analysis_summary: str = Field(..., description="A concise summary of the key insights derived from the posts in this theme group.")
-    key_talking_points: List[str] = Field(..., description="Bulleted list of significant points, arguments, or topics mentioned within this theme.")
-    sentiment_overview: str = Field(..., description="Overall sentiment (e.g., positive, negative, neutral, mixed) observed in the posts for this theme.")
-    # potential_engagement_drivers: List[str] = Field(..., description="Factors within these posts that likely drive engagement.") # Example additional field
-
-class CombinedAnalysisOutput(BaseModel):
-    """Schema for the final combined analysis report."""
-    entity_name: str = Field(..., description="The LinkedIn entity name analyzed.")
-    overall_summary: str = Field(..., description="A high-level summary combining insights from all theme reports.")
-    theme_reports: List[ThemeAnalysisReportSchema] = Field(..., description="List of detailed analysis reports for each theme.")
 
 
 # --- Workflow Constants ---
@@ -109,7 +67,7 @@ workflow_graph_schema = {
       "node_config": {},
       "dynamic_output_schema": {
           "fields": {
-              "entity_name": { "type": "str", "required": True, "description": "Name of the LinkedIn entity (person or company) whose posts are to be analyzed." },
+              "entity_username": { "type": "str", "required": True, "description": "Name of the LinkedIn entity (person or company) whose posts are to be analyzed." },
           }
         }
     },
@@ -126,7 +84,7 @@ workflow_graph_schema = {
               {
                   "filename_config": {
                       "input_namespace_field_pattern": LINKEDIN_SCRAPING_NAMESPACE_TEMPLATE, 
-                      "input_namespace_field": "entity_name",
+                      "input_namespace_field": "entity_username",
                       "static_docname": LINKEDIN_POST_DOCNAME,
                   },
                   "output_field_name": "raw_posts_data" # Expect output containing LinkedIn posts
@@ -139,7 +97,7 @@ workflow_graph_schema = {
               "raw_posts_data": { "type": "list", "required": True, "description": "List of posts from the LinkedIn entity." },
           }
         }
-      # Input: entity_name
+      # Input: entity_username
       # Output: {"raw_posts_data": [list_of_posts]}
     },
 
@@ -152,34 +110,24 @@ workflow_graph_schema = {
           "theme_user_prompt": {
             "id": "theme_user_prompt",
             # Template expects a single JSON string containing the list of posts (or just texts)
-            "template": """Analyze the following LinkedIn posts from '{entity_name}'. Identify up to 5 core themes or topics discussed across these posts. For each theme, provide a concise name, a brief description, and assign a unique ID (e.g., theme_1, theme_2).
-
-            Posts:
-            ```json
-            {posts_json}
-            ```
-
-            Respond ONLY with the JSON object matching the specified schema.
-            """,
+            "template": THEME_EXTRACTION_USER_PROMPT_TEMPLATE,
             "variables": {
-              "entity_name": None, # Mapped from state
               "posts_json": None # Mapped from prepare_posts
             },
             "construct_options": {
-                "entity_name": "entity_name",
                  # Map the list directly, prompt constructor might handle JSON conversion
                 "posts_json": "prepared_posts_list" # Expect this field in input
             }
           },
           "theme_system_prompt": {
             "id": "theme_system_prompt",
-            "template": "You are an expert analyst specialized in identifying underlying themes in professional social media content. Respond only with the JSON output conforming to the schema: ```json\n{schema}\n```",
-            "variables": { "schema": ExtractedThemesOutput.model_json_schema() }, # Pass schema as string
+            "template": THEME_EXTRACTION_SYSTEM_PROMPT_TEMPLATE,
+            "variables": { "schema":  EXTRACTED_THEMES_SCHEMA}, # Pass schema as string
             "construct_options": {}
           }
         }
       }
-      # Input: entity_name (from state), prepared_posts_list (from prepare_posts)
+      # Input: entity_username (from state), prepared_posts_list (from prepare_posts)
       # Output: user_prompt, system_prompt
     },
     "extract_themes": {
@@ -192,7 +140,7 @@ workflow_graph_schema = {
               "max_tokens": LLM_MAX_TOKENS_THEMES
             },
             "output_schema": {
-                "schema_definition": ExtractedThemesOutput.model_json_schema()
+                "schema_definition": EXTRACTED_THEMES_SCHEMA
             }
         }
         # Input: user_prompt, system_prompt (from construct_theme_extraction_prompt)
@@ -230,20 +178,7 @@ workflow_graph_schema = {
         "prompt_templates": {
           "classify_user_prompt": {
             "id": "classify_user_prompt",
-            "template": """Given the following themes:
-            ```json
-            {themes_json}
-            ```
-
-            Classify each of the posts in the batch below according to the *most relevant* theme from the list. For each post, provide its ID -- Don't generate it, use the post URN from the 'urn' field from the input post data, its a number and will be the post_id, the assigned theme ID, a confidence score (0.0-1.0), and a brief reasoning. Assign a theme even if confidence is low, but reflect it in the score.
-
-            Posts Batch (use 'urn' as the ID for classification):
-            ```json
-            {posts_batch_json}
-            ```
-
-            Respond ONLY with the JSON object matching the specified schema.
-            """,
+            "template": POST_CLASSIFICATION_USER_PROMPT_TEMPLATE,
             "variables": {
               "themes_json": None,      # Mapped from state (extracted_themes_list)
               "posts_batch_json": None # Mapped from input (post_batch field)
@@ -256,8 +191,8 @@ workflow_graph_schema = {
           },
           "classify_system_prompt": {
             "id": "classify_system_prompt",
-            "template": "You are an AI assistant tasked with classifying text content into predefined themes. Use the 'urn' field from the input posts as the 'post_id' in your output. Follow the instructions precisely and respond only with the JSON output conforming to the schema: ```json\n{schema}\n```",
-            "variables": { "schema": json.dumps(BatchClassificationOutput.model_json_schema(), indent=2) },
+            "template": POST_CLASSIFICATION_SYSTEM_PROMPT_TEMPLATE,
+            "variables": { "schema": json.dumps(BATCH_CLASSIFICATION_SCHEMA, indent=2) },
             "construct_options": {}
           }
         }
@@ -278,7 +213,7 @@ workflow_graph_schema = {
                 "max_tokens": LLM_MAX_TOKENS_CLASSIFY
             },
             "output_schema": {
-                "schema_definition": BatchClassificationOutput.model_json_schema()
+                "schema_definition": BATCH_CLASSIFICATION_SCHEMA
             }
         }
         # Input (private): user_prompt, system_prompt
@@ -302,6 +237,7 @@ workflow_graph_schema = {
                         "reduce_phase": {
                             # Use 'append' or similar list flattening reducer
                             "default_reducer": "nested_merge_aggregate", # Assuming 'append_flatten' exists
+                            "error_strategy": "fail_node",
                         },
                         # "post_merge_transformations": {
                         #     # Key doesn't matter for non-dict, config is used
@@ -309,7 +245,7 @@ workflow_graph_schema = {
                         #         "operation_type": "recursive_flatten_list"
                         #     }
                         # },
-                        "error_strategy": "fail_node"
+                        
                     }
                 }
             ]
@@ -338,7 +274,7 @@ workflow_graph_schema = {
                     "primary_join_key": "urn", # Assuming 'urn' is the unique ID in prepared posts
                     "secondary_join_key": "post_id", # Matches 'urn' based on classification prompt
                     "output_nesting_field": "mapped_theme", # Nest classification under this key in post
-                    "join_type": JoinType.ONE_TO_ONE
+                    "join_type": "one_to_one"
                 }
             ]
         },
@@ -359,7 +295,7 @@ workflow_graph_schema = {
                     "primary_join_key": "theme_id", # Key in ThemeSchema
                     "secondary_join_key": "mapped_theme.assigned_theme_id", # Key nested in post object
                     "output_nesting_field": "mapped_posts", # Nest list of posts under this key in theme
-                    "join_type": JoinType.ONE_TO_MANY
+                    "join_type": "one_to_many"
                 }
             ]
         },
@@ -399,20 +335,8 @@ workflow_graph_schema = {
           "analyze_user_prompt": {
             "id": "analyze_user_prompt",
             # Template expects a single theme group object (theme info + mapped_posts list)
-            "template": """Analyze the following theme group for the entity '{entity_name}'. The group focuses on the theme '{theme_name}' ({theme_id}).
-            Analyze the provided posts associated with this theme (found in the 'mapped_posts' field) to generate a detailed report including a summary, key talking points, and sentiment overview.
-
-            Theme Description: {theme_description}
-
-            Posts in this theme group (under 'mapped_posts'):
-            ```json
-            {theme_group_json}
-            ```
-
-            Respond ONLY with the JSON object matching the specified schema.
-            """,
+            "template": THEME_ANALYSIS_USER_PROMPT_TEMPLATE,
             "variables": {
-              "entity_name": None, # Mapped from state
               "theme_id": None,    # Mapped from theme_group_data input
               "theme_name": None,  # Mapped from theme_group_data input
               "theme_description": None, # Mapped from theme_group_data input
@@ -420,7 +344,6 @@ workflow_graph_schema = {
             },
             # Assumes input 'theme_group_data' has keys: theme_id, theme_name, theme_description, mapped_posts
             "construct_options": {
-                "entity_name": "entity_name",
                 "theme_id": "theme_group_data.theme_id",
                 "theme_name": "theme_group_data.theme_name",
                 "theme_description": "theme_group_data.theme_description",
@@ -429,13 +352,13 @@ workflow_graph_schema = {
           },
           "analyze_system_prompt": {
             "id": "analyze_system_prompt",
-            "template": "You are a strategic content analyst. Generate insightful reports based on grouped content data (posts are under the 'mapped_posts' key). Respond only with the JSON output conforming to the schema: ```json\n{schema}\n```",
-            "variables": { "schema": json.dumps(ThemeAnalysisReportSchema.model_json_schema(), indent=2) },
+            "template": THEME_ANALYSIS_SYSTEM_PROMPT_TEMPLATE,
+            "variables": { "schema": json.dumps(THEME_ANALYSIS_REPORT_SCHEMA, indent=2) },
             "construct_options": {}
           }
         }
       }
-      # Input (private): {"theme_group_data": {...}}, entity_name (from state)
+      # Input (private): {"theme_group_data": {...}}, entity_username (from state)
       # Output (private): user_prompt, system_prompt
     },
     "analyze_theme_group": {
@@ -451,7 +374,7 @@ workflow_graph_schema = {
                 "max_tokens": LLM_MAX_TOKENS_ANALYSIS
             },
             "output_schema": {
-                "schema_definition": ThemeAnalysisReportSchema.model_json_schema()
+                "schema_definition": THEME_ANALYSIS_REPORT_SCHEMA
             }
         }
         # Input (private): user_prompt, system_prompt
@@ -464,7 +387,7 @@ workflow_graph_schema = {
         "node_name": "transform_data", # Or a custom node
         "node_config": {
             "mappings": [
-                { "source_path": "entity_name", "destination_path": "final_report_data.entity_name"},
+                { "source_path": "entity_username", "destination_path": "final_report_data.entity_username"},
                 # Embed the collected list of report objects
                 { "source_path": "all_reports_list", "destination_path": "final_report_data.theme_reports"},
             ]
@@ -473,10 +396,10 @@ workflow_graph_schema = {
         # "dynamic_input_schema": {
         #      "fields": {
         #         "all_reports_list": {"type": "list", "required": True},
-        #          "entity_name": {"type": "str", "required": True}, 
+        #          "entity_username": {"type": "str", "required": True}, 
         #      }
         #  }
-        # Input: all_reports_list (from state: all_theme_reports), entity_name (from state), static_summary (provided statically or from another node)
+        # Input: all_reports_list (from state: all_theme_reports), entity_username (from state), static_summary (provided statically or from another node)
         # Output: transformed_data -> fin
     },
 
@@ -492,15 +415,15 @@ workflow_graph_schema = {
             "input_field_path": "transformed_data.final_report_data", # From combine_reports output
             "target_path": {
               "filename_config": {
-                "static_namespace": ANALYSIS_OUTPUT_NAMESPACE,
-                "input_docname_field": "entity_name", # From state via edge mapping
-                "input_docname_field_pattern": ANALYSIS_OUTPUT_DOCNAME_PATTERN
+                "input_namespace_field_pattern": CONTENT_ANALYSIS_NAMESPACE_TEMPLATE, 
+                "input_namespace_field": "entity_username",
+                "static_docname": CONTENT_ANALYSIS_DOCNAME,
               }
             }
           }
         ]
       }
-      # Input: final_report_data (from combine_reports), entity_name (from $graph_state)
+      # Input: final_report_data (from combine_reports), entity_username (from $graph_state)
       # Output: passthrough_data, paths_processed
     },
 
@@ -512,7 +435,7 @@ workflow_graph_schema = {
       # "dynamic_input_schema": {
       #     "fields": {
       #         "analysis_storage_path": { "type": "list", "required": False, "description": "Path where the final analysis report was stored." },
-      #         "processed_entity_name": { "type": "str", "required": False, "description": "The name of the entity processed." }
+      #         "processed_entity_username": { "type": "str", "required": False, "description": "The name of the entity processed." }
       #     }
       #   }
     }
@@ -522,11 +445,11 @@ workflow_graph_schema = {
   "edges": [
     # --- Input & Setup ---
     { "src_node_id": "input_node", "dst_node_id": "$graph_state", "mappings": [
-        { "src_field": "entity_name", "dst_field": "entity_name", "description": "Store entity name globally." }
+        { "src_field": "entity_username", "dst_field": "entity_username", "description": "Store entity name globally." }
       ]
     },
     { "src_node_id": "input_node", "dst_node_id": "load_posts", "mappings": [
-        { "src_field": "entity_name", "dst_field": "entity_name", "description": "Pass entity name to load posts."}
+        { "src_field": "entity_username", "dst_field": "entity_username", "description": "Pass entity name to load posts."}
       ]
     },
     # Store prepared posts list in state for later joins
@@ -536,10 +459,6 @@ workflow_graph_schema = {
     },
 
     # --- Step 4: Theme Extraction ---
-    { "src_node_id": "$graph_state", "dst_node_id": "construct_theme_extraction_prompt", "mappings": [
-        { "src_field": "entity_name", "dst_field": "entity_name"}
-      ]
-    },
     { "src_node_id": "load_posts", "dst_node_id": "construct_theme_extraction_prompt", "mappings": [
          # Pass the list needed for the prompt
          { "src_field": "raw_posts_data", "dst_field": "prepared_posts_list"}
@@ -632,11 +551,6 @@ workflow_graph_schema = {
       ]
     },
 
-    { "src_node_id": "$graph_state", "dst_node_id": "construct_analysis_prompt", "mappings": [
-        { "src_field": "entity_name", "dst_field": "entity_name"}
-        # theme_group_data is passed via mapper node automatically
-      ]
-    },
     { "src_node_id": "construct_analysis_prompt", "dst_node_id": "analyze_theme_group", "mappings": [
         { "src_field": "analyze_user_prompt", "dst_field": "user_prompt"},
         { "src_field": "analyze_system_prompt", "dst_field": "system_prompt"}
@@ -653,7 +567,7 @@ workflow_graph_schema = {
     },
     { "src_node_id": "$graph_state", "dst_node_id": "combine_reports", "mappings": [
         { "src_field": "all_theme_reports", "dst_field": "all_reports_list"},
-        { "src_field": "entity_name", "dst_field": "entity_name"},
+        { "src_field": "entity_username", "dst_field": "entity_username"},
       ]
     },
 
@@ -663,7 +577,7 @@ workflow_graph_schema = {
       ]
     },
     { "src_node_id": "$graph_state", "dst_node_id": "store_analysis", "mappings": [
-        { "src_field": "entity_name", "dst_field": "entity_name" }
+        { "src_field": "entity_username", "dst_field": "entity_username" }
       ]
     },
 
@@ -673,7 +587,7 @@ workflow_graph_schema = {
       ]
     },
     { "src_node_id": "$graph_state", "dst_node_id": "output_node", "mappings": [
-        { "src_field": "entity_name", "dst_field": "processed_entity_name" },
+        { "src_field": "entity_username", "dst_field": "processed_entity_username" },
         # NOTE: BUG: this field changes types from dict to list due to aggregation!
         #     So disabling this and piping output via another route!
         # { "src_field": "all_theme_reports", "dst_field": "all_reports_list"},
@@ -693,7 +607,7 @@ workflow_graph_schema = {
           "all_classifications_batches": "collect_values", # Collect lists of lists from each batch classification
           "all_theme_reports": "collect_values",   # Collect report objects from each theme analysis
           # Other state variables
-        #   "entity_name": "replace",
+        #   "entity_username": "replace",
         #   "prepared_posts_list": "replace", # Store the prepared posts list
         #   "extracted_themes_output": "replace",
         #   "extracted_themes_list": "replace"
@@ -724,7 +638,7 @@ logger = logging.getLogger(__name__)
 
 # Example Input
 TEST_INPUTS = {
-    "entity_name": "sytalal" # Replace with a real entity name for testing
+    "entity_username": "sytalal" # Replace with a real entity name for testing
 }
 
 async def validate_output(outputs: Optional[Dict[str, Any]]) -> bool:
@@ -732,8 +646,8 @@ async def validate_output(outputs: Optional[Dict[str, Any]]) -> bool:
     assert outputs is not None, "Validation Failed: Workflow returned no outputs."
     logger.info("Validating LinkedIn content analysis workflow outputs...")
     assert 'analysis_storage_path' in outputs, "Validation Failed: 'analysis_storage_path' key missing."
-    assert 'processed_entity_name' in outputs, "Validation Failed: 'processed_entity_name' key missing."
-    assert outputs['processed_entity_name'] == TEST_INPUTS['entity_name'], "Validation Failed: Entity name mismatch."
+    assert 'processed_entity_username' in outputs, "Validation Failed: 'processed_entity_username' key missing."
+    assert outputs['processed_entity_username'] == TEST_INPUTS['entity_username'], "Validation Failed: Entity name mismatch."
     assert isinstance(outputs.get('analysis_storage_path'), list), "Validation Failed: analysis_storage_path should be a list."
     assert len(outputs.get('analysis_storage_path', [])) > 0, "Validation Failed: analysis_storage_path is empty."
     # Add more checks if needed, e.g., structure of stored data
@@ -742,14 +656,12 @@ async def validate_output(outputs: Optional[Dict[str, Any]]) -> bool:
     return True
 
 async def main_test_linkedin_analysis():
-    test_name = "LinkedIn Content Analysis Workflow Test V2 (with Joins)"
+    test_name = "LinkedIn Content Analysis Workflow Test V2 -with Joins"
     print(f"--- Starting {test_name} --- ")
-
-    entity_name = TEST_INPUTS['entity_name']
 
     # # --- Define Setup & Cleanup Docs ---
     # # Setup: Create the input posts document expected by load_posts
-    # input_posts_docname = LINKEDIN_POST_DOCNAME_PATTERN.format(item=entity_name) # e.g., "posts_TestEntityLinkedIn"
+    # input_posts_docname = LINKEDIN_POST_DOCNAME_PATTERN.format(item=entity_username) # e.g., "posts_TestEntityLinkedIn"
     # # Example post data (replace with realistic scraped data)
     # example_posts_data = [
     #     {"urn": "urn:li:share:1", "text": "This is the first post about topic A."},
@@ -768,7 +680,7 @@ async def main_test_linkedin_analysis():
     # # ]
 
     # # Cleanup: Remove the input posts doc and the generated analysis doc
-    # output_analysis_docname = ANALYSIS_OUTPUT_DOCNAME_PATTERN.format(item=entity_name)
+    # output_analysis_docname = ANALYSIS_OUTPUT_DOCNAME_PATTERN.format(item=entity_username)
     # # cleanup_docs: List[CleanupDocInfo] = [
     # #     {'namespace': LINKEDIN_SCRAPING_NAMESPACE, 'docname': input_posts_docname, 'is_versioned': False, 'is_shared': False},
     # #     {'namespace': ANALYSIS_OUTPUT_NAMESPACE, 'docname': output_analysis_docname, 'is_versioned': False, 'is_shared': False},
