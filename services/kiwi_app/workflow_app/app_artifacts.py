@@ -252,7 +252,6 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
         "entity_url": null
       },
       "user_documents_config_variables": {
-        "entity_username": null
       },
       "template_specific": false
     },
@@ -270,12 +269,19 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
       "name": "sources_extraction_workflow",
       "version": null,
       "inputs": {
-        "source_docs": {
-          "load_configs_input_path": "uploaded_files_configs"
-        }
+        "documents_to_process": [
+            {
+                "filename_config": {
+                    "input_namespace_field_pattern": "uploaded_files_{item}", 
+                    "input_namespace_field": "entity_username",
+                    "static_docname": null
+                },
+                "output_field_name": "loaded_documents"
+            }
+        ],
+        "entity_username": null
       },
       "user_documents_config_variables": {
-        "entity_username": null
       },
       "template_specific": false
     },
