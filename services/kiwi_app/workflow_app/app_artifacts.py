@@ -260,19 +260,9 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
       "name": "linkedin_content_analysis_workflow",
       "version": null,
       "inputs": {
-        "scraped_posts_doc": {
-          "filename_config": {
-            "static_namespace": "user_identity",
-            "input_docname_field": "entity_username",
-            "input_docname_field_pattern": "linkedin_scraped_posts_doc_{item}"
-          },
-          "output_field_name": "scraped_posts",
-          "is_shared": "$filename:linkedin_scraped_posts_doc.is_shared",
-          "is_system_entity": "$filename:linkedin_scraped_posts_doc.is_system_entity"
-        }
+        "entity_username": null
       },
       "user_documents_config_variables": {
-        "entity_username": null
       },
       "template_specific": false
     },
