@@ -1110,7 +1110,7 @@ class GetBuiltDocConfigsRequest(BaseModel):
         False, 
         description="If True, 'variables' is a Dict[doc_key, Dict[var_name, value]]. Else, flat Dict applied to all."
     )
-    partial_build: bool = Field(False, description="If true, performs a partial build allowing missing variables.")
+    partial_build: bool = Field(True, description="If true, performs a partial build allowing missing variables.")
     # documents_config removed, will use DEFAULT_USER_DOCUMENTS_CONFIG
 
 class BuiltDocConfigItem(BaseModel):
