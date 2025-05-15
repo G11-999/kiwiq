@@ -726,7 +726,7 @@ class FileUploadConfig(BaseModel):
     is_system_entity: bool = Field(False, description="Whether this is a system entity (superusers only).")
     on_behalf_of_user_id: Optional[uuid.UUID] = Field(None, description="Act on behalf of another user (superusers only, requires is_shared=False).")
 
-    mode: FileUploadModeEnum = Field(FileUploadModeEnum.create, description="Upload mode: 'create' (fail if exists) or 'upsert' (create or update).")
+    mode: FileUploadModeEnum = Field(FileUploadModeEnum.upsert, description="Upload mode: 'create' (fail if exists) or 'upsert' (create or update).")
     is_versioned: bool = Field(False, description="Whether to store the file content as a versioned document.")
 
     versioned_config: Optional[FileUploadVersionedConfig] = Field(None, description="Configuration for versioned uploads. Required if is_versioned is True.")
