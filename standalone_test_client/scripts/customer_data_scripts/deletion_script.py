@@ -382,7 +382,7 @@ async def main():
         "on_behalf_of_user_id": None,  # b853073c-200e-40ca-abaf-cbff9265d0d8   700ddb39-23b2-4426-be12-9db263a9c7a8
         "dry_run": False,
         "no_confirm": True,
-        "deletion_mode": "pattern"
+        "deletion_mode": "individual"
     }
     
     parser = argparse.ArgumentParser(description="Delete customer data documents within a namespace.")
