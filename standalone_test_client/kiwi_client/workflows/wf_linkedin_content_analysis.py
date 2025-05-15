@@ -638,7 +638,7 @@ logger = logging.getLogger(__name__)
 
 # Example Input
 TEST_INPUTS = {
-    "entity_username": "sytalal" # Replace with a real entity name for testing
+    "entity_username": "test_username" # Replace with a real entity name for testing
 }
 
 async def validate_output(outputs: Optional[Dict[str, Any]]) -> bool:
@@ -659,32 +659,290 @@ async def main_test_linkedin_analysis():
     test_name = "LinkedIn Content Analysis Workflow Test V2 -with Joins"
     print(f"--- Starting {test_name} --- ")
 
+    CREATE_FAKE_POSTS = True
+    entity_username = TEST_INPUTS["entity_username"]
+    test_scraping_namespace = LINKEDIN_SCRAPING_NAMESPACE_TEMPLATE.format(item=entity_username)
+    
     # # --- Define Setup & Cleanup Docs ---
-    # # Setup: Create the input posts document expected by load_posts
-    # input_posts_docname = LINKEDIN_POST_DOCNAME_PATTERN.format(item=entity_username) # e.g., "posts_TestEntityLinkedIn"
-    # # Example post data (replace with realistic scraped data)
-    # example_posts_data = [
-    #     {"urn": "urn:li:share:1", "text": "This is the first post about topic A."},
-    #     {"urn": "urn:li:share:2", "text": "Second post, also related to topic A and a bit of B."},
-    #     {"urn": "urn:li:share:3", "text": "A post primarily discussing topic B."},
-    #     {"urn": "urn:li:share:4", "text": "Exploring topic C in this post."},
-    #     {"urn": "urn:li:share:5", "text": "Topic B discussion continued."},
-    #     # Add more posts... up to POST_BATCH_SIZE * num_batches if needed for full test
-    # ]
-    # # setup_docs: List[SetupDocInfo] = [
-    # #     {
-    # #         'namespace': LINKEDIN_SCRAPING_NAMESPACE, 'docname': input_posts_docname, 'is_versioned': False,
-    # #         'initial_data': example_posts_data, # Store the list directly
-    # #         'is_shared': False, 'is_system_entity': False,
-    # #     }
-    # # ]
+    # Setup: Create the input posts document expected by load_posts
+    # Example post data (replace with realistic scraped data)
+    example_posts_data = [
+        # AI and Machine Learning Topic Group
+        {
+            "urn": "urn:li:share:1",
+            "text": "Excited to announce our new AI-powered analytics platform that helps businesses make data-driven decisions faster than ever before. #DataScience #AI #BusinessIntelligence",
+            "reposted": False,
+            "isBrandPartnership": False,
+            "postedDate": "2023-05-15",
+            "postedDateTimestamp": 1684108800,
+            "totalReactionCount": 156,
+            "commentsCount": 23,
+            "repostsCount": 12
+        },
+        {
+            "urn": "urn:li:share:2",
+            "text": "Just published a new article on how machine learning is transforming customer experience in the financial sector. Check it out in the link below! #MachineLearning #FinTech #CustomerExperience",
+            "reposted": False,
+            "isBrandPartnership": False,
+            "postedDate": "2023-05-10",
+            "postedDateTimestamp": 1683676800,
+            "totalReactionCount": 89,
+            "commentsCount": 14,
+            "repostsCount": 7
+        },
+        {
+            "urn": "urn:li:share:3",
+            "text": "Our AI research team just made a breakthrough in natural language processing that improves sentiment analysis accuracy by 23%. This will revolutionize how companies understand customer feedback. #AI #NLP #MachineLearning",
+            "reposted": False,
+            "isBrandPartnership": False,
+            "postedDate": "2023-04-28",
+            "postedDateTimestamp": 1682640000,
+            "totalReactionCount": 203,
+            "commentsCount": 35,
+            "repostsCount": 19
+        },
+        {
+            "urn": "urn:li:share:4",
+            "text": "The future of AI is not just about automation, but augmentation. How can we design systems that enhance human capabilities rather than replace them? Thoughts? #AI #FutureOfWork #HumanAICollaboration",
+            "reposted": False,
+            "isBrandPartnership": False,
+            "postedDate": "2023-04-15",
+            "postedDateTimestamp": 1681516800,
+            "totalReactionCount": 178,
+            "commentsCount": 42,
+            "repostsCount": 15
+        },
+        
+        # Healthcare Technology Topic Group
+        {
+            "urn": "urn:li:share:5",
+            "text": "Honored to speak at the Global Tech Summit next month about the ethical implications of AI in healthcare. Looking forward to connecting with industry leaders and innovators! #HealthTech #AIEthics #TechConference",
+            "reposted": False,
+            "isBrandPartnership": False,
+            "postedDate": "2023-05-05",
+            "postedDateTimestamp": 1683244800,
+            "totalReactionCount": 211,
+            "commentsCount": 31,
+            "repostsCount": 18
+        },
+        {
+            "urn": "urn:li:share:6",
+            "text": "Our new telemedicine platform has helped rural communities access specialized healthcare services, reducing diagnosis time by 40%. Technology can truly bridge healthcare gaps. #HealthTech #Telemedicine #RuralHealthcare",
+            "reposted": False,
+            "isBrandPartnership": True,
+            "postedDate": "2023-03-22",
+            "postedDateTimestamp": 1679443200,
+            "totalReactionCount": 167,
+            "commentsCount": 29,
+            "repostsCount": 24
+        },
+        {
+            "urn": "urn:li:share:7",
+            "text": "Wearable health monitoring devices are generating unprecedented amounts of patient data. How do we balance privacy concerns with the potential for improved health outcomes? #HealthTech #DataPrivacy #WearableTech",
+            "reposted": False,
+            "isBrandPartnership": False,
+            "postedDate": "2023-03-10",
+            "postedDateTimestamp": 1678406400,
+            "totalReactionCount": 132,
+            "commentsCount": 27,
+            "repostsCount": 14
+        },
+        
+        # Cloud Computing Topic Group
+        {
+            "urn": "urn:li:share:8",
+            "text": "Our team just completed a successful implementation of a cloud migration strategy for a Fortune 500 client, resulting in 40% cost reduction and improved system reliability. Proud of what we've accomplished! #CloudComputing #DigitalTransformation #ProjectSuccess",
+            "reposted": False,
+            "isBrandPartnership": False,
+            "postedDate": "2023-04-28",
+            "postedDateTimestamp": 1682640000,
+            "totalReactionCount": 178,
+            "commentsCount": 27,
+            "repostsCount": 15
+        },
+        {
+            "urn": "urn:li:share:9",
+            "text": "Multi-cloud strategies are becoming essential for enterprise resilience. Our latest case study shows how we helped a client avoid vendor lock-in while optimizing for performance. #CloudComputing #MultiCloud #EnterpriseIT",
+            "reposted": False,
+            "isBrandPartnership": False,
+            "postedDate": "2023-02-18",
+            "postedDateTimestamp": 1676678400,
+            "totalReactionCount": 95,
+            "commentsCount": 18,
+            "repostsCount": 12
+        },
+        {
+            "urn": "urn:li:share:10",
+            "text": "Serverless architecture isn't just about cost savings—it's about developer productivity and faster time-to-market. Here's how we're implementing it for our startup clients. #Serverless #CloudComputing #DevOps",
+            "reposted": False,
+            "isBrandPartnership": False,
+            "postedDate": "2023-02-05",
+            "postedDateTimestamp": 1675555200,
+            "totalReactionCount": 143,
+            "commentsCount": 22,
+            "repostsCount": 17
+        },
+        
+        # Blockchain and Cryptocurrency Topic Group
+        {
+            "urn": "urn:li:share:11",
+            "text": "Interesting research on how blockchain technology is being applied to supply chain management. The potential for transparency and efficiency gains is remarkable. #Blockchain #SupplyChain #Innovation",
+            "reposted": True,
+            "isBrandPartnership": False,
+            "postedDate": "2023-04-20",
+            "postedDateTimestamp": 1681948800,
+            "totalReactionCount": 132,
+            "commentsCount": 19,
+            "repostsCount": 22
+        },
+        {
+            "urn": "urn:li:share:12",
+            "text": "Beyond cryptocurrency: How blockchain is revolutionizing identity verification and reducing fraud in financial services. Our team's latest project cut verification times by 75%. #Blockchain #DigitalIdentity #FinTech",
+            "reposted": False,
+            "isBrandPartnership": False,
+            "postedDate": "2023-01-25",
+            "postedDateTimestamp": 1674604800,
+            "totalReactionCount": 187,
+            "commentsCount": 31,
+            "repostsCount": 26
+        },
+        {
+            "urn": "urn:li:share:13",
+            "text": "Smart contracts are eliminating intermediaries in legal agreements, but what are the implications for regulatory compliance? Join our webinar next week to learn more. #Blockchain #SmartContracts #LegalTech",
+            "reposted": False,
+            "isBrandPartnership": True,
+            "postedDate": "2023-01-12",
+            "postedDateTimestamp": 1673481600,
+            "totalReactionCount": 112,
+            "commentsCount": 24,
+            "repostsCount": 19
+        },
+        
+        # Career and Hiring Topic Group
+        {
+            "urn": "urn:li:share:14",
+            "text": "Thrilled to announce that we're expanding our team! Looking for talented data scientists and ML engineers who are passionate about solving complex problems. DM me if interested or tag someone who might be a good fit. #Hiring #DataScience #MachineLearning #JobOpportunity",
+            "reposted": False,
+            "isBrandPartnership": False,
+            "postedDate": "2023-04-15",
+            "postedDateTimestamp": 1681516800,
+            "totalReactionCount": 245,
+            "commentsCount": 42,
+            "repostsCount": 31
+        },
+        {
+            "urn": "urn:li:share:15",
+            "text": "Career advice for tech professionals: Specialize deeply, but maintain breadth of knowledge. T-shaped skills are still the most valuable in our rapidly evolving industry. #CareerAdvice #TechCareers #ProfessionalDevelopment",
+            "reposted": False,
+            "isBrandPartnership": False,
+            "postedDate": "2022-12-10",
+            "postedDateTimestamp": 1670630400,
+            "totalReactionCount": 321,
+            "commentsCount": 57,
+            "repostsCount": 42
+        },
+        {
+            "urn": "urn:li:share:16",
+            "text": "Remote work has transformed our hiring strategy. We're now able to access global talent and build more diverse teams. How has your organization adapted? #RemoteWork #Hiring #WorkplaceEvolution",
+            "reposted": False,
+            "isBrandPartnership": False,
+            "postedDate": "2022-11-28",
+            "postedDateTimestamp": 1669593600,
+            "totalReactionCount": 276,
+            "commentsCount": 48,
+            "repostsCount": 33
+        },
+        
+        # Cybersecurity Topic Group
+        {
+            "urn": "urn:li:share:17",
+            "text": "The rise in ransomware attacks demands a new approach to cybersecurity. Our latest white paper outlines a zero-trust architecture that has proven effective for our enterprise clients. #Cybersecurity #ZeroTrust #RansomwareProtection",
+            "reposted": False,
+            "isBrandPartnership": False,
+            "postedDate": "2022-11-15",
+            "postedDateTimestamp": 1668470400,
+            "totalReactionCount": 198,
+            "commentsCount": 34,
+            "repostsCount": 27
+        },
+        {
+            "urn": "urn:li:share:18",
+            "text": "Human error remains the biggest cybersecurity vulnerability. Our security awareness training program has reduced phishing susceptibility by 62% across client organizations. #Cybersecurity #SecurityTraining #PhishingAwareness",
+            "reposted": False,
+            "isBrandPartnership": True,
+            "postedDate": "2022-10-30",
+            "postedDateTimestamp": 1667088000,
+            "totalReactionCount": 154,
+            "commentsCount": 29,
+            "repostsCount": 23
+        },
+        {
+            "urn": "urn:li:share:19",
+            "text": "As IoT devices proliferate in industrial settings, securing operational technology becomes critical. Here's our approach to OT security that doesn't compromise performance. #Cybersecurity #IoTSecurity #OperationalTechnology",
+            "reposted": False,
+            "isBrandPartnership": False,
+            "postedDate": "2022-10-12",
+            "postedDateTimestamp": 1665532800,
+            "totalReactionCount": 167,
+            "commentsCount": 31,
+            "repostsCount": 25
+        },
+        
+        # Sustainability and Green Tech Topic Group
+        {
+            "urn": "urn:li:share:20",
+            "text": "Proud that our data centers have achieved carbon neutrality this quarter. Technology companies have a responsibility to lead on climate action. #Sustainability #GreenTech #CarbonNeutral",
+            "reposted": False,
+            "isBrandPartnership": False,
+            "postedDate": "2022-09-28",
+            "postedDateTimestamp": 1664323200,
+            "totalReactionCount": 289,
+            "commentsCount": 43,
+            "repostsCount": 37
+        },
+        {
+            "urn": "urn:li:share:21",
+            "text": "AI is helping optimize energy consumption in smart buildings, reducing costs and environmental impact. Our latest project achieved 28% energy savings for a commercial client. #GreenTech #SmartBuildings #EnergyEfficiency",
+            "reposted": False,
+            "isBrandPartnership": False,
+            "postedDate": "2022-09-15",
+            "postedDateTimestamp": 1663200000,
+            "totalReactionCount": 213,
+            "commentsCount": 37,
+            "repostsCount": 29
+        },
+        {
+            "urn": "urn:li:share:22",
+            "text": "The circular economy requires rethinking product design from the ground up. Our engineering team is implementing cradle-to-cradle principles in all new hardware development. #CircularEconomy #SustainableDesign #GreenTech",
+            "reposted": True,
+            "isBrandPartnership": False,
+            "postedDate": "2022-08-30",
+            "postedDateTimestamp": 1661817600,
+            "totalReactionCount": 176,
+            "commentsCount": 32,
+            "repostsCount": 24
+        }
+    ]
+    setup_docs: List[SetupDocInfo] = [
+        {
+            'namespace': test_scraping_namespace, 'docname': LINKEDIN_POST_DOCNAME, 'is_versioned': False,
+            'initial_data': example_posts_data, # Store the list directly
+            'is_shared': False, 'is_system_entity': False,
+        }
+    ]
 
     # # Cleanup: Remove the input posts doc and the generated analysis doc
-    # output_analysis_docname = ANALYSIS_OUTPUT_DOCNAME_PATTERN.format(item=entity_username)
-    # # cleanup_docs: List[CleanupDocInfo] = [
-    # #     {'namespace': LINKEDIN_SCRAPING_NAMESPACE, 'docname': input_posts_docname, 'is_versioned': False, 'is_shared': False},
-    # #     {'namespace': ANALYSIS_OUTPUT_NAMESPACE, 'docname': output_analysis_docname, 'is_versioned': False, 'is_shared': False},
-    # # ]
+    test_analysis_namespace = CONTENT_ANALYSIS_NAMESPACE_TEMPLATE.format(item=entity_username)
+    cleanup_docs: List[CleanupDocInfo] = [
+        {'namespace': test_scraping_namespace, 
+         'docname': LINKEDIN_POST_DOCNAME, 
+         'is_versioned': False, 
+         'is_shared': False},
+        {'namespace': test_analysis_namespace, 
+         'docname': CONTENT_ANALYSIS_DOCNAME, 
+         'is_versioned': False, 
+         'is_shared': False},
+    ]
 
     # print("--- Setup/Cleanup Definitions ---")
     # print(f"Input Posts Doc: {LINKEDIN_SCRAPING_NAMESPACE}/{input_posts_docname}")
@@ -699,8 +957,8 @@ async def main_test_linkedin_analysis():
         workflow_graph_schema=workflow_graph_schema,
         initial_inputs=TEST_INPUTS,
         expected_final_status=WorkflowRunStatus.COMPLETED,
-        # setup_docs=setup_docs,
-        # cleanup_docs=cleanup_docs,
+        setup_docs=setup_docs if CREATE_FAKE_POSTS else [],
+        cleanup_docs=cleanup_docs if CREATE_FAKE_POSTS else [],
         validate_output_func=validate_output,
         stream_intermediate_results=True,
         poll_interval_sec=5,
