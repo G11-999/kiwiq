@@ -793,3 +793,32 @@ class CustomerDataSearchQuery(BaseModel):
     sort_order: Optional[SortOrder] = Field(SortOrder.DESC, description="Order to sort results (ASC or DESC).")
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class CustomerDataDeleteByPattern(BaseModel):
+    """
+    Schema for deleting customer data documents by pattern.
+    
+    When is_system_entity=True, documents are deleted from system paths instead of 
+    organization-specific paths. The is_shared parameter still applies normally 
+    to determine if it's shared with the organization or user-specific.
+    
+    The on_behalf_of_user_id parameter only works with user-specific documents 
+    and is ignored for system entities or shared documents.
+    """
+    is_shared: bool = Field(False, description="Set to true to delete shared documents, false for user-specific documents.")
+    namespace: str = Field(..., description="Namespace pattern for the documents to delete. Supports '*' as wildcard.")
+    docname: str = Field(..., description="Document name pattern for the documents to delete. Supports '*' as wildcard.")
+    is_system_entity: bool = Field(False, description="Whether to delete system entities (superusers only).")
+    on_behalf_of_user_id: Optional[uuid.UUID] = Field(None, description="Optional user ID to act on behalf of (superusers only).")
+    dry_run: bool = Field(False, description="If true, only returns the count of objects that would be deleted without actually deleting them.")
+    
+    model_config = ConfigDict(extra='forbid')  # Forbid extra fields
+    
+class CustomerDataDeleteResponse(BaseModel):
+    """Response schema for delete operations that return a count."""
+    deleted_count: int = Field(..., description="Number of documents deleted")
+    dry_run: bool = Field(False, description="Whether this was a dry run (no actual deletion)")
+    
+    model_config = ConfigDict(from_attributes=True)
+

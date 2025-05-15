@@ -125,6 +125,7 @@ LIST_DOCUMENTS_URL = f"{CUSTOMER_DATA_BASE_URL}/list"
 SEARCH_DOCUMENTS_URL = f"{CUSTOMER_DATA_BASE_URL}/search"
 DOCUMENT_METADATA_URL = lambda namespace, docname: f"{CUSTOMER_DATA_BASE_URL}/metadata/{namespace}/{docname}"
 VERSIONED_DOC_UPSERT_URL = lambda namespace, docname: f"{CUSTOMER_DATA_BASE_URL}/versioned/{namespace}/{docname}/upsert"
+DELETE_BY_PATTERN_URL = f"{CUSTOMER_DATA_BASE_URL}/delete-by-pattern"
 
 # WebSockets (Base URLs - specific paths depend on run_id etc.)
 # Note: httpx doesn't handle cookies automatically for websockets in the same way

@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Path, Query, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.session import get_async_db_dependency
-from kiwi_app.auth.dependencies import get_current_active_verified_user
+from kiwi_app.auth.dependencies import get_current_active_verified_user, get_current_active_superuser
 from kiwi_app.auth.models import User
 from kiwi_app.workflow_app import schemas
 from kiwi_app.workflow_app.dependencies import (
@@ -869,3 +869,44 @@ async def get_document_metadata(
     )
     
     return metadata
+
+@customer_data_router.delete(
+    "/delete-by-pattern",
+    response_model=schemas.CustomerDataDeleteResponse,
+    dependencies=[Depends(RequireOrgDataWriteActiveOrg)],
+    summary="Delete documents by pattern",
+    description="""Deletes multiple documents matching a pattern.
+    
+    **Security Warning:** This endpoint can delete multiple documents at once.
+    Use the `dry_run=true` parameter first to check how many documents would be affected.
+    
+    Pattern supports wildcards (*) in both namespace and docname. For example:
+    - namespace="invoices", docname="*" would delete all documents in the invoices namespace
+    - namespace="invoice*", docname="2023*" would delete all documents with namespace starting with "invoice" and name starting with "2023"
+    
+    Note that this operation deletes both versioned and unversioned documents matching the pattern.
+    """,
+    tags=["customer-data-management"],
+)
+async def delete_objects_by_pattern(
+    data: schemas.CustomerDataDeleteByPattern,
+    active_org_id: uuid.UUID = Depends(get_active_org_id),
+    current_user: User = Depends(get_current_active_superuser),
+    service: CustomerDataService = Depends(get_customer_data_service_dependency),
+):
+    """Delete documents matching a pattern."""
+    deleted_count = await service.delete_objects_by_pattern(
+        org_id=active_org_id,
+        namespace_pattern=data.namespace,
+        docname_pattern=data.docname,
+        is_shared=data.is_shared,
+        user=current_user,
+        on_behalf_of_user_id=data.on_behalf_of_user_id,
+        is_system_entity=data.is_system_entity,
+        dry_run=data.dry_run,
+    )
+    
+    return schemas.CustomerDataDeleteResponse(
+        deleted_count=deleted_count,
+        dry_run=data.dry_run
+    )

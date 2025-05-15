@@ -50,6 +50,7 @@ from kiwi_client.test_config import (
     DOCUMENT_METADATA_URL,
     VERSIONED_DOC_UPSERT_URL,
     SEARCH_DOCUMENTS_URL,
+    DELETE_BY_PATTERN_URL,
 )
 # Import schemas and constants from the workflow app
 from kiwi_client.schemas import workflow_api_schemas as wf_schemas
@@ -891,6 +892,60 @@ class CustomerDataTestClient:
             logger.debug(f"Invalid response JSON: {response_json if 'response_json' in locals() else 'No response JSON'}")
         except Exception as e:
             logger.exception("Unexpected error getting document metadata.")
+        return None
+            
+    async def delete_objects_by_pattern(
+        self,
+        namespace: str,
+        docname: str,
+        is_shared: bool = False,
+        is_system_entity: bool = False,
+        on_behalf_of_user_id: Optional[uuid.UUID] = None,
+        dry_run: bool = False,
+    ) -> Optional[wf_schemas.CustomerDataDeleteResponse]:
+        """
+        Delete multiple objects matching a pattern.
+        
+        Args:
+            namespace: Namespace pattern with wildcards (e.g., "invoices*")
+            docname: Document name pattern with wildcards (e.g., "2023*")
+            is_shared: Whether to delete shared documents
+            is_system_entity: Whether to delete system entities (superusers only)
+            on_behalf_of_user_id: Optional user ID to act on behalf of (superusers only)
+            dry_run: If true, only returns count without deleting anything
+            
+        Returns:
+            CustomerDataDeleteResponse with count of deleted documents, or None if error
+        """
+        logger.info(f"Attempting to delete objects by pattern: namespace={namespace}, docname={docname}, shared={is_shared}, dry_run={dry_run}")
+        url = DELETE_BY_PATTERN_URL
+        data = {
+            "is_shared": is_shared,
+            "namespace": namespace,
+            "docname": docname,
+            "is_system_entity": is_system_entity,
+            "dry_run": dry_run,
+        }
+        
+        if on_behalf_of_user_id:
+            data["on_behalf_of_user_id"] = str(on_behalf_of_user_id)
+            
+        try:
+            response = await self._client.request("DELETE", url, json=data)
+            response.raise_for_status()
+            response_json = response.json()
+            validated_response = wf_schemas.CustomerDataDeleteResponse.model_validate(response_json)
+            logger.info(f"Successfully deleted objects by pattern. Count: {validated_response.deleted_count}, Dry Run: {validated_response.dry_run}")
+            return validated_response
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP Status Error deleting objects by pattern: {e.response.status_code} - {e.response.text}")
+        except httpx.RequestError as e:
+            logger.error(f"Request error deleting objects by pattern: {e}")
+        except ValidationError as e:
+            logger.error(f"Response validation error deleting objects by pattern: {e}")
+            logger.debug(f"Invalid response JSON: {response_json if 'response_json' in locals() else 'No response JSON'}")
+        except Exception as e:
+            logger.exception("Unexpected error deleting objects by pattern")
         return None
 
     async def search_documents(

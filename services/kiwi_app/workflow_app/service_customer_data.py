@@ -2449,3 +2449,94 @@ class CustomerDataService:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to list documents: {str(e)}",
             )
+
+    async def delete_objects_by_pattern(
+        self,
+        org_id: uuid.UUID,
+        namespace_pattern: str,
+        docname_pattern: str,
+        is_shared: bool,
+        user: User,
+        on_behalf_of_user_id: Optional[uuid.UUID] = None,
+        is_system_entity: bool = False,
+        is_called_from_workflow: bool = False,
+        dry_run: bool = False,
+    ) -> int:
+        """
+        Delete multiple objects matching a pattern.
+        
+        Args:
+            org_id: Organization ID
+            namespace_pattern: Namespace pattern with wildcards (e.g., "invoices*")
+            docname_pattern: Document name pattern with wildcards (e.g., "2023*")
+            is_shared: Whether to delete shared documents
+            user: User object
+            on_behalf_of_user_id: Optional user ID to act on behalf of (superusers only)
+            is_system_entity: Whether to delete system entities (superusers only)
+            is_called_from_workflow: Whether this operation is called from a workflow
+            dry_run: If True, only counts objects without deleting them
+            
+        Returns:
+            Number of documents deleted or that would be deleted (if dry_run=True)
+            
+        Raises:
+            HTTPException: If access is denied or an error occurs
+        """
+        # Permission checks for acting on behalf of another user or system entities
+        if on_behalf_of_user_id and not user.is_superuser:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only superusers can act on behalf of other users"
+            )
+            
+        if is_system_entity and not user.is_superuser:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only superusers can delete system entities"
+            )
+            
+        # Build partial path with the org and user segments
+        org_id_segment = CustomerDataService.SYSTEM_DOC_PLACEHOLDER if is_system_entity else str(org_id)
+        user_id_segment = self._get_user_id_segment(
+            is_shared=is_shared, 
+            user=user,
+            on_behalf_of_user_id=on_behalf_of_user_id,
+            is_system_entity=is_system_entity
+        )
+        
+        # Create pattern that will match both versioned and unversioned documents
+        pattern = [org_id_segment, user_id_segment, namespace_pattern, docname_pattern]
+        
+        allowed_prefixes = self._get_allowed_prefixes(
+            org_id=org_id, 
+            user=user, 
+            on_behalf_of_user_id=on_behalf_of_user_id,
+            is_mutation=True,
+            is_system_entity=is_system_entity,
+            is_called_from_workflow=is_called_from_workflow,
+        )
+        
+        try:
+            # If dry run, just count the objects
+            if dry_run:
+                count = await self.mongo_client.count_objects(
+                    pattern=pattern,
+                    allowed_prefixes=allowed_prefixes
+                )
+                customer_data_logger.info(f"Dry run: Found {count} objects matching pattern {pattern}")
+                return count
+            
+            # Perform the deletion
+            deleted_count = await self.mongo_client.delete_objects(
+                pattern=pattern,
+                allowed_prefixes=allowed_prefixes
+            )
+            
+            customer_data_logger.info(f"Deleted {deleted_count} objects matching pattern {pattern}")
+            return deleted_count
+        except Exception as e:
+            customer_data_logger.error(f"Error deleting objects with pattern {pattern}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to delete objects: {str(e)}"
+            )
