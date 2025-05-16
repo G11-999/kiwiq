@@ -1129,6 +1129,7 @@ async def list_runs(
         # Prepare filters for service layer, converting schema to dict/kwargs if needed
         service_filters = schemas.WorkflowRunListQuery(
             workflow_id=query_params.workflow_id,
+            workflow_name=query_params.workflow_name,
             status=query_params.status,
             triggered_by_user_id=list_user_id,
             owner_org_id=list_org_id # Pass the determined org_id to the service

@@ -135,6 +135,12 @@ class WorkflowRun(SQLModel, table=True):
         nullable=True,
         description="Reference to the parent workflow"
     )
+    workflow_name: Optional[str] = Field(
+        default=None,
+        nullable=True,
+        index=True,
+        description="Key name of the workflow"
+    )
     owner_org_id: uuid.UUID = Field(
         foreign_key=f"{auth_table_prefix}org.id", # Full path to auth org table
         index=True,

@@ -314,6 +314,7 @@ class WorkflowService:
                 # Validate the provided workflow_id belongs to the organization
                 # NOTE: we want regular users to be able to execute system entity eg: workflows but which are marked public!
                 workflow = await self.get_workflow(db, workflow_id=workflow_id, user=user, owner_org_id=owner_org_id, include_system_entities=True)
+                workflow_name = workflow.name
                 # If not found, get_workflow raises 404
                 graph_schema_dict = workflow.graph_config # Get schema for worker trigger
             else:
@@ -327,6 +328,7 @@ class WorkflowService:
             workflow_run = await self.workflow_run_dao.create(
                 db,
                 workflow_id=workflow_id,
+                workflow_name=workflow_name,
                 owner_org_id=owner_org_id,
                 triggered_by_user_id=user.id,
                 inputs=run_submit.inputs,

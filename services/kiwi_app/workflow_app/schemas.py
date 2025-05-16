@@ -160,6 +160,7 @@ class WorkflowRunRead(WorkflowRunBase):
     """Schema for reading a WorkflowRun summary (SQL data mainly)."""
     id: uuid.UUID
     workflow_id: Optional[uuid.UUID] = None
+    workflow_name: Optional[str] = Field(None, description="Name of the workflow this run belongs to")
     owner_org_id: uuid.UUID
     triggered_by_user_id: Optional[uuid.UUID] = None
     started_at: Optional[datetime] = None
@@ -339,7 +340,7 @@ class WorkflowRunListQuery(CommonListQuery):
     status: Optional[WorkflowRunStatus] = Field(None, description="Filter runs by status")
     triggered_by_user_id: Optional[uuid.UUID] = Field(None, description="Filter runs by triggering user ID (Superuser only)")
     owner_org_id: Optional[uuid.UUID] = Field(None, description="Filter by owning organization ID (Superuser only)")
-
+    workflow_name: Optional[str] = Field(None, description="Name of the workflow this run belongs to")
 
 class HITLJobListQuery(CommonListQuery):
     """Query parameters for listing HITL jobs."""

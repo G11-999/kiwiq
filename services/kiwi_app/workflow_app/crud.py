@@ -448,6 +448,7 @@ class WorkflowRunDAO(BaseDAO[models.WorkflowRun, schemas.WorkflowRunCreate, sche
         *,
         workflow_id: uuid.UUID,
         owner_org_id: uuid.UUID,
+        workflow_name: Optional[str] = None,
         triggered_by_user_id: Optional[uuid.UUID] = None,
         inputs: Optional[Dict[str, Any]] = None,
         thread_id: Optional[uuid.UUID] = None,
@@ -460,7 +461,8 @@ class WorkflowRunDAO(BaseDAO[models.WorkflowRun, schemas.WorkflowRunCreate, sche
             triggered_by_user_id=triggered_by_user_id,
             inputs=inputs,
             status=status,
-            thread_id=thread_id
+            thread_id=thread_id,
+            workflow_name=workflow_name
         )
         db.add(db_obj)
         await db.commit()
@@ -559,6 +561,8 @@ class WorkflowRunDAO(BaseDAO[models.WorkflowRun, schemas.WorkflowRunCreate, sche
 
         if filters.get("workflow_id"):
             conditions.append(self.model.workflow_id == filters["workflow_id"])
+        if filters.get("workflow_name"):
+            conditions.append(self.model.workflow_name == filters["workflow_name"])
         if filters.get("owner_org_id"):
             conditions.append(self.model.owner_org_id == filters["owner_org_id"])
         if filters.get("triggered_by_user_id"):
