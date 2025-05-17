@@ -6,7 +6,7 @@ import inspect
 from abc import ABC, abstractmethod
 
 # FIXME: DEBUG: Prefect test!
-from prefect import flow, task
+from prefect import task
 from prefect.cache_policies import NO_CACHE
 
 from langgraph.types import Command, Send, Interrupt

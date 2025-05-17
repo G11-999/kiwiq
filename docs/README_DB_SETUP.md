@@ -140,6 +140,9 @@ PYTHONPATH=$(pwd):$(pwd)/services poetry run alembic -c libs/src/db/alembic.ini 
 
 # migration #4
 PYTHONPATH=$(pwd):$(pwd)/services poetry run alembic -c libs/src/db/alembic.ini revision --autogenerate -m "Add workflow name field for workflow runs"
+
+# migration #5
+PYTHONPATH=$(pwd):$(pwd)/services poetry run alembic -c libs/src/db/alembic.ini revision --autogenerate -m "Add workflow config override model and run tag field for annotating experiments"
 ```
 
 7. apply migration script

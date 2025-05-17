@@ -189,7 +189,7 @@ async def handle_workflow_notification(
             return
         
         # Log the notification
-        logger.info(f"Processing notification: {notification_payload.get('notification_type', 'unknown')}")
+        logger.debug(f"Processing notification: {notification_payload.get('notification_type', 'unknown')}")
         
         # Check for targets to route to
         user_id = notification_payload.get("user_id")
@@ -210,7 +210,7 @@ async def handle_workflow_notification(
         sent_count = await route_notification_to_websockets(notification_payload)
         
         if sent_count > 0:
-            logger.info(f"Notification sent to {sent_count} destination(s)")
+            logger.debug(f"Notification sent to {sent_count} destination(s)")
         else:
             logger.debug("No active WebSocket connections for this notification")
         
@@ -265,7 +265,7 @@ async def handle_workflow_event(
             return
         
         # Log the event
-        logger.info(f"Processing stream event: {event_payload.get('event_type', 'unknown')}, offset: {stream_offset}")
+        logger.debug(f"Processing stream event: {event_payload.get('event_type', 'unknown')}, offset: {stream_offset}")
         
         # Check for targets to route to
         user_id = event_payload.get("user_id")
@@ -284,7 +284,7 @@ async def handle_workflow_event(
         sent_count = await route_event_to_websockets(event_payload, stream_offset)
         
         if sent_count > 0:
-            logger.info(f"Event sent to {sent_count} destination(s)")
+            logger.debug(f"Event sent to {sent_count} destination(s)")
         else:
             logger.debug("No active WebSocket connections for this event")
             
@@ -303,9 +303,9 @@ async def start_event_consumer():
     Returns:
         The running broker instance
     """
-    logger.info("Starting workflow event consumer service...")
+    logger.debug("Starting workflow event consumer service...")
     await broker.start()
-    logger.info("Workflow event consumer service started")
+    logger.debug("Workflow event consumer service started")
     return broker
 
 async def stop_event_consumer(broker):
@@ -314,9 +314,9 @@ async def stop_event_consumer(broker):
     """
     if not broker:
         return
-    logger.info("Stopping workflow event consumer service...")
+    logger.debug("Stopping workflow event consumer service...")
     await broker.close()
-    logger.info("Workflow event consumer service stopped")
+    logger.debug("Workflow event consumer service stopped")
 
 # ==========================================
 # Main execution for standalone mode
@@ -331,7 +331,7 @@ async def stop_event_consumer(broker):
 #         stop_event = asyncio.Event()
 #         await stop_event.wait()
 #     except KeyboardInterrupt:
-#         logger.info("Event consumer service interrupted")
+#         logger.debug("Event consumer service interrupted")
 #     finally:
 #         await stop_event_consumer(broker_instance)
 

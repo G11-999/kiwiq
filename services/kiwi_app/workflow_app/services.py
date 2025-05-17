@@ -9,7 +9,8 @@ import json
 import uuid
 import asyncio # Keep asyncio import
 from datetime import datetime, timezone # Add timezone
-from typing import List, Optional, Dict, Any, Union
+from typing import List, Optional, Dict, Any, Union, Tuple
+import copy
 
 from db.session import get_async_pool
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +30,8 @@ from kiwi_app.workflow_app import models, schemas, crud
 from kiwi_app.workflow_app.constants import WorkflowRunStatus, NotificationType, HITLJobStatus, LaunchStatus # Import LaunchStatus
 from kiwi_app.auth.models import User, Organization # For type hinting and context
 from kiwi_app.settings import settings # Import settings for Mongo paths etc.
+from workflow_service.registry import registry
+from kiwi_app.workflow_app.workflow_config_override import apply_graph_override # Added import
 
 # MongoDB Client and Event Schemas
 from mongo_client import AsyncMongoDBClient
@@ -58,6 +61,8 @@ class WorkflowService:
         schema_template_dao: crud.SchemaTemplateDAO,
         user_notification_dao: crud.UserNotificationDAO,
         hitl_job_dao: crud.HITLJobDAO,
+        workflow_config_override_dao: crud.WorkflowConfigOverrideDAO = None,
+        db_registry = None,
         mongo_client: Optional[AsyncMongoDBClient] = None, # Make Mongo optional for now
     ) -> None:
         """Initialize the WorkflowService with its DAO and client dependencies."""
@@ -68,7 +73,9 @@ class WorkflowService:
         self.schema_template_dao = schema_template_dao
         self.user_notification_dao = user_notification_dao
         self.hitl_job_dao = hitl_job_dao
+        self.workflow_config_override_dao = workflow_config_override_dao
         self.mongo_client = mongo_client
+        self.db_registry: registry.DBRegistry = db_registry
 
     # --- NodeTemplate Operations --- #
 
@@ -282,6 +289,33 @@ class WorkflowService:
                 await db.refresh(hitl_job)
                 await db.refresh(workflow_run)
             
+            workflow = await self.get_workflow(db, workflow_id=workflow_run.workflow_id, user=user, owner_org_id=owner_org_id, include_system_entities=True)
+
+            effective_graph_schema = workflow.graph_config
+
+            if workflow_run.applied_workflow_config_overrides:
+                override_ids = workflow_run.applied_workflow_config_overrides.split(",")
+                if override_ids:
+                    overrides = None
+                    try:
+                        overrides = await self.workflow_config_override_dao.get_overrides_by_ids(
+                            db=db,
+                            override_ids=override_ids
+                        )
+                    except Exception as e:
+                        logger.error(f"ERROR: Failed to get overrides for run {workflow_run.id}: {e}")
+                        # raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get overrides for run")
+                    if overrides:
+                        try:
+                            effective_graph_schema = await self.apply_list_of_overrides(
+                                overrides=overrides,
+                                base_graph_schema=workflow.graph_config,
+                                workflow_id=workflow.id
+                            )
+                        except Exception as e:
+                            logger.error(f"ERROR: Failed to apply overrides for run {workflow_run.id}: {e}")
+                            # raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to apply overrides for run")
+            
         else:
             if run_submit.graph_schema:
                 assert workflow_id is None, "Cannot provide both workflow_id and graph_schema in the same request"
@@ -305,10 +339,10 @@ class WorkflowService:
                     launch_status=LaunchStatus.EXPERIMENTAL # Mark ad-hoc as experimental
                 )
                 # Use internal create method (avoids unique name check)
-                new_workflow = await self._create_workflow_internal(
+                workflow = await self._create_workflow_internal(
                     db, workflow_in=workflow_create_data, owner_org_id=owner_org_id, user_id=user.id
                 )
-                workflow_id = new_workflow.id
+                workflow_id = workflow.id
                 # Keep graph_schema_dict for worker trigger
             elif workflow_id:
                 # Validate the provided workflow_id belongs to the organization
@@ -325,6 +359,15 @@ class WorkflowService:
             if run_submit.run_id:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot provide run_id when submitting a new run")
 
+            overrides, effective_graph_schema = await self.list_workflow_specific_overrides_and_optional_apply(
+                db=db,
+                include_active=run_submit.include_active_overrides,
+                include_tags=run_submit.include_override_tags,
+                active_org_id=owner_org_id,
+                requesting_user=user,
+                base_workflow_to_apply_overrides_to=workflow
+            )
+            
             workflow_run = await self.workflow_run_dao.create(
                 db,
                 workflow_id=workflow_id,
@@ -333,7 +376,9 @@ class WorkflowService:
                 triggered_by_user_id=user.id,
                 inputs=run_submit.inputs,
                 thread_id=run_submit.thread_id, # Pass thread_id if provided
-                status=WorkflowRunStatus.SCHEDULED # Explicitly set status
+                status=WorkflowRunStatus.SCHEDULED, # Explicitly set status
+                tag=run_submit.tag,
+                applied_workflow_config_overrides=",".join([str(override.id) for override in overrides]) if overrides else None
             )
             if not workflow_run.thread_id:
                 workflow_run.thread_id = workflow_run.id
@@ -344,11 +389,7 @@ class WorkflowService:
         # 3. Trigger the actual execution via Prefect worker/helper
         try:
             # Ensure we have the graph schema to pass to the worker
-            if not graph_schema_dict:
-                 # This should only happen if workflow_id was provided but we failed to get the schema earlier
-                 # NOTE: we want regular users to be able to execute system entity eg: workflows but which are marked public!
-                 workflow = await self.get_workflow(db, workflow_id=workflow_run.workflow_id, user=user, owner_org_id=owner_org_id, include_system_entities=True)
-                 graph_schema_dict = workflow.graph_config
+            graph_schema_dict = effective_graph_schema
 
             # Trigger the workflow run via the helper function
             flow_run: FlowRun = await trigger_workflow_run(
@@ -1301,6 +1342,7 @@ class WorkflowService:
         db: AsyncSession,
         *,
         job: models.HITLJob, # Fetched job object from dependency (checks org, accessibility)
+        active_org_id: uuid.UUID,
         response_data: Dict[str, Any],
         user: User # User performing the action
     ) -> models.HITLJob:
@@ -1357,6 +1399,32 @@ class WorkflowService:
                 logger.error(f"ERROR: Associated workflow {run.workflow_id} not found for run {run.id}")
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Associated workflow definition not found.")
 
+            
+            effective_graph_schema = workflow.graph_config
+
+            if run.applied_workflow_config_overrides:
+                override_ids = run.applied_workflow_config_overrides.split(",")
+                if override_ids:
+                    overrides = None
+                    try:
+                        overrides = await self.workflow_config_override_dao.get_overrides_by_ids(
+                            db=db,
+                            override_ids=override_ids
+                        )
+                    except Exception as e:
+                        logger.error(f"ERROR: Failed to get overrides for run {run.id}: {e}")
+                        # raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get overrides for run")
+                    if overrides:
+                        try:
+                            effective_graph_schema = await self.apply_list_of_overrides(
+                                overrides=overrides,
+                                base_graph_schema=workflow.graph_config,
+                                workflow_id=workflow.id
+                            )
+                        except Exception as e:
+                            logger.error(f"ERROR: Failed to apply overrides for run {run.id}: {e}")
+                            # raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to apply overrides for run")
+            
             # Call the worker trigger function
             flow_run: FlowRun = await trigger_workflow_run(
                 workflow_id=run.workflow_id,
@@ -1365,7 +1433,7 @@ class WorkflowService:
                 inputs=response_data, # Pass HITL response as input for resumption node
                 run_id=run.id,
                 thread_id=run.thread_id, # Use existing thread_id for checkpointing
-                graph_schema=workflow.graph_config, # Pass the workflow schema
+                graph_schema=effective_graph_schema, # Pass the workflow schema
                 resume_after_hitl=True, # Indicate this is a resumption
                 prefect_run_ids=run.prefect_run_ids # Pass the prefect run_id if provided
             )
@@ -1478,20 +1546,805 @@ class WorkflowService:
 
         return updated_job
 
+    # --- WorkflowConfigOverride Operations --- #
+
+    async def create_workflow_config_override(
+        self,
+        db: AsyncSession,
+        *,
+        override_in: schemas.WorkflowConfigOverrideCreate,
+        user: User,
+        active_org_id: Optional[uuid.UUID] = None
+    ) -> models.WorkflowConfigOverride:
+        """
+        Creates a new workflow configuration override.
+        
+        If is_system_entity is True, ensures the user is a superuser.
+        If user_id is provided, ensures it matches the requesting user or the user is a superuser.
+        Validates the override_graph_schema against a target workflow if specified.
+        
+        Args:
+            db: Database session
+            override_in: The override configuration data
+            user: The user creating the override
+            active_org_id: Optional organization context for permission checks.
+            
+        Returns:
+            The created WorkflowConfigOverride
+            
+        Raises:
+            HTTPException: If the user lacks permissions or data validation fails
+        """
+        # Perform permission checks
+        if override_in.is_system_entity and not user.is_superuser:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only superusers can create system-wide overrides"
+            )
+            
+        if override_in.user_id and override_in.user_id != user.id and not user.is_superuser:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Cannot create overrides for other users"
+            )
+        if override_in.org_id and override_in.org_id != active_org_id and not user.is_superuser:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Cannot create overrides for other organizations"
+            )
+
+        if not override_in.override_graph_schema:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Override graph schema is required"
+            )
+            
+        # If no user_id specified, use the current user's ID for user-specific overrides
+        user_id = override_in.user_id
+        if (not override_in.is_system_entity) and (not override_in.org_id) and (not override_in.user_id):
+            user_id = user.id
+            
+        base_workflow_to_validate_against: Optional[models.Workflow] = None
+        
+        # If workflow_id is provided, verify it exists
+        if override_in.workflow_id:
+            workflow = await self.workflow_dao.get(db, id=override_in.workflow_id)
+            if not workflow:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Workflow with ID {override_in.workflow_id} not found"
+                )
+            base_workflow_to_validate_against = workflow
+        elif override_in.workflow_name:
+            # TODO: potentially sort by OWNED WORKFLOWS!
+            workflows = await self.workflow_dao.search_by_name_version(db, 
+                name=override_in.workflow_name, version=override_in.workflow_version, version_field="version_tag",
+                owner_org_id=active_org_id,
+                include_public=True,
+                include_system_entities=user.is_superuser,
+                include_public_system_entities=True,
+                is_superuser=user.is_superuser,
+            )
+            if not workflows:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Target workflow with name '{override_in.workflow_name}' (version: {override_in.workflow_version or 'any'}) not found for validation."
+                )
+            base_workflow_to_validate_against = workflows[0] # Validate against the first match
+            logger.info(f"Found {len(workflows)} matching workflows for '{override_in.workflow_name}'. Validating override against the first: {base_workflow_to_validate_against.id}")
+
+        # Perform validation if a base workflow is identified and has a graph_config
+        if base_workflow_to_validate_against and base_workflow_to_validate_against.graph_config:
+            if not self.db_registry:
+                logger.warning("DBRegistry not available in WorkflowService. Skipping override schema validation.")
+            else:
+                try:
+                    base_graph_schema_model = GraphSchema.model_validate(base_workflow_to_validate_against.graph_config)
+                    
+                    logger.info(f"Attempting to validate override schema against workflow '{base_workflow_to_validate_against.name}' (ID: {base_workflow_to_validate_against.id})")
+                    # The override_in.override_graph_schema is a Dict[str, Any] which should conform to GraphOverridePayload
+                    await apply_graph_override(
+                        base_graph_schema=base_graph_schema_model,
+                        override_payload_dict=override_in.override_graph_schema, # This is the new override's schema payload
+                        validate_schema=True, # This will trigger full validation including node configs
+                        db_registry=self.db_registry
+                    )
+                    logger.info(f"Validation successful for override against workflow '{base_workflow_to_validate_against.name}'.")
+                except ValueError as e:
+                    logger.error(f"Validation of override schema failed: {e}", exc_info=True)
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=f"Override graph schema validation failed: {e}"
+                    )
+                except Exception as e: 
+                    logger.error(f"Unexpected error during override schema validation: {e}", exc_info=True)
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail=f"Unexpected error during override schema validation: {str(e)}"
+                    )
+        elif (override_in.workflow_id or override_in.workflow_name):
+             logger.warning(f"Target workflow for override validation not found or has no graph_config. Override will be created without pre-validation against a base schema.")
+            
+        # Convert Pydantic model to dict for DAO
+        try:
+            override_data = override_in.model_dump(exclude_unset=True)
+        except AttributeError:
+            override_data = override_in.dict(exclude_unset=True)
+            
+        # Remove keys that are passed separately to DAO
+        workflow_id = override_data.pop("workflow_id", None)
+        workflow_name = override_data.pop("workflow_name", None) 
+        workflow_version = override_data.pop("workflow_version", None)
+        override_graph_schema = override_data.pop("override_graph_schema", {})
+        is_system_entity = override_data.pop("is_system_entity", False)
+        org_id_from_data = override_data.pop("org_id", None)
+        # user_id_from_data = override_data.pop("user_id", None)
+        is_active = override_data.pop("is_active", True)
+        description = override_data.pop("description", None)
+        tag = override_data.pop("tag", None)
+        
+        # Create override with DAO
+        return await self.workflow_config_override_dao.create(
+            db=db,
+            workflow_id=workflow_id,
+            workflow_name=workflow_name,
+            workflow_version=workflow_version,
+            override_graph_schema=override_graph_schema,
+            is_system_entity=is_system_entity,
+            user_id=user_id,
+            org_id=org_id_from_data,
+            is_active=is_active,
+            description=description,
+            tag=tag
+        )
+
+    async def update_workflow_config_override(
+        self,
+        db: AsyncSession,
+        *,
+        override_id: uuid.UUID,
+        override_update: schemas.WorkflowConfigOverrideUpdate,
+        user: User,
+        active_org_id: Optional[uuid.UUID] = None
+    ) -> models.WorkflowConfigOverride:
+        """
+        Updates an existing workflow configuration override.
+        
+        Only the override_graph_schema, is_active, description, and tag can be updated.
+        If override_graph_schema is updated, it will be validated against the target workflow if applicable.
+        
+        Args:
+            db: Database session
+            override_id: The ID of the override to update
+            override_update: The update data
+            user: The user performing the update
+            active_org_id: The active organization context for permission checks.
+            
+        Returns:
+            The updated WorkflowConfigOverride
+            
+        Raises:
+            HTTPException: If the override doesn't exist or user lacks permissions or validation fails.
+        """
+        # Get the existing override
+        existing_override = await self.workflow_config_override_dao.get(db, id=override_id)
+        if not existing_override:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Workflow config override with ID {override_id} not found"
+            )
+            
+        # Check permissions
+        if existing_override.is_system_entity and not user.is_superuser:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only superusers can update system-wide overrides"
+            )
+            
+        if existing_override.user_id and existing_override.user_id != user.id and not user.is_superuser:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Cannot update overrides belonging to other users"
+            )
+
+        if existing_override.org_id and existing_override.org_id != active_org_id and not user.is_superuser:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Cannot update overrides belonging to other organizations"
+            )
+
+        # Validate new override_graph_schema if provided
+        if override_update.override_graph_schema:
+            base_workflow_to_validate_against: Optional[models.Workflow] = None
+            if existing_override.workflow_id:
+                workflow = await self.workflow_dao.get(db, id=existing_override.workflow_id)
+                if not workflow:
+                    logger.warning(f"Target workflow ID {existing_override.workflow_id} for override {override_id} not found. Skipping schema validation for update.")
+                else:
+                    base_workflow_to_validate_against = workflow
+            elif existing_override.workflow_name:
+                context_org_for_search = active_org_id # Similar to create
+                if not context_org_for_search and not user.is_superuser:
+                     logger.warning(f"Org context required to search for workflow by name for override {override_id}. Skipping schema validation for update.")
+                else:
+                    workflows = await self.workflow_dao.search_by_name_version(
+                        db,
+                        name=existing_override.workflow_name,
+                        version=existing_override.workflow_version,
+                        version_field="version_tag",
+                        owner_org_id=context_org_for_search,
+                        include_public=True,
+                        include_system_entities=user.is_superuser,
+                        include_public_system_entities=True,
+                        is_superuser=user.is_superuser,
+                    )
+                    if not workflows:
+                        logger.warning(f"Target workflow name '{existing_override.workflow_name}' for override {override_id} not found. Skipping schema validation for update.")
+                    else:
+                        base_workflow_to_validate_against = workflows[0]
+                        logger.info(f"Found {len(workflows)} matching workflows for '{existing_override.workflow_name}' for override {override_id}. Validating updated override schema against the first: {base_workflow_to_validate_against.id}")
+            
+            if base_workflow_to_validate_against and base_workflow_to_validate_against.graph_config:
+                if not self.db_registry:
+                    logger.warning(f"DBRegistry not available in WorkflowService. Skipping override schema validation for update of override {override_id}.")
+                else:
+                    try:
+                        base_graph_schema_model = GraphSchema.model_validate(base_workflow_to_validate_against.graph_config)
+                        logger.info(f"Attempting to validate updated override schema for override {override_id} against workflow '{base_workflow_to_validate_against.name}' (ID: {base_workflow_to_validate_against.id})")
+                        
+                        # The override_update.override_graph_schema is a Dict[str, Any]
+                        await apply_graph_override(
+                            base_graph_schema=base_graph_schema_model,
+                            override_payload_dict=override_update.override_graph_schema, # This is the new override's schema payload from the update
+                            validate_schema=True,
+                            db_registry=self.db_registry
+                        )
+                        logger.info(f"Validation successful for updated override schema for override {override_id} against workflow '{base_workflow_to_validate_against.name}'.")
+                    except ValueError as e:
+                        logger.error(f"Validation of updated override schema for override {override_id} failed: {e}", exc_info=True)
+                        raise HTTPException(
+                            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail=f"Updated override graph schema validation failed: {e}"
+                        )
+                    except Exception as e:
+                        logger.error(f"Unexpected error during updated override schema validation for override {override_id}: {e}", exc_info=True)
+                        raise HTTPException(
+                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail=f"Unexpected error during updated override schema validation: {str(e)}"
+                        )
+            elif override_update.override_graph_schema and (existing_override.workflow_id or existing_override.workflow_name):
+                 logger.warning(f"Target workflow for override {override_id} validation not found or has no graph_config. Override will be updated without pre-validation against a base schema.")
+
+            
+        # Convert Pydantic model to dict for DAO
+        update_data = override_update.model_dump(exclude_unset=True)
+            
+        # Extract fields for DAO
+        override_graph_schema = update_data.get("override_graph_schema")
+        is_active = update_data.get("is_active")
+        description = update_data.get("description")
+        tag = update_data.get("tag")
+        
+        # Update the override
+        return await self.workflow_config_override_dao.update(
+            db=db,
+            override_id=override_id,
+            override_graph_schema=override_graph_schema,
+            is_active=is_active,
+            description=description,
+            tag=tag
+        )
+
+    async def get_workflow_config_override(
+        self,
+        db: AsyncSession,
+        *,
+        override_id: uuid.UUID,
+        user: User
+    ) -> models.WorkflowConfigOverride:
+        """
+        Retrieves a workflow configuration override by ID with permission checks.
+        
+        Args:
+            db: Database session
+            override_id: The ID of the override to retrieve
+            user: The requesting user
+            
+        Returns:
+            The WorkflowConfigOverride
+            
+        Raises:
+            HTTPException: If the override doesn't exist or user lacks permissions
+        """
+        override = await self.workflow_config_override_dao.get(db, id=override_id)
+        if not override:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Workflow config override with ID {override_id} not found"
+            )
+            
+        # Check permissions
+        if override.is_system_entity and not user.is_superuser:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only superusers can access system-wide overrides"
+            )
+            
+        if override.user_id and override.user_id != user.id and not user.is_superuser:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Cannot access overrides belonging to other users"
+            )
+            
+        return override
+
+    async def delete_workflow_config_override(
+        self,
+        db: AsyncSession,
+        *,
+        override_id: uuid.UUID,
+        user: User,
+        active_org_id: Optional[uuid.UUID] = None
+    ) -> bool:
+        """
+        Deletes a workflow configuration override.
+        
+        Args:
+            db: Database session
+            override_id: The ID of the override to delete
+            user: The requesting user
+            
+        Returns:
+            True if successful, False otherwise
+            
+        Raises:
+            HTTPException: If the override doesn't exist or user lacks permissions
+        """
+        override = await self.workflow_config_override_dao.get(db, id=override_id)
+        if not override:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Workflow config override with ID {override_id} not found"
+            )
+            
+        # Check permissions
+        if override.is_system_entity and not user.is_superuser:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only superusers can delete system-wide overrides"
+            )
+            
+        if override.user_id and override.user_id != user.id and not user.is_superuser:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Cannot delete overrides belonging to other users"
+            )
+        
+        if override.org_id and override.org_id != active_org_id and not user.is_superuser:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Cannot delete overrides belonging to other organizations"
+            )
+            
+        # Delete the override
+        deleted = await self.workflow_config_override_dao.remove(db, id=override_id)
+        return deleted is not None
+
+    async def list_user_overrides(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: uuid.UUID,
+        active_org_id: Optional[uuid.UUID] = None,
+        is_active: Optional[bool] = None,
+        skip: int = 0,
+        limit: int = 100,
+        requesting_user: User
+    ) -> List[models.WorkflowConfigOverride]:
+        """
+        Lists workflow configuration overrides for a specific user.
+        
+        Args:
+            db: Database session
+            user_id: The ID of the user whose overrides to list
+            active_org_id: Optional organization context
+            is_active: If provided, filter by active status
+            skip: Number of items to skip
+            limit: Maximum number of items to return
+            requesting_user: The user making the request
+            
+        Returns:
+            List of WorkflowConfigOverride objects for the specified user
+            
+        Raises:
+            HTTPException: If the requesting user doesn't have permission
+        """
+        # Permission check - users can only see their own overrides unless superuser
+        if user_id != requesting_user.id and not requesting_user.is_superuser:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Cannot list overrides belonging to other users"
+            )
+            
+        # Get the overrides
+        overrides = await self.workflow_config_override_dao.get_user_overrides(
+            db=db,
+            user_id=user_id,
+            org_id=active_org_id,
+            is_active=is_active
+        )
+        
+        # Apply pagination manually
+        paginated_overrides = list(overrides)[skip:skip+limit]
+        return paginated_overrides
+        
+    async def list_org_overrides(
+        self,
+        db: AsyncSession,
+        *,
+        active_org_id: uuid.UUID,
+        is_active: Optional[bool] = None,
+        skip: int = 0,
+        limit: int = 100,
+        requesting_user: User
+    ) -> List[models.WorkflowConfigOverride]:
+        """
+        Lists workflow configuration overrides for a specific organization.
+        
+        Args:
+            db: Database session
+            org_id: The ID of the organization whose overrides to list
+            is_active: If provided, filter by active status
+            skip: Number of items to skip
+            limit: Maximum number of items to return
+            requesting_user: The user making the request
+            
+        Returns:
+            List of WorkflowConfigOverride objects for the specified organization
+            
+        Raises:
+            HTTPException: If the requesting user doesn't have permission
+        """
+        
+        # Get the overrides
+        overrides = await self.workflow_config_override_dao.get_org_overrides(
+            db=db,
+            org_id=active_org_id,
+            is_active=is_active
+        )
+        
+        # Apply pagination manually
+        paginated_overrides = list(overrides)[skip:skip+limit]
+        return paginated_overrides
+        
+    async def list_system_overrides(
+        self,
+        db: AsyncSession,
+        *,
+        is_active: Optional[bool] = None,
+        skip: int = 0,
+        limit: int = 100,
+        requesting_user: User
+    ) -> List[models.WorkflowConfigOverride]:
+        """
+        Lists system-wide workflow configuration overrides.
+        
+        Args:
+            db: Database session
+            is_active: If provided, filter by active status
+            skip: Number of items to skip
+            limit: Maximum number of items to return
+            requesting_user: The user making the request
+            
+        Returns:
+            List of system-wide WorkflowConfigOverride objects
+            
+        Raises:
+            HTTPException: If the requesting user is not a superuser
+        """
+        # Only superusers can list system overrides
+        if not requesting_user.is_superuser:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only superusers can list system-wide overrides"
+            )
+            
+        # Get the overrides
+        overrides = await self.workflow_config_override_dao.get_system_overrides(
+            db=db,
+            is_active=is_active
+        )
+        
+        # Apply pagination manually
+        paginated_overrides = list(overrides)[skip:skip+limit]
+        return paginated_overrides
+
+    async def apply_list_of_overrides(
+        self,
+        overrides: List[models.WorkflowConfigOverride],
+        base_graph_schema: GraphSchema,
+        workflow_id: Optional[uuid.UUID] = None,
+    ) -> GraphSchema:
+        """
+        Applies a list of workflow configuration overrides to a base workflow.
+        
+        Args:
+            overrides: List of WorkflowConfigOverride objects to apply
+            base_graph_schema: The base graph schema to apply overrides to
+            
+        Returns:
+            The final effective GraphSchema after applying all overrides
+
+        Raises:
+            HTTPException: If the base workflow is not found or has an invalid graph_config
+        """
+        if not base_graph_schema:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Base workflow not found"
+            )
+        
+        current_graph_schema = base_graph_schema
+        for override_idx, override_config in enumerate(overrides):
+            if not override_config.override_graph_schema:
+                logger.warning(f"Skipping override ID {override_config.id} (Tag: {override_config.tag or 'N/A'}) as its override_graph_schema is empty/None.")
+                continue
+            
+            override_payload = override_config.override_graph_schema
+            if not isinstance(override_payload, dict):
+                logger.error(f"Override ID {override_config.id} has non-dict override_graph_schema (type: {type(override_payload)}). Skipping application.")
+                continue
+
+            logger.info(f"Applying override {override_idx + 1}/{len(overrides)}: ID {override_config.id}, Tag: {override_config.tag or 'N/A'}, User: {override_config.user_id}, Org: {override_config.org_id}, System: {override_config.is_system_entity}")
+            try:
+                current_graph_schema = await apply_graph_override(
+                    base_graph_schema=current_graph_schema,
+                    override_payload_dict=override_payload,
+                    validate_schema=True, 
+                    db_registry=self.db_registry
+                )
+                # logger.debug(f"Successfully applied override ID {override_config.id}. Intermediate schema: {current_graph_schema.model_dump_json(indent=2)}")
+            except ValueError as e:
+                logger.error(f"Failed to apply override ID {override_config.id} to workflow {workflow_id}: {e}", exc_info=True)
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Error applying configuration override ID {override_config.id} (Tag: {override_config.tag or 'N/A'}): {e}"
+                )
+            except Exception as e:
+                logger.error(f"Unexpected error applying override ID {override_config.id} to workflow {workflow_id}: {e}", exc_info=True)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Unexpected error applying configuration override ID {override_config.id} (Tag: {override_config.tag or 'N/A'}): {str(e)}"
+                )
+        return current_graph_schema
+    
+
+    async def get_workflow_config_with_overrides(
+        self,
+        db: AsyncSession,
+        *,
+        workflow_id: uuid.UUID,
+        active_org_id: uuid.UUID,
+        requesting_user: User,
+        include_active: bool = True,
+        include_tags: Optional[List[str]] = None,
+    ) -> Tuple[List[models.WorkflowConfigOverride], GraphSchema]:
+        """
+        Retrieves a workflow configuration with all applicable overrides.
+        
+        Args:
+            db: Database session
+            workflow_id: The ID of the workflow to retrieve
+            requesting_user: The user making the request
+            
+        Returns:
+            The final effective GraphSchema after applying all overrides
+            
+        Raises:
+            HTTPException: If the base workflow is not found or has an invalid graph_config
+        """
+        workflow = await self.get_workflow(
+            db=db,
+            user=requesting_user,
+            workflow_id=workflow_id,
+            owner_org_id=active_org_id,
+            include_system_entities=True
+        )
+
+        overrides, effective_graph_schema = await self.list_workflow_specific_overrides_and_optional_apply(
+            db=db,
+            active_org_id=active_org_id,
+            base_workflow_to_apply_overrides_to=workflow,
+            include_active=include_active,
+            include_tags=include_tags,
+            requesting_user=requesting_user,
+        )
+
+        return overrides, effective_graph_schema
+    
+    async def list_workflow_specific_overrides_and_optional_apply(
+        self,
+        db: AsyncSession,
+        *,
+        workflow_id: Optional[uuid.UUID] = None,
+        workflow_name: Optional[str] = None,
+        workflow_version: Optional[str] = None,
+        include_active: bool = True,
+        include_tags: Optional[List[str]] = None,
+        active_org_id: Optional[uuid.UUID] = None,
+        skip: int = 0,
+        limit: int = 100,
+        requesting_user: User,
+        base_workflow_to_apply_overrides_to: Optional[models.Workflow] = None
+    ) -> Tuple[List[models.WorkflowConfigOverride], Optional[GraphSchema]]:
+        """
+        Lists workflow configuration overrides for a specific workflow.
+        
+        Args:
+            db: Database session
+            workflow_id: Optional workflow ID to filter by
+            workflow_name: Optional workflow name to filter by
+            workflow_version: Optional workflow version to filter by
+            include_active: Whether to include active overrides
+            include_tags: Optional list of tags to filter by
+            active_org_id: The current organization context
+            skip: Number of items to skip
+            limit: Maximum number of items to return
+            requesting_user: The user making the request
+            base_workflow_to_apply_overrides_to: Optional base workflow to apply overrides to
+
+        Returns: 
+            Tuple[List[WorkflowConfigOverride], Optional[GraphSchema]] containing:
+            - List of WorkflowConfigOverride objects for the specified workflow
+            - Optional GraphSchema representing the final effective schema after applying overrides
+            
+        Raises:
+            HTTPException: If neither workflow_id nor workflow_name is provided
+        """
+        if base_workflow_to_apply_overrides_to:
+            if workflow_id or workflow_name or workflow_version:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot provide both base_workflow_to_apply_overrides_to and workflow_id, workflow_name, or workflow_version"
+                )
+            workflow_id = base_workflow_to_apply_overrides_to.id
+            workflow_name = base_workflow_to_apply_overrides_to.name
+            workflow_version = base_workflow_to_apply_overrides_to.version_tag
+
+        if not workflow_id and not workflow_name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Either workflow_id or workflow_name must be provided"
+            )
+            
+        # Get all relevant overrides for this workflow
+        overrides = await self.workflow_config_override_dao.get_overrides_for_workflow(
+            db=db,
+            workflow_id=workflow_id,
+            workflow_name=workflow_name,
+            workflow_version=workflow_version,
+            user_id=requesting_user.id,
+            user_is_superuser=requesting_user.is_superuser,
+            org_id=active_org_id,
+            include_tags=include_tags,
+            include_active=include_active,
+            include_system_overrides=True,
+            include_global_overrides=True,
+            include_org_overrides=True,
+            include_user_overrides=True  # Always include user's own overrides
+        )
+
+
+        if base_workflow_to_apply_overrides_to:
+            try:
+                current_graph_schema = GraphSchema.model_validate(base_workflow_to_apply_overrides_to.graph_config)
+            except ValidationError as e:
+                logger.error(f"Base workflow {base_workflow_to_apply_overrides_to.id} ('{base_workflow_to_apply_overrides_to.name}') has invalid graph_config: {e}", exc_info=True)
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Base workflow's graph configuration is invalid: {e}")
+
+            if not self.db_registry:
+                logger.error("DBRegistry not available in WorkflowService. Cannot apply or validate overrides requiring node template information.")
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Service configuration error: DBRegistry not available.")
+
+
+            if not overrides:
+                logger.info(f"No applicable config overrides found for workflow {base_workflow_to_apply_overrides_to.id} ('{base_workflow_to_apply_overrides_to.name}'). Returning base schema.")
+                return [], current_graph_schema
+
+            logger.info(f"Applying {len(overrides)} config overrides to workflow {base_workflow_to_apply_overrides_to.id} ('{base_workflow_to_apply_overrides_to.name}').")
+
+            effective_graph_schema = await self.apply_list_of_overrides(
+                overrides=overrides,
+                base_graph_schema=current_graph_schema,
+                workflow_id=base_workflow_to_apply_overrides_to.id
+            )
+                    
+            logger.info(f"Successfully applied all applicable ({len(overrides)}) overrides to workflow {base_workflow_to_apply_overrides_to.id}. Returning final effective schema.")
+            return overrides, effective_graph_schema
+
+        # Apply pagination manually
+        paginated_overrides = list(overrides)[skip:skip+limit]
+        return paginated_overrides, None
+        
+    async def list_tag_overrides(
+        self,
+        db: AsyncSession,
+        *,
+        tag: str,
+        is_active: Optional[bool] = None,
+        active_org_id: Optional[uuid.UUID] = None,
+        skip: int = 0,
+        limit: int = 100,
+        requesting_user: User
+    ) -> List[models.WorkflowConfigOverride]:
+        """
+        Lists workflow configuration overrides with a specific tag.
+        
+        Args:
+            db: Database session
+            tag: The tag to filter by
+            is_active: If provided, filter by active status
+            active_org_id: The current organization context
+            skip: Number of items to skip
+            limit: Maximum number of items to return
+            requesting_user: The user making the request
+            
+        Returns:
+            List of WorkflowConfigOverride objects with the specified tag
+        """
+        # Get overrides by tag
+        overrides = await self.workflow_config_override_dao.get_overrides_by_tag(
+            db=db,
+            tag=tag,
+            is_active=is_active,
+            user_id=requesting_user.id,
+            org_id=active_org_id,
+            user_is_superuser=requesting_user.is_superuser
+        )
+        
+        # Apply pagination manually
+        paginated_overrides = list(overrides)[skip:skip+limit]
+        return paginated_overrides
+
+    async def get_all_workflow_config_overrides(
+        self,
+        db: AsyncSession,
+        *,
+        skip: int = 0,
+        limit: int = 100,
+        requesting_user: User
+    ) -> List[models.WorkflowConfigOverride]:
+        """
+        Gets all workflow configuration overrides using the generic get_multi method.
+        Only accessible to superusers.
+        
+        Args:
+            db: Database session
+            skip: Number of items to skip for pagination
+            limit: Maximum number of items to return
+            requesting_user: The user making the request
+            
+        Returns:
+            List of all WorkflowConfigOverride objects
+            
+        Raises:
+            HTTPException: If the requesting user is not a superuser
+        """
+        # Only superusers can access all overrides
+        if not requesting_user.is_superuser:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only superusers can list all overrides"
+            )
+            
+        # Use the generic get_multi method from the DAO
+        overrides = await self.workflow_config_override_dao.get_multi(
+            db=db,
+            skip=skip,
+            limit=limit
+        )
+        
+        return list(overrides)
+
 # --- Helper Functions/Classes (Optional) --- #
-
-# Example Custom Exception (replace with HTTPException)
-# class TemplateNotFoundException(HTTPException):
-#     def __init__(self, detail: str = "Template not found"):
-#         super().__init__(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
-
-# class WorkflowRunNotFoundException(HTTPException):
-#     def __init__(self, detail: str = "Workflow run not found or access denied"):
-#         super().__init__(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
-
-# TODO: Add service methods for fetching/managing workflow templates (workflows where is_template=True)
-# TODO: Add methods for managing system templates (Node, Prompt, Schema) if needed (requires Admin role checks)
-# TODO: Implement robust logging throughout the service layer.
-# TODO: Add detailed validation for input schemas, response schemas, graph configs.
-
 

@@ -57,6 +57,9 @@ def get_user_notification_dao() -> crud.UserNotificationDAO:
 def get_hitl_job_dao() -> crud.HITLJobDAO:
     return crud.HITLJobDAO()
 
+def get_workflow_config_override_dao() -> crud.WorkflowConfigOverrideDAO:
+    return crud.WorkflowConfigOverrideDAO()
+
 db_registry = None
 
 async def get_node_template_registry() -> registry.DBRegistry:
@@ -88,7 +91,9 @@ def get_workflow_service_dependency(
     schema_template_dao: crud.SchemaTemplateDAO = Depends(get_schema_template_dao),
     user_notification_dao: crud.UserNotificationDAO = Depends(get_user_notification_dao),
     hitl_job_dao: crud.HITLJobDAO = Depends(get_hitl_job_dao),
+    workflow_config_override_dao: crud.WorkflowConfigOverrideDAO = Depends(get_workflow_config_override_dao),
     mongo_client: AsyncMongoDBClient = Depends(get_workflow_mongo_client),
+    db_registry: registry.DBRegistry = Depends(get_node_template_registry),
 ) -> services.WorkflowService:
     """Dependency function to instantiate WorkflowService with its DAO dependencies."""
     return services.WorkflowService(
@@ -99,7 +104,9 @@ def get_workflow_service_dependency(
         schema_template_dao=schema_template_dao,
         user_notification_dao=user_notification_dao,
         hitl_job_dao=hitl_job_dao,
+        workflow_config_override_dao=workflow_config_override_dao,
         mongo_client=mongo_client,
+        db_registry=db_registry,
         # Pass NoSQL client here
     )
 

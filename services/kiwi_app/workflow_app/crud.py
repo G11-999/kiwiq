@@ -7,6 +7,7 @@ database models defined in models.py, encapsulating the database query logic.
 import uuid
 from datetime import datetime, timezone
 from typing import List, Optional, Type, TypeVar, Generic, Any, Dict, Sequence, Union
+import copy
 
 from sqlalchemy import select, update, delete, func, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -452,7 +453,9 @@ class WorkflowRunDAO(BaseDAO[models.WorkflowRun, schemas.WorkflowRunCreate, sche
         triggered_by_user_id: Optional[uuid.UUID] = None,
         inputs: Optional[Dict[str, Any]] = None,
         thread_id: Optional[uuid.UUID] = None,
-        status: WorkflowRunStatus = WorkflowRunStatus.SCHEDULED
+        status: WorkflowRunStatus = WorkflowRunStatus.SCHEDULED,
+        tag: Optional[str] = None,
+        applied_workflow_config_overrides: Optional[str] = None
     ) -> models.WorkflowRun:
         """Creates a new workflow run record."""
         db_obj = self.model(
@@ -462,7 +465,9 @@ class WorkflowRunDAO(BaseDAO[models.WorkflowRun, schemas.WorkflowRunCreate, sche
             inputs=inputs,
             status=status,
             thread_id=thread_id,
-            workflow_name=workflow_name
+            workflow_name=workflow_name,
+            tag=tag,
+            applied_workflow_config_overrides=applied_workflow_config_overrides
         )
         db.add(db_obj)
         await db.commit()
@@ -577,6 +582,19 @@ class WorkflowRunDAO(BaseDAO[models.WorkflowRun, schemas.WorkflowRunCreate, sche
             conditions.append(self.model.status == status_filter)
         if filters.get("thread_id"):
             conditions.append(self.model.thread_id == filters["thread_id"])
+        if filters.get("tag"):
+            conditions.append(self.model.tag == filters["tag"])
+        if filters.get("applied_workflow_config_overrides"):
+            applied_overrides = filters["applied_workflow_config_overrides"]
+            if isinstance(applied_overrides, str):
+                conditions.append(self.model.applied_workflow_config_overrides == applied_overrides)
+            elif isinstance(applied_overrides, list):
+                override_conditions = []
+                for override_id in applied_overrides:
+                    like_pattern = f"%{override_id}%"
+                    override_conditions.append(self.model.applied_workflow_config_overrides.like(like_pattern))
+                if override_conditions:
+                    conditions.append(or_(*override_conditions))
 
         return conditions
 
@@ -1174,3 +1192,518 @@ class HITLJobDAO(BaseDAO[models.HITLJob, schemas.HITLJobCreate, PydanticBaseMode
         }
         return await self.get_multi_filtered(db, filters=filters, order_by="created_at", order_dir="desc")
 
+# --- WorkflowConfigOverrideDAO --- #
+
+class WorkflowConfigOverrideDAO(BaseDAO[models.WorkflowConfigOverride, PydanticBaseModel, PydanticBaseModel]):
+    """DAO for WorkflowConfigOverride models."""
+    def __init__(self):
+        super().__init__(models.WorkflowConfigOverride)
+
+    async def create(
+        self,
+        db: AsyncSession,
+        *,
+        workflow_id: Optional[uuid.UUID] = None,
+        workflow_name: Optional[str] = None,
+        workflow_version: Optional[str] = None,
+        override_graph_schema: Dict[str, Any],
+        is_system_entity: bool = False,
+        user_id: Optional[uuid.UUID] = None,
+        org_id: Optional[uuid.UUID] = None,
+        is_active: bool = True,
+        description: Optional[str] = None,
+        tag: Optional[str] = None
+    ) -> models.WorkflowConfigOverride:
+        """
+        Creates a new workflow configuration override.
+        Either workflow_id or workflow_name must be provided.
+        At least one of is_system_entity, user_id, or org_id must be provided.
+        
+        Args:
+            db: AsyncSession instance
+            workflow_id: Optional UUID of the specific workflow to override
+            workflow_name: Optional name of workflows to override (alternative to workflow_id)
+            workflow_version: Optional version of the workflow to override (only with workflow_name)
+            override_graph_schema: The override configuration for the workflow graph schema
+            is_system_entity: Whether this is a system-wide override
+            user_id: Optional user ID for user-specific overrides
+            org_id: Optional organization ID for org-specific overrides
+            is_active: Whether this override is active
+            description: Optional description of the override
+            tag: Optional tag to further identify this override
+        
+        Returns:
+            The created WorkflowConfigOverride
+        """
+        # # Validate that either workflow_id or workflow_name is provided
+        # if workflow_id is None and workflow_name is None:
+        #     raise ValueError("Either workflow_id or workflow_name must be provided")
+        
+        # Validate that at least one scope identifier is provided
+        if not is_system_entity and user_id is None and org_id is None:
+            raise ValueError("At least one of is_system_entity, user_id, or org_id must be provided")
+        
+        # Validate that if is_system_entity is True, user_id and org_id are None
+        if is_system_entity and (user_id is not None or org_id is not None):
+            raise ValueError("If is_system_entity is True, user_id and org_id must be None")
+        
+        # Validate that workflow_version is only used with workflow_name
+        if workflow_id is not None and workflow_version is not None:
+            raise ValueError("workflow_version can only be provided when using workflow_name")
+        
+        db_obj = models.WorkflowConfigOverride(
+            workflow_id=workflow_id,
+            workflow_name=workflow_name,
+            workflow_version=workflow_version,
+            override_graph_schema=override_graph_schema,
+            is_system_entity=is_system_entity,
+            user_id=user_id,
+            org_id=org_id,
+            is_active=is_active,
+            description=description,
+            tag=tag
+        )
+        
+        db.add(db_obj)
+        await db.commit()
+        await db.refresh(db_obj)
+        return db_obj
+
+    async def update(
+        self,
+        db: AsyncSession,
+        *,
+        override_id: uuid.UUID,
+        override_graph_schema: Optional[Dict[str, Any]] = None,
+        is_active: Optional[bool] = None,
+        description: Optional[str] = None,
+        tag: Optional[str] = None
+    ) -> Optional[models.WorkflowConfigOverride]:
+        """
+        Updates an existing workflow configuration override.
+        Only certain fields can be updated (override_graph_schema, is_active, description, tag).
+        The core identifiers (workflow_id/name, scope) cannot be changed.
+        
+        Args:
+            db: AsyncSession instance
+            override_id: UUID of the override to update
+            override_graph_schema: Updated override configuration
+            is_active: Updated active status
+            description: Updated description
+            tag: Updated tag
+        
+        Returns:
+            The updated WorkflowConfigOverride or None if not found
+        """
+        db_obj = await self.get(db, id=override_id)
+        if not db_obj:
+            return None
+        
+        update_data = {}
+        if override_graph_schema is not None:
+            update_data["override_graph_schema"] = override_graph_schema
+        if is_active is not None:
+            update_data["is_active"] = is_active
+        if description is not None:
+            update_data["description"] = description
+        if tag is not None:
+            update_data["tag"] = tag
+        
+        for field, value in update_data.items():
+            setattr(db_obj, field, value)
+        
+        db.add(db_obj)
+        await db.commit()
+        await db.refresh(db_obj)
+        return db_obj
+
+    async def get_overrides_for_workflow(
+        self,
+        db: AsyncSession,
+        *,
+        workflow_id: uuid.UUID,
+        workflow_name: Optional[str] = None,
+        workflow_version: Optional[str] = None,
+        user_id: Optional[uuid.UUID] = None,
+        user_is_superuser: bool = False,
+        org_id: Optional[uuid.UUID] = None,
+        include_tags: Optional[List[str]] = None,
+        include_global_overrides: bool = True,
+        include_active: bool = True,
+        include_system_overrides: bool = True,
+        include_org_overrides: bool = True,
+        include_user_overrides: bool = True
+    ) -> Sequence[models.WorkflowConfigOverride]:
+        """
+        Retrieves active override configurations for a specific workflow,
+        ordered by priority (system < org < user < user+org < specific tags).
+        
+        Args:
+            db: AsyncSession instance
+            workflow_id: UUID of the workflow
+            workflow_name: Name of the workflow
+            workflow_version: Version of the workflow
+            user_id: Optional user ID for user-specific overrides
+            user_is_superuser: Whether the user is a superuser
+            org_id: Optional organization ID for org-specific overrides
+            include_active: Whether to include active overrides
+            include_global_overrides: Whether to include global overrides
+            include_tags: Optional list of specific tags to include (even if not active)
+            include_system_overrides: Whether to include system-wide overrides
+            include_org_overrides: Whether to include org-specific overrides
+            include_user_overrides: Whether to include user-specific overrides
+        
+        Returns:
+            Sequence of WorkflowConfigOverride objects in priority order
+        """
+        # assert workflow_id or workflow_name, "Either workflow_id or workflow_name must be provided"
+        # assert not (workflow_id and workflow_version), "Only one of workflow_id or workflow_version can be provided"
+        
+        # Add workflow identifier condition
+        workflow_identifier_conditions = []
+        if workflow_id:
+            workflow_identifier_conditions.append(self.model.workflow_id == workflow_id)
+        if workflow_name:
+            workflow_name_and_version_conditions = []
+            workflow_name_and_version_conditions.append(self.model.workflow_name == workflow_name)
+            if workflow_version:
+                workflow_name_and_version_conditions.append(self.model.workflow_version == workflow_version)
+            workflow_identifier_conditions.append(and_(*workflow_name_and_version_conditions))
+        # Global X-workflow configs
+        if include_global_overrides:
+            workflow_identifier_conditions.append(and_(self.model.workflow_id == None, self.model.workflow_name == None))
+        if workflow_identifier_conditions:
+            workflow_identifier_conditions = [or_(*workflow_identifier_conditions)] if len(workflow_identifier_conditions) > 1 else workflow_identifier_conditions
+            # conditions.append(workflow_identifier_conditions)
+        
+        # Add active status condition (unless specific tags are requested)
+        tag_conditions = []
+        if include_tags:
+            tag_conditions.append(self.model.tag.in_(include_tags))
+            if not user_is_superuser:
+                tag_conditions.append(self.model.is_system_entity == False)
+                tag_conditions = [and_(*tag_conditions)]
+
+        
+        # Active conditions
+        active_conditions = [self.model.is_active == True] if include_active else []
+        
+        # Build scope conditions based on parameters
+        scope_conditions = []
+        
+        if include_system_overrides:
+            scope_conditions.append(
+                and_(
+                    self.model.is_system_entity == True,
+                    self.model.user_id == None,
+                    self.model.org_id == None
+                )
+            )
+        
+        if include_org_overrides and org_id:
+            scope_conditions.append(
+                and_(
+                    self.model.is_system_entity == False,
+                    self.model.user_id == None,
+                    self.model.org_id == org_id
+                )
+            )
+        
+        if include_user_overrides and user_id:
+            # User-only overrides (across all orgs)
+            scope_conditions.append(
+                and_(
+                    self.model.is_system_entity == False,
+                    self.model.user_id == user_id,
+                    self.model.org_id == None
+                )
+            )
+            
+            # User-org specific overrides
+            if org_id:
+                scope_conditions.append(
+                    and_(
+                        self.model.is_system_entity == False,
+                        self.model.user_id == user_id,
+                        self.model.org_id == org_id
+                    )
+                )
+        
+        
+        workflow_identifier_condition = [or_(*workflow_identifier_conditions)] if len(workflow_identifier_conditions) > 1 else workflow_identifier_conditions
+        # workflow_identifier_condition = workflow_identifier_condition[0] if workflow_identifier_condition else None
+
+        scope_condition = [or_(*scope_conditions)] if len(scope_conditions) > 1 else scope_conditions
+        # scope_condition = scope_condition[0] if scope_condition else None
+
+        tag_condition = [or_(*tag_conditions)] if len(tag_conditions) > 1 else tag_conditions
+        # tag_condition = tag_condition[0] if tag_condition else None
+
+        active_condition = [or_(*active_conditions)] if len(active_conditions) > 1 else active_conditions
+        # active_condition = active_condition[0] if active_condition else None
+        
+        # Build conditions
+        conditions = []
+        if workflow_identifier_condition:
+            conditions.append(workflow_identifier_condition[0])
+        if scope_condition:
+            conditions.append(scope_condition[0])
+        if tag_condition or active_condition:
+            tag_or_active_condition = None
+            if tag_condition and active_condition:
+                tag_or_active_condition = or_(tag_condition[0], active_condition[0])
+            elif tag_condition:
+                tag_or_active_condition = tag_condition[0]
+            elif active_condition:
+                tag_or_active_condition = active_condition[0]
+            if tag_or_active_condition is not None:
+                conditions.append(tag_or_active_condition)
+        
+        # Build the query
+        stmt = select(self.model).where(and_(*conditions))
+        
+        # Execute and return results
+        result = await db.execute(stmt)
+        overrides = result.scalars().all()
+        
+        # Sort by priority: system < org < user < user+org < with tag
+        # This is a multi-key sort where we want to prioritize:
+        # 1. Overrides with tags (if specified) over those without
+        # 2. User+org scope over user-only scope over org-only scope over system-wide scope
+        def override_priority(override):
+            # First priority: overrides with requested tags
+            is_requested_tag = include_tags and override.tag in include_tags
+
+            is_global_override = not (override.workflow_id or override.workflow_name)
+            
+            # Second priority: scope specificity
+            if override.is_system_entity:
+                scope_priority = 0  # Lowest priority
+            elif override.org_id and not override.user_id:
+                scope_priority = 2  # Org-only
+            elif override.user_id and not override.org_id:
+                scope_priority = 4  # User-only
+            elif override.user_id and override.org_id:
+                scope_priority = 6  # User+org (highest)
+            else:
+                scope_priority = -2  # Fallback, shouldn't happen
+            
+            
+            scope_priority -= 1 if is_global_override else 0
+                
+            # Return tuple for sorting (higher values have higher priority)
+            return (1 if is_requested_tag else 0, scope_priority, override.updated_at)
+        
+        # Sort the overrides by priority
+        sorted_overrides = sorted(overrides, key=override_priority, reverse=True)
+        return sorted_overrides
+
+    async def get_user_overrides(
+        self, 
+        db: AsyncSession, 
+        *, 
+        user_id: uuid.UUID,
+        org_id: Optional[uuid.UUID] = None,
+        is_active: Optional[bool] = None
+    ) -> Sequence[models.WorkflowConfigOverride]:
+        """
+        Retrieves all override configurations for a specific user.
+        
+        Args:
+            db: AsyncSession instance
+            user_id: User ID to filter by
+            org_id: Optional organization ID filter
+            is_active: Optional filter for active status
+        
+        Returns:
+            Sequence of WorkflowConfigOverride objects
+        """
+        conditions = [self.model.user_id == user_id]
+        
+        if org_id:
+            conditions.append(self.model.org_id == org_id)
+        
+        if is_active is not None:
+            conditions.append(self.model.is_active == is_active)
+        
+        stmt = select(self.model).where(and_(*conditions)).order_by(self.model.updated_at.desc())
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    async def get_org_overrides(
+        self, 
+        db: AsyncSession, 
+        *, 
+        org_id: uuid.UUID,
+        is_active: Optional[bool] = None
+    ) -> Sequence[models.WorkflowConfigOverride]:
+        """
+        Retrieves all override configurations for a specific organization.
+        
+        Args:
+            db: AsyncSession instance
+            org_id: Organization ID to filter by
+            is_active: Optional filter for active status
+        
+        Returns:
+            Sequence of WorkflowConfigOverride objects
+        """
+        conditions = [
+            self.model.org_id == org_id,
+            self.model.user_id == None  # Org-wide overrides have no user_id
+        ]
+        
+        if is_active is not None:
+            conditions.append(self.model.is_active == is_active)
+        
+        stmt = select(self.model).where(and_(*conditions)).order_by(self.model.updated_at.desc())
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    async def get_system_overrides(
+        self, 
+        db: AsyncSession, 
+        *,
+        is_active: Optional[bool] = None
+    ) -> Sequence[models.WorkflowConfigOverride]:
+        """
+        Retrieves all system-wide override configurations.
+        
+        Args:
+            db: AsyncSession instance
+            is_active: Optional filter for active status
+        
+        Returns:
+            Sequence of WorkflowConfigOverride objects
+        """
+        conditions = [self.model.is_system_entity == True]
+        
+        if is_active is not None:
+            conditions.append(self.model.is_active == is_active)
+        
+        stmt = select(self.model).where(and_(*conditions)).order_by(self.model.updated_at.desc())
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    async def deactivate_override(
+        self, 
+        db: AsyncSession, 
+        *, 
+        override_id: uuid.UUID
+    ) -> Optional[models.WorkflowConfigOverride]:
+        """
+        Deactivates an override configuration without deleting it.
+        
+        Args:
+            db: AsyncSession instance
+            override_id: UUID of the override to deactivate
+        
+        Returns:
+            The updated WorkflowConfigOverride or None if not found
+        """
+        return await self.update(db, override_id=override_id, is_active=False)
+
+    async def get_override_by_id_for_user(
+        self,
+        db: AsyncSession,
+        *,
+        override_id: uuid.UUID,
+        user_id: uuid.UUID,
+        org_id: Optional[uuid.UUID] = None
+    ) -> Optional[models.WorkflowConfigOverride]:
+        """
+        Retrieves an override by ID ensuring it belongs to the specified user.
+        
+        Args:
+            db: AsyncSession instance
+            override_id: UUID of the override
+            user_id: User ID (for authorization)
+        
+        Returns:
+            The WorkflowConfigOverride if found and owned by the user, otherwise None
+        """
+        conditions = [
+            self.model.id == override_id,
+        ]
+        
+        # Add user_id or org_id condition
+        user_or_org_conditions = [self.model.user_id == user_id]
+        if org_id is not None:
+            user_or_org_conditions.append(self.model.org_id == org_id)
+        conditions.append(or_(*user_or_org_conditions))
+            
+        stmt = select(self.model).where(and_(*conditions))
+        result = await db.execute(stmt)
+        return result.scalars().first()
+
+    async def get_overrides_by_tag(
+        self, 
+        db: AsyncSession, 
+        *, 
+        tag: str,
+        is_active: Optional[bool] = None,
+        user_id: Optional[uuid.UUID] = None,
+        org_id: Optional[uuid.UUID] = None,
+        user_is_superuser: bool = False
+    ) -> Sequence[models.WorkflowConfigOverride]:
+        """
+        Retrieves all override configurations with a specific tag.
+        
+        Args:
+            db: AsyncSession instance
+            tag: Tag to filter by
+            is_active: Optional filter for active status
+            user_id: Optional user ID to filter by
+            org_id: Optional organization ID to filter by
+            user_is_superuser: Whether the user is a superuser and can see all overrides
+        
+        Returns:
+            Sequence of WorkflowConfigOverride objects
+        """
+        conditions = [self.model.tag == tag]
+        
+        if is_active is not None:
+            conditions.append(self.model.is_active == is_active)
+            
+        # If not superuser, add user/org conditions
+        if not user_is_superuser:
+            # Add user_id or org_id condition
+            user_or_org_conditions = []
+            if user_id:
+                user_or_org_conditions.append(self.model.user_id == user_id)
+            if org_id:
+                user_or_org_conditions.append(self.model.org_id == org_id)
+            if user_or_org_conditions:
+                conditions.append(or_(*user_or_org_conditions))
+            conditions.append(self.model.is_system_entity == False)
+        
+        stmt = select(self.model).where(and_(*conditions)).order_by(self.model.updated_at.desc())
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    async def get_overrides_by_ids(
+        self,
+        db: AsyncSession,
+        *,
+        override_ids: List[uuid.UUID]
+    ) -> Sequence[models.WorkflowConfigOverride]:
+        """
+        Retrieves workflow configuration overrides by their IDs.
+
+        Args:
+            db: AsyncSession instance
+            override_ids: List of override UUIDs to retrieve
+
+        Returns:
+            Sequence of WorkflowConfigOverride objects matching the provided IDs.
+            Note that the result may contain fewer items than requested if some IDs don't exist.
+        """
+        if not override_ids:
+            return []
+
+        stmt = select(self.model).where(
+            self.model.id.in_(override_ids)
+        ).order_by(self.model.updated_at.desc())
+        
+        result = await db.execute(stmt)
+        return result.scalars().all()

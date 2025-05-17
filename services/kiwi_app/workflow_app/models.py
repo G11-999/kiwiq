@@ -6,6 +6,7 @@ from typing import List, Optional, Dict, Any, Literal
 
 from sqlalchemy import String as SQLAlchemyString, Text, JSON, Boolean, Index, ForeignKey, Enum as SQLAlchemyEnum, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.schema import CheckConstraint
 from sqlmodel import Field, Relationship, SQLModel, Column
 
 # Assuming auth models are accessible, adjust import if needed
@@ -121,6 +122,122 @@ class Workflow(SQLModel, table=True):
     # created_by: Optional["User"] = Relationship(...)
     # updated_by: Optional["User"] = Relationship(...)
 
+
+# --- WorkflowConfigOverride Model --- #
+class WorkflowConfigOverride(SQLModel, table=True):
+    """Represents configuration overrides for workflows at different scopes (system, org, user).
+    
+    This model allows for configuration overrides at various scopes:
+    - System-wide overrides (is_system_entity=True)
+    - Organization-specific overrides (org_id set)
+    - User-specific overrides (user_id set)
+    
+    Workflow identification can be:
+    - Specific workflow by ID (workflow_id)
+    - Specific workflow by name (workflow_name)
+    - Global settings when all workflow fields are None
+    """
+    __tablename__ = f"{table_prefix}workflow_config_override"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True, description="Unique ID for this override config")
+    
+    # Workflow identification - all fields can be None for global settings
+    workflow_id: Optional[uuid.UUID] = Field(
+        default=None,
+        sa_column=Column(PG_UUID(as_uuid=True), ForeignKey(f"{table_prefix}workflow.id", ondelete="CASCADE"), index=True, nullable=True),
+        description="Reference to the workflow being overridden (None for global settings)"
+    )
+    workflow_name: Optional[str] = Field(
+        default=None,
+        nullable=True,
+        index=True,
+        description="Name of the workflow being overridden (None for global settings)"
+    )
+    workflow_version: Optional[str] = Field(
+        default=None,
+        nullable=True,
+        index=True,
+        description="Version of the workflow to override (None for global settings or all versions)"
+    )
+    tag: Optional[str] = Field(
+        default=None,
+        nullable=True,
+        index=True,
+        description="Optional tag to further categorize or identify this override configuration"
+    )
+
+    # Override configuration
+    override_graph_schema: Dict[str, Any] = Field(
+        sa_column=Column(JSON),
+        description="The graph schema override configuration"
+    )
+
+    # Scope definition - at least one must be provided
+    is_system_entity: Optional[bool] = Field(
+        default=False,
+        nullable=True,
+        index=True,
+        description="True if this is a system-wide override"
+    )
+    user_id: Optional[uuid.UUID] = Field(
+        default=None,
+        foreign_key=f"{auth_table_prefix}user.id",
+        nullable=True,
+        index=True,
+        description="User-specific override"
+    )
+    org_id: Optional[uuid.UUID] = Field(
+        default=None,
+        foreign_key=f"{auth_table_prefix}org.id",
+        nullable=True,
+        index=True,
+        description="Organization-specific override"
+    )
+
+    is_active: bool = Field(
+        default=True,
+        index=True,
+        description="Whether this override configuration is currently active"
+    )
+
+    description: Optional[str] = Field(
+        default=None,
+        nullable=True,
+        description="Description of what this override configuration does"
+    )
+
+    created_at: datetime = Field(default_factory=datetime_now_utc, nullable=False)
+    updated_at: datetime = Field(default_factory=datetime_now_utc, nullable=False, sa_column_kwargs={"onupdate": datetime_now_utc})
+
+    # Add constraints to ensure proper configuration
+    __table_args__ = (
+        # Ensure at least one scope identifier is provided
+        CheckConstraint(
+            "(is_system_entity = true AND user_id IS NULL AND org_id IS NULL) OR "
+            "(is_system_entity = false AND (user_id IS NOT NULL OR org_id IS NOT NULL))",
+            name="check_scope_constraint"
+        ),
+        # Ensure either workflow_id or workflow_name is provided, but not both, or both can be None for global settings
+        CheckConstraint(
+            "(workflow_id IS NOT NULL AND workflow_name IS NULL) OR "
+            "(workflow_id IS NULL AND workflow_name IS NOT NULL) OR "
+            "(workflow_id IS NULL AND workflow_name IS NULL)",
+            name="check_workflow_identifier"
+        ),
+        # Ensure workflow_version is NULL when workflow_id is provided
+        CheckConstraint(
+            "(workflow_id IS NULL) OR (workflow_version IS NULL)",
+            name="check_workflow_version_constraint"
+        ),
+        # Ensure unique combination of workflow identification and scope
+        UniqueConstraint(
+            'workflow_id', 'workflow_name', 'workflow_version', 
+            'is_system_entity', 'org_id', 'user_id', 'tag',
+            name='uq_workflow_override_scope'
+        ),
+    )
+
+
 # --- WorkflowRun Model --- #
 class WorkflowRun(SQLModel, table=True):
     """Represents an execution instance of a Workflow."""
@@ -141,8 +258,9 @@ class WorkflowRun(SQLModel, table=True):
         index=True,
         description="Key name of the workflow"
     )
-    owner_org_id: uuid.UUID = Field(
+    owner_org_id: Optional[uuid.UUID] = Field(
         foreign_key=f"{auth_table_prefix}org.id", # Full path to auth org table
+        nullable=True,
         index=True,
         description="Denormalized Org ID for easier run querying"
     )
@@ -173,6 +291,17 @@ class WorkflowRun(SQLModel, table=True):
         nullable=True,
         description="Comma-separated list of IDs of the Prefect runs"
     )
+    tag: Optional[str] = Field(
+        default=None,
+        nullable=True,
+        index=True,
+        description="Optional tag to mark the run (e.g., for experiments, A/B testing)"
+    )
+    applied_workflow_config_overrides: Optional[str] = Field(
+        default=None,
+        nullable=True,
+        description="Comma-separated list of workflow config override IDs that were applied to this run, in order of application (later ones override previous ones)"
+    )
 
     started_at: Optional[datetime] = Field(default=None, nullable=True)
     ended_at: Optional[datetime] = Field(default=None, nullable=True)
@@ -188,6 +317,7 @@ class WorkflowRun(SQLModel, table=True):
     ) # Eager load parent workflow  # subquery  joined
     # owner_org: "Organization" = Relationship() # Can be loaded via owner_org_id if needed
     # triggered_by: Optional["User"] = Relationship() # Can be loaded via triggered_by_user_id
+
 
 # --- PromptTemplate Model --- #
 class PromptTemplate(SQLModel, table=True):
@@ -278,8 +408,9 @@ class UserNotification(SQLModel, table=True):
     __tablename__ = f"{table_prefix}user_notification"
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
-    user_id: uuid.UUID = Field(
-        foreign_key=f"{auth_table_prefix}user.id", 
+    user_id: Optional[uuid.UUID] = Field(
+        foreign_key=f"{auth_table_prefix}user.id",
+        nullable=True,
         index=True,
         description="The user receiving the notification"
     )

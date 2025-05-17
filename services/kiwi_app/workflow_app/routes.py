@@ -33,7 +33,8 @@ from kiwi_app.settings import settings
 from kiwi_app.auth.models import User
 from kiwi_app.auth.dependencies import (
     get_current_active_verified_user,
-    get_active_org_id
+    get_active_org_id,
+    get_current_active_superuser
 )
 from kiwi_app.workflow_app import crud as wf_crud
 # Import function to fetch user from auth crud (used in websocket auth)
@@ -54,6 +55,9 @@ from workflow_service.services import events as event_schemas
 # from kiwi_app.workflow_app.utils import workflow_logger
 from kiwi_app.utils import get_kiwi_logger
 
+# Import the updated validation function
+from kiwi_app.workflow_app.workflow_config_override import _validate_updated_graph_schema
+
 workflow_logger = get_kiwi_logger(name="kiwi_app.workflow")
 
 # --- Permission Checker Dependencies (Imported from wf_deps correctly now) ---
@@ -66,6 +70,7 @@ run_router = APIRouter(prefix="/runs", tags=["Workflow Runs"])
 template_router = APIRouter(prefix="/templates", tags=["Templates"])
 notification_router = APIRouter(prefix="/notifications", tags=["User Notifications"])
 hitl_router = APIRouter(prefix="/hitl", tags=["HITL Jobs"])
+workflow_config_override_router = APIRouter(prefix="/workflow-config-overrides", tags=["Workflow Config Overrides"])
 # notification_router.include_router(websocket_router, tags=["WebSocket Stream & Notifications"])
 
 # === Template Endpoints ===
@@ -631,136 +636,53 @@ async def search_schema_templates(
 )
 async def validate_graph(
     graph_config: Dict[str, Any] = Body(..., description="The graph configuration to validate"),
-    validate_nodes: bool = Query(True, description="Whether to validate node configurations against their templates"),
+    validate_nodes_and_structure: bool = Query(True, description="Whether to validate node configurations and overall graph structure using GraphBuilder"),
     user: User = Depends(get_current_active_verified_user),
     db_registry: registry.DBRegistry = Depends(wf_deps.get_node_template_registry),
-    # db: AsyncSession = Depends(get_async_db_dependency),
 ):
     """
     Validates a workflow graph configuration for correctness and consistency.
     
-    This endpoint performs two levels of validation:
-    1. Graph schema validation - ensures the graph structure is valid (nodes properly connected, etc.)
-    2. Node configuration validation - ensures each node's configuration is valid against its template
+    This endpoint performs validation:
+    1. Base GraphSchema Pydantic validation.
+    2. If `validate_nodes_and_structure` is true:
+        a. Node configuration validation (ensures each node's configuration is valid against its template).
+        b. GraphBuilder validation (ensures overall structural integrity).
     
     Returns detailed validation results with specific errors if validation fails.
     """
-    from workflow_service.graph.graph import GraphSchema
-    
-    workflow_logger.info(f"User {user.id} requested graph validation")
-    all_errors: Dict[str, List[str]] = defaultdict(list)
-    
-    # First, validate the graph schema structure
-    try:
-        # Convert dict to GraphSchema for validation
-        graph_schema = GraphSchema.model_validate(graph_config)
-        graph_schema_valid = True
-    except Exception as e:
-        graph_schema_valid = False
-        # Extract error message
-        error_msg = str(e)
-        all_errors["graph_schema"] = [error_msg]
-        workflow_logger.warning(f"Graph schema validation failed: {error_msg}")
-        
-        # If the schema is invalid, we can't proceed with node validation
-        return schemas.WorkflowGraphValidationResult(
-            is_valid=False,
-            graph_schema_valid=False,
-            node_configs_valid=False,
-            errors=all_errors
+    workflow_logger.info(f"User {user.id} requested graph validation. Validate nodes and structure: {validate_nodes_and_structure}")
+
+    overall_is_valid, pydantic_schema_is_valid, detailed_validation_is_valid, errors_dict = \
+        await _validate_updated_graph_schema(
+            graph_config_dict=graph_config,
+            db_registry=db_registry,
+            perform_detailed_validation=validate_nodes_and_structure
         )
+
+    # For the response model, node_configs_valid means the detailed validation part.
+    # If validate_nodes_and_structure was false, then this part was "skipped", so it's considered valid for the purpose of the response field.
+    # If it was true, then detailed_validation_is_valid reflects its actual success/failure.
+    # The overall_is_valid from the function correctly reflects whether all *performed* steps passed.
+
+    response_node_configs_valid = detailed_validation_is_valid 
+    # If detailed validation was not performed, overall_is_valid only depends on pydantic_schema_is_valid
+    # If detailed validation was performed, overall_is_valid considers everything.
     
-    # If graph schema is valid and node validation is requested, validate node configs
-    node_configs_valid = True
-    if validate_nodes and graph_schema_valid:
-        workflow_logger.info("Validating node configurations...")
-        
-        for node_id, node_config in graph_schema.nodes.items():
-            # Skip special input/output nodes
-            if node_id in ["input_node", "output_node"]:
-                continue
-                
-            node_name = node_config.node_name
-            # Use 'latest' if no version specified
-            node_version = node_config.node_version or "latest"
-            
-            # Get node template with config schema
-            node = None
-            try:
-                node = db_registry.get_node(node_name=node_name, version=None if node_version == "latest" else node_version)
-                node_version = node.node_version
-            except ValueError as e:
-                node_configs_valid = False
-                all_errors[node_id].append(f"Could not find node template for {node_name} v:{node_version}")
-                continue
-            
-            # NOTE: this algo doesn't handle dynamic config schemas, since they should practically not exist!
-            config_schema = node.config_schema_cls
-            
-            # Skip validation if no config schema is defined
-            if not config_schema:
-                if not node_config.node_config:
-                    workflow_logger.info(f"Node {node_id} ({node_name}) has no config schema defined, skipping validation")
-                else:
-                    node_configs_valid = False
-                    all_errors[node_id] = ["Node has no config schema defined, but has a config in the graph schema"]
-                    workflow_logger.warning(f"Node {node_id} ({node_name}) has no config schema defined, but has a config in the graph schema")
-                continue
-            else:
-                config_schema = config_schema.model_json_schema()
-            
-            # Validate the node's configuration against its schema
-            try:
-                jsonschema.validate(instance=node_config.node_config, schema=config_schema, format_checker=Draft202012Validator.FORMAT_CHECKER)
-                workflow_logger.info(f"Node {node_id} ({node_name}) JSON SCHEMA configuration validated successfully")
-                node.config_schema_cls.model_validate(node_config.node_config)
-            except ValidationError as e:
-                node_configs_valid = False
-                error_path = "".join(str(part) for part in e.path)
-                error_msg = f"{error_path}: {e.message}" if error_path else e.message
-                all_errors[node_id].append(error_msg)
-                workflow_logger.warning(f"Node {node_id} ({node_name}) config validation failed: {error_msg}")
-            except PydanticValidationError as e:
-                node_configs_valid = False
-                all_errors[node_id].append(str(e))
-                workflow_logger.error(f"Error validating node {node_id} ({node_name}): \n{str(e)}", exc_info=True)
-            except Exception as e:
-                node_configs_valid = False
-                all_errors[node_id].append(f"Error validating node: {str(e)}")
-                workflow_logger.error(f"Error validating node {node_id} ({node_name}): {str(e)}", exc_info=True)
-        
-        if not all_errors:
-            from workflow_service.graph.graph import GraphSchema
-            from workflow_service.graph.builder import GraphBuilder
-            from workflow_service.services.external_context_manager import get_external_context_manager_with_clients
-            external_context_manager = await get_external_context_manager_with_clients()
-            db_registry = external_context_manager.db_registry
-            
-            # Run the async function in an event loop to get the db_registry
-            graph_builder = GraphBuilder(db_registry)
-            try:
-                graph_entities = graph_builder.build_graph_entities(graph_schema)
-            except Exception as e:
-                node_configs_valid = False
-                all_errors[node_id].append(f"Error validating graph schema while building graph entities: {str(e)}")
-                workflow_logger.error(f"Error validating graph schema while building graph entities: {str(e)}", exc_info=True)
-    
-    # Overall validation result
-    is_valid = graph_schema_valid and (not validate_nodes or node_configs_valid)
-    
-    # Log validation result
-    if is_valid:
-        workflow_logger.info("Graph validation passed successfully")
-    else:
-        error_count = sum(len(errors) for errors in all_errors.values())
-        workflow_logger.warning(f"Graph validation failed with {error_count} errors")
-    
-    return schemas.WorkflowGraphValidationResult(
-        is_valid=is_valid,
-        graph_schema_valid=graph_schema_valid,
-        node_configs_valid=node_configs_valid,
-        errors=all_errors
+    validation_result = schemas.WorkflowGraphValidationResult(
+        is_valid=overall_is_valid,
+        graph_schema_valid=pydantic_schema_is_valid,
+        node_configs_valid=response_node_configs_valid, # This field indicates if node/builder validation passed or was skipped
+        errors=errors_dict
     )
+    
+    if overall_is_valid:
+        workflow_logger.info(f"Graph validation request for user {user.id} completed. Overall result: VALID.")
+    else:
+        error_count = sum(len(el) for el in errors_dict.values())
+        workflow_logger.warning(f"Graph validation request for user {user.id} completed. Overall result: INVALID with {error_count} errors. Details: {errors_dict}")
+            
+    return validation_result
 
 @workflow_router.post(
     "",
@@ -1022,6 +944,51 @@ async def delete_workflow(
     except Exception as e:
         workflow_logger.error(f"Error deleting workflow {workflow_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An error occurred while deleting the workflow")
+
+@workflow_router.get(
+    "/{workflow_id}/effective-config",
+    response_model=schemas.WorkflowEffectiveConfigResponse,
+    summary="Get Effective Workflow Configuration with Overrides",
+    dependencies=[Depends(wf_deps.RequireWorkflowReadActiveOrg)] # Ensures user has read access to the base workflow
+)
+async def get_workflow_effective_config(
+    query_params: schemas.WorkflowEffectiveConfigQuery,
+    workflow_id: uuid.UUID = Path(..., description="The ID of the workflow"),
+    active_org_id: uuid.UUID = Depends(get_active_org_id),
+    current_user: User = Depends(get_current_active_verified_user), # get_current_active_verified_user instead of RequireWorkflowReadActiveOrg for current_user
+    db: AsyncSession = Depends(get_async_db_dependency),
+    workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
+):
+    """
+    Retrieves the effective graph configuration for a specific workflow, 
+    after applying all relevant and active configuration overrides.
+
+    - Requires `workflow:read` permission on the active organization for the base workflow.
+    """
+    try:
+        applied_overrides, effective_graph_schema = await workflow_service.get_workflow_config_with_overrides(
+            db=db,
+            workflow_id=workflow_id,
+            active_org_id=active_org_id,
+            requesting_user=current_user,
+            include_active=query_params.include_active,
+            include_tags=query_params.include_tags
+        )
+        workflow_logger.info(f"User {current_user.id} retrieved effective config for workflow {workflow_id} in org {active_org_id} with {len(applied_overrides)} overrides.")
+        return schemas.WorkflowEffectiveConfigResponse(
+            applied_overrides=applied_overrides,
+            effective_graph_schema=effective_graph_schema
+        )
+    except exceptions.WorkflowNotFoundException as e:
+        workflow_logger.warning(f"User {current_user.id} attempted to get effective config for non-existent workflow: {workflow_id}")
+        raise e
+    except HTTPException as e:
+        # Re-raise known HTTP exceptions (e.g., from override application failure)
+        workflow_logger.warning(f"HTTP error for user {current_user.id} getting effective config for workflow {workflow_id}: {str(e)}")
+        raise
+    except Exception as e:
+        workflow_logger.error(f"Error retrieving effective config for workflow {workflow_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An error occurred while retrieving the effective workflow configuration")
 
 
 # === Workflow Run Endpoints ===
@@ -1653,3 +1620,284 @@ async def cancel_hitl_job(
     except Exception as e:
         workflow_logger.error(f"Error cancelling HITL job {job.id} by user {current_user.id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An error occurred while cancelling the HITL job")
+
+
+
+# --- Workflow Config Override Routes --- #
+
+@workflow_config_override_router.post(
+    "",
+    response_model=schemas.WorkflowConfigOverrideRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create workflow configuration override"
+)
+async def create_config_override(
+    override_in: schemas.WorkflowConfigOverrideCreate,
+    active_org_id: uuid.UUID = Depends(get_active_org_id),
+    current_user: User = Depends(get_current_active_verified_user),
+    db: AsyncSession = Depends(get_async_db_dependency),
+    workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency)
+):
+    """Create a new workflow configuration override."""
+    # Only superusers can create system-wide overrides
+    if override_in.is_system_entity and not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only superusers can create system-wide overrides"
+        )
+    
+    # Users can only create overrides for themselves or their active org (unless superuser)
+    if override_in.user_id and override_in.user_id != current_user.id and not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot create overrides for other users"
+        )
+    
+    if override_in.org_id and override_in.org_id != active_org_id and not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot create overrides for other organizations"
+        )
+    
+    # Create the override
+    return await workflow_service.create_workflow_config_override(
+        db=db,
+        override_in=override_in,
+        user=current_user,
+        active_org_id=active_org_id
+    )
+
+# Add specialized endpoints for more intuitive API access
+
+@workflow_config_override_router.get(
+    "/user",
+    response_model=List[schemas.WorkflowConfigOverrideRead],
+    summary="List workflow configuration overrides for a specific user"
+)
+async def list_user_overrides(
+    query: Annotated[schemas.UserOverrideListQuery, Query()],
+    active_org_id: uuid.UUID = Depends(get_active_org_id),
+    current_user: User = Depends(get_current_active_verified_user),
+    db: AsyncSession = Depends(get_async_db_dependency),
+    workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency)
+):
+    """List workflow configuration overrides for a specific user."""
+    return await workflow_service.list_user_overrides(
+        db=db,
+        user_id=query.user_id or current_user.id,
+        active_org_id=active_org_id,
+        is_active=query.is_active,
+        skip=query.skip,
+        limit=query.limit,
+        requesting_user=current_user
+    )
+
+@workflow_config_override_router.get(
+    "/organization",
+    response_model=List[schemas.WorkflowConfigOverrideRead],
+    summary="List workflow configuration overrides for a specific organization"
+)
+async def list_org_overrides(
+    query: Annotated[schemas.OrgOverrideListQuery, Query()],
+    active_org_id: uuid.UUID = Depends(get_active_org_id),
+    current_user: User = Depends(get_current_active_verified_user),
+    db: AsyncSession = Depends(get_async_db_dependency),
+    workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency)
+):
+    """List workflow configuration overrides for a specific organization."""
+    return await workflow_service.list_org_overrides(
+        db=db,
+        active_org_id=query.org_id or active_org_id,
+        is_active=query.is_active,
+        skip=query.skip,
+        limit=query.limit,
+        requesting_user=current_user
+    )
+
+@workflow_config_override_router.get(
+    "/system",
+    response_model=List[schemas.WorkflowConfigOverrideRead],
+    summary="List system-wide workflow configuration overrides (Superuser only)"
+)
+async def list_system_overrides(
+    query: Annotated[schemas.SystemOverrideListQuery, Query()],
+    current_user: User = Depends(get_current_active_superuser),
+    db: AsyncSession = Depends(get_async_db_dependency),
+    workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency)
+):
+    """List system-wide workflow configuration overrides. Only accessible to superusers."""
+    return await workflow_service.list_system_overrides(
+        db=db,
+        is_active=query.is_active,
+        skip=query.skip,
+        limit=query.limit,
+        requesting_user=current_user
+    )
+
+@workflow_config_override_router.post(
+    "/workflow/search", # Changed from GET /workflow and added /search convention
+    response_model=List[schemas.WorkflowConfigOverrideRead],
+    summary="List workflow configuration overrides for a specific workflow (supports tag list in body)"
+)
+async def list_workflow_specific_overrides(
+    payload: schemas.WorkflowSpecificOverrideListPayload, # Added payload for request body
+    workflow_id: Optional[uuid.UUID] = Query(None, description="The ID of the workflow"),
+    workflow_name: Optional[str] = Query(None, description="The name of the workflow"),
+    workflow_version: Optional[str] = Query(None, description="The version of the workflow"),
+    include_active: bool = Query(True, description="Whether to include active overrides"),
+    # tag: Optional[str] = Query(None, description="Filter by tag"), # Removed query param tag
+    skip: int = Query(0, ge=0, description="Number of items to skip"),
+    limit: int = Query(100, ge=1, le=200, description="Maximum number of items to return"),
+    active_org_id: uuid.UUID = Depends(get_active_org_id),
+    current_user: User = Depends(get_current_active_verified_user),
+    db: AsyncSession = Depends(get_async_db_dependency),
+    workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency)
+):
+    """List workflow configuration overrides for a specific workflow."""
+    if not workflow_id and not workflow_name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="Either workflow_id or workflow_name must be provided"
+        )
+        
+    # include_tags = [tag] if tag else None # Old logic for single tag query param
+    
+    overrides, _ = await workflow_service.list_workflow_specific_overrides_and_optional_apply(
+        db=db,
+        workflow_id=workflow_id,
+        workflow_name=workflow_name,
+        workflow_version=workflow_version,
+        include_active=include_active,
+        include_tags=payload.include_tags, # Use include_tags from payload
+        active_org_id=active_org_id,
+        skip=skip,
+        limit=limit,
+        requesting_user=current_user
+    )
+
+    return overrides
+
+@workflow_config_override_router.get(
+    "/tag/{tag}",
+    response_model=List[schemas.WorkflowConfigOverrideRead],
+    summary="List workflow configuration overrides with a specific tag"
+)
+async def list_tag_overrides(
+    query: Annotated[schemas.TagOverrideListQuery, Query()],
+    tag: str = Path(..., description="The tag to filter by"),
+    active_org_id: uuid.UUID = Depends(get_active_org_id),
+    current_user: User = Depends(get_current_active_verified_user),
+    db: AsyncSession = Depends(get_async_db_dependency),
+    workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency)
+):
+    """List workflow configuration overrides with a specific tag."""
+    return await workflow_service.list_tag_overrides(
+        db=db,
+        tag=tag,
+        is_active=query.is_active,
+        active_org_id=active_org_id,
+        skip=query.skip,
+        limit=query.limit,
+        requesting_user=current_user
+    )
+
+@workflow_config_override_router.get(
+    "/override/{override_id}",
+    response_model=schemas.WorkflowConfigOverrideRead,
+    summary="Get workflow configuration override by ID"
+)
+async def get_config_override(
+    override_id: uuid.UUID = Path(..., description="The ID of the config override"),
+    current_user: User = Depends(get_current_active_verified_user),
+    db: AsyncSession = Depends(get_async_db_dependency),
+    workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency)
+):
+    """Get a specific workflow configuration override by ID."""
+    return await workflow_service.get_workflow_config_override(
+        db=db,
+        override_id=override_id,
+        user=current_user
+    )
+
+@workflow_config_override_router.put(
+    "/override/{override_id}",
+    response_model=schemas.WorkflowConfigOverrideRead,
+    summary="Update workflow configuration override"
+)
+async def update_config_override(
+    override_update: schemas.WorkflowConfigOverrideUpdate,
+    override_id: uuid.UUID = Path(..., description="The ID of the config override"),
+    active_org_id: uuid.UUID = Depends(get_active_org_id), # Added active_org_id
+    current_user: User = Depends(get_current_active_verified_user),
+    db: AsyncSession = Depends(get_async_db_dependency),
+    workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency)
+):
+    """Update a specific workflow configuration override."""
+    # First get the override to check permissions
+    override = await workflow_service.get_workflow_config_override(
+        db=db,
+        override_id=override_id,
+        user=current_user
+    )
+    
+    # Perform the update
+    return await workflow_service.update_workflow_config_override(
+        db=db,
+        override_id=override_id,
+        override_update=override_update,
+        user=current_user,
+        active_org_id=active_org_id # Pass active_org_id
+    )
+
+@workflow_config_override_router.delete(
+    "/override/{override_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete workflow configuration override"
+)
+async def delete_config_override(
+    override_id: uuid.UUID = Path(..., description="The ID of the config override"),
+    active_org_id: uuid.UUID = Depends(get_active_org_id), # Added active_org_id
+    current_user: User = Depends(get_current_active_verified_user),
+    db: AsyncSession = Depends(get_async_db_dependency),
+    workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency)
+):
+    """Delete a specific workflow configuration override."""
+    # First get the override to check permissions
+    override = await workflow_service.get_workflow_config_override(
+        db=db,
+        override_id=override_id,
+        user=current_user
+    )
+    
+    # Delete the override
+    await workflow_service.delete_workflow_config_override(
+        db=db,
+        override_id=override_id,
+        user=current_user,
+        active_org_id=active_org_id # Pass active_org_id
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+@workflow_config_override_router.get(
+    "/all",
+    response_model=List[schemas.WorkflowConfigOverrideRead],
+    summary="List all workflow configuration overrides (superuser only)"
+)
+async def get_all_workflow_config_overrides(
+    skip: int = Query(0, ge=0, description="Number of items to skip"),
+    limit: int = Query(100, ge=1, le=200, description="Maximum number of items to return"),
+    current_user: User = Depends(get_current_active_superuser),
+    db: AsyncSession = Depends(get_async_db_dependency),
+    workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency)
+):
+    """
+    List all workflow configuration overrides across the system.
+    Only accessible to superusers.
+    """
+    overrides = await workflow_service.get_all_workflow_config_overrides(
+        db=db,
+        skip=skip,
+        limit=limit,
+        requesting_user=current_user
+    )
+    return overrides

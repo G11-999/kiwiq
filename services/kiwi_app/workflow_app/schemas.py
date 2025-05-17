@@ -116,6 +116,11 @@ class WorkflowRunCreate(BaseModel):
     resume_after_hitl: Optional[bool] = False
     force_resume_experimental_option: Optional[bool] = Field(default=False, description="Experimental option to force resume after HITL even if not in WAITING_HITL state or without pending HITL jobs! (Use with caution!)")
     on_behalf_of_user_id: Optional[uuid.UUID] = Field(None, description="User ID to act on behalf of (requires superuser privileges)")
+    tag: Optional[str] = Field(None, description="Optional tag to mark this run for experimentation tracking")
+    applied_workflow_config_overrides: Optional[str] = Field(None, description="Comma-separated list of override IDs that were applied to this run")
+    # Override configs
+    include_active_overrides: Optional[bool] = Field(default=True, description="Whether to include active overrides")
+    include_override_tags: Optional[List[str]] = Field(default=None, description="List of override tags to include")
 
 
 class WorkflowRunJobCreate(WorkflowRunCreate):
@@ -168,6 +173,8 @@ class WorkflowRunRead(WorkflowRunBase):
     created_at: datetime
     updated_at: datetime
     # prefect_run_ids: Optional[str] = None
+    tag: Optional[str] = Field(None, description="Optional tag marking this run for experimentation tracking")
+    applied_workflow_config_overrides: Optional[str] = Field(None, description="Comma-separated list of override IDs that were applied to this run")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -341,6 +348,7 @@ class WorkflowRunListQuery(CommonListQuery):
     triggered_by_user_id: Optional[uuid.UUID] = Field(None, description="Filter runs by triggering user ID (Superuser only)")
     owner_org_id: Optional[uuid.UUID] = Field(None, description="Filter by owning organization ID (Superuser only)")
     workflow_name: Optional[str] = Field(None, description="Name of the workflow this run belongs to")
+    tag: Optional[str] = Field(None, description="Filter runs by experiment tag")
 
 class HITLJobListQuery(CommonListQuery):
     """Query parameters for listing HITL jobs."""
@@ -818,4 +826,108 @@ class CustomerDataDeleteResponse(BaseModel):
     deleted_count: int = Field(..., description="Number of documents deleted")
     dry_run: bool = Field(False, description="Whether this was a dry run (no actual deletion)")
     
+    model_config = ConfigDict(from_attributes=True)
+
+class WorkflowConfigOverrideBase(BaseModel):
+    """Base schema for WorkflowConfigOverride."""
+    # Either workflow_id OR workflow_name must be provided (not both)
+    # If workflow_name is used, workflow_version is optional
+    workflow_id: Optional[uuid.UUID] = Field(None, description="Reference to the workflow being overridden")
+    workflow_name: Optional[str] = Field(None, description="Name of the workflow being overridden (alternative to workflow_id)")
+    workflow_version: Optional[str] = Field(None, description="Version of the workflow to override (if null, applies to all versions)")
+    
+    # The override configuration
+    override_graph_schema: Dict[str, Any] = Field(..., description="The graph schema override configuration")
+    
+    # At least one of is_system_entity, user_id, or org_id must be provided
+    # If is_system_entity is True, user_id and org_id must be None
+    is_system_entity: bool = Field(False, description="True if this is a system-wide override")
+    user_id: Optional[uuid.UUID] = Field(None, description="User-specific override")
+    org_id: Optional[uuid.UUID] = Field(None, description="Organization-specific override")
+    
+    is_active: bool = Field(True, description="Whether this override configuration is currently active")
+    description: Optional[str] = Field(None, description="Description of what this override configuration does")
+    tag: Optional[str] = Field(None, description="Optional tag to further categorize this override configuration")
+    
+    
+    # @model_validator(mode='after')
+    # def validate_scope_identifiers(self):
+    #     """Ensure at least one scope identifier is provided with proper constraints."""
+    #     is_system = self.is_system_entity
+    #     user_id = self.user_id
+    #     org_id = self.org_id
+        
+    #     # At least one scope identifier must be provided
+    #     if not is_system and user_id is None and org_id is None:
+    #         raise ValueError("At least one of is_system_entity, user_id, or org_id must be provided")
+        
+    #     # If is_system_entity is True, user_id and org_id must be None
+    #     if is_system and (user_id is not None or org_id is not None):
+    #         raise ValueError("If is_system_entity is True, user_id and org_id must be None")
+        
+    #     # Validate that workflow_version is only used with workflow_name
+    #     if self.workflow_id is not None and self.workflow_version is not None:
+    #         raise ValueError("workflow_version can only be provided when using workflow_name")
+        
+    #     return self
+
+class WorkflowConfigOverrideCreate(WorkflowConfigOverrideBase):
+    """Schema for creating a new WorkflowConfigOverride."""
+    pass
+
+class WorkflowConfigOverrideUpdate(BaseModel):
+    """Schema for updating an existing WorkflowConfigOverride.
+
+    Only certain fields can be updated (override_graph_schema, is_active, 
+    description, tag). Core identifiers (workflow_id/name, scope) cannot be changed.
+    """
+    override_graph_schema: Optional[Dict[str, Any]] = Field(None, description="The updated graph schema override configuration")
+    is_active: Optional[bool] = Field(None, description="Whether this override configuration is active")
+    description: Optional[str] = Field(None, description="Description of what this override configuration does")
+    tag: Optional[str] = Field(None, description="Optional tag to further categorize this override configuration")
+
+class WorkflowConfigOverrideRead(WorkflowConfigOverrideBase):
+    """Schema for reading a WorkflowConfigOverride."""
+    id: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WorkflowSpecificOverrideListPayload(BaseModel):
+    """Request body for listing workflow-specific configuration overrides with tag filtering."""
+    include_tags: Optional[List[str]] = Field(None, description="Optional list of tags to filter by. Overrides matching ANY of these tags will be prioritized.")
+
+class UserOverrideListQuery(CommonListQuery):
+    """Query parameters for listing user-specific configuration overrides."""
+    user_id: uuid.UUID = Field(None, description="The ID of the user whose overrides to list")
+    is_active: Optional[bool] = Field(None, description="Filter by active status")
+    
+class OrgOverrideListQuery(CommonListQuery):
+    """Query parameters for listing organization-specific configuration overrides."""
+    org_id: uuid.UUID = Field(None, description="The ID of the organization whose overrides to list")
+    is_active: Optional[bool] = Field(None, description="Filter by active status")
+    
+class SystemOverrideListQuery(CommonListQuery):
+    """Query parameters for listing system-wide configuration overrides."""
+    is_active: Optional[bool] = Field(None, description="Filter by active status")
+    
+class TagOverrideListQuery(CommonListQuery):
+    """Query parameters for listing tag-specific configuration overrides."""
+    tag: str = Field(..., description="The tag to filter by")
+    is_active: Optional[bool] = Field(None, description="Filter by active status")
+
+# --- Effective Workflow Config Schemas --- #
+
+class WorkflowEffectiveConfigQuery(BaseModel):
+    """Query parameters for retrieving effective workflow configuration."""
+    include_active: bool = Field(True, description="Whether to include active overrides when calculating the effective config.")
+    include_tags: Optional[List[str]] = Field(None, description="Optional list of override tags to specifically include.")
+
+class WorkflowEffectiveConfigResponse(BaseModel):
+    """Response schema for an effective workflow configuration."""
+    applied_overrides: List[WorkflowConfigOverrideRead] = Field(..., description="List of workflow configuration overrides that were applied.")
+    effective_graph_schema: GraphSchema = Field(..., description="The final effective graph schema after applying all relevant overrides.")
+
     model_config = ConfigDict(from_attributes=True)
