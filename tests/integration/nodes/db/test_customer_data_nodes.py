@@ -434,7 +434,7 @@ class TestCustomerDataNodes(unittest.IsolatedAsyncioTestCase):
         # Assert output path reflects initialization
         self.assertIsNotNone(output.paths_processed)
         self.assertEqual(len(output.paths_processed), 1)
-        self.assertEqual(output.paths_processed[0], [self.test_namespace, doc_name, f"initialized_version_{version_name}"])
+        self.assertEqual(output.paths_processed[0][:3], [self.test_namespace, doc_name, f"initialized_version_{version_name}"])
 
     async def test_store_versioned_upsert_initializes_default_version(self):
         """Test UPSERT_VERSIONED initializes the 'default' version if no version is specified."""
@@ -468,7 +468,7 @@ class TestCustomerDataNodes(unittest.IsolatedAsyncioTestCase):
         await self._assert_doc_exists(self.test_namespace, doc_name, False, False, self.user_regular, initial_data, version_to_check="default")
 
         # Assert output path reflects initialization of 'default'
-        self.assertEqual(output.paths_processed, [[self.test_namespace, doc_name, f"initialized_version_default"]])
+        self.assertEqual(output.paths_processed[0][:3], [self.test_namespace, doc_name, f"initialized_version_default"])
 
     async def test_store_versioned_upsert_updates_existing_version(self):
         """Test UPSERT_VERSIONED updates an existing document version."""
@@ -510,7 +510,7 @@ class TestCustomerDataNodes(unittest.IsolatedAsyncioTestCase):
         await self._assert_doc_exists(self.test_namespace, doc_name, False, False, self.user_regular, updated_data, version_to_check=version_name)
 
         # Assert output path reflects update
-        self.assertEqual(output.paths_processed, [[self.test_namespace, doc_name, f"updated_{version_name}"]])
+        self.assertEqual(output.paths_processed[0][:3], [self.test_namespace, doc_name, f"updated_{version_name}"])
 
     async def test_store_versioned_upsert_updates_active_version(self):
         """Test UPSERT_VERSIONED updates the active ('default') version when version is None."""
@@ -551,7 +551,7 @@ class TestCustomerDataNodes(unittest.IsolatedAsyncioTestCase):
         await self._assert_doc_exists(self.test_namespace, doc_name, False, False, self.user_regular, updated_data, version_to_check="default")
 
         # Assert output path reflects update of 'active'
-        self.assertEqual(output.paths_processed, [[self.test_namespace, doc_name, f"updated_$active"]])
+        self.assertEqual(output.paths_processed[0][:3], [self.test_namespace, doc_name, f"updated_$active"])
 
     async def test_store_versioned_upsert_initializes_new_version_for_existing_doc(self):
         """Test UPSERT_VERSIONED initializes a new version when the doc exists but the version doesn't."""
@@ -598,7 +598,7 @@ class TestCustomerDataNodes(unittest.IsolatedAsyncioTestCase):
         await self._assert_doc_exists(self.test_namespace, doc_name, False, False, self.user_regular, initial_data_v1, version_to_check=version_name_v1)
 
         # Assert output path reflects initialization of v2
-        self.assertEqual(output.paths_processed, [[self.test_namespace, doc_name, f"created_and_updated_version_{version_name_v2}"]])
+        self.assertEqual(output.paths_processed[0][:3], [self.test_namespace, doc_name, f"created_and_updated_version_{version_name_v2}"])
 
 
 
@@ -2236,8 +2236,8 @@ class TestCustomerDataNodes(unittest.IsolatedAsyncioTestCase):
 
         # Assert output indicates success for both
         self.assertEqual(len(output.paths_processed), 2)
-        self.assertIn([self.test_namespace, doc_name1, "upsert_unversioned (created: True)"], output.paths_processed)
-        self.assertIn([self.test_namespace, doc_name2, "upsert_unversioned (created: True)"], output.paths_processed)
+        self.assertIn([self.test_namespace, doc_name1, "upsert_unversioned (created: True)"], [p[:3] for p in output.paths_processed])
+        self.assertIn([self.test_namespace, doc_name2, "upsert_unversioned (created: True)"], [p[:3] for p in output.paths_processed])
 
         # Assert documents were stored correctly
         await self._assert_doc_exists(self.test_namespace, doc_name1, False, False, self.user_regular, data1)
@@ -2751,7 +2751,7 @@ class TestCustomerDataNodes(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(output.paths_processed), 1)
         
         # Extract the generated docname from the result
-        namespace, docname, _ = output.paths_processed[0]
+        namespace, docname, _ = output.paths_processed[0][:3]
         
         # Verify the document exists with expected content
         fetched_data = await self.customer_data_service.get_unversioned_document(
@@ -2796,7 +2796,7 @@ class TestCustomerDataNodes(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(output.paths_processed), 1)
         
         # Extract the generated docname from the result
-        namespace, docname, _ = output.paths_processed[0]
+        namespace, docname, _ = output.paths_processed[0][:3]
         
         # Verify the document exists with expected content
         fetched_data = await self.customer_data_service.get_unversioned_document(
@@ -2841,7 +2841,7 @@ class TestCustomerDataNodes(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(output.paths_processed), 1)
         
         # Extract the generated docname from the result
-        namespace, docname, _ = output.paths_processed[0]
+        namespace, docname, _ = output.paths_processed[0][:3]
         
         # Verify the document exists with expected content
         fetched_data = await self.customer_data_service.get_unversioned_document(

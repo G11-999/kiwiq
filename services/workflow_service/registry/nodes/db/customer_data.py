@@ -82,6 +82,86 @@ def _get_nested_obj(data: Any, field_path: str) -> Tuple[Any, bool]:
 
     return current, True
 
+def _set_nested_obj(data: Dict[str, Any], field_path: str, value: Any) -> bool:
+    """
+    Sets a value in a nested dictionary or list structure.
+
+    Creates necessary dictionaries if intermediate path segments for dictionaries do not exist.
+    Assumes lists and their indices exist up to the point of setting the value for list elements.
+
+    Args:
+        data: The dictionary to modify.
+        field_path: Dot-notation path (e.g., 'a.b.0.c') where the value should be set.
+        value: The value to set at the specified path.
+
+    Returns:
+        bool: True if the value was successfully set, False otherwise (e.g., path is invalid).
+    """
+    logger = get_prefect_or_regular_python_logger(f"{__name__}._set_nested_obj")
+    parts = field_path.split('.')
+    current_obj = data
+    
+    # Navigate to the parent object of the target key/index
+    for i, part in enumerate(parts[:-1]):
+        if isinstance(current_obj, dict):
+            if part not in current_obj or not isinstance(current_obj[part], (dict, list)):
+                # If the next part is supposed to be a dict key (because it's not the last part of a list index path)
+                # or if the structure needs to be created.
+                # Check if the next part in the path is an integer, suggesting it's a list index.
+                # This check is a bit heuristic; ideally, schema information would guide this.
+                # For now, if we need to create, we default to creating a dict.
+                is_next_part_list_index = False
+                if i + 1 < len(parts) -1 : # Check if there's a part after the current `part`
+                    try:
+                        int(parts[i+1]) # If the part *after* current `part` is an int, then `current_obj[part]` should be a list.
+                                        # This logic is imperfect for _set_ as we might be setting into a non-existent list.
+                                        # For simplicity, we assume dict creation if path not found.
+                                        # Proper list creation would require knowing the type.
+                        pass # Not creating list structure here, assuming dicts primarily.
+                    except ValueError:
+                        pass # Not an int, so likely a dict key.
+
+                current_obj[part] = {} # Default to creating a dictionary
+            current_obj = current_obj[part]
+        elif isinstance(current_obj, list):
+            try:
+                idx = int(part)
+                if 0 <= idx < len(current_obj):
+                    current_obj = current_obj[idx]
+                else:
+                    logger.error(f"Index {idx} out of bounds for path segment '{part}' in path '{field_path}'. Current list length: {len(current_obj)}.")
+                    return False # Index out of bounds
+            except (ValueError, TypeError):
+                logger.error(f"Invalid list index '{part}' in path '{field_path}'.")
+                return False # Invalid index format for list
+        else:
+            logger.error(f"Cannot traverse path '{field_path}': segment '{part}' leads to a non-container type ({type(current_obj)}).")
+            return False # Path leads to a non-container type
+
+    # Set the value at the final key/index
+    last_part = parts[-1]
+    if isinstance(current_obj, dict):
+        current_obj[last_part] = value
+        return True
+    elif isinstance(current_obj, list):
+        try:
+            idx = int(last_part)
+            if 0 <= idx < len(current_obj):
+                current_obj[idx] = value
+                return True
+            # elif idx == len(current_obj): # Append behavior not implemented as per "update" requirement
+            #     current_obj.append(value)
+            #     return True
+            else:
+                logger.error(f"Final index {idx} out of bounds for list at path '{'.'.join(parts[:-1])}' in path '{field_path}'. List length: {len(current_obj)}.")
+                return False # Index out of bounds for setting
+        except (ValueError, TypeError):
+            logger.error(f"Final path segment '{last_part}' is not a valid list index for path '{field_path}'.")
+            return False # last_part is not a valid index for a list
+    else:
+        logger.error(f"Cannot set value: parent for '{last_part}' in path '{field_path}' is not a dict or list, but {type(current_obj)}.")
+        return False
+
 # --- New Filename Configuration Schema and Helper ---
 
 class FilenameConfig(BaseNodeConfig):
@@ -1078,7 +1158,7 @@ class StoreCustomerDataOutput(DynamicSchema):
     """
     # TODO: Define a more structured output? E.g., results per store_config?
     # For now, just pass through input for simplicity, similar to IfElse.
-    paths_processed: List[List[str]] = Field(default_factory=list, description="List of paths processed successfully.")
+    paths_processed: List[List[Union[str, Dict[str, Any]]]] = Field(default_factory=list, description="List of paths processed successfully.")
     passthrough_data: Dict[str, Any] = Field(..., description="The original input data passed through.")
 
 
@@ -1093,7 +1173,7 @@ class StoreCustomerDataNode(BaseDynamicNode):
     Manages shared, user-specific, and system-level documents based on user permissions.
     """
     node_name: ClassVar[str] = "store_customer_data"
-    node_version: ClassVar[str] = "0.1.5" # Added on_behalf_of_user_id support
+    node_version: ClassVar[str] = "0.1.6" # Updated passthrough_data behavior
     env_flag: ClassVar[LaunchStatus] = LaunchStatus.PRODUCTION
     # Ineriting input / output dynamic schemas from base class!
     # input_schema_cls: Type[DynamicSchema] = DynamicSchema
@@ -1103,29 +1183,34 @@ class StoreCustomerDataNode(BaseDynamicNode):
 
     async def _store_single_document(
         self,
-        doc_data: Dict[str, Any],
+        doc_data: Any, # Can be dict or primitive
         store_cfg: StoreConfig,
         app_context: Dict[str, Any],
         ext_context,  # : ExternalContextManager
         full_input_dict: Dict[str, Any],
         item_index: Optional[int] = None
-    ) -> Tuple[bool, Optional[Tuple[str, str, str]]]:
+    ) -> Tuple[bool, Optional[Tuple[str, str, str]], Optional[Any]]:
         """
         Helper to store a single document based on configuration.
 
         Handles various storage operations including initialization, updates,
         upserts (for unversioned), version creation, and versioned upserts.
+        Modifies `doc_data` by adding UUIDs or extra fields if configured.
         
         Returns:
             Tuple containing:
                 - success flag (bool)
                 - Optional tuple of (namespace, docname, operation_details) for successful operations
+                - Optional modified document data that was stored (Any)
         """
         user: User = app_context["user"]
         run_job: WorkflowRunJobCreate = app_context["workflow_run_job"]
         org_id = run_job.owner_org_id
         customer_data_service: CustomerDataService = ext_context.customer_data_service
         
+        # Potentially modified document data that will be stored
+        processed_doc_data = doc_data 
+
         # Generate UUID if configured
         generated_uuid = None
         should_generate_uuid = store_cfg.generate_uuid if store_cfg.generate_uuid is not None else self.config.global_generate_uuid
@@ -1133,37 +1218,42 @@ class StoreCustomerDataNode(BaseDynamicNode):
         keep_create_fields_if_missing = store_cfg.keep_create_fields_if_missing if store_cfg.keep_create_fields_if_missing is not None else self.config.global_keep_create_fields_if_missing
         create_only_fields = create_only_fields or []
         keep_create_fields_if_missing = True if keep_create_fields_if_missing is None else keep_create_fields_if_missing
+        
         if should_generate_uuid:
             generated_uuid = str(uuid.uuid4())
             if "uuid" not in create_only_fields:
                 create_only_fields.append("uuid")
             
             # Apply UUID to document data
-            if isinstance(doc_data, dict):
-                doc_data = dict(doc_data)  # Create a copy to avoid modifying the original
-                doc_data["uuid"] = generated_uuid
+            if isinstance(processed_doc_data, dict):
+                # Create a copy before modification to avoid altering original item_data if it's a dict from input
+                processed_doc_data = dict(processed_doc_data) 
+                processed_doc_data["uuid"] = generated_uuid
             else:
-                # Wrap non-dict objects
-                doc_data = {
+                # Wrap non-dict objects, creating a new dict
+                processed_doc_data = {
                     "uuid": generated_uuid,
-                    "data": doc_data
+                    "data": processed_doc_data # Original primitive data is nested
                 }
                 
         # Apply extra fields if configured
+        # This will modify processed_doc_data if it's a dictionary
         effective_extra_fields = store_cfg.extra_fields or self.config.global_extra_fields
         if effective_extra_fields:
-            doc_data = _add_extra_fields(doc_data, full_input_dict, effective_extra_fields, self)
+            # _add_extra_fields modifies dicts in-place or returns non-dicts as is.
+            # If processed_doc_data is a dict (either original or wrapper), it's modified.
+            processed_doc_data = _add_extra_fields(processed_doc_data, full_input_dict, effective_extra_fields, self)
 
         resolved_path = _resolve_single_doc_path(
             config=store_cfg.target_path.filename_config,
             full_input_data=full_input_dict,
-            current_item_data=doc_data,
+            current_item_data=processed_doc_data, # Use the (potentially modified) data for path resolution
             item_index=item_index,
             generated_uuid=generated_uuid  # Pass the generated UUID to use in filename pattern
         )
         if not resolved_path:
             self.error(f"Could not resolve target path for item from input '{store_cfg.input_field_path}' (index: {item_index}). Skipping store.")
-            return False, None
+            return False, None, None # Return None for modified_doc_data on failure
         namespace, docname = resolved_path
 
         is_shared = store_cfg.is_shared if store_cfg.is_shared is not None else self.config.global_is_shared
@@ -1179,13 +1269,13 @@ class StoreCustomerDataNode(BaseDynamicNode):
                 on_behalf_of_user_id_uuid = uuid.UUID(on_behalf_id_str)
             except ValueError:
                 self.error(f"Invalid UUID format for on_behalf_of_user_id: '{on_behalf_id_str}' for doc '{namespace}/{docname}'. Skipping store.")
-                return False, None # Explicit failure due to invalid config
+                return False, None, None 
         # --- --- ---
 
         # --- Superuser Check --- #
         if on_behalf_of_user_id_uuid and not user.is_superuser:
             self.error(f"User '{user.id}' is not a superuser and cannot use 'on_behalf_of_user_id'='{on_behalf_id_str}'. Skipping store for output field '{namespace}/{docname}'.")
-            return False, None # Skip this store_cfg
+            return False, None, None 
         # --- End Superuser Check --- #
 
         async with get_async_db_as_manager() as db:
@@ -1198,7 +1288,7 @@ class StoreCustomerDataNode(BaseDynamicNode):
                     if versioning.operation == StoreOperation.UPSERT:
                         _id, created = await customer_data_service.create_or_update_unversioned_document(
                             db=db, org_id=org_id, namespace=namespace, docname=docname, is_shared=is_shared,
-                            user=user, data=doc_data, schema_template_name=schema_opts.schema_template_name,
+                            user=user, data=processed_doc_data, schema_template_name=schema_opts.schema_template_name,
                             schema_template_version=schema_opts.schema_template_version,
                             schema_definition=schema_opts.schema_definition,
                             is_system_entity=is_system_entity,
@@ -1207,7 +1297,7 @@ class StoreCustomerDataNode(BaseDynamicNode):
                             create_only_fields=create_only_fields,
                             keep_create_fields_if_missing=keep_create_fields_if_missing,
                         )
-                        success_flag = True # create_or_update generally doesn't fail unless db error
+                        success_flag = True 
                         operation_str = f"upsert_unversioned (created: {created})"
                         self.info(f"Upserted unversioned doc '{namespace}/{docname}'. Created: {created}")
                     elif versioning.operation == StoreOperation.UPDATE:
@@ -1216,7 +1306,7 @@ class StoreCustomerDataNode(BaseDynamicNode):
                         # For now, we call it and log a warning if it creates the document.
                         _id, created = await customer_data_service.create_or_update_unversioned_document(
                             db=db, org_id=org_id, namespace=namespace, docname=docname, is_shared=is_shared,
-                            user=user, data=doc_data, schema_template_name=schema_opts.schema_template_name,
+                            user=user, data=processed_doc_data, schema_template_name=schema_opts.schema_template_name,
                             schema_template_version=schema_opts.schema_template_version,
                             schema_definition=schema_opts.schema_definition,
                             is_system_entity=is_system_entity,
@@ -1224,31 +1314,29 @@ class StoreCustomerDataNode(BaseDynamicNode):
                             is_called_from_workflow=True,
                             create_only_fields=create_only_fields,
                             keep_create_fields_if_missing=keep_create_fields_if_missing,
-                            # update_only=True # Hypothetical flag if service supported it
                         )
-                        success_flag = True # Assume success from service perspective
+                        success_flag = True 
                         operation_str = f"update_unversioned (created: {created})"
                         if created:
                             self.warning(f"Performed 'update' on unversioned doc '{namespace}/{docname}', but it resulted in creation (upsert behavior). Document did not previously exist.")
                         else:
                             self.info(f"Updated unversioned doc '{namespace}/{docname}'.")
                     else:
-                        # This case should be prevented by the VersioningInfo validator
                         self.error(f"Invalid operation '{versioning.operation.value}' for unversioned document '{namespace}/{docname}'.")
-                        return False, None
+                        return False, None, None
 
                 else:
                     # --- Handle Versioned ---
                     if versioning.operation == StoreOperation.INITIALIZE:
                         success = await customer_data_service.initialize_versioned_document(
                             db=db, org_id=org_id, namespace=namespace, docname=docname, is_shared=is_shared,
-                            user=user, initial_version=versioning.version or "default", # Default to 'default' if not specified
+                            user=user, initial_version=versioning.version or "default", 
                             schema_template_name=schema_opts.schema_template_name,
                             schema_template_version=schema_opts.schema_template_version,
                             schema_definition=schema_opts.schema_definition,
-                            initial_data=doc_data, is_complete=versioning.is_complete or False,
+                            initial_data=processed_doc_data, is_complete=versioning.is_complete or False,
                             is_system_entity=is_system_entity,
-                            on_behalf_of_user_id=on_behalf_of_user_id_uuid, # Pass UUID
+                            on_behalf_of_user_id=on_behalf_of_user_id_uuid, 
                             is_called_from_workflow=True
                         )
                         if success:
@@ -1257,20 +1345,20 @@ class StoreCustomerDataNode(BaseDynamicNode):
                             self.info(f"Initialized versioned doc '{namespace}/{docname}' with version '{versioning.version or 'default'}'.")
                         else:
                             self.error(f"Failed to initialize versioned doc '{namespace}/{docname}'. Check permissions (e.g., superuser for on_behalf_of) or if it already exists.")
-                            return False, None # Explicit failure
+                            return False, None, None 
 
                     elif versioning.operation == StoreOperation.UPDATE:
                         # Use None for version if not specified, service interprets as 'active'
                         target_version = versioning.version
                         success = await customer_data_service.update_versioned_document(
                             db=db, org_id=org_id, namespace=namespace, docname=docname, is_shared=is_shared,
-                            user=user, data=doc_data, version=target_version,
+                            user=user, data=processed_doc_data, version=target_version,
                             is_complete=versioning.is_complete,
                             schema_template_name=schema_opts.schema_template_name,
                             schema_template_version=schema_opts.schema_template_version,
                             schema_definition=schema_opts.schema_definition,
                             is_system_entity=is_system_entity,
-                            on_behalf_of_user_id=on_behalf_of_user_id_uuid, # Pass UUID
+                            on_behalf_of_user_id=on_behalf_of_user_id_uuid, 
                             is_called_from_workflow=True,
                             create_only_fields=create_only_fields,
                             keep_create_fields_if_missing=keep_create_fields_if_missing,
@@ -1281,10 +1369,9 @@ class StoreCustomerDataNode(BaseDynamicNode):
                             self.info(f"Updated versioned doc '{namespace}/{docname}' (version: {target_version or 'active'}).")
                         else:
                             self.error(f"Failed to update versioned doc '{namespace}/{docname}' (version: {target_version or 'active'}). Check permissions, if doc/version exists, or if superuser is required for on_behalf_of.")
-                            return False, None # Explicit failure
+                            return False, None, None 
 
                     elif versioning.operation == StoreOperation.UPSERT_VERSIONED:
-                        # --- Use the dedicated upsert service method --- # 
                         self.info(f"Attempting upsert_versioned for doc '{namespace}/{docname}' (target version: {versioning.version or 'active/default'}).")
                         try:
                             op_performed, doc_identifier_dict = await customer_data_service.upsert_versioned_document(
@@ -1294,56 +1381,49 @@ class StoreCustomerDataNode(BaseDynamicNode):
                                 docname=docname,
                                 is_shared=is_shared,
                                 user=user,
-                                data=doc_data,
-                                version=versioning.version, # Pass the target version (can be None)
-                                from_version=versioning.from_version, # Pass for potential version creation
+                                data=processed_doc_data,
+                                version=versioning.version, 
+                                from_version=versioning.from_version, 
                                 is_complete=versioning.is_complete,
                                 schema_template_name=schema_opts.schema_template_name,
                                 schema_template_version=schema_opts.schema_template_version,
                                 schema_definition=schema_opts.schema_definition,
-                                on_behalf_of_user_id=on_behalf_of_user_id_uuid, # Pass UUID
+                                on_behalf_of_user_id=on_behalf_of_user_id_uuid, 
                                 is_system_entity=is_system_entity,
                                 is_called_from_workflow=True,
                                 create_only_fields=create_only_fields,
                                 keep_create_fields_if_missing=keep_create_fields_if_missing,
                             )
-                            # If the service call succeeds without raising an exception, mark success
                             success_flag = True
-                            operation_str = op_performed # Use the detailed string from the service
+                            operation_str = op_performed 
                             self.info(f"Upsert_versioned operation successful for doc '{namespace}/{docname}'. Action: {operation_str}")
                         except Exception as upsert_err:
-                            # Catch potential HTTPExceptions or other errors from the service
                             self.error(f"Upsert_versioned operation failed for doc '{namespace}/{docname}': {upsert_err}", exc_info=True)
-                            # Failure is indicated by success_flag remaining False
-                            # Re-raise the exception? Or just return False? Let's return False for now.
-                            return False, None # Explicit failure
+                            return False, None, None 
 
                     elif versioning.operation == StoreOperation.CREATE_VERSION:
                         new_version_name = versioning.version
                         if not new_version_name:
-                            # Generate a unique version name if not provided
                             new_version_name = f"version_{uuid.uuid4().hex[:8]}"
                             self.info(f"Generated new version name for CREATE_VERSION: {new_version_name}")
 
-                        # Create the version entry first
                         create_success = await customer_data_service.create_versioned_document_version(
                             org_id=org_id, namespace=namespace, docname=docname, is_shared=is_shared,
                             user=user, new_version=new_version_name, from_version=versioning.from_version,
                             is_system_entity=is_system_entity,
-                            on_behalf_of_user_id=on_behalf_of_user_id_uuid, # Pass UUID
+                            on_behalf_of_user_id=on_behalf_of_user_id_uuid, 
                             is_called_from_workflow=True
                         )
                         if create_success:
-                            # Now update the newly created version with data
                             update_success = await customer_data_service.update_versioned_document(
                                 db=db, org_id=org_id, namespace=namespace, docname=docname, is_shared=is_shared,
-                                user=user, data=doc_data, version=new_version_name, # Target the new version
-                                is_complete=versioning.is_complete, # Apply completeness if specified
+                                user=user, data=processed_doc_data, version=new_version_name, 
+                                is_complete=versioning.is_complete, 
                                 schema_template_name=schema_opts.schema_template_name,
                                 schema_template_version=schema_opts.schema_template_version,
                                 schema_definition=schema_opts.schema_definition,
                                 is_system_entity=is_system_entity,
-                                on_behalf_of_user_id=on_behalf_of_user_id_uuid, # Pass UUID
+                                on_behalf_of_user_id=on_behalf_of_user_id_uuid, 
                                 is_called_from_workflow=True,
                                 create_only_fields=create_only_fields,
                                 keep_create_fields_if_missing=keep_create_fields_if_missing,
@@ -1353,47 +1433,63 @@ class StoreCustomerDataNode(BaseDynamicNode):
                                 operation_str = f"create_version_{new_version_name}"
                                 self.info(f"Created and updated new version '{new_version_name}' for doc '{namespace}/{docname}'.")
                             else:
-                                # Version created, but update failed - inconsistent state
                                 self.error(f"Created new version '{new_version_name}' for doc '{namespace}/{docname}', but failed to update it with data. The version entry exists but is empty/incomplete. Check permissions.")
-                                return False, None # Explicit failure
+                                return False, None, None 
                         else:
-                            # Failed to create the version entry itself
                             self.error(f"Failed to create new version entry '{new_version_name}' for doc '{namespace}/{docname}'. Does the document exist? Does the 'from_version' exist? Check permissions (e.g., superuser for on_behalf_of).")
-                            return False, None # Explicit failure
+                            return False, None, None 
                     else:
-                        # This case should be prevented by the VersioningInfo validator
                         self.error(f"Unsupported operation '{versioning.operation.value}' for versioned document.")
-                        return False, None
+                        return False, None, None
                 
-                # Return success status and detailed operation string if successful
                 if success_flag:
-                    return True, (namespace, docname, operation_str)
+                    operation_params = {
+                        "org_id": org_id,
+                        "is_shared": is_shared,
+                        "on_behalf_of_user_id": on_behalf_of_user_id_uuid,
+                        "is_system_entity": is_system_entity,
+                        "namespace": namespace,
+                        "docname": docname,
+                        "version_info": {
+                            "is_versioned": versioning.is_versioned,
+                            "version": versioning.version,
+                            "is_active_version": versioning.operation in [StoreOperation.UPSERT, StoreOperation.INITIALIZE],
+                            "is_complete": versioning.is_complete,
+                        },
+                        # "schema_opts": {
+                        #     "schema_template_name": schema_opts.schema_template_name,
+                        #     "schema_template_version": schema_opts.schema_template_version,
+                        #     "schema_definition": schema_opts.schema_definition,
+                        # },
+                    }
+                    return True, (namespace, docname, operation_str, operation_params), processed_doc_data
                 else:
-                    # Should have returned False, None earlier in specific failure cases
+                    # This path should ideally not be reached if specific failures return (False, None, None)
                     self.error(f"Reached end of storage logic without success for '{namespace}/{docname}' operation '{versioning.operation.value if versioning else 'unknown'}': {e}"
                                      f" (Permission denied - check superuser privileges if using on_behalf_of_user_id)"
                                      if hasattr(e, 'status_code') and e.status_code == 403 else
                                      f"This indicates an unexpected control flow issue or prior logged failure.")
-                    return False, None
+                    return False, None, None
 
             except Exception as e:
-                # Catch unexpected errors during service calls or high-level logic
                 error_msg = f"Error storing document '{namespace}/{docname}' during operation '{versioning.operation.value if versioning else 'unknown'}': {e}"
-                # Check for permission errors specifically
                 if hasattr(e, 'status_code') and e.status_code == 403:
                     error_msg += " (Permission denied - check superuser privileges if using on_behalf_of_user_id)"
                 self.error(error_msg, exc_info=True)
-                return False, None
+                return False, None, None
 
     async def process(
         self,
         input_data: Union[DynamicSchema, Dict[str, Any]],
-        runtime_config: Optional[Dict[str, Any]] = None, # Renamed config
+        runtime_config: Optional[Dict[str, Any]] = None, 
         *args: Any,
         **kwargs: Any
     ) -> StoreCustomerDataOutput:
         """
         Stores or updates customer data based on the node's configuration.
+        The `passthrough_data` in the output will reflect the input data after
+        modifications (like UUID generation, extra fields) have been applied to
+        the items that were stored.
 
         Args:
             input_data: The input data containing the document(s) to store.
@@ -1402,8 +1498,8 @@ class StoreCustomerDataNode(BaseDynamicNode):
             **kwargs: Additional keyword arguments (unused).
 
         Returns:
-            StoreCustomerDataOutput: Passes through the original input data and includes
-            a list of successfully processed paths with their operations.
+            StoreCustomerDataOutput: Includes the potentially modified input data in `passthrough_data`
+            and a list of successfully processed paths with their operations.
         """
         # Retrieve context from runtime_config
         input_dict = input_data if isinstance(input_data, dict) else input_data.model_dump(mode='json')
@@ -1426,7 +1522,7 @@ class StoreCustomerDataNode(BaseDynamicNode):
         # passthrough_input = input_dict  # copy.deepcopy(input_dict) # Keep original for output
 
         # Use List[List[str]] to match existing output schema more easily
-        paths_processed: List[List[str]] = [] # List of [namespace, docname, operation_details] lists
+        paths_processed: List[List[Union[str, Dict[str, Any]]]] = [] # List of [namespace, docname, operation_details] lists
         any_failures = False # Track if any individual store operation failed
         
         effective_store_configs: List[StoreConfig] = []
@@ -1508,12 +1604,24 @@ class StoreCustomerDataNode(BaseDynamicNode):
             # Process the identified items
             for item_index, item_data in items_to_process:
                 # Pass contexts to helper
-                success, path_info = await self._store_single_document(
+                success, path_info, final_doc_data_stored = await self._store_single_document(
                     item_data, store_cfg, app_context, ext_context, input_dict, item_index
                 )
                 if success and path_info:
                     # path_info is (namespace, docname, operation_details)
                     paths_processed.append(list(path_info))
+                    if final_doc_data_stored is not None:
+                        # Determine the path in passthrough_input to update
+                        path_to_update_in_passthrough: str
+                        if item_index is not None: # Item was part of a list processed separately
+                            path_to_update_in_passthrough = f"{store_cfg.input_field_path}.{item_index}"
+                        else: # Single item or a list stored as a whole document
+                            path_to_update_in_passthrough = store_cfg.input_field_path
+                        
+                        # Update the passthrough_input with the (potentially) modified document data
+                        if not _set_nested_obj(passthrough_input, path_to_update_in_passthrough, final_doc_data_stored):
+                            self.warning(f"Failed to update passthrough_data at path '{path_to_update_in_passthrough}'. "
+                                         f"This might occur if the input structure changed unexpectedly or path was invalid.")
                 elif not success:
                     # Log implicitly handled by _store_single_document
                     any_failures = True # Mark that at least one operation failed
