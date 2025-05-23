@@ -1964,7 +1964,7 @@ async def list_chat_threads(
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency)
 ):
     """
-    List chat threads with optional filtering by workflow name and version.
+    List chat threads with optional filtering by workflow name, version, and tag.
     
     Regular users can only see their own threads.
     Superusers can see all threads or filter by user_id.
@@ -1986,6 +1986,7 @@ async def list_chat_threads(
             workflow_name=query_params.workflow_name,
             workflow_version=query_params.workflow_version,
             user_id=query_params.user_id,
+            tag=query_params.tag,
             skip=query_params.skip,
             limit=query_params.limit
         )

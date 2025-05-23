@@ -160,6 +160,13 @@ class ChatThread(SQLModel, table=True):
         description="Optional name/title for this chat thread"
     )
 
+    tag: Optional[str] = Field(
+        default=None,
+        nullable=True,
+        index=True,
+        description="Optional tag to categorize or filter chat threads"
+    )
+
     user_id: uuid.UUID = Field(
         foreign_key=f"{auth_table_prefix}user.id",
         index=True,

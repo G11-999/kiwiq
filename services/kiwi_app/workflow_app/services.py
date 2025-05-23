@@ -2500,11 +2500,12 @@ class WorkflowService:
         workflow_name: Optional[str] = None,
         workflow_version: Optional[str] = None,
         user_id: Optional[uuid.UUID] = None,
+        tag: Optional[str] = None,
         skip: int = 0,
         limit: int = 100
     ) -> List[models.ChatThread]:
         """
-        List chat threads, optionally filtered by workflow and owner.
+        List chat threads, optionally filtered by workflow, owner, and tag.
         
         Args:
             db: Database session
@@ -2512,6 +2513,7 @@ class WorkflowService:
             workflow_name: Optional name of the workflow to filter by
             workflow_version: Optional version of the workflow to filter by
             user_id: Optional user ID to filter by owner
+            tag: Optional tag to filter by
             skip: Number of items to skip for pagination
             limit: Maximum number of items to return
             
@@ -2522,6 +2524,7 @@ class WorkflowService:
             PermissionDeniedError: If non-superuser tries to view other users' threads
         """
         chat_thread_dao = crud.ChatThreadDAO()
+        
         # Non-superusers can only see their own threads
         if not user.is_superuser:
             if user_id is not None and user_id != user.id:
@@ -2533,30 +2536,15 @@ class WorkflowService:
             # Force filter by current user
             user_id = user.id
         
-        if workflow_name:
-            return await chat_thread_dao.get_by_workflow(
-                db, 
-                workflow_name=workflow_name,
-                workflow_version=workflow_version,
-                user_id=user_id,
-                skip=skip, 
-                limit=limit
-            )
-        elif user_id:
-            return await chat_thread_dao.get_by_owner(
-                db,
-                user_id=user_id,
-                skip=skip,
-                limit=limit
-            )
-        else:
-            # Only superusers can list all threads
-            if not user.is_superuser:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="You don't have permission to access this chat thread"
-                )
-                
-            return await chat_thread_dao.get_multi(db, skip=skip, limit=limit)
+        # Use the comprehensive filtering method which supports all filters including tag
+        return await chat_thread_dao.get_multi_filtered(
+            db,
+            workflow_name=workflow_name,
+            workflow_version=workflow_version,
+            user_id=user_id,
+            tag=tag,
+            skip=skip,
+            limit=limit
+        )
 
 # --- Helper Functions/Classes (Optional) --- #

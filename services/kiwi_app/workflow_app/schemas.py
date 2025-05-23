@@ -941,6 +941,7 @@ class ChatThreadBase(BaseModel):
     workflow_name: Optional[str] = Field(None, description="Name of the workflow this chat thread is associated with")
     workflow_version: Optional[str] = Field(None, description="Version of the workflow this chat thread is associated with")
     thread_name: Optional[str] = Field(None, description="Optional name/title for this chat thread")
+    tag: Optional[str] = Field(None, description="Optional tag to categorize or filter chat threads")
 
 class ChatThreadCreate(ChatThreadBase):
     """Schema for creating a new ChatThread."""
@@ -951,6 +952,7 @@ class ChatThreadUpdate(BaseModel):
     workflow_name: Optional[str] = None
     workflow_version: Optional[str] = None
     thread_name: Optional[str] = None
+    tag: Optional[str] = None
 
 class ChatThreadRead(ChatThreadBase):
     """Schema for reading a ChatThread."""
@@ -966,3 +968,4 @@ class ChatThreadListQuery(CommonListQuery):
     workflow_name: Optional[str] = Field(None, description="Filter threads by workflow name")
     workflow_version: Optional[str] = Field(None, description="Filter threads by workflow version")
     user_id: Optional[uuid.UUID] = Field(None, description="Filter threads by owner (superuser only, others can only see their own threads)")
+    tag: Optional[str] = Field(None, description="Filter threads by tag")

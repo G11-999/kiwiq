@@ -1222,10 +1222,11 @@ class ChatThreadDAO(BaseDAO[models.ChatThread, schemas.ChatThreadCreate, schemas
         workflow_name: str,
         workflow_version: Optional[str] = None,
         user_id: Optional[uuid.UUID] = None,
+        tag: Optional[str] = None,
         skip: int = 0, 
         limit: int = 100
     ) -> Sequence[models.ChatThread]:
-        """Get chat threads for a specific workflow, optionally filtered by owner."""
+        """Get chat threads for a specific workflow, optionally filtered by owner and tag."""
         query = select(self.model).where(self.model.workflow_name == workflow_name)
         
         if workflow_version is not None:
@@ -1233,8 +1234,58 @@ class ChatThreadDAO(BaseDAO[models.ChatThread, schemas.ChatThreadCreate, schemas
             
         if user_id is not None:
             query = query.where(self.model.user_id == user_id)
+
+        if tag is not None:
+            query = query.where(self.model.tag == tag)
             
         query = query.offset(skip).limit(limit).order_by(desc(self.model.updated_at))
+        result = await db.execute(query)
+        return result.scalars().all()
+    
+    async def get_multi_filtered(
+        self,
+        db: AsyncSession,
+        *,
+        workflow_name: Optional[str] = None,
+        workflow_version: Optional[str] = None,
+        user_id: Optional[uuid.UUID] = None,
+        tag: Optional[str] = None,
+        skip: int = 0,
+        limit: int = 100
+    ) -> Sequence[models.ChatThread]:
+        """
+        Get chat threads with comprehensive filtering support.
+        
+        Args:
+            db: Database session
+            workflow_name: Optional workflow name filter
+            workflow_version: Optional workflow version filter  
+            user_id: Optional user ID filter (for ownership filtering)
+            tag: Optional tag filter
+            skip: Number of records to skip (pagination)
+            limit: Maximum number of records to return
+            
+        Returns:
+            Sequence of ChatThread models matching the filters
+        """
+        query = select(self.model)
+        
+        # Apply filters conditionally
+        if workflow_name is not None:
+            query = query.where(self.model.workflow_name == workflow_name)
+            
+        if workflow_version is not None:
+            query = query.where(self.model.workflow_version == workflow_version)
+            
+        if user_id is not None:
+            query = query.where(self.model.user_id == user_id)
+
+        if tag is not None:
+            query = query.where(self.model.tag == tag)
+            
+        # Apply pagination and ordering
+        query = query.offset(skip).limit(limit).order_by(desc(self.model.updated_at))
+        
         result = await db.execute(query)
         return result.scalars().all()
     
