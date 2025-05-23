@@ -72,6 +72,20 @@ You configure the `IfElseConditionNode` within the `node_config` field of its en
               }
             ],
             "group_logical_operator": "and"
+          },
+          // --- Tag 4: Dynamic threshold comparison ---
+          {
+            "tag": "meets_premium_criteria",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "user.account.balance", "operator": "greater_than_or_equals", "value_path": "app_config.thresholds.premium_min_balance" },
+                  { "field": "user.age", "operator": "greater_than_or_equals", "value_path": "app_config.thresholds.premium_min_age" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
           }
         ],
         // How to combine results of the *tags*: Both tags must pass.
@@ -120,6 +134,242 @@ You configure the `IfElseConditionNode` within the `node_config` field of its en
 3.  **`branch_logic_operator`** (String: `"and"` or `"or"`): **Crucial**. This determines how the boolean results (`true`/`false`) of *all* the `tagged_conditions` are combined to get the final overall result (`condition_result` in the output).
     *   `"and"`: The final result is `true` **only if** *all* tagged conditions evaluate to `true`.
     *   `"or"`: The final result is `true` **if** *at least one* tagged condition evaluates to `true`.
+
+## Dynamic Value Comparison with `value_path`
+
+The `value_path` feature allows you to create dynamic decision logic where comparison values are extracted from other fields in your data, rather than using static values. This is particularly powerful for:
+
+- **Configuration-driven decisions**: Use settings stored in the data to drive branching logic
+- **Threshold-based routing**: Compare values against dynamic thresholds for intelligent routing
+- **Cross-field validation**: Make decisions based on relationships between different data fields
+- **Adaptive workflows**: Create workflows that adjust their behavior based on runtime data
+
+### How `value_path` Works in IfElse Nodes
+
+When you specify `value_path` instead of `value` in a condition:
+
+1. **Value Resolution**: Before evaluating the condition, the system navigates to the specified path and extracts the value
+2. **Dynamic Comparison**: The extracted value is then used as the comparison value for the condition
+3. **Nested List Support**: When `value_path` points to data within nested lists, the system uses `fetch_nested_list_items=True` to collect values from all matching locations
+4. **Branch Decision**: The results influence which branch (`true_branch` or `false_branch`) is selected
+
+### `value_path` Examples for Decision Making
+
+#### Basic Dynamic Threshold Check
+```json
+{
+  "tag": "premium_eligible",
+  "condition_groups": [{
+    "conditions": [
+      {
+        "field": "user.account.balance",
+        "operator": "greater_than_or_equals",
+        "value_path": "app_config.thresholds.premium_min_balance"
+      },
+      {
+        "field": "user.age",
+        "operator": "greater_than_or_equals",
+        "value_path": "app_config.thresholds.premium_min_age"
+      }
+    ],
+    "logical_operator": "and"
+  }]
+}
+```
+
+**Input Data:**
+```json
+{
+  "user": {
+    "account": { "balance": 1500 },
+    "age": 35
+  },
+  "app_config": {
+    "thresholds": {
+      "premium_min_balance": 1000,
+      "premium_min_age": 25
+    }
+  }
+}
+```
+
+**Result:** `premium_eligible` evaluates to `true` (1500 ≥ 1000 AND 35 ≥ 25).
+
+#### Security Risk Assessment
+```json
+{
+  "tag": "high_risk_transaction",
+  "condition_groups": [{
+    "conditions": [
+      {
+        "field": "transaction.amount",
+        "operator": "greater_than",
+        "value_path": "security.settings.risk.thresholds.high_value_transaction"
+      },
+      {
+        "field": "transaction.risk_score",
+        "operator": "greater_than_or_equals",
+        "value_path": "security.settings.risk.thresholds.suspicious_score"
+      }
+    ],
+    "logical_operator": "or"  // High risk if EITHER condition is true
+  }]
+}
+```
+
+#### Multi-Level Configuration Comparison
+```json
+{
+  "tag": "requires_approval",
+  "condition_groups": [
+    {
+      "conditions": [
+        {
+          "field": "request.amount",
+          "operator": "greater_than",
+          "value_path": "user.approval_limits.single_transaction"
+        }
+      ]
+    },
+    {
+      "conditions": [
+        {
+          "field": "request.category",
+          "operator": "equals_any_of",
+          "value_path": "company.policies.restricted_categories"
+        }
+      ]
+    }
+  ],
+  "group_logical_operator": "or"  // Needs approval if amount OR category triggers it
+}
+```
+
+### Complex Decision Trees with `value_path`
+
+You can create sophisticated decision logic by combining multiple tagged conditions with dynamic comparisons:
+
+```json
+{
+  "tagged_conditions": [
+    {
+      "tag": "user_qualified",
+      "condition_groups": [{
+        "conditions": [
+          {
+            "field": "user.experience_years",
+            "operator": "greater_than_or_equals",
+            "value_path": "job.requirements.min_experience"
+          },
+          {
+            "field": "user.skills",
+            "operator": "contains",
+            "value_path": "job.requirements.primary_skill"
+          }
+        ],
+        "logical_operator": "and"
+      }]
+    },
+    {
+      "tag": "position_available",
+      "condition_groups": [{
+        "conditions": [
+          {
+            "field": "job.openings",
+            "operator": "greater_than",
+            "value": 0
+          },
+          {
+            "field": "job.budget_remaining",
+            "operator": "greater_than_or_equals",
+            "value_path": "user.salary_expectation"
+          }
+        ],
+        "logical_operator": "and"
+      }]
+    }
+  ],
+  "branch_logic_operator": "and"  // Both conditions must be true for hiring
+}
+```
+
+### Error Handling for `value_path` in Decision Making
+
+- **Non-existent Path**: If the `value_path` doesn't exist, the extracted value will be `None`
+- **Comparison with None**: Most operators will evaluate to `false` when comparing against `None`
+- **Impact on Branching**: Failed `value_path` resolutions typically lead to the `false_branch` being selected
+- **Graceful Degradation**: The system continues processing other conditions even if some `value_path` resolutions fail
+
+## Advanced List Processing with `fetch_nested_list_items`
+
+The `fetch_nested_list_items` parameter is an internal mechanism that controls how the system handles value extraction when paths cross multiple nested lists. While you don't directly configure this parameter, understanding its behavior helps explain how complex nested data structures are processed in decision logic.
+
+### When `fetch_nested_list_items` is Used
+
+This mechanism is automatically activated when:
+
+1. **`value_path` Resolution**: When resolving a `value_path` that crosses nested lists
+2. **Complex Decision Logic**: When the system encounters lists while navigating to extract comparison values for branching decisions
+
+### Behavior with Nested Lists in Decision Making
+
+Consider this data structure for a workflow that routes based on team performance:
+```json
+{
+  "departments": [
+    {
+      "name": "Engineering",
+      "teams": [
+        {"name": "Backend", "performance_score": 85},
+        {"name": "Frontend", "performance_score": 92}
+      ]
+    },
+    {
+      "name": "Sales", 
+      "teams": [
+        {"name": "Enterprise", "performance_score": 78}
+      ]
+    }
+  ],
+  "company_targets": {
+    "min_team_performance": 80
+  }
+}
+```
+
+When using a condition like:
+```json
+{
+  "field": "current_team.performance_score",
+  "operator": "greater_than",
+  "value_path": "departments.teams.performance_score"  // Gets all team scores
+}
+```
+
+The system:
+
+1. **Traverses Lists**: Navigates through each department, then each team
+2. **Collects Values**: Gathers all performance scores: `[85, 92, 78]`
+3. **Enables Comparison**: Provides the collected values for decision logic
+
+### Practical Implications for Workflow Routing
+
+This automatic handling enables sophisticated decision logic across complex nested structures:
+
+```json
+{
+  "tag": "above_average_performance",
+  "condition_groups": [{
+    "conditions": [{
+      "field": "employee.current_score",
+      "operator": "greater_than",
+      "value_path": "company.departments.teams.members.average_score"
+    }]
+  }]
+}
+```
+
+The system will automatically handle the nested list traversal and provide meaningful comparison values for routing decisions.
 
 ## Input (`DynamicSchema`)
 
@@ -241,9 +491,14 @@ class FilterOperator(str, Enum):
 
 -   Use this node when your workflow needs to make a decision: "If X is true, go path A, otherwise go path B".
 -   `tagged_conditions`: Define your checks here. Give each check a clear `tag` name (like `"is_urgent"`). Set up the conditions (`field`, `operator`, `value`) just like in the Filter node.
--   You can use `value_path` in your conditions to compare one field against another field dynamically, rather than against a fixed value.
+-   You can use `value_path` in your conditions to compare one field against another field dynamically, rather than against a fixed value. This is perfect for:
+    -   **Smart thresholds**: Compare user scores against minimum requirements stored in your data
+    -   **Budget checks**: Compare spending against budget limits that might change
+    -   **Permission levels**: Compare user access levels against required levels for different actions
+    -   **Dynamic routing**: Route based on comparisons between current values and stored targets
 -   `branch_logic_operator`: Decide how the results of your tagged checks combine. `"and"` means *all* checks must pass to choose the 'true' path. `"or"` means only *one* check needs to pass.
 -   **Important:** This node *only* outputs the decision (`"true_branch"` or `"false_branch"`). It *doesn't* actually send the workflow down the path.
 -   **You MUST connect this node's output to a `Router` node.** The Router node reads the `branch` decision and directs the workflow to the correct next step (`assign_to_sales` or `send_to_nurturing` in the example).
 -   In the workflow editor, you connect the `IfElse` node to the `Router`, and then connect the `Router` to the two different downstream nodes.
--   The original data is passed along in the `data` output field, so the nodes in the chosen branch can use it. 
+-   The original data is passed along in the `data` output field, so the nodes in the chosen branch can use it.
+-   When using `value_path`, if the path doesn't exist in your data, the condition will usually fail (evaluate to false), which typically leads to the "false" branch being taken. 

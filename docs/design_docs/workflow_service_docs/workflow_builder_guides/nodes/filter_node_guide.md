@@ -128,7 +128,8 @@ You configure the `FilterNode` within the `node_config` field of its entry in th
             "filter_mode": "allow",
             "condition_groups": [{ "conditions": [{ "field": "person.age", "operator": "is_not_empty" }] }]
           },
-          // Rule 3: Example using value_path for dynamic comparison
+          // --- Example 7: Dynamic comparison using value_path ---
+          // Keep orders only if their value is greater than their individual threshold
           {
             "filter_target": "orders",
             "filter_mode": "allow",
@@ -137,6 +138,21 @@ You configure the `FilterNode` within the `node_config` field of its entry in th
                 "conditions": [
                   // Compare order.value against order.threshold_value dynamically
                   { "field": "value", "operator": "greater_than", "value_path": "threshold_value" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          // --- Example 8: Cross-field comparison using value_path ---
+          // Keep users only if their age meets the minimum requirement from settings
+          {
+            "filter_target": "users",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  { "field": "users.age", "operator": "greater_than_or_equals", "value_path": "settings.min_age" }
                 ],
                 "logical_operator": "and"
               }
@@ -198,6 +214,158 @@ You configure the `FilterNode` within the `node_config` field of its entry in th
             *   **`list_field_logical_operator`** (String: `"and"` or `"or"`, Default: `"and"`): Used only when `apply_to_each_value_in_list_field` is `true`. Determines how the results from checking each list item are combined to give the final result for this condition. `and` means the condition passes only if it's true for *all* items in the list. `or` means it passes if true for *at least one* item.
     *   **`nested_list_logical_operator`** (String: `"and"` or `"or"`, Default: `"and"`): How to combine results when evaluating conditions on nested lists *within* list items (e.g., if filtering `orders` and a condition checks `order.items.category == 'X'`). Defines if *all* nested items must match (`and`) or *any* (`or`).
 
+## Dynamic Value Comparison with `value_path`
+
+The `value_path` feature allows you to create dynamic comparisons where the comparison value is extracted from another field in your data, rather than using a static value. This is particularly powerful for:
+
+- **Threshold-based filtering**: Compare values against thresholds stored elsewhere in the data
+- **Cross-field validation**: Ensure one field meets criteria relative to another field
+- **Configuration-driven filtering**: Use configuration values stored in the data to drive filtering logic
+
+### How `value_path` Works
+
+When you specify `value_path` instead of `value` in a condition:
+
+1. **Value Resolution**: Before evaluating the condition, the system navigates to the specified path and extracts the value
+2. **Dynamic Comparison**: The extracted value is then used as the comparison value for the condition
+3. **Nested List Support**: When `value_path` points to data within nested lists, the system uses `fetch_nested_list_items=True` to collect values from all matching locations
+
+### `value_path` Examples
+
+#### Basic Cross-Field Comparison
+```json
+{
+  "filter_target": "users",
+  "filter_mode": "allow",
+  "condition_groups": [{
+    "conditions": [{
+      "field": "users.age",
+      "operator": "greater_than_or_equals",
+      "value_path": "settings.minimum_age"  // Compare against dynamic threshold
+    }]
+  }]
+}
+```
+
+**Input Data:**
+```json
+{
+  "settings": { "minimum_age": 25 },
+  "users": [
+    {"id": 1, "name": "Alice", "age": 30},
+    {"id": 2, "name": "Bob", "age": 22}
+  ]
+}
+```
+
+**Result:** Only Alice (age 30 ≥ 25) is kept.
+
+#### Multiple Dynamic Thresholds
+```json
+{
+  "filter_target": "products",
+  "filter_mode": "allow",
+  "condition_groups": [{
+    "conditions": [
+      {
+        "field": "products.price",
+        "operator": "less_than_or_equals",
+        "value_path": "budget.max_price"
+      },
+      {
+        "field": "products.stock",
+        "operator": "greater_than_or_equals",
+        "value_path": "requirements.min_stock"
+      }
+    ],
+    "logical_operator": "and"
+  }]
+}
+```
+
+#### Deeply Nested Value Paths
+```json
+{
+  "field": "transaction.amount",
+  "operator": "greater_than",
+  "value_path": "security.settings.risk.thresholds.high_value_transaction"
+}
+```
+
+### `value_path` with Lists
+
+When `value_path` points to data within lists, the system automatically handles the complexity:
+
+```json
+{
+  "field": "order.total",
+  "operator": "greater_than",
+  "value_path": "customer.preferences.spending_limits.daily_max"
+}
+```
+
+If the path crosses multiple lists, the system will collect all matching values and use them appropriately for the comparison.
+
+### Error Handling for `value_path`
+
+- **Non-existent Path**: If the `value_path` doesn't exist, the extracted value will be `None`
+- **Comparison with None**: Most operators will evaluate to `false` when comparing against `None`
+- **Type Mismatches**: The system handles type mismatches gracefully, typically resulting in `false` evaluations
+
+## Advanced List Processing with `fetch_nested_list_items`
+
+The `fetch_nested_list_items` parameter is an internal mechanism that controls how the system handles value extraction when paths cross multiple nested lists. While you don't directly configure this parameter, understanding its behavior helps explain how complex nested data structures are processed.
+
+### When `fetch_nested_list_items` is Used
+
+This mechanism is automatically activated when:
+
+1. **`value_path` Resolution**: When resolving a `value_path` that crosses nested lists
+2. **Complex Data Traversal**: When the system encounters lists while navigating to extract comparison values
+
+### Behavior with Nested Lists
+
+Consider this data structure:
+```json
+{
+  "departments": [
+    {
+      "name": "Engineering",
+      "teams": [
+        {"name": "Backend", "members": [{"name": "Alice", "salary": 75000}]},
+        {"name": "Frontend", "members": [{"name": "Bob", "salary": 70000}]}
+      ]
+    },
+    {
+      "name": "Sales", 
+      "teams": [
+        {"name": "Enterprise", "members": [{"name": "Charlie", "salary": 80000}]}
+      ]
+    }
+  ]
+}
+```
+
+When using a `value_path` like `"departments.teams.members.salary"`, the system:
+
+1. **Traverses Lists**: Navigates through each department, then each team, then each member
+2. **Collects Values**: Gathers all salary values: `[75000, 70000, 80000]`
+3. **Returns Collection**: Provides the collected values for comparison
+
+### Practical Implications
+
+This automatic handling means you can write conditions that work across complex nested structures without worrying about the traversal logic:
+
+```json
+{
+  "field": "current_user.salary",
+  "operator": "greater_than",
+  "value_path": "company.departments.teams.members.salary"  // Gets all salaries for comparison
+}
+```
+
+The system will automatically handle the nested list traversal and provide meaningful comparison values.
+
 ### Handling Non-Existent Fields
 
 -   **Condition Fields:** If a `field` specified in a condition does *not* exist in the data:
@@ -207,6 +375,7 @@ You configure the `FilterNode` within the `node_config` field of its entry in th
     -   `not_equals` might evaluate to `true` (since `None != value`).
     -   `not_contains` will evaluate to `true`.
 -   **Target Fields:** If a `filter_target` path does not exist in the data, that specific target rule is skipped gracefully without error. The rest of the data remains unchanged by that rule.
+-   **Value Paths:** If a `value_path` doesn't exist, the condition will typically evaluate to `false` (except for operators like `not_equals` or `not_contains`).
 
 ## Using Non-Target Fields Mode for Comprehensive Field Filtering
 
@@ -341,7 +510,7 @@ The node produces data matching the `FilterOutputSchema`:
             "filter_mode": "deny", // Remove if condition passes (always passes here)
             "condition_groups": [{ "conditions": [{ "field": "user.age", "operator": "is_not_empty"}]}]
           },
-          // Rule 3: Example using value_path for dynamic comparison
+          // Rule 3: Dynamic comparison using value_path
           {
             "filter_target": "orders",
             "filter_mode": "allow",
@@ -350,6 +519,21 @@ The node produces data matching the `FilterOutputSchema`:
                 "conditions": [
                   // Compare order.value against order.threshold_value dynamically
                   { "field": "value", "operator": "greater_than", "value_path": "threshold_value" }
+                ],
+                "logical_operator": "and"
+              }
+            ],
+            "group_logical_operator": "and"
+          },
+          // Rule 4: Cross-field comparison with value_path
+          {
+            "filter_target": "users",
+            "filter_mode": "allow",
+            "condition_groups": [
+              {
+                "conditions": [
+                  // Compare user age against global minimum age setting
+                  { "field": "users.age", "operator": "greater_than_or_equals", "value_path": "settings.minimum_user_age" }
                 ],
                 "logical_operator": "and"
               }
@@ -402,7 +586,7 @@ The node produces data matching the `FilterOutputSchema`:
     -   `field`: Which piece of data are you looking at? (e.g., `"customer_status"`, `"order_total"`, `"tags"`)
     -   `operator`: How are you comparing it? (e.g., `equals`, `greater_than`, `contains`, `is_empty`, `starts_with`)
     -   `value`: What are you comparing it to? (e.g., `"active"`, `100`, `"important"`, `["admin", "editor"]` for `equals_any_of`)
-    -   `value_path`: Instead of a fixed value, use the value from another field in your data (e.g., compare `"current_spend"` against `"budget_limit"`).
+    -   `value_path`: Instead of a fixed value, use the value from another field in your data (e.g., compare `"current_spend"` against `"budget_limit"`). This is great for dynamic thresholds and configuration-driven filtering.
 -   You can group conditions with `and` (all must be true) or `or` (at least one must be true).
 -   Use `apply_to_each_value_in_list_field: true` with an operator like `equals` or `greater_than` if you want to check *every item* inside a list field (like checking if *any* tag in a `tags` list is `"urgent"` using `logical_operator: "or"`).
 -   If a field in your condition doesn't exist, the rule usually fails (unless using `is_empty`).

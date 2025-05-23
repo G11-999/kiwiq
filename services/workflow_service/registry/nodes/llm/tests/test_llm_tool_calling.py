@@ -32,6 +32,7 @@ from workflow_service.registry.nodes.llm.llm_node import (
     ModelSpec,
     ToolCallingConfig,
     ToolConfig,
+    ToolOutput,
 )
 from workflow_service.registry.nodes.llm.config import (
     LLMModelProvider,
@@ -394,7 +395,7 @@ async def arun_llm_test(
     input_system_prompt: Optional[str] = None,
     tool_calling_config: Optional[ToolCallingConfig] = None, # Added for tool testing
     tools: Optional[List[ToolConfig]] = None, # Added for tool testing
-    tool_outputs: Optional[List[Dict[str, Any]]] = None, # Added for tool output handling
+    tool_outputs: Optional[List[ToolOutput]] = None, # Added for tool output handling
     **kwargs # Pass other graph creation args like web_search_options etc.
 ) -> Dict[str, Any]:
     """
@@ -516,9 +517,6 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
              # Decide if this is a skip condition or just a warning
              # raise unittest.SkipTest("CustomerDataService could not be initialized.")
 
-
-    ############   ############   ############   TESTED FUNCS   ############   ############   ############
-
     async def test_anthropic_claude3_7_tool_use_text_output_reasoning(self):
         """Test Anthropic Claude 3.7 Sonnet with tool use (web_search), text output, and reasoning."""
         if not hasattr(AnthropicModels, 'CLAUDE_3_7_SONNET'):
@@ -566,8 +564,6 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
         if tool_calls:
             tool_call_id = tool_calls[0].get("tool_id")
         tool_args = tool_calls[0].get("tool_input")
-        
-        print(tool_calls)
 
         # Simulate running the fake web search node
         fake_search_node = FakeWebSearchNode(node_id="fake_web_search_node", prefect_mode=False)
@@ -587,13 +583,13 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
         
         # Create tool_outputs for the second call
         tool_outputs_for_turn2 = [
-            {
-                "tool_call_id": tool_call_id,
-                "content": mock_tool_output_str,
-                "type": "tool",
-                "name": "web_search_tool",
-                "status": "success"
-            }
+            ToolOutput(
+                tool_call_id=tool_call_id,
+                content=mock_tool_output_str,
+                type="tool",
+                name="web_search_tool",
+                status="success"
+            )
         ]
         messages_history_turn2 = messages_history_turn1
 
@@ -684,13 +680,13 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
         
         # Create tool_outputs for the second call
         tool_outputs_for_turn2 = [
-            {
-                "tool_call_id": tool_call_id,
-                "content": mock_tool_output_str,
-                "type": "tool",
-                "name": "web_search_tool",
-                "status": "success"
-            }
+            ToolOutput(
+                tool_call_id=tool_call_id,
+                content=mock_tool_output_str,
+                type="tool",
+                name="web_search_tool",
+                status="success"
+            )
         ]
         messages_history_turn2 = messages_history_turn1
 
@@ -1080,13 +1076,13 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
         
         # Create tool_outputs for the second call
         tool_outputs_for_turn2 = [
-            {
-                "tool_call_id": tool_call_id,
-                "content": mock_tool_output_str,
-                "type": "tool",
-                "name": "web_search_tool",
-                "status": "success"
-            }
+            ToolOutput(
+                tool_call_id=tool_call_id,
+                content=mock_tool_output_str,
+                type="tool",
+                name="web_search_tool",
+                status="success"
+            )
         ]
         messages_history_turn2 = messages_history_turn1
 
@@ -1206,13 +1202,13 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
         
         # Create tool_outputs for the second call
         tool_outputs_for_turn2 = [
-            {
-                "tool_call_id": tool_call_id,
-                "content": mock_tool_output_str,
-                "type": "tool",
-                "name": "web_search_tool",
-                "status": "success"
-            }
+            ToolOutput(
+                tool_call_id=tool_call_id,
+                content=mock_tool_output_str,
+                type="tool",
+                name="web_search_tool",
+                status="success"
+            )
         ]
         messages_history_turn2 = messages_history_turn1
 
@@ -1505,14 +1501,14 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
 
         # Create tool_outputs for the second call
         tool_outputs_for_turn2 = [
-            {
-                "tool_call_id": tool_call_id,
-                "content": mock_tool_output_str,
-                "type": "tool",
-                "name": "web_search_tool",
-                "status": "success"
+            ToolOutput(
+                tool_call_id=tool_call_id,
+                content=mock_tool_output_str,
+                type="tool",
+                name="web_search_tool",
+                status="success"
                 # "name": "web_search_preview"
-            } 
+            ) 
             # if model_provider == LLMModelProvider.ANTHROPIC else
             # {                               # append result message
             #     "type": "function_call_output",
@@ -1621,14 +1617,14 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
 
         # Create tool_outputs for the second call
         tool_outputs_for_turn2 = [
-            {
-                "tool_call_id": tool_call_id,
-                "content": mock_tool_output_str,
-                "type": "tool",
-                "name": "web_search_tool",
-                "status": "success"
+            ToolOutput(
+                tool_call_id=tool_call_id,
+                content=mock_tool_output_str,
+                type="tool",
+                name="web_search_tool",
+                status="success"
                 # "name": "web_search_preview"
-            } 
+            ) 
             # if model_provider == LLMModelProvider.ANTHROPIC else
             # {                               # append result message
             #     "type": "function_call_output",
@@ -1730,14 +1726,14 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
 
         # Create tool_outputs for the second call
         tool_outputs_for_turn2 = [
-            {
-                "tool_call_id": tool_call_id,
-                "content": mock_tool_output_str,
-                "type": "tool",
-                "name": "web_search_tool",
-                "status": "success"
+            ToolOutput(
+                tool_call_id=tool_call_id,
+                content=mock_tool_output_str,
+                type="tool",
+                name="web_search_tool",
+                status="success"
                 # "name": "web_search_preview"
-            } 
+            ) 
             # if model_provider == LLMModelProvider.ANTHROPIC else
             # {                               # append result message
             #     "type": "function_call_output",
@@ -1849,14 +1845,14 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
 
         # Create tool_outputs for the second call
         tool_outputs_for_turn2 = [
-            {
-                "tool_call_id": tool_call_id,
-                "content": mock_tool_output_str,
-                "type": "tool",
-                "name": "web_search_tool",
-                "status": "success"
+            ToolOutput(
+                tool_call_id=tool_call_id,
+                content=mock_tool_output_str,
+                type="tool",
+                name="web_search_tool",
+                status="success"
                 # "name": "web_search_preview"
-            } 
+            ) 
             # if model_provider == LLMModelProvider.ANTHROPIC else
             # {                               # append result message
             #     "type": "function_call_output",

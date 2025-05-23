@@ -6,7 +6,7 @@ from datetime import datetime, timedelta # Import timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status, BackgroundTasks # Add BackgroundTasks
 
-from kiwi_app.auth import crud, models, schemas, security, email_verify # Added email_verify
+from kiwi_app.auth import crud, models, schemas, security # Added email_verify
 from kiwi_app.auth.utils import auth_logger, datetime_now_utc # Import datetime_now_utc
 from kiwi_app.auth.constants import DefaultRoles, Permissions, DEFAULT_FIRST_USER_ORG_SUFFIX
 from kiwi_app.auth.exceptions import (
@@ -20,6 +20,7 @@ from kiwi_app.auth.exceptions import (
     PermissionDeniedException,
     UserNotVerifiedException,
 )
+from kiwi_app.email import email_verify
 from kiwi_app.settings import settings # Import settings
 
 class AuthService:

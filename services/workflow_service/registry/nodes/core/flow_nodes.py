@@ -122,7 +122,7 @@ class FilterCondition(BaseNodeConfig):
         Populates the value based on the value_path.
         """
         if self.value_path:
-            val, _ = _get_nested_obj(data, self.value_path)
+            val, _ = _get_nested_obj(data, self.value_path, fetch_nested_list_items=True)
             self.value = val
         return self.value
 
@@ -541,7 +541,8 @@ def evaluate_condition_recursive(
     list_op: LogicalOperator,
     # -- Context for targeted list item evaluation --
     target_list_instance: Optional[List[Any]] = None, # Specific list instance being filtered
-    target_item_index: Optional[int] = None # Index of the item to select from target_list_instance
+    target_item_index: Optional[int] = None, # Index of the item to select from target_list_instance
+    self_recrusion:bool=False # Whether this is a self-recursion call
 ) -> bool:
     """
     Recursively evaluates a condition by traversing the data structure.
@@ -588,7 +589,7 @@ def evaluate_condition_recursive(
                 sub_path = '.'.join(sub_path_parts)
                 sub_condition = condition.model_copy(update={"field": sub_path})
                 result = evaluate_condition_recursive(
-                    item_context, full_data, sub_condition, list_op, None, None
+                    item_context, full_data, sub_condition, list_op, None, None, self_recrusion=True
                 )
                 # print("\n\n--------------------------------")
                 # print(json.dumps(item_context, indent=4))
@@ -620,7 +621,7 @@ def evaluate_condition_recursive(
             for item_in_list in current_list:
                 item_result = evaluate_condition_recursive(
                     item_in_list, full_data, sub_condition, list_op,
-                    target_list_instance, target_item_index
+                    target_list_instance, target_item_index, self_recrusion=True
                 )
                 item_results.append(item_result)
                 logger.debug(f"Item {i} result: {item_result}")
@@ -637,6 +638,11 @@ def evaluate_condition_recursive(
     
     # Evaluate the condition on the final value
     final_value = current_data_segment if path_existed else None
+    
+    # Log when the entire field path was not found
+    if not path_existed and not self_recrusion:
+        logger.warning(f"Condition field '{condition.field}' not found in data context. Treating condition as False.")
+    
     try:
         return _evaluate_single_condition_on_value(
             final_value, condition
@@ -805,13 +811,14 @@ def _remove_nested_path(data: Any, field_path: str) -> bool:
             pass
     return False
 
-def _get_nested_obj(data: Any, field_path: str) -> Tuple[Any, bool]:
+def _get_nested_obj(data: Any, field_path: str, fetch_nested_list_items: bool = False) -> Tuple[Any, bool]:
     """
     Retrieves a nested object at the specified path.
     
     Args:
         data: The data structure to navigate
         field_path: Dot-notation path to the field to retrieve
+        fetch_nested_list_items: Whether to fetch nested list items if the path is nested within nested lists (the built / returned object is not continous and is stitched from items of multiple different lists or multiple different objects)
         
     Returns:
         Tuple[Any, bool]: The retrieved object and a boolean indicating success
@@ -837,12 +844,12 @@ def _get_nested_obj(data: Any, field_path: str) -> Tuple[Any, bool]:
                 else:
                     return None, False
             except (ValueError, TypeError):
-                data = [_get_nested_obj(obj, '.'.join(parts[i:])) for obj in current]
-                data = [subdata for subdata, found in data if found]
-                if data:
-                    return data, True
-                else:
-                    return None, False
+                if fetch_nested_list_items:
+                    data = [_get_nested_obj(obj, '.'.join(parts[i:]), fetch_nested_list_items=fetch_nested_list_items) for obj in current]
+                    data = [subdata for subdata, found in data if found]
+                    if data:
+                        return data, True
+                return None, False
         else:
             return None, False
     
@@ -945,7 +952,14 @@ class FilterNode(BaseDynamicNode):
             for target_config in active_config.targets:
                 for condition_group in target_config.condition_groups:
                     for condition in condition_group.conditions:
-                        condition.populate_value(original_input_dict)
+                        found_val = condition.populate_value(original_input_dict)
+                        if not found_val and condition.value_path:
+                            self.warning(f"Condition value_path '{condition.value_path}' not found in input data")
+                        
+                        # Also check if the condition field itself exists in the data
+                        _, field_found = _get_nested_obj(original_input_dict, condition.field, fetch_nested_list_items=True)
+                        if not field_found:
+                            self.warning(f"Condition field '{condition.field}' not found in input data. Condition will evaluate to False.")
 
             # Track explicitly targeted fields when using DENY mode for non-targets
             explicitly_allowed_paths = set()
@@ -977,6 +991,12 @@ class FilterNode(BaseDynamicNode):
                 target_path = cfg.filter_target
                 if target_path is None: 
                     continue  # Already handled in Pass 0
+
+                # Check if the target path exists in the data
+                _, target_found = _get_nested_obj(original_input_dict, target_path, fetch_nested_list_items=True)
+                if not target_found:
+                    self.error(f"Filter target path '{target_path}' not found in input data. Skipping this filter configuration.")
+                    # continue
 
                 # Determine if this config targets a list or a field within a list
                 base_list_path: Optional[str] = None
@@ -1014,10 +1034,18 @@ class FilterNode(BaseDynamicNode):
                 target_list_in_result, result_list_found = _get_nested_obj(result_data, list_path)
 
                 # Verify both lists exist and are actually lists
-                if not (list_found and isinstance(original_list_instance, list) and
-                        result_list_found and isinstance(target_list_in_result, list)):
-                     # Skip if list not found or not a list type
-                     continue
+                if not list_found:
+                    self.error(f"Target list path '{list_path}' not found in original input data. Skipping list processing.")
+                    continue
+                elif not isinstance(original_list_instance, list):
+                    self.error(f"Target path '{list_path}' exists but is not a list (type: {type(original_list_instance).__name__}). Skipping list processing.")
+                    continue
+                elif not result_list_found:
+                    self.error(f"Target list path '{list_path}' not found in result data copy. Skipping list processing.")
+                    continue
+                elif not isinstance(target_list_in_result, list):
+                    self.error(f"Target path '{list_path}' in result data is not a list (type: {type(target_list_in_result).__name__}). Skipping list processing.")
+                    continue
 
                 # Get configurations relevant to this list
                 relevant_configs = configs_by_list_path.get(list_path, [])
@@ -1326,11 +1354,18 @@ class IfElseConditionNode(BaseDynamicNode):
             # Track results for each tagged condition
             tag_results: Dict[str, bool] = {}
 
-            # Populate the values for each condition
+            # Populate the values for each condition and log any missing value_paths
             for tagged_conf in active_config.tagged_conditions:
                 for condition_group in tagged_conf.condition_groups:
                     for condition in condition_group.conditions:
-                        condition.populate_value(input_dict_copy)
+                        found_val = condition.populate_value(input_dict_copy)
+                        if not found_val and condition.value_path:
+                            self.warning(f"Condition value_path '{condition.value_path}' not found in input data for tag '{tagged_conf.tag}'")
+                        
+                        # Also check if the condition field itself exists in the data
+                        _, field_found = _get_nested_obj(input_dict_copy, condition.field, fetch_nested_list_items=True)
+                        if not field_found:
+                            self.warning(f"Condition field '{condition.field}' not found in input data for tag '{tagged_conf.tag}'. Condition will evaluate to False.")
             
             # Evaluate each tagged condition
             for tagged_conf in active_config.tagged_conditions:

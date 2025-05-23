@@ -8,6 +8,7 @@ existing values when a node updates a state field.
 Inspired by LangGraph state reducers: 
 https://langchain-ai.github.io/langgraph/how-tos/state-reducers/
 """
+import copy
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union, Set, Mapping
 import operator
@@ -59,6 +60,8 @@ class DefaultReducers:
         Returns:
             Sum of left and right
         """
+        if left is None:
+            return right
         return operator.add(left, right)
     
     @staticmethod
@@ -73,6 +76,8 @@ class DefaultReducers:
         Returns:
             Combined list with items from right appended to left
         """
+        if left is None:
+            return right
         return left + right
     
     @staticmethod
@@ -103,6 +108,9 @@ class DefaultReducers:
         Returns:
             Merged dictionary
         """
+        if left is None:
+            return copy.deepcopy(right)
+        
         result = left.copy()
         result.update(right)
         return result
@@ -121,6 +129,9 @@ class DefaultReducers:
         Returns:
             Deeply merged dictionary
         """
+        if left is None:
+            return copy.deepcopy(right)
+        
         result = left.copy()
         
         for key, value in right.items():
@@ -147,6 +158,8 @@ class DefaultReducers:
         Returns:
             Maximum of left and right
         """
+        if left is None:
+            return right
         return max(left, right)
     
     @staticmethod
@@ -161,6 +174,8 @@ class DefaultReducers:
         Returns:
             Minimum of left and right
         """
+        if left is None:
+            return right
         return min(left, right)
     
     @staticmethod
@@ -175,6 +190,8 @@ class DefaultReducers:
         Returns:
             Concatenated string
         """
+        if left is None:
+            return right
         return left + right
     
     @staticmethod

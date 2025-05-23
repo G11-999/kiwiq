@@ -28,6 +28,7 @@ from services.workflow_service.registry.nodes.db.load_multiple_customer_node imp
 )
 from workflow_service.registry.nodes.core.router_node import RouterNode
 from workflow_service.registry.nodes.scraping.linkedin_scraping import LinkedInScrapingNode
+from workflow_service.registry.nodes.tools.tool_executor_node import ToolExecutorNode
 
 async def register_node_templates(db_registry: DBRegistry):
     node_classes = [
@@ -53,6 +54,8 @@ async def register_node_templates(db_registry: DBRegistry):
         # LLM
         LLMNode,
         PromptConstructorNode,
+        # Tools
+        ToolExecutorNode,
         # Scraping
         LinkedInScrapingNode,
     ]

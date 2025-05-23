@@ -90,6 +90,17 @@ class MessageType(str, Enum):
 ###### Input Schema ######
 ###########################
 
+
+class ToolOutput(BaseSchema):
+    """Represents the output of a tool execution."""
+    tool_call_id: str = Field(description="ID of the tool call that generated this output")
+    content: str = Field(description="The output content from the tool execution")
+    type: str = Field(default="tool", description="Type of the output (always 'tool')")
+    name: str = Field(description="Name of the tool that was executed")
+    status: str = Field(description="Status of the execution ('success' or 'error')")
+    error_message: Optional[str] = Field(None, description="Error message if execution failed")
+
+
 class LLMNodeInputSchema(BaseSchema):
     """Input schema for the LLM node."""
     # Messages input
@@ -105,7 +116,7 @@ class LLMNodeInputSchema(BaseSchema):
         None, 
         description="System message to prepend to the conversation if using prompt."
     )
-    tool_outputs: Optional[List[Dict[str, Any]]] = Field(
+    tool_outputs: Optional[List[ToolOutput]] = Field(
         None,
         description="Dict of tool outputs to append to the conversation. Each tool output must have 'tool_name' and 'output' keys."
     )
@@ -1060,15 +1071,36 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
             assert model_metadata.tool_use, f"Model {model_metadata.provider.value} -> `{model_metadata.model_name}` does not support tool use!"
             tool_messages = []
             for i, tool_output in enumerate(input_data.tool_outputs):
+                if isinstance(tool_output, BaseModel):
+                    tool_output = tool_output.model_dump()
                 if "content" not in tool_output:
                     raise ValueError(f"Tool output {i} must have a 'content' key! {tool_output}")
                 tool_call_id = tool_output.get("tool_call_id", f"tool_output_{i}")
+
+                content = tool_output.get("content")
+                error_message = tool_output.get("error_message")
+                status = tool_output.get("status")
+                if error_message:
+                    # Clean tool output content
+                    content = content if content else ""
+                    if not isinstance(content, str):
+                        content = str(content)
+
+                    if content:
+                        content += "\n\n"
+                    if status:
+                        content += f"Tool status: {status}\n"
+                    content += f"Error: {error_message}"
+                
+                status = status if status else "success"
 
                 tool_msg_content = {}
                 if model_metadata.provider == LLMModelProvider.ANTHROPIC:
                     tool_msg_content["type"] = "tool_result"
                     tool_msg_content["tool_use_id"] = tool_call_id
-                    tool_msg_content["content"] = tool_output.get("content")
+                    tool_msg_content["content"] = content
+                    
+
                     
                     # tool_msg_content = [tool_msg_content]
 
@@ -1100,11 +1132,11 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                     # tool_msg_content["call_id"] = tool_call_id
                     # tool_msg_content["output"] = tool_output.get("content")
                     tool_output_msg = ToolMessage(
-                        content=tool_output.get("content"),
+                        content=content,
                         tool_call_id=tool_call_id,
                         id=tool_call_id,
                         name=tool_output.get("name", ""),
-                        status=tool_output.get("status", "success"),
+                        status=status,
                     )
 
                 tool_messages.append(
@@ -1188,7 +1220,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
 
             else:
                 # NOTE: will raise error if node not found or found node is not a tool node!
-                tool_node: BaseNode = registry.get_node(tool_config.tool_name, tool_config.version, return_if_tool=True)
+                tool_node: Type[BaseNode] = registry.get_node(tool_config.tool_name, tool_config.version, return_if_tool=True)
                 if not tool_node:
                     raise ValueError(f"Tool {tool_config.tool_name} not found in registry")
                 
@@ -1202,7 +1234,8 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                     __base__=BaseSchema,
                     __doc__=input_schema.__doc__,
                     __module__=input_schema.__module__,  # module_name or 
-                    **{k:(v.annotation, v) for k,v in input_schema.model_fields.items()}
+                    # Only bind user editable fields, hide other fields!
+                    **{k:(v.annotation, v) for k,v in input_schema.model_fields.items() if BaseSchema._is_field_for_llm_tool_call(v)}
                 )
                 # tool_for_binding = input_schema
             

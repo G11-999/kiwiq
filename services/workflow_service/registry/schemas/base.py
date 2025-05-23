@@ -183,6 +183,7 @@ class BaseSchema(BaseModel, ABC):
     """
     # Keys used for converting schemas into JSON or field definitions in BaseSchemas
     DEPRECATED_FIELD_KEY: ClassVar[str] = "_deprecated"
+    FOR_LLM_TOOL_CALL_FIELD_KEY: ClassVar[str] = "_for_llm_tool_call"
     OPTIONAL_FIELD_KEY: ClassVar[str] = "_optional"  # NOTE: optional fields must be provided with a default value
     USER_EDITABLE_FIELD_KEY: ClassVar[str] = "_user_editable"  # NOTE: marked as such via SkipJsonSchema Annotation!
     DEFAULT_FIELD_KEY: ClassVar[str] = "_default"
@@ -542,6 +543,20 @@ class BaseSchema(BaseModel, ABC):
         """
         return ((model_field.json_schema_extra is not None) and 
                 model_field.json_schema_extra.get(BaseSchema.DEPRECATED_FIELD_KEY, False))
+
+    @staticmethod
+    def _is_field_for_llm_tool_call(model_field: Any) -> bool:
+        """
+        Check whether a given model field is marked as for llm tool call based on its extra metadata.
+
+        Args:
+            model_field (Any): The Pydantic model field to inspect.
+
+        Returns:
+            bool: True if the field is for llm tool call, False otherwise.
+        """
+        return ((model_field.json_schema_extra is None) or 
+                model_field.json_schema_extra.get(BaseSchema.FOR_LLM_TOOL_CALL_FIELD_KEY, True))
     
     @staticmethod
     def _is_field_user_editable(model_field: Any) -> bool:

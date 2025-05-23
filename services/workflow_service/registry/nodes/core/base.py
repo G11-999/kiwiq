@@ -676,10 +676,22 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
                 diff["schema_diffs"][schema_type] = current_schema_cls.diff_from_provided_schema(provided_schema, self_is_base_for_diff=self_is_base_for_diff)
         return diff
 
+    def _format_log_message(self, msg: str) -> str:
+        """
+        Format a log message with node identification prefix.
+        
+        Args:
+            msg: The original message to format
+            
+        Returns:
+            Formatted message with node_id and node_name prefix
+        """
+        return f"{self.node_id}: {self.node_name} - {msg}"
+    
     # Logger convenience methods
     def debug(self, msg: str, *args: Any, **kwargs: Any) -> None:
         """
-        Log a debug message through the node's logger.
+        Log a debug message through the node's logger with node identification prefix.
         
         Args:
             msg: The message to log
@@ -687,11 +699,11 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
             **kwargs: Additional keyword arguments for the logger
         """
         if self.logger:
-            self.logger.debug(msg, *args, **kwargs)
+            self.logger.debug(self._format_log_message(msg), *args, **kwargs)
     
     def info(self, msg: str, *args: Any, **kwargs: Any) -> None:
         """
-        Log an info message through the node's logger.
+        Log an info message through the node's logger with node identification prefix.
         
         Args:
             msg: The message to log
@@ -699,11 +711,11 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
             **kwargs: Additional keyword arguments for the logger
         """
         if self.logger:
-            self.logger.info(msg, *args, **kwargs)
+            self.logger.info(self._format_log_message(msg), *args, **kwargs)
     
     def warning(self, msg: str, *args: Any, **kwargs: Any) -> None:
         """
-        Log a warning message through the node's logger.
+        Log a warning message through the node's logger with node identification prefix.
         
         Args:
             msg: The message to log
@@ -711,11 +723,11 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
             **kwargs: Additional keyword arguments for the logger
         """
         if self.logger:
-            self.logger.warning(msg, *args, **kwargs)
+            self.logger.warning(self._format_log_message(msg), *args, **kwargs)
     
     def error(self, msg: str, *args: Any, **kwargs: Any) -> None:
         """
-        Log an error message through the node's logger.
+        Log an error message through the node's logger with node identification prefix.
         
         Args:
             msg: The message to log
@@ -723,11 +735,11 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
             **kwargs: Additional keyword arguments for the logger
         """
         if self.logger:
-            self.logger.error(msg, *args, **kwargs)
+            self.logger.error(self._format_log_message(msg), *args, **kwargs)
     
     def critical(self, msg: str, *args: Any, **kwargs: Any) -> None:
         """
-        Log a critical message through the node's logger.
+        Log a critical message through the node's logger with node identification prefix.
         
         Args:
             msg: The message to log
@@ -735,4 +747,4 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
             **kwargs: Additional keyword arguments for the logger
         """
         if self.logger:
-            self.logger.critical(msg, *args, **kwargs)
+            self.logger.critical(self._format_log_message(msg), *args, **kwargs)
