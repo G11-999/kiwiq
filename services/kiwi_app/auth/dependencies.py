@@ -9,7 +9,7 @@ from fastapi.security import OAuth2PasswordBearer, SecurityScopes
 from sqlalchemy.ext.asyncio import AsyncSession
 # from sqlalchemy import select, selectinload
 
-from libs.src.db.session import get_async_session, get_async_db_dependency # Adjust import path if necessary
+from db.session import get_async_session, get_async_db_dependency # Adjust import path if necessary
 from kiwi_app.auth import crud, models, schemas, security, services # Import services
 from kiwi_app.auth.utils import auth_logger # Import the specific logger
 from kiwi_app.auth.constants import Permissions # Import Permissions enum

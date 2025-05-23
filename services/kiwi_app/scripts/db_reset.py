@@ -30,7 +30,7 @@ from kiwi_app.workflow_app.models import (
 # Import the function to get a database session
 # This is a placeholder; replace with your project's actual session provider.
 # Common patterns include a context manager or a dependency injection function.
-from libs.src.db.session import get_db_as_manager # <<< ADJUST THIS IMPORT >>>
+from db.session import get_db_as_manager # <<< ADJUST THIS IMPORT >>>
 
 # --- Logging Configuration ---
 # Basic logging setup to provide feedback during script execution.

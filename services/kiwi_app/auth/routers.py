@@ -8,9 +8,9 @@ from fastapi.security import OAuth2PasswordRequestForm # Special form for userna
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from kiwi_app.email import email_verify
-from libs.src.db.session import get_async_session, get_async_db_dependency # Added get_async_db_dependency
+from db.session import get_async_session, get_async_db_dependency # Added get_async_db_dependency
 # Change relative to absolute imports
+from kiwi_app.email import email_verify
 from kiwi_app.auth import crud, models, schemas, security, dependencies, linkedin, utils, services # Added email_verify
 # from kiwi_app.auth.utils import auth_logger
 from kiwi_app.utils import get_kiwi_logger
