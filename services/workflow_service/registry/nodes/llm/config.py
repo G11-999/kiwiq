@@ -11,6 +11,8 @@ from fireworks.client import Fireworks
 
 from langchain.chat_models import init_chat_model
 
+from workflow_service.registry.nodes.llm.internal_tools import OPENAI_TOOLS_REGISTRY, ANTHROPIC_TOOLS_REGISTRY
+
 
 class EnumWithAttr(Enum):
     """Enum with attributes."""
@@ -67,6 +69,7 @@ class ModelMetadata(BaseModel):
     tool_use: bool = True
     tool_choice: List[str] = []
     parallel_tool_calling_configurable: bool = False
+    inbuilt_tools: Optional[Dict[str, Any]] = None
 
     multimodal: bool = False
     # price computed by tokencost library
@@ -108,6 +111,7 @@ DEFAULT_OPENAI_METADATA = ModelMetadata(
     provider=LLMModelProvider.OPENAI,
     context_limit=128000,
     output_token_limit=16384,
+    inbuilt_tools=OPENAI_TOOLS_REGISTRY,
     # reasoning = True
     # reasoning_effort_class = ["low", "medium", "high"],
     rate_limits={"requests_per_minute": 10000, "tokens_per_minute": 30000000},  # TODO: RECHECK!
@@ -115,6 +119,8 @@ DEFAULT_OPENAI_METADATA = ModelMetadata(
     parallel_tool_calling_configurable=True,
     multimodal=True
 )
+# https://platform.openai.com/docs/pricing
+
 
 # Default metadata templates
 DEFAULT_OPENAI_SEARCH_METADATA = ModelMetadata(
@@ -207,16 +213,36 @@ ANTHROPIC_METADATA = ModelMetadata(
     # reasoning=True,
     # reasoning_effort_class=["low", "medium", "high"],
     # reasoning_tokens_budget=True,
+    inbuilt_tools=ANTHROPIC_TOOLS_REGISTRY,
     tool_use=True,
     multimodal=True,
     non_reasoning_mode=True,
     tool_choice=["auto", "any", "none"],
     parallel_tool_calling_configurable=True,
 )
-
+# https://docs.anthropic.com/en/docs/agents-and-tools/computer-use#understand-anthropic-defined-tools
+# https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/token-efficient-tool-use
+# https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/text-editor-tool
+# https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/web-search-tool
 
 class AnthropicModels(str, EnumWithAttr):
     """Anthropic model options."""
+    CLAUDE_OPUS_4 = "claude-opus-4-20250514", ModelMetadata(**(ANTHROPIC_METADATA.model_dump() | {
+        "output_token_limit_thinking": 64000,
+        "rate_limits": {"requests_per_minute": None, "input_tokens_per_minute": 1000000, "output_tokens_per_minute": 400000},
+        "reasoning": True,
+        # it also has non-reasoning mode!
+        "reasoning_tokens_budget": True,
+        "reasoning_tokens_budget_min": 1024,
+    }))
+    CLAUDE_SONNET_4 = "claude-sonnet-4-20250514", ModelMetadata(**(ANTHROPIC_METADATA.model_dump() | {
+        "output_token_limit_thinking": 64000,
+        "rate_limits": {"requests_per_minute": None, "input_tokens_per_minute": 1000000, "output_tokens_per_minute": 400000},
+        "reasoning": True,
+        # it also has non-reasoning mode!
+        "reasoning_tokens_budget": True,
+        "reasoning_tokens_budget_min": 1024,
+    }))
     CLAUDE_3_7_SONNET = "claude-3-7-sonnet-20250219", ModelMetadata(**(ANTHROPIC_METADATA.model_dump() | {
         "output_token_limit_thinking": 64000,
         "rate_limits": {"requests_per_minute": None, "input_tokens_per_minute": 1000000, "output_tokens_per_minute": 400000},
@@ -227,12 +253,6 @@ class AnthropicModels(str, EnumWithAttr):
     }))
     CLAUDE_3_5_SONNET = "claude-3-5-sonnet-20241022", ModelMetadata(**(ANTHROPIC_METADATA.model_dump() | {
         "rate_limits": {"requests_per_minute": 4000, "input_tokens_per_minute": 2000000, "output_tokens_per_minute": 400000},
-    }))
-    CLAUDE_3_5_HAIKU = "claude-3-5-haiku-20241022", ModelMetadata(**(ANTHROPIC_METADATA.model_dump() | {
-        "output_token_limit": 4096,
-    }))
-    CLAUDE_3_OPUS = "claude-3-opus-20240229", ModelMetadata(**(ANTHROPIC_METADATA.model_dump() | {
-        "output_token_limit": 4096,
     }))
 
 
@@ -275,13 +295,13 @@ GEMINI_PARAM_KEY_OVERRIDES = {
 class GeminiModels(str, EnumWithAttr):
     """Google Gemini model options.
     """
-    GEMINI_2_5_PRO_EXP = "gemini-2.5-pro-exp-03-25", ModelMetadata(**(GEMINI_METADATA.model_dump() | {
+    GEMINI_2_5_PRO = "gemini-2.5-pro-preview-05-06", ModelMetadata(**(GEMINI_METADATA.model_dump() | {
         "reasoning": True,
         "output_token_limit": 65536,
         "non_reasoning_mode": False,
         # "output_token_limit": 4096,
     }))  # Enhanced thinking and reasoning, multimodal understanding, advanced coding
-    GEMINI_2_0_FLASH = "gemini-2.0-flash", ModelMetadata(**(GEMINI_METADATA.model_dump() | {
+    GEMINI_2_5_FLASH = "gemini-2.5-flash-preview-05-20", ModelMetadata(**(GEMINI_METADATA.model_dump() | {
         "rate_limits": {"requests_per_minute": 2000, "tokens_per_minute": 4000000},
         # "output_token_limit": 4096,
     }))  # Next generation features, speed, thinking, realtime streaming, and multimodal generation

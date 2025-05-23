@@ -30,6 +30,7 @@ class NodeTemplate(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
     name: str = Field(index=True, description="Unique name identifying the node type (e.g., 'llm_generator')")
     version: str = Field(index=True, description="Version string (e.g., '1.0.0', 'latest')")
+    node_is_tool: Optional[bool] = Field(default=False, index=True, nullable=True, description="True if this is a tool node meant to be used with LLMs tool calling.")
     description: str = Field(sa_column=Column(Text))
 
     # Schemas stored as JSONB

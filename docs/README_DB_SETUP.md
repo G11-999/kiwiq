@@ -146,6 +146,9 @@ PYTHONPATH=$(pwd):$(pwd)/services poetry run alembic -c libs/src/db/alembic.ini 
 
 # migration #6
 PYTHONPATH=$(pwd):$(pwd)/services poetry run alembic -c libs/src/db/alembic.ini revision --autogenerate -m "Add Chat Thread model"
+
+# migration #7
+PYTHONPATH=$(pwd):$(pwd)/services poetry run alembic -c libs/src/db/alembic.ini revision --autogenerate -m "Add 'node_is_tool' in NodeTemplate"
 ```
 
 7. apply migration script

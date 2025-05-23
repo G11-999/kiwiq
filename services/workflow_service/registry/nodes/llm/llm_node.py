@@ -11,14 +11,17 @@ import os
 from enum import Enum
 import re
 import time
-from typing import Any, ClassVar, Dict, List, Optional, Type, Union, Literal
+from typing import Any, ClassVar, Dict, List, Optional, Type, Union, Literal, cast
+from functools import partial
+from operator import itemgetter
 
 # Add jsonschema imports
 import jsonschema
 from jsonschema import Draft202012Validator
 
-from pydantic import Field, field_validator, model_validator, BaseModel
+from pydantic import Field, field_validator, model_validator, BaseModel, create_model
 from pydantic import ConfigDict
+from pydantic.v1 import BaseModel as BaseModelV1
 
 from anthropic import Anthropic
 from openai import OpenAI
@@ -31,12 +34,27 @@ from langchain_core.messages import (
     AnyMessage,
     # BaseMessage
 )
+from langchain_openai import ChatOpenAI
+from langchain_openai.chat_models.base import (
+    _convert_to_openai_response_format, convert_to_openai_tool, 
+    _is_pydantic_class, RunnableLambda, RunnablePassthrough, _oai_structured_outputs_parser, RunnableMap,
+    PydanticToolsParser,
+    JsonOutputKeyToolsParser,
+)
+from langchain_anthropic.chat_models import (
+    convert_to_anthropic_tool, 
+    LanguageModelInput, is_basemodel_subclass, OutputParserLike,
+    OutputParserException, BaseMessage, AnthropicTool
+)
+from langchain_anthropic import ChatAnthropic
+
+from langchain_core.runnables import Runnable, RunnableBinding
+
 from langchain_core.messages.utils import message_chunk_to_message
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 from langchain_core.tools import BaseTool
-from langchain_core.runnables import Runnable
 from langchain.chat_models import init_chat_model
 from langchain_community.chat_models import ChatPerplexity
 
@@ -51,20 +69,13 @@ from workflow_service.config.constants import (
 from global_utils.json_schema_to_pydantic import convert_json_schema_to_pydantic_in_memory
 from kiwi_app.workflow_app.constants import LaunchStatus
 from workflow_service.config.settings import settings
+from workflow_service.registry.nodes.llm.internal_tools.internal_base import BaseProviderInternalTool
 from workflow_service.registry.registry import DBRegistry
 from workflow_service.registry.nodes.core.base import BaseNode
 from workflow_service.registry.schemas.base import BaseSchema, BaseNodeConfig
 from workflow_service.registry.nodes.core.dynamic_nodes import ConstructDynamicSchema, DynamicSchema
 from workflow_service.registry.nodes.llm.config import LLMModelProvider, PROVIDER_MODEL_MAP, AnthropicModels, AWS_REGION, ModelMetadata, THINKING_MESSAGE_TYPES, REDACED_THINKING_MESSAGE_TYPES, GEMINI_PARAM_KEY_OVERRIDES, PARAM_KEY_OVERRIDES, AI_MESSAGE_TYPES
 from workflow_service.registry.schemas.base import create_dynamic_schema_with_fields
-
-
-
-
-
-# print(BaseMessage("test", type="test"))
-# print(BaseMessage({"content": "test", "type": "test"}))
-# raise Exception("stop")
 
 
 class MessageType(str, Enum):
@@ -259,6 +270,8 @@ class LLMStructuredOutputSchema(BaseNodeConfig):
 
     For eg, Anthropic structured output relies on forced tool calling, which is not supported when `thinking` is enabled. Sometimes, the tool calls are not generated leading to parser errors.
     Consider disabling `thinking` or adjust your prompt to ensure the tool is called.
+
+    NOTE: For Anthropic, structured output is not properly supported when using tools with non-reasoning models, be careful of errors caused by this.
     """
     # Option 1: Dynamic Pydantic Schema
     dynamic_schema_spec: Optional[ConstructDynamicSchema] = Field(
@@ -375,11 +388,15 @@ class ToolConfig(BaseNodeConfig):
     NOTE: this tool is configured in the tool caller node and it has the config default / set by user. 
     This config in LLM node only receives input_overwrites so that it can determine which parts of the input schema go into the tool call.
     IMPORTANT NOTE: A tool node should have a verbose, descriptive input schema btw!
+
+    NOTE: many inbuilt tools such as web search are provider specific, and not all models from the same provider support all inbuilt tools. EG: O3_MINI / O4_MINI don't support the web search preview tool.
     """
     tool_name: str = Field(description="Tool name")
     version: Optional[str] = Field(None, description="Tool version")
-    input_overwrites: Optional[Dict[str, Any]] = Field(None, description="Input overwrites for the tool. These fields are not passed to the LLM and are not filled!")
-    additional_tool_config_fields: Optional[ConstructDynamicSchema] = Field(None, description="Additional fields for the tool. They could contain additional config fields for the tool not part of standard input schema.")
+    is_provider_inbuilt_tool: Optional[bool] = Field(None, description="if this a provider specific inbuilt tool or a KiwiQ defined tool.")
+    provider_inbuilt_user_config: Optional[Dict[str, Any]] = Field(None, description="User config for provider inbuilt tools.")
+    # input_overwrites: Optional[Dict[str, Any]] = Field(None, description="Input overwrites for the tool. These fields are not passed to the LLM and are not filled!")
+    # additional_tool_config_fields: Optional[ConstructDynamicSchema] = Field(None, description="Additional fields for the tool. They could contain additional config fields for the tool not part of standard input schema.")
 
 
 class LLMModelConfig(BaseNodeConfig):
@@ -536,6 +553,25 @@ class LLMNodeConfigSchema(BaseNodeConfig):
             raise ValueError("Tools must be provided when tool calling is enabled")
         return v
 
+    # @model_validator(mode='after')
+    # def validate_anthropic_tools_and_structured_output(self) -> 'LLMNodeConfigSchema':
+    #     """
+    #     Validate that when using Anthropic with built-in tools, structured output is not provided.
+        
+    #     This is because Anthropic's tool calling implementation is incompatible with structured output
+    #     when using built-in tools.
+    #     """
+    #     if (self.llm_config and 
+    #         self.llm_config.model_spec.provider == LLMModelProvider.ANTHROPIC and 
+    #         self.tools and 
+    #         any(tool.is_provider_inbuilt_tool for tool in self.tools) and
+    #         self.output_schema):
+    #         raise ValueError(
+    #             "Structured output (output_schema) is not supported when using Anthropic with "
+    #             "built-in tools. Please either remove the output_schema or use custom tools instead."
+    #         )
+    #     return self
+
 ###########################
 
 
@@ -629,9 +665,25 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
         # Prepare messages using node config
         messages_for_model, current_messages = self._prepare_messages(input_data, model_metadata)
 
+        is_structured_output = self.config.output_schema and not self.config.output_schema.is_output_str()
+        is_tool_use = self.config.tool_calling_config.enable_tool_calling and self.config.tools
+
+        # Bind tools if configured in node config
+        tool_kwargs = {}
+        tools = []
+        if is_tool_use:
+            assert model_metadata.tool_use, f"Model {model_metadata.provider.value} -> `{model_metadata.model_name}` does not support tool use!"
+            tool_use_chat_model, tools, tool_kwargs = self._bind_tools(chat_model, model_metadata, registry)
+            if not is_structured_output:
+                chat_model = tool_use_chat_model
+            # import ipdb; ipdb.set_trace()
+            # bind_tool_kwargs = chat_model.kwargs
+        
         # Determine and fetch the structured output schema if configured
+        
         determined_output_schema: Union[Type[BaseSchema], Dict[str, Any], None] = None
-        if self.config.output_schema and not self.config.output_schema.is_output_str():
+        structured_output_kwargs = {}
+        if is_structured_output:
             assert model_metadata.structured_output, f"Model {model_metadata.provider.value} -> `{model_metadata.model_name}` does not support structured output!"
             try:
                 determined_output_schema = await self.config.output_schema.get_schema(
@@ -640,20 +692,32 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                     customer_data_service=customer_data_service,
                     built_schema_name=f"{self.__class__.node_name}StructuredOutputSchema"
                 )
-                chat_model = self._apply_structured_output(chat_model, determined_output_schema, model_metadata)
+                if not is_tool_use:
+                    chat_model = self._apply_structured_output(chat_model, determined_output_schema, model_metadata)
+                    # structured_output_kwargs = chat_model.kwargs
             except Exception as e:
                 self.critical("Failed to get or apply structured output schema")
                 raise ValueError(f"Structured output configuration failed: {str(e)}") from e
 
-        # Bind tools if configured in node config
-        if self.config.tool_calling_config.enable_tool_calling and self.config.tools:
-            assert model_metadata.tool_use, f"Model {model_metadata.provider.value} -> `{model_metadata.model_name}` does not support tool use!"
-            chat_model = self._bind_tools(chat_model, model_metadata, registry)
+
+        if is_tool_use and is_structured_output:
+            chat_model = self._apply_both_structured_output_and_tool_kwargs(chat_model, model_metadata, output_schema=determined_output_schema, tools=tools, **tool_kwargs)
+        
+        
+        # chat_model = chat_model.bind(**structured_output_kwargs, **tool_kwargs)
+        
+        # elif self.config.tool_calling_config.enable_tool_calling and self.config.tools:
+        #     assert model_metadata.tool_use, f"Model {model_metadata.provider.value} -> `{model_metadata.model_name}` does not support tool use!"
+        #     chat_model = self._bind_tools(chat_model, model_metadata, registry)
+
+        
 
         # Execute model with provider-specific handling
         try:
             start_time = time.time()
-            response = await self._execute_model(chat_model, messages_for_model, model_metadata)
+            response = await self._execute_model(
+                chat_model, messages_for_model, model_metadata,   # **tool_kwargs
+                )
             # NOTE: 
             # if (not self.config.output_schema.is_output_str()): 
             #     # response is dict with keys {"raw": Any, "parsed": Any, "parsing_error": Optional[str]}
@@ -668,7 +732,214 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
         # Parse and validate response using node config
         return self._parse_response(response, input_data.messages_history, current_messages, latency, determined_output_schema, model_metadata)
     
+    def _apply_both_structured_output_and_tool_kwargs(self, chat_model, model_metadata: ModelMetadata, output_schema: BaseSchema, tools: Optional[list] = None, **kwargs: Dict[str, Any]):
+        if model_metadata.provider == LLMModelProvider.OPENAI:
+            return self._apply_structured_and_tools_openai(chat_model, schema=output_schema, method="json_schema", include_raw=True, strict=True, tools=tools, **kwargs)
+        elif model_metadata.provider == LLMModelProvider.ANTHROPIC:
+            return self._apply_structured_and_tools_anthropic(chat_model, schema=output_schema, include_raw=True, tools=tools, **kwargs)
+        else:
+            raise ValueError(f"Unsupported provider: {model_metadata.provider}")
     
+    ############## ############## ############## ############## ############## ##############
+    ############## ##############  LANGCHAIN OVERRIDES   ##############  ##############
+    ############## ############## ############## ############## ############## ##############
+
+    def _get_llm_for_structured_output_when_thinking_is_enabled_anthropic(
+        self,
+        chat_model: ChatAnthropic,
+        schema: Union[dict, type],
+        formatted_tool: AnthropicTool,
+        tools: Optional[list] = None,
+        **kwargs: Any,
+    ) -> Runnable[LanguageModelInput, BaseMessage]:
+        thinking_admonition = (
+            "Anthropic structured output relies on forced tool calling, "
+            "which is not supported when `thinking` is enabled. This method will raise "
+            "langchain_core.exceptions.OutputParserException if tool calls are not "
+            "generated. Consider disabling `thinking` or adjust your prompt to ensure "
+            "the tool is called."
+        )
+        self.warning(thinking_admonition)
+        llm = chat_model.bind_tools(
+            [schema] + tools,
+            ls_structured_output_format={
+                "kwargs": {"method": "function_calling"},
+                "schema": formatted_tool,
+            },
+            **kwargs,
+        )
+
+        # def _raise_if_no_tool_calls(message: AIMessage) -> AIMessage:
+        #     if not message.tool_calls:
+        #         raise OutputParserException(thinking_admonition)
+        #     return message
+
+        return llm  #  | _raise_if_no_tool_calls
+
+    def _apply_structured_and_tools_anthropic(
+        self,
+        chat_model: ChatAnthropic,
+        schema: Union[dict, type],
+        *,
+        include_raw: bool = False,
+        tools: Optional[list] = None,
+        **kwargs: Any,
+    ) -> Runnable[LanguageModelInput, Union[dict, BaseModel]]:
+        formatted_tool = convert_to_anthropic_tool(schema)
+        tool_name = formatted_tool["name"]
+        if chat_model.thinking is not None and chat_model.thinking.get("type") == "enabled":
+            llm = self._get_llm_for_structured_output_when_thinking_is_enabled_anthropic(
+                chat_model, schema, formatted_tool, tools, **kwargs
+            )
+        else:
+            llm = chat_model.bind_tools(
+                [schema] + tools,
+                # tool_choice=tool_name,
+                ls_structured_output_format={
+                    "kwargs": {"method": "function_calling"},
+                    "schema": formatted_tool,
+                },
+                **kwargs,
+            )
+
+        return llm
+        # if isinstance(schema, type) and is_basemodel_subclass(schema):
+        #     output_parser: OutputParserLike = PydanticToolsParser(
+        #         tools=[schema], first_tool_only=True
+        #     )
+        # else:
+        #     output_parser = JsonOutputKeyToolsParser(
+        #         key_name=tool_name, first_tool_only=True
+        #     )
+
+        # if include_raw:
+        #     parser_assign = RunnablePassthrough.assign(
+        #         parsed=itemgetter("raw") | output_parser, parsing_error=lambda _: None
+        #     )
+        #     parser_none = RunnablePassthrough.assign(parsed=lambda _: None)
+        #     parser_with_fallback = parser_assign.with_fallbacks(
+        #         [parser_none], exception_key="parsing_error"
+        #     )
+        #     return RunnableMap(raw=llm) | parser_with_fallback
+        # else:
+        #     return llm | output_parser
+
+    def _apply_structured_and_tools_openai(
+            self,
+            chat_model: ChatOpenAI, 
+            schema = None,
+            method: Literal[
+                "json_schema", "function_calling"
+            ] = "json_schema",
+            include_raw: bool = False,
+            strict: Optional[bool] = None,
+            tools: Optional[list] = None, **kwargs
+        ) -> Runnable:
+
+        is_pydantic_schema = _is_pydantic_class(schema)
+
+        if method == "json_schema":
+            # Check for Pydantic BaseModel V1
+            if (
+                is_pydantic_schema and issubclass(schema, BaseModelV1)  # type: ignore[arg-type]
+            ):
+                self.warning(
+                    "Received a Pydantic BaseModel V1 schema. This is not supported by "
+                    'method="json_schema". Please use method="function_calling" '
+                    "or specify schema via JSON Schema or Pydantic V2 BaseModel. "
+                    'Overriding to method="function_calling".'
+                )
+                method = "function_calling"
+            # Check for incompatible model
+            if chat_model.model_name and (
+                chat_model.model_name.startswith("gpt-3")
+                or chat_model.model_name.startswith("gpt-4-")
+                or chat_model.model_name == "gpt-4"
+            ):
+                self.warning(
+                    f"Cannot use method='json_schema' with model {chat_model.model_name} "
+                    f"since it doesn't support OpenAI's Structured Output API. You can "
+                    f"see supported models here: "
+                    f"https://platform.openai.com/docs/guides/structured-outputs#supported-models. "  # noqa: E501
+                    "To fix this warning, set `method='function_calling'. "
+                    "Overriding to method='function_calling'."
+                )
+                method = "function_calling"
+
+        if method == "function_calling":
+            if schema is None:
+                raise ValueError(
+                    "schema must be specified when method is not 'json_mode'. "
+                    "Received None."
+                )
+            tool_name = convert_to_openai_tool(schema)["function"]["name"]
+            bind_kwargs = chat_model._filter_disabled_params(
+                tool_choice=tool_name,
+                parallel_tool_calls=False,
+                strict=strict,
+                ls_structured_output_format={
+                    "kwargs": {"method": method, "strict": strict},
+                    "schema": schema,
+                },
+            )
+
+            llm = chat_model.bind_tools([schema], **bind_kwargs)
+            if is_pydantic_schema:
+                output_parser: Runnable = PydanticToolsParser(
+                    tools=[schema],  # type: ignore[list-item]
+                    first_tool_only=True,  # type: ignore[list-item]
+                )
+            else:
+                output_parser = JsonOutputKeyToolsParser(
+                    key_name=tool_name, first_tool_only=True
+                )
+        elif method == "json_schema":
+            if schema is None:
+                raise ValueError(
+                    "schema must be specified when method is not 'json_mode'. "
+                    "Received None."
+                )
+            response_format = _convert_to_openai_response_format(schema, strict=strict)
+            bind_kwargs = dict(
+                response_format=response_format,
+                ls_structured_output_format={
+                    "kwargs": {"method": method, "strict": strict},
+                    "schema": convert_to_openai_tool(schema),
+                },
+            )
+            if tools:
+                bind_kwargs["tools"] = [
+                    convert_to_openai_tool(t, strict=strict) for t in tools
+                ]
+            bind_kwargs.update(kwargs)
+            llm = chat_model.bind(**bind_kwargs)
+            if is_pydantic_schema:
+                output_parser = RunnableLambda(
+                    partial(_oai_structured_outputs_parser, schema=cast(type, schema))
+                ).with_types(output_type=cast(type, schema))
+            else:
+                output_parser = JsonOutputParser()
+        else:
+            raise ValueError(
+                f"Unrecognized method argument. Expected one of 'function_calling' or "
+                f"'json_mode'. Received: '{method}'"
+            )
+
+        if include_raw:
+            parser_assign = RunnablePassthrough.assign(
+                parsed=itemgetter("raw") | output_parser, parsing_error=lambda _: None
+            )
+            parser_none = RunnablePassthrough.assign(parsed=lambda _: None)
+            parser_with_fallback = parser_assign.with_fallbacks(
+                [parser_none], exception_key="parsing_error"
+            )
+            return RunnableMap(raw=llm) | parser_with_fallback
+        else:
+            return llm | output_parser
+    
+    ############## ############## ############## ############## ############## ##############
+    ############## ############## ############## ############## ############## ##############
+    ############## ############## ############## ############## ############## ##############
     
     def _get_reasoning_params(self, provider: LLMModelProvider, model_name: str, model_metadata: ModelMetadata) -> Dict[str, Any]:
         """Get reasoning parameters for the model."""
@@ -791,24 +1062,64 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
             for i, tool_output in enumerate(input_data.tool_outputs):
                 if "content" not in tool_output:
                     raise ValueError(f"Tool output {i} must have a 'content' key! {tool_output}")
-                tool_messages.append(
-                    ToolMessage(
-                        content=tool_output.get("content"),  # NOTE: this can be a str or a list of str / dicts as per langchain!
-                        # TODO: has to be in this similar format for eg:
-                        # content=[
-                        #     {'type': 'text', 'text': '\n\nHello, world! 👋 How can I assist you today?'}, 
-                        #     {'type': 'reasoning_content', 'reasoning_content': {
-                        #         'text': 'Okay, the user wrote "Hello, world!" That\'s a classic first program in many programming languages. Maybe they\'re just testing the chat or starting out with coding.\n\nI should respond warmly. Let me say hello back and ask how I can assist them today. Keep it friendly and open-ended to encourage them to ask questions or share what they need help with.\n', 
-                        #         'signature': ''
-                        #     }}
-                        # ]
-                        tool_call_id=tool_output.get("tool_id", f"tool_output_{i}"), 
-                        name=tool_output.get("tool_name", ""),
-                        status=tool_output.get("status", "success")
+                tool_call_id = tool_output.get("tool_call_id", f"tool_output_{i}")
+
+                tool_msg_content = {}
+                if model_metadata.provider == LLMModelProvider.ANTHROPIC:
+                    tool_msg_content["type"] = "tool_result"
+                    tool_msg_content["tool_use_id"] = tool_call_id
+                    tool_msg_content["content"] = tool_output.get("content")
+                    
+                    # tool_msg_content = [tool_msg_content]
+
+                    # tool_output_msg = {
+                    #     "role": "user",
+                    #     "content": tool_msg_content,
+                    # }
+
+                    tool_output_msg = tool_msg_content
+                    
+                    # tool_output_msg = HumanMessage(
+                    #     content=tool_msg_content,  # NOTE: this can be a str or a list of str / dicts as per langchain!
+                    #     # TODO: has to be in this similar format for eg:
+                    #     # content=[
+                    #     #     {'type': 'text', 'text': '\n\nHello, world! 👋 How can I assist you today?'}, 
+                    #     #     {'type': 'reasoning_content', 'reasoning_content': {
+                    #     #         'text': 'Okay, the user wrote "Hello, world!" That\'s a classic first program in many programming languages. Maybe they\'re just testing the chat or starting out with coding.\n\nI should respond warmly. Let me say hello back and ask how I can assist them today. Keep it friendly and open-ended to encourage them to ask questions or share what they need help with.\n', 
+                    #     #         'signature': ''
+                    #     #     }}
+                    #     # ]
+                    #     tool_call_id=tool_call_id,
+                    #     id=tool_call_id,
+                    #     name=tool_output.get("name", ""),
+                    #     status=tool_output.get("status", "success"),
+                    #     # **tool_msg_kwargs
+                    # )
+                elif model_metadata.provider == LLMModelProvider.OPENAI:
+                    # tool_msg_content["type"] = "function_call_output"
+                    # tool_msg_content["call_id"] = tool_call_id
+                    # tool_msg_content["output"] = tool_output.get("content")
+                    tool_output_msg = ToolMessage(
+                        content=tool_output.get("content"),
+                        tool_call_id=tool_call_id,
+                        id=tool_call_id,
+                        name=tool_output.get("name", ""),
+                        status=tool_output.get("status", "success"),
                     )
+
+                tool_messages.append(
+                    tool_output_msg
                 )
+            if model_metadata.provider == LLMModelProvider.ANTHROPIC:
+                tool_messages = [{
+                    "role": "user",
+                    "type": "human",
+                    "content": tool_messages
+                }]
+            # import ipdb; ipdb.set_trace()
             messages.extend(tool_messages)
             current_messages.extend(tool_messages)
+        # import ipdb; ipdb.set_trace()
         # Use node config for thinking message handling
         messages = self._filter_thinking_messages(messages, keep=self.config.thinking_tokens_in_prompt)
 
@@ -849,52 +1160,65 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
             self.critical("Failed to apply structured output to model")
             raise ValueError(f"Structured output configuration failed: {str(e)}") from e
 
-    def _bind_tools(self, model: Any, model_metadata: ModelMetadata, registry: DBRegistry) -> Any:
+    def _bind_tools(self, model: Any, model_metadata: ModelMetadata, registry: DBRegistry) -> RunnableBinding:
         """Bind tools from node config."""
         assert model_metadata.tool_use, f"Model {model_metadata.provider.value} -> `{model_metadata.model_name}` does not support tool use!"
         tools = []
         for tool_config in self.config.tools:
-            # NOTE: will raise error if node not found or found node is not a tool node!
-            tool_node: BaseNode = registry.get_node(tool_config.tool_name, tool_config.version, return_if_tool=True)
-            # if not tool_node:
-            #     raise ValueError(f"Tool {tool_config.tool_name} not found in registry")
-
-            default_tool_no_params = create_dynamic_schema_with_fields(DynamicSchema,
-                fields={}, schema_name=tool_config.tool_name
-            )
-            default_tool_no_params.__doc__ = tool_node.__doc__
-            
-            
-            additional_fields = tool_config.additional_tool_config_fields
-            if additional_fields:
-                additional_fields = additional_fields.build_schema(schema_name=tool_config.tool_name)
-            
-            input_schema = tool_node.input_schema_cls
-            if input_schema:
-                input_overwrites = tool_config.input_overwrites or {}
-                included_fields = {k:None for k,v in input_schema.model_fields.items() if k not in input_overwrites}
-                input_schema = create_dynamic_schema_with_fields(input_schema,
-                    fields=included_fields, schema_name=tool_config.tool_name
-                )
-                if additional_fields is not None:
-                    additional_fields = {field_name: (field_info.annotation, field_info) for field_name, field_info in additional_fields.model_fields.items()}
-                    input_schema = create_dynamic_schema_with_fields(
-                        input_schema, fields=included_fields | additional_fields, schema_name=tool_config.tool_name
+            tool_for_binding: Any
+            if tool_config.is_provider_inbuilt_tool:
+                if not model_metadata.inbuilt_tools or tool_config.tool_name not in model_metadata.inbuilt_tools:
+                    raise ValueError(
+                        f"Inbuilt tool '{tool_config.tool_name}' not supported by model "
+                        f"{model_metadata.provider.value} -> `{model_metadata.model_name}` or not found in model metadata."
                     )
-            tool_for_binding = input_schema or additional_fields or default_tool_no_params
+                
+                tool = model_metadata.inbuilt_tools[tool_config.tool_name]
+                tool_class: Type[BaseProviderInternalTool] = tool["tool_class"]
+                
+                # Instantiate the tool with user_config if provided
+                # The user_config from ToolConfig should be a dictionary that matches the tool's specific user_config Pydantic model
+                # For example, if tool_class is OpenAIWebSearchTool, provider_inbuilt_user_config should match OpenAIWebSearchToolConfig
+                tool_instance_kwargs = {}
+                if tool_config.provider_inbuilt_user_config:
+                    tool_instance_kwargs["user_config"] = tool_config.provider_inbuilt_user_config
+                
+                tool_object = tool_class(**tool_instance_kwargs)
+                tool_for_binding = tool_object.get_tool()
+
+            else:
+                # NOTE: will raise error if node not found or found node is not a tool node!
+                tool_node: BaseNode = registry.get_node(tool_config.tool_name, tool_config.version, return_if_tool=True)
+                if not tool_node:
+                    raise ValueError(f"Tool {tool_config.tool_name} not found in registry")
+                
+                input_schema = tool_node.input_schema_cls
+                if not input_schema:
+                    raise ValueError(f"Tool {tool_config.tool_name} has no input schema!")
+                
+                # Change schema name to be equal to tool name!
+                tool_for_binding = create_model(
+                    tool_config.tool_name,
+                    __base__=BaseSchema,
+                    __doc__=input_schema.__doc__,
+                    __module__=input_schema.__module__,  # module_name or 
+                    **{k:(v.annotation, v) for k,v in input_schema.model_fields.items()}
+                )
+                # tool_for_binding = input_schema
+            
             tools.append(tool_for_binding)
         
         kwargs = {}
         if self.config.tool_calling_config.tool_choice:
             assert self.config.tool_calling_config.tool_choice in model_metadata.tool_choice, f"Model {model_metadata.provider.value} -> `{model_metadata.model_name}` does not support tool choice!"
             kwargs["tool_choice"] = self.config.tool_calling_config.tool_choice
-        if self.config.tool_calling_config.enable_parallel_tool_calling:
+        if self.config.tool_calling_config.parallel_tool_calls:
             assert model_metadata.parallel_tool_calling_configurable, f"Model {model_metadata.provider.value} -> `{model_metadata.model_name}` does not support parallel tool calling!"
-            kwargs["parallel_tool_calls"] = self.config.tool_calling_config.enable_parallel_tool_calling
+            kwargs["parallel_tool_calls"] = self.config.tool_calling_config.parallel_tool_calls
 
-        return model.bind_tools(tools=tools, **kwargs)
+        return model.bind_tools(tools=tools, **kwargs), tools, kwargs
 
-    async def _execute_model(self, model: Any, messages: List[AnyMessage], model_metadata: ModelMetadata) -> Any:
+    async def _execute_model(self, model: Any, messages: List[AnyMessage], model_metadata: ModelMetadata, **kwargs) -> Any:
         """Execute model with provider-specific streaming handling."""
         # if self.config.stream:
         #     return self._handle_streaming(model, messages)
@@ -925,7 +1249,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
         # response = temp_model.invoke("Hello, world!")
         # # import ipdb; ipdb.set_trace()
 
-        invoke_kwargs = {}
+        invoke_kwargs = kwargs
         if hasattr(model_metadata, "web_search") and model_metadata.web_search:
             if self.config.web_search_options is not None:
                 # Validate web search capabilities against model metadata
@@ -1018,9 +1342,19 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
         https://docs.fireworks.ai/structured-responses/structured-response-formatting#reasoning-model-json-mode
         """
         # Determine if the model actually made tool calls (excluding potential internal structured output calls)
-        has_tool_calls = False
+        # import ipdb; ipdb.set_trace()
+        
+        
+        # Get actual response object
+        if self.config.output_schema.is_output_str():
+            response = original_response
+        else:
+            response = original_response["raw"] if isinstance(original_response, dict) and "raw" in original_response else original_response
+        
+        
+        # Tool Calls
         filtered_tool_calls = []
-
+        schema_tool_call = None
         schema_name_to_filter = None
         if output_schema:
             if isinstance(output_schema, dict):
@@ -1028,22 +1362,22 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
             else:
                 schema_name_to_filter = output_schema.__name__
         
-        if hasattr(original_response, 'tool_calls') and original_response.tool_calls:
+        if hasattr(response, 'tool_calls') and response.tool_calls:
             # TODO: change this behaviour for only Anthropic which uses tool calls for structured responses!
             # We filter here ONLY if a structured output schema was provided.
             # If output_schema is None, we assume any tool call is a legitimate external tool call.
             
             if schema_name_to_filter:
-                 filtered_tool_calls = [t for t in original_response.tool_calls if t["name"] != schema_name_to_filter]
+                 filtered_tool_calls = [t for t in response.tool_calls if t["name"] != schema_name_to_filter]
+                 schema_tool_call = [t for t in response.tool_calls if t["name"] == schema_name_to_filter]
+                 schema_tool_call = schema_tool_call[0] if schema_tool_call else None
             else:
-                 filtered_tool_calls = original_response.tool_calls # Keep all if no structured output or JSON schema
-            has_tool_calls = bool(filtered_tool_calls)
+                 filtered_tool_calls = response.tool_calls # Keep all if no structured output or JSON schema
+                
+            # Filter out tool calls that don't have a name
+            filtered_tool_calls = [t for t in filtered_tool_calls if "name" in t and t["name"]]
 
         # import ipdb; ipdb.set_trace()
-        if self.config.output_schema.is_output_str() or has_tool_calls:
-            response = original_response
-        else:
-            response = original_response["raw"]
         
 
         # Extract reasoning from Fireworks models that support it
@@ -1072,8 +1406,11 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
         
         # Normalize metadata to OpenAI format
         normalized_metadata = None
+        usage_metadata = getattr(response, "usage_metadata", {})
         if not response_metadata:
-            response_metadata = getattr(response, "usage_metadata", {})
+            response_metadata = usage_metadata
+        else:
+            response_metadata = {**response_metadata, **usage_metadata} if (usage_metadata and isinstance(usage_metadata, dict)) else response_metadata
         if response_metadata:
             normalized_metadata = self.normalize_metadata_to_openai_format(
                 # response,
@@ -1092,12 +1429,12 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
 
         # Handle tool calls
         tool_calls = []
-        if has_tool_calls:
+        if filtered_tool_calls:
             tool_calls = [
                 ToolCall(
                     tool_name=call['name'],
                     tool_input=call['args'],
-                    tool_id=call.get('id')
+                    tool_id=call.get('id')  #  or call.get('tool_id')
                 ) for call in filtered_tool_calls
             ]
             """
@@ -1108,30 +1445,38 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
         # Handle structured output
         # TODO: FIXME: Assumes that tool response and structured outputs can't both happen at once!
         
+        # Populate RAW TEXT
         raw_text = response.content
         # import ipdb; ipdb.set_trace()
         try:
-            if isinstance(response.content, list):
-                for item in reversed(response.content):
-                    if "text" in item:
-                        raw_text = item["text"]
-                        break
-                    # if item.get("type", None) == "text":
-                    #     raw_text = item["text"]
-                    #     break
-            # if isinstance(response.content, list):
-            #     raw_text = response.content[-1]["text"]
+            content = response.content
+            if not isinstance(content, list):
+                content = [content]
+            last_text = None
+            concatenated_text = ""
+            for item in content:
+                if not isinstance(item, dict):
+                    if isinstance(item, str) and item:
+                        last_text = item
+                        concatenated_text = concatenated_text + last_text
+                elif "text" in item:
+                    last_text = item["text"]
+                    if item.get("type", None) == "text":
+                        concatenated_text = concatenated_text + last_text
+            raw_text = concatenated_text or last_text or raw_text
         except Exception as e:
             pass
 
         structured_output = None
-        if not has_tool_calls:
+        if not filtered_tool_calls:
             if not self.config.output_schema.is_output_str():
                 try:
                     # NOTE: parsing non-list content probably woudn't be neccessary and should be the same attempt as the result in `parsed` key below!
-                        
-                        
-                    parsed_json_data = json.loads(raw_text)
+                    if schema_tool_call:
+                        parsed_json_data = schema_tool_call.get("args", {})
+                    else:
+                        parsed_json_data = json.loads(raw_text)
+                    
                     structured_output = parsed_json_data
                     if issubclass(output_schema, BaseModel):
                         structured_output = output_schema.model_validate(parsed_json_data)
@@ -1140,42 +1485,51 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                 except Exception as e:
                     pass
                     # logger.warning(f"Error parsing structured output: {e}")
-                structured_output = structured_output or (original_response["parsed"] if not original_response["parsing_error"] else None)
+                structured_output = structured_output or (original_response["parsed"] if (not original_response["parsing_error"] and "parsed" in original_response) else None)
                 structured_output = structured_output.model_dump() if isinstance(structured_output, BaseModel) else structured_output
                 
         
+        # Filter Response object, mainly for Anthropic to filter out unneccessary tool calls
         # TODO: change this behaviour for only Anthropic which uses tool calls for structured responses!
         try:
-            if hasattr(response, "content") and schema_name_to_filter:
+            if hasattr(response, "content"):
                 
                 filtered_tool_calls = []
                 for t in response.tool_calls:
-                    if t["name"] != schema_name_to_filter:
+                    if "name" in t and t["name"] and t["name"] != schema_name_to_filter:
                         filtered_tool_calls.append(t)
                 response.tool_calls = filtered_tool_calls
                 
-                filtered_content = []
-                for t in response.content:
-                    if t["name"] != schema_name_to_filter:
-                        filtered_content.append(t)
-                    else:
-                        temp_text_content = t
-                        if isinstance(t, dict):
-                            temp_text_content = t.get('input')
-                            temp_text_content = temp_text_content or t.get('partial_json')
-                            temp_text_content = temp_text_content or t.get('json')
-                        temp_text_content = str(temp_text_content)
-                        filtered_content.append({'type': 'text', 'text': temp_text_content})
-                response.content = filtered_content
+                if isinstance(response.content, list):
+                    filtered_content = []
+                    for t in response.content:
+                        if (not isinstance(t, dict)) or "name" not in t or t["name"] != schema_name_to_filter:
+                            if isinstance(t, dict):
+                                # Filter out tool use messages that don't have a name
+                                if ("type" in t and t["type"] == "tool_use") and ("name" not in t or (not t["name"])):
+                                    continue
+                            filtered_content.append(t)
+                        else:
+                            temp_text_content = t
+                            if isinstance(t, dict):
+                                temp_text_content = t.get('input')
+                                temp_text_content = temp_text_content or t.get('partial_json')
+                                temp_text_content = temp_text_content or t.get('json')
+                            temp_text_content = str(temp_text_content)
+                            # NOTE: this is a hack to include structured output tool call for Anthropic primarily
+                            # This could create issues since below content doesn't have any role, etc but should be fine since response should be of type AIMessage!
+                            # Try to remove this hack and see if just keepint this with partial_json key etc as original doesn't create a new tool call msg!
+                            filtered_content.append({'type': 'text', 'text': temp_text_content})
+                    response.content = filtered_content
                 
         except Exception as e:
             pass
         # import ipdb; ipdb.set_trace()
         
         current_messages=current_messages + (response if isinstance(response, list) else [response])
-        # import ipdb; ipdb.set_trace()
         metadata.iteration_count = self._get_iteration_count(message_history + current_messages)
         # import ipdb; ipdb.set_trace()
+        web_search_result = LLMNode._parse_search_results(model_metadata, response) or LLMNode._parse_citations_from_response(model_metadata, response)
         return LLMNodeOutputSchema(
             current_messages=current_messages,
             content=response.content,
@@ -1183,9 +1537,64 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
             metadata=metadata,
             structured_output=structured_output,
             tool_calls=tool_calls or None,
-            web_search_result=LLMNode._parse_search_results(model_metadata, response)
+            web_search_result=web_search_result
         )
 
+    @staticmethod
+    def _parse_citations_from_response(model_metadata: ModelMetadata, response: Any) -> Optional[WebSearchResult]:
+        """
+        Parse citations from the model response.
+        
+        Args:
+            model_metadata: Model metadata
+            response: The model response object
+            
+        Returns:
+            WebSearchResult object with parsed citations or None if no citations found
+        """
+        # if not model_metadata.web_search:
+        #     return None
+            
+        citations = []
+        
+        # Handle response content with citations
+        response = response["raw"] if isinstance(response, dict) and "raw" in response else response
+        if hasattr(response, 'content'):
+            content = response.content
+            if not isinstance(content, list):
+                content = [content]
+            for content_item in content:
+                 if not isinstance(content_item, dict):
+                     continue
+                 if 'citations' in content_item:
+                    for citation in content_item['citations']:
+                        if citation.get('type') == 'web_search_result_location':
+                            citations.append(
+                                Citation(
+                                    url=citation.get('url'),
+                                    title=citation.get('title'),
+                                    snippet=citation.get('cited_text'),
+                                    timestamp=None,
+                                    metadata=None,
+                                )
+                            )
+                 if 'annotations' in content_item:
+                    for annotation in content_item['annotations']:
+                        if annotation.get('type') == 'url_citation':
+                            snippet = None
+                            if 'start_index' in annotation and 'end_index' in annotation:
+                                snippet = f"index-{annotation.get('start_index')}-{annotation.get('end_index')}"
+                            citations.append(
+                                Citation(
+                                    url=annotation.get('url'),
+                                    title=annotation.get('title'),
+                                    snippet=snippet,  # Annotations don't provide snippets
+                                    timestamp=None,
+                                    metadata=annotation  # Store full annotation as metadata
+                                )
+                            )
+        return WebSearchResult(citations=citations) if citations else None
+    
     @staticmethod
     def _parse_search_results(model_metadata: ModelMetadata, response: Any) -> Optional[WebSearchResult]:
         """
@@ -1268,10 +1677,13 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                 )
             
         # Create and return the WebSearchResult object
-        return WebSearchResult(
+        web_search_result = WebSearchResult(
             citations=citations,
             search_metadata=additional_kwargs.get('search_metadata')
         )
+        if not (web_search_result.citations or web_search_result.search_metadata):
+            return None
+        return web_search_result
 
     def _convert_messages(self, message_dicts: List[Dict[str, Any]]) -> List[AnyMessage]:
         """

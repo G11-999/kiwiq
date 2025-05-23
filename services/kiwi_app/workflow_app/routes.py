@@ -104,7 +104,7 @@ async def list_node_templates(
     if not user.is_superuser:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Node templates are not accessible to regular users before workflow builder is released.")
     try:
-        if constants.LaunchStatus.EXPERIMENTAL in query_params.launch_status and not user.is_superuser:
+        if any(status in query_params.launch_status for status in constants.PRIVATE_STATUS) and not user.is_superuser:
             workflow_logger.warning(f"User {user.id} attempted to access experimental templates without superuser privileges")
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Experimental templates are not accessible to regular users.")
 
@@ -160,7 +160,7 @@ async def get_node_template(
             workflow_logger.warning(f"User {user.id} attempted to access non-existent node template: {name} v{version}")
             raise exceptions.TemplateNotFoundException(f"Node template '{name}' version '{version}' not found.")
         
-        if template.launch_status == constants.LaunchStatus.EXPERIMENTAL and not user.is_superuser:
+        if template.launch_status in constants.PRIVATE_STATUS and not user.is_superuser:
             workflow_logger.warning(f"User {user.id} attempted to access experimental template {name} v{version} without superuser privileges")
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Experimental templates are not accessible to regular users.")
         

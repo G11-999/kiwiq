@@ -24,6 +24,7 @@ class NodeTemplateBase(BaseModel):
     input_schema: Optional[Dict[str, Any]] = Field(None, description="JSON Schema for inputs")
     output_schema: Optional[Dict[str, Any]] = Field(None, description="JSON Schema for outputs")
     config_schema: Optional[Dict[str, Any]] = Field(None, description="JSON Schema for node configuration")
+    node_is_tool: Optional[bool] = Field(default=None, description="True if this is a tool node meant to be used with LLMs tool calling.")
     launch_status: LaunchStatus = Field(..., description="Deployment status of the node template")
 
 class NodeTemplateCreate(NodeTemplateBase):
@@ -33,6 +34,7 @@ class NodeTemplateCreate(NodeTemplateBase):
 class NodeTemplateUpdate(BaseModel):
     """Schema for updating a NodeTemplate (Admin only). Allows partial updates."""
     description: Optional[str] = None
+    node_is_tool: Optional[bool] = Field(default=None, description="True if this is a tool node meant to be used with LLMs tool calling.")
     input_schema: Optional[Dict[str, Any]] = None
     output_schema: Optional[Dict[str, Any]] = None
     config_schema: Optional[Dict[str, Any]] = None
@@ -371,7 +373,7 @@ class NotificationListQuery(CommonListQuery):
 class NodeTemplateListQuery(CommonListQuery):
     """Query parameters for listing node templates."""
     launch_status: Optional[List[LaunchStatus]] = Field(
-        default=[LaunchStatus.DEVELOPMENT, LaunchStatus.STAGING, LaunchStatus.PRODUCTION], 
+        default=[LaunchStatus.STAGING, LaunchStatus.PRODUCTION], 
         description="Filter by one or more launch statuses"
     )
 

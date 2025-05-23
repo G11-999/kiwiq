@@ -3,10 +3,13 @@ from enum import Enum
 
 class LaunchStatus(str, Enum):
     """Enum for the launch status of Node Templates."""
+    INTERNAL = "internal"
     EXPERIMENTAL = "experimental"
     DEVELOPMENT = "development"
     STAGING = "staging"
     PRODUCTION = "production"
+
+PRIVATE_STATUS = [LaunchStatus.INTERNAL, LaunchStatus.EXPERIMENTAL, LaunchStatus.DEVELOPMENT]
 
 class WorkflowRunStatus(str, Enum):
     """Enum for the status of a Workflow Run."""

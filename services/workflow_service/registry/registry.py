@@ -567,6 +567,8 @@ class DBRegistry(MockRegistry):
         if config_schema is not None:
             config_schema = config_schema.model_json_schema()
         
+        node_is_tool = getattr(node_class, "node_is_tool", False)
+        
         # TODO: Add logic to update if definition changed?
         if existing_template:
             diff = {}
@@ -580,6 +582,8 @@ class DBRegistry(MockRegistry):
                 diff["config_schema"] = config_schema
             if existing_template.launch_status != node_class.env_flag:
                 diff["launch_status"] = node_class.env_flag
+            if existing_template.node_is_tool != node_is_tool:
+                diff["node_is_tool"] = node_is_tool
             
             if not diff:
                 self._update_metadata_cache(node_class)
@@ -589,6 +593,7 @@ class DBRegistry(MockRegistry):
         create_schema = kiwi_schemas.NodeTemplateCreate(
             name=node_name,
             version=node_version,
+            node_is_tool=node_is_tool,
             description=node_class.__doc__ or "", # Use class docstring
             input_schema=input_schema,
             output_schema=output_schema,
@@ -601,6 +606,7 @@ class DBRegistry(MockRegistry):
         # Assuming NodeTemplateDAO.create is for admin/system use and doesn't require org_id
         if existing_template:
             update_data = kiwi_schemas.NodeTemplateUpdate(
+                node_is_tool=node_is_tool,
                 description=create_schema.description,
                 input_schema=create_schema.input_schema,
                 output_schema=create_schema.output_schema,
