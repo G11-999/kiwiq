@@ -33,12 +33,12 @@ libs = { path = "./libs", develop = true }
 ##################################################
 linkedin-api-client = "^0.3.0"
 langchain = "^0.3.25"
-langgraph = "^0.3.30"
+langgraph = "^0.4.5"
 langgraph-checkpoint-postgres = "^2.0.19"
 psycopg-pool = "^3.2.6"
 psycopg = "^3.2.6"
 sqlalchemy = "^2.0.40"
-tokencost = "^0.1.20"
+tokencost = "^0.1.22"
 langchain-aws = "^0.2.21"
 langchain-fireworks = "^0.2.9"
 langchain-openai = "^0.3.17"
@@ -61,6 +61,8 @@ jsonschema = {extras = ["format-nongpl"], version = "^4.23.0"}
 jsonpatch = "^1.33"
 markitdown = {extras = ["docx", "pdf", "pptx", "xls", "xlsx"], version = "^0.1.1"}
 beautifulsoup4 = "^4.13.4"
+tenacity = "^9.1.2"
+stripe = "^12.2.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^25.1.0"

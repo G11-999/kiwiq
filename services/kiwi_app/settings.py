@@ -18,6 +18,7 @@ class Settings(GlobalSettings):
     DEFAULT_SUPERUSER_PASSWORD: Optional[str] = None
 
     DB_TABLE_AUTH_PREFIX: str = "auth_"
+    DB_TABLE_BILLING_PREFIX: str = "billing_"  # Added prefix for billing tables
 
     DB_TABLE_WORKFLOW_PREFIX: str = "kw_wf_" # Added prefix for workflow tables
 
@@ -79,6 +80,44 @@ class Settings(GlobalSettings):
     # NOTE: if API prefix var name changes, change it here: `security.py` to set `OAuth2PasswordBearer``
     # NOTE: also used in verify email url!
     API_V1_PREFIX: str = "/api/v1"
+
+    # --- Billing & Stripe Settings --- #
+    # Stripe API configuration
+    STRIPE_SECRET_KEY: Optional[str] = Field(None, env="STRIPE_SECRET_KEY")
+    STRIPE_PUBLISHABLE_KEY: Optional[str] = Field(None, env="STRIPE_PUBLISHABLE_KEY")
+    STRIPE_WEBHOOK_SECRET: Optional[str] = Field(None, env="STRIPE_WEBHOOK_SECRET")
+    STRIPE_API_VERSION: str = Field("2023-10-16", env="STRIPE_API_VERSION")
+    
+    # Billing configuration
+    BILLING_TRIAL_DAYS_DEFAULT: int = Field(14, description="Default trial period in days")
+    BILLING_GRACE_PERIOD_DAYS: int = Field(3, description="Grace period for failed payments")
+    
+    # Credit pricing (in dollars to support fractional pricing)
+    CREDIT_PRICE_WORKFLOWS_DOLLARS: float = Field(0.10, description="Price per workflow credit in dollars")
+    CREDIT_PRICE_WEB_SEARCHES_DOLLARS: float = Field(0.02, description="Price per web search credit in dollars")
+    CREDIT_PRICE_DOLLAR_CREDITS_RATIO: float = Field(1.2, description="Markup ratio for dollar credits (1.2 = 20% markup)")
+    
+    # Overage policies
+    OVERAGE_GRACE_PERCENTAGE: int = Field(10, ge=0, le=100, description="Percentage of monthly allocation allowed as grace")
+    OVERAGE_HARD_LIMIT_MULTIPLIER: float = Field(1.5, description="Hard limit as multiplier of monthly allocation")
+    
+    # Credit expiration policies (in days)
+    SUBSCRIPTION_CREDITS_EXPIRE_DAYS: int = Field(30, description="Days until subscription credits expire")
+    PURCHASED_CREDITS_EXPIRE_DAYS: int = Field(365, description="Days until purchased credits expire")
+    TRIAL_CREDITS_EXPIRE_DAYS: int = Field(14, description="Days until trial credits expire")
+    
+    # Webhook processing
+    WEBHOOK_RETRY_MAX_ATTEMPTS: int = Field(3, description="Maximum webhook retry attempts")
+    WEBHOOK_RETRY_DELAY_SECONDS: int = Field(5, description="Initial delay between webhook retries")
+    WEBHOOK_IDEMPOTENCY_TTL_SECONDS: int = Field(86400, description="TTL for webhook idempotency keys (24 hours)")
+    
+    # Usage tracking and caching
+    CREDIT_BALANCE_CACHE_TTL_SECONDS: int = Field(300, description="TTL for credit balance cache (5 minutes)")
+    USAGE_EVENT_BATCH_SIZE: int = Field(100, description="Batch size for processing usage events")
+    
+    # Rate limiting for billing operations
+    BILLING_API_RATE_LIMIT_PER_MINUTE: int = Field(60, description="Rate limit for billing API calls per minute")
+    CREDIT_CONSUMPTION_RATE_LIMIT_PER_SECOND: int = Field(10, description="Rate limit for credit consumption per second")
 
     # --- Workflow Service Settings (Merged from config.py) --- #
 
