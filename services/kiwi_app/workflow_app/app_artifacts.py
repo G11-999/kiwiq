@@ -730,6 +730,62 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
       },
       "template_specific": false
     },
+    "linkedin_profile_analysis_onboarding_workflow": {
+      "name": "linkedin_profile_analysis_onboarding_workflow",
+      "version": null,
+      "inputs": {
+        "customer_context_doc_configs": [
+            {
+                "filename_config": {
+                    "input_namespace_field_pattern": "scraping_results_{item}",
+                    "input_namespace_field": "entity_username",
+                    "static_docname": "linkedin_scraped_profile_doc"
+                },
+                "output_field_name": "linkedin_profile"
+            }
+        ],
+        "entity_username": null
+    },
+      "user_documents_config_variables": {
+      },
+      "template_specific": false
+    },
+    "core_beliefs_perspectives_extraction_workflow": {
+      "name": "core_beliefs_perspectives_extraction_workflow",
+      "version": null,
+      "inputs": {
+        "customer_context_doc_configs": [
+            {
+                "filename_config": {
+                    "input_namespace_field_pattern": "scraping_results_{item}",
+                    "input_namespace_field": "entity_username",
+                    "static_docname": "linkedin_scraped_profile_doc"
+                },
+                "output_field_name": "linkedin_profile"
+            },
+            {
+                "filename_config": {
+                    "input_namespace_field_pattern": "user_analysis_{item}",
+                    "input_namespace_field": "entity_username",
+                    "static_docname": "content_analysis_doc"
+                },
+                "output_field_name": "content_analysis"
+            },
+            {
+                "filename_config": {
+                    "input_namespace_field_pattern": "user_inputs_{item}",
+                    "input_namespace_field": "entity_username",
+                    "static_docname": "user_preferences_doc"
+                },
+                "output_field_name": "user_preferences"
+            }
+        ],
+        "entity_username": null
+    },
+      "user_documents_config_variables": {
+      },
+      "template_specific": false
+    }
     "post_creation_from_scratch_workflow": {
       "name": "post_creation_from_scratch_workflow", 
       "version": null,
