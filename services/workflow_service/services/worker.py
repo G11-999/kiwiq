@@ -273,7 +273,7 @@ async def run_graph(
                     credit_type=CreditType.WORKFLOWS,
                     credits_consumed=1,
                     event_type="workflow_run_start",
-                    metadata={"operation_id": run_id}
+                    metadata={"operation_id": str(run_id)}
                 )
             )
     
