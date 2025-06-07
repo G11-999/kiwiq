@@ -132,6 +132,7 @@ class Settings(GlobalSettings):
             "default": 10
         }, description="Maximum number of credits for trial"
     )
+    MIN_SEATS_ALLOWED_WITHOUT_SUBSCRIPTION: int = Field(1, description="Minimum number of seats allowed without a subscription")
     
     # # Webhook processing
     # WEBHOOK_RETRY_MAX_ATTEMPTS: int = Field(3, description="Maximum webhook retry attempts")

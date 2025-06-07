@@ -89,6 +89,8 @@ class TestBillingSystem(unittest.IsolatedAsyncioTestCase):
     
     TEST_PLAN_PATTERNS = [
         'test_%',  # All test plans
+        'test_basic_seat_count_plan',  # Seat count test plans
+        'test_premium_seat_count_plan',
     ]
 
     # DAOs and Services
@@ -427,10 +429,18 @@ class TestBillingSystem(unittest.IsolatedAsyncioTestCase):
         try:
             from sqlalchemy import text
             for pattern in self.TEST_PLAN_PATTERNS:
-                delete_stmt = text("DELETE FROM kiwiq_billing_subscription_plan WHERE name LIKE :pattern")
-                result = await db.execute(delete_stmt, {"pattern": pattern})
-                if result.rowcount > 0:
-                    print(f"Deleted {result.rowcount} subscription plans matching pattern '{pattern}'")
+                if pattern.startswith('test_') and not '%' in pattern:
+                    # Exact match for specific plan names
+                    delete_stmt = text("DELETE FROM kiwiq_billing_subscription_plan WHERE name = :name")
+                    result = await db.execute(delete_stmt, {"name": pattern})
+                    if result.rowcount > 0:
+                        print(f"Deleted {result.rowcount} subscription plan with exact name '{pattern}'")
+                else:
+                    # Pattern match for wildcards
+                    delete_stmt = text("DELETE FROM kiwiq_billing_subscription_plan WHERE name LIKE :pattern")
+                    result = await db.execute(delete_stmt, {"pattern": pattern})
+                    if result.rowcount > 0:
+                        print(f"Deleted {result.rowcount} subscription plans matching pattern '{pattern}'")
         except Exception as e:
             print(f"Error cleaning subscription plans: {e}")
 
@@ -1661,6 +1671,266 @@ class TestBillingSystem(unittest.IsolatedAsyncioTestCase):
             )
             self.assertEqual(dashboard_dollar_balance.credits_balance, 8.0)
             self.assertEqual(dashboard_dollar_balance.credits_consumed, 2.0)
+
+    async def test_get_total_seat_count_for_org(self):
+        """
+        Test getting total seat count for organizations with various subscription scenarios.
+        
+        This test verifies the OrganizationSubscriptionDAO.get_total_seat_count_for_org() method:
+        - Returns 0 for organizations with no subscriptions
+        - Correctly sums seats from single subscription
+        - Correctly sums seats from multiple subscriptions  
+        - Includes all subscription statuses (active, trial, past_due, etc.)
+        - Handles edge cases (zero seats, large seat counts)
+        - Handles non-existent organizations
+        - Returns proper integer type
+        - Updates correctly when subscriptions are deleted
+        
+        Test entities created are automatically tracked and cleaned up via:
+        - self.created_entity_ids tracking for asyncTearDown cleanup
+        - TEST_PLAN_PATTERNS for pattern-based cleanup of plans
+        """
+        async with get_async_db_as_manager() as db:
+            # Test organizations
+            test_org_no_subs = self._get_test_org(0)  # Will have no subscriptions
+            test_org_single_sub = self._get_test_org(1)  # Will have one subscription
+            test_org_multiple_subs = self._get_test_org(2)  # Will have multiple subscriptions
+            test_org_mixed_status = self._get_test_org(3)  # Will have mixed subscription statuses
+
+            # Test 1: Organization with no subscriptions should return 0
+            total_seats_no_subs = await self.org_subscription_dao.get_total_seat_count_for_org(
+                db, test_org_no_subs.id
+            )
+            self.assertEqual(total_seats_no_subs, 0)
+
+            # Create test subscription plans
+            plan_data_basic = billing_schemas.SubscriptionPlanCreate(
+                name="test_basic_seat_count_plan",
+                description="Test basic plan for seat count testing",
+                stripe_product_id="prod_basic_seat_test",
+                max_seats=5,
+                monthly_credits={
+                    CreditType.WORKFLOWS.value: 100,
+                    CreditType.WEB_SEARCHES.value: 500,
+                    CreditType.DOLLAR_CREDITS.value: 25.0
+                },
+                monthly_price=29.99,
+                annual_price=299.99,
+                is_trial_eligible=True,
+                trial_days=14
+            )
+            
+            plan_data_premium = billing_schemas.SubscriptionPlanCreate(
+                name="test_premium_seat_count_plan",
+                description="Test premium plan for seat count testing",
+                stripe_product_id="prod_premium_seat_test",
+                max_seats=20,
+                monthly_credits={
+                    CreditType.WORKFLOWS.value: 500,
+                    CreditType.WEB_SEARCHES.value: 2000,
+                    CreditType.DOLLAR_CREDITS.value: 100.0
+                },
+                monthly_price=99.99,
+                annual_price=999.99,
+                is_trial_eligible=True,
+                trial_days=7
+            )
+
+            basic_plan = await self.subscription_plan_dao.create(db=db, obj_in=plan_data_basic)
+            premium_plan = await self.subscription_plan_dao.create(db=db, obj_in=plan_data_premium)
+            self.created_entity_ids['subscription_plans'].extend([basic_plan.id, premium_plan.id])
+
+            now = datetime_now_utc()
+
+            # Test 2: Organization with single subscription
+            single_subscription = billing_models.OrganizationSubscription(
+                org_id=test_org_single_sub.id,
+                plan_id=basic_plan.id,
+                stripe_subscription_id="sub_single_seat_test",
+                status=SubscriptionStatus.ACTIVE,
+                current_period_start=now,
+                current_period_end=now + timedelta(days=30),
+                seats_count=3,  # 3 seats
+                is_annual=False,
+                is_trial_active=False,
+                created_at=now,
+                updated_at=now
+            )
+            
+            single_subscription = await self.org_subscription_dao.create(db=db, obj_in=single_subscription)
+            self.created_entity_ids['organization_subscriptions'].append(single_subscription.id)
+
+            total_seats_single = await self.org_subscription_dao.get_total_seat_count_for_org(
+                db, test_org_single_sub.id
+            )
+            self.assertEqual(total_seats_single, 3)
+
+            # Test 3: Organization with multiple subscriptions (should sum them)
+            subscription_1 = billing_models.OrganizationSubscription(
+                org_id=test_org_multiple_subs.id,
+                plan_id=basic_plan.id,
+                stripe_subscription_id="sub_multiple_1_seat_test",
+                status=SubscriptionStatus.ACTIVE,
+                current_period_start=now,
+                current_period_end=now + timedelta(days=30),
+                seats_count=5,  # 5 seats
+                is_annual=False,
+                is_trial_active=False,
+                created_at=now,
+                updated_at=now
+            )
+            
+            subscription_2 = billing_models.OrganizationSubscription(
+                org_id=test_org_multiple_subs.id,
+                plan_id=premium_plan.id,
+                stripe_subscription_id="sub_multiple_2_seat_test",
+                status=SubscriptionStatus.ACTIVE,
+                current_period_start=now,
+                current_period_end=now + timedelta(days=30),
+                seats_count=8,  # 8 seats
+                is_annual=True,
+                is_trial_active=False,
+                created_at=now,
+                updated_at=now
+            )
+            
+            subscription_1 = await self.org_subscription_dao.create(db=db, obj_in=subscription_1)
+            subscription_2 = await self.org_subscription_dao.create(db=db, obj_in=subscription_2)
+            self.created_entity_ids['organization_subscriptions'].extend([subscription_1.id, subscription_2.id])
+
+            total_seats_multiple = await self.org_subscription_dao.get_total_seat_count_for_org(
+                db, test_org_multiple_subs.id
+            )
+            self.assertEqual(total_seats_multiple, 13)  # 5 + 8 = 13
+
+            # Test 4: Organization with mixed subscription statuses (should count all)
+            active_subscription = billing_models.OrganizationSubscription(
+                org_id=test_org_mixed_status.id,
+                plan_id=basic_plan.id,
+                stripe_subscription_id="sub_mixed_active_seat_test",
+                status=SubscriptionStatus.ACTIVE,
+                current_period_start=now,
+                current_period_end=now + timedelta(days=30),
+                seats_count=4,  # 4 seats
+                is_annual=False,
+                is_trial_active=False,
+                created_at=now,
+                updated_at=now
+            )
+            
+            trial_subscription = billing_models.OrganizationSubscription(
+                org_id=test_org_mixed_status.id,
+                plan_id=premium_plan.id,
+                stripe_subscription_id="sub_mixed_trial_seat_test",
+                status=SubscriptionStatus.TRIAL,
+                current_period_start=now,
+                current_period_end=now + timedelta(days=30),
+                seats_count=6,  # 6 seats
+                is_annual=False,
+                is_trial_active=True,
+                trial_start=now,
+                trial_end=now + timedelta(days=14),
+                created_at=now,
+                updated_at=now
+            )
+            
+            past_due_subscription = billing_models.OrganizationSubscription(
+                org_id=test_org_mixed_status.id,
+                plan_id=basic_plan.id,
+                stripe_subscription_id="sub_mixed_pastdue_seat_test",
+                status=SubscriptionStatus.PAST_DUE,
+                current_period_start=now - timedelta(days=30),
+                current_period_end=now,
+                seats_count=2,  # 2 seats
+                is_annual=False,
+                is_trial_active=False,
+                created_at=now - timedelta(days=30),
+                updated_at=now
+            )
+            
+            active_subscription = await self.org_subscription_dao.create(db=db, obj_in=active_subscription)
+            trial_subscription = await self.org_subscription_dao.create(db=db, obj_in=trial_subscription)
+            past_due_subscription = await self.org_subscription_dao.create(db=db, obj_in=past_due_subscription)
+            self.created_entity_ids['organization_subscriptions'].extend([
+                active_subscription.id, trial_subscription.id, past_due_subscription.id
+            ])
+
+            total_seats_mixed = await self.org_subscription_dao.get_total_seat_count_for_org(
+                db, test_org_mixed_status.id
+            )
+            self.assertEqual(total_seats_mixed, 12)  # 4 + 6 + 2 = 12
+
+            # Test 5: Edge case - organization with zero-seat subscription
+            zero_seat_subscription = billing_models.OrganizationSubscription(
+                org_id=test_org_single_sub.id,  # Add to existing org with 3 seats
+                plan_id=basic_plan.id,
+                stripe_subscription_id="sub_zero_seat_test",
+                status=SubscriptionStatus.CANCELED,
+                current_period_start=now - timedelta(days=30),
+                current_period_end=now,
+                seats_count=0,  # 0 seats (edge case)
+                is_annual=False,
+                is_trial_active=False,
+                created_at=now - timedelta(days=30),
+                updated_at=now
+            )
+            
+            zero_seat_subscription = await self.org_subscription_dao.create(db=db, obj_in=zero_seat_subscription)
+            self.created_entity_ids['organization_subscriptions'].append(zero_seat_subscription.id)
+
+            # Should still be 3 (original subscription) + 0 (zero seat subscription) = 3
+            total_seats_with_zero = await self.org_subscription_dao.get_total_seat_count_for_org(
+                db, test_org_single_sub.id
+            )
+            self.assertEqual(total_seats_with_zero, 3)
+
+            # Test 6: Verify method returns integer type
+            result = await self.org_subscription_dao.get_total_seat_count_for_org(
+                db, test_org_no_subs.id
+            )
+            self.assertIsInstance(result, int)
+            
+            # Test 7: Non-existent organization should return 0
+            non_existent_org_id = uuid.uuid4()
+            total_seats_nonexistent = await self.org_subscription_dao.get_total_seat_count_for_org(
+                db, non_existent_org_id
+            )
+            self.assertEqual(total_seats_nonexistent, 0)
+
+            # Test 8: Performance test with large seat count
+            large_seat_subscription = billing_models.OrganizationSubscription(
+                org_id=test_org_single_sub.id,
+                plan_id=premium_plan.id,
+                stripe_subscription_id="sub_large_seat_test",
+                status=SubscriptionStatus.ACTIVE,
+                current_period_start=now,
+                current_period_end=now + timedelta(days=30),
+                seats_count=1000,  # Large seat count
+                is_annual=True,
+                is_trial_active=False,
+                created_at=now,
+                updated_at=now
+            )
+            
+            large_seat_subscription = await self.org_subscription_dao.create(db=db, obj_in=large_seat_subscription)
+            self.created_entity_ids['organization_subscriptions'].append(large_seat_subscription.id)
+
+            # Should be 3 (original) + 0 (zero seats) + 1000 (large) = 1003
+            total_seats_large = await self.org_subscription_dao.get_total_seat_count_for_org(
+                db, test_org_single_sub.id
+            )
+            self.assertEqual(total_seats_large, 1003)
+
+            # Test-specific cleanup verification: ensure our method handles deletions correctly
+            # Delete one subscription and verify count updates
+            await self.org_subscription_dao.remove(db, id=large_seat_subscription.id)
+            total_after_deletion = await self.org_subscription_dao.get_total_seat_count_for_org(
+                db, test_org_single_sub.id
+            )
+            self.assertEqual(total_after_deletion, 3)  # Back to original 3 seats
+
+            print("✓ All seat count tests passed successfully!")
+            print(f"✓ Test created and tracked {len(self.created_entity_ids['subscription_plans'])} plans and {len(self.created_entity_ids['organization_subscriptions'])} subscriptions for cleanup")
 
     async def test_paid_subscription_management(self):
         """Test paid subscription creation and management."""

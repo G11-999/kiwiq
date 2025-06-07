@@ -150,6 +150,48 @@ class OrganizationSubscriptionDAO(BaseDAO[models.OrganizationSubscription, schem
         )
         result = await db.exec(statement)
         return result.scalars().all()
+    
+    async def get_total_seat_count_for_org(self, db: AsyncSession, org_id: uuid.UUID) -> int:
+        """
+        Get the total number of seats across all subscriptions for an organization.
+        
+        This method sums up the seat counts from all subscriptions (active, trial, etc.)
+        for the specified organization. Returns 0 if no subscriptions exist.
+        
+        The query uses SQL aggregation with COALESCE to handle the case where no
+        subscriptions exist, ensuring we always return 0 instead of NULL.
+        
+        Args:
+            db: Database session
+            org_id: Organization ID
+            
+        Returns:
+            Total number of seats across all subscriptions, 0 if no subscriptions
+            
+        Example:
+            # Organization with 2 subscriptions: one with 5 seats, one with 3 seats
+            total_seats = await dao.get_total_seat_count_for_org(db, org_id)
+            # Returns: 8
+            
+            # Organization with no subscriptions
+            total_seats = await dao.get_total_seat_count_for_org(db, org_id)
+            # Returns: 0
+        """
+        try:
+            # Use a single aggregation query to sum all seat counts for the organization
+            statement = select(func.coalesce(func.sum(self.model.seats_count), 0)).where(
+                self.model.org_id == org_id
+            )
+            
+            result = await db.exec(statement)
+            total_seats = result.scalar()
+            
+            billing_logger.debug(f"Total seat count for org {org_id}: {total_seats}")
+            return int(total_seats or 0)
+            
+        except Exception as e:
+            billing_logger.error(f"Error getting total seat count for org {org_id}: {e}", exc_info=True)
+            raise
 
 
 class OrganizationCreditsDAO(BaseDAO[models.OrganizationCredits, SQLModel, SQLModel]):

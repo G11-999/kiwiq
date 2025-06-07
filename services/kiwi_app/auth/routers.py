@@ -28,6 +28,7 @@ from kiwi_app.auth.exceptions import (
     OrganizationNotFoundException,
     RoleNotFoundException,
     PermissionDeniedException,
+    OrganizationSeatLimitExceededException,
 )
 from kiwi_app.settings import settings # Import settings for cookie config
 # Keep schema imports as they are if direct
@@ -620,7 +621,7 @@ async def add_user_to_organization_endpoint(
     try:
         link = await auth_service.assign_role_to_user_in_org(db=db, org_id=org_id, assignment=assignment, current_user=current_user)
         return link
-    except (UserNotFoundException, OrganizationNotFoundException, RoleNotFoundException, PermissionDeniedException) as e:
+    except (UserNotFoundException, OrganizationNotFoundException, RoleNotFoundException, PermissionDeniedException, OrganizationSeatLimitExceededException) as e:
         raise e # Re-raise specific known errors
     except Exception as e:
         auth_logger.exception(f"Error assigning role in org {org_id} by user {current_user.email}", exc_info=e)

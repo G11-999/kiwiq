@@ -19,6 +19,7 @@ from kiwi_app.auth.exceptions import (
     RoleNotFoundException,
     PermissionDeniedException,
     UserNotVerifiedException,
+    OrganizationSeatLimitExceededException,
 )
 from kiwi_app.email import email_verify
 from kiwi_app.settings import settings # Import settings
@@ -582,8 +583,12 @@ class AuthService:
 
         # 3. Perform the assignment
         try:
-            link = await self.user_dao.add_user_to_org(db=db, user=target_user, organization=target_org, role=target_role)
+            current_user_is_superuser = current_user.is_superuser
+            link = await self.user_dao.add_user_to_org(db=db, user=target_user, organization=target_org, role=target_role, current_user_is_superuser=current_user_is_superuser)
             auth_logger.info(f"Assigned role '{target_role.name}' to user '{target_user.email}' in organization '{target_org.name}'")
+        except OrganizationSeatLimitExceededException as e:
+            auth_logger.error(f"Error assigning role: {e}", exc_info=True)
+            raise
         except Exception as e:
             auth_logger.error(f"DB error assigning role: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="Database error assigning role.")

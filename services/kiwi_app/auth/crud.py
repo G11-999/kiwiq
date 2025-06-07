@@ -9,14 +9,17 @@ from sqlalchemy.future import select
 # from sqlmodel import select
 from sqlalchemy.orm import selectinload, joinedload
 from sqlmodel import SQLModel
+from sqlalchemy import func
 
 from kiwi_app.auth.security import get_password_hash, verify_password
 from kiwi_app.auth.constants import Permissions, DefaultRoles, ALL_PERMISSIONS
 from kiwi_app.auth import models, schemas
 from kiwi_app.auth.utils import auth_logger, datetime_now_utc # Import the auth_logger and datetime_now_utc
 from kiwi_app.auth.crud_util import build_load_options
-
+from kiwi_app.settings import settings
 from kiwi_app.auth.base_crud import BaseDAO
+
+from kiwi_app.auth.exceptions import OrganizationSeatLimitExceededException
 
 # --- Base DAO Class --- #
 ModelType = TypeVar("ModelType", bound=SQLModel)
@@ -202,6 +205,92 @@ class OrganizationDAO(BaseDAO[models.Organization, schemas.OrganizationCreate, s
         result = await db.exec(statement)
         return result.scalars().first()
 
+    # async def get_users_in_org(
+    #     self, 
+    #     db: AsyncSession, 
+    #     org_id: uuid.UUID,
+    #     skip: int = 0,
+    #     limit: int = 100
+    # ) -> Sequence[models.UserOrganizationRole]:
+    #     """
+    #     Get all users in an organization with their roles and user details.
+        
+    #     This method retrieves UserOrganizationRole records for a specific organization,
+    #     eagerly loading the associated user and role information to avoid N+1 queries.
+    #     The results are paginated using skip/limit parameters.
+        
+    #     Args:
+    #         db: Database session
+    #         org_id: Organization ID to get users for
+    #         skip: Number of records to skip for pagination (default: 0)
+    #         limit: Maximum number of records to return (default: 100)
+            
+    #     Returns:
+    #         Sequence of UserOrganizationRole objects with loaded user and role relationships
+            
+    #     Example:
+    #         # Get first 50 users in organization
+    #         user_roles = await dao.get_users_in_org(db, org_id, skip=0, limit=50)
+    #         for user_role in user_roles:
+    #             print(f"User: {user_role.user.email}, Role: {user_role.role.name}")
+    #     """
+    #     try:
+    #         statement = select(models.UserOrganizationRole).options(
+    #             # Eagerly load user details
+    #             selectinload(models.UserOrganizationRole.user),
+    #             # Eagerly load role details with permissions
+    #             selectinload(models.UserOrganizationRole.role).selectinload(models.Role.permissions)
+    #         ).where(
+    #             models.UserOrganizationRole.organization_id == org_id
+    #         ).offset(skip).limit(limit).order_by(models.UserOrganizationRole.created_at.desc())
+            
+    #         result = await db.exec(statement)
+    #         user_roles = result.scalars().all()
+            
+    #         auth_logger.debug(f"Retrieved {len(user_roles)} users for organization {org_id}")
+    #         return user_roles
+            
+    #     except Exception as e:
+    #         auth_logger.error(f"Error getting users for organization {org_id}: {e}", exc_info=True)
+    #         raise
+
+    async def get_user_count_in_org(self, db: AsyncSession, org_id: uuid.UUID) -> int:
+        """
+        Get the total count of users in an organization.
+        
+        This method efficiently counts the number of UserOrganizationRole records
+        for a specific organization without loading the actual user data, making
+        it suitable for pagination calculations and dashboard statistics.
+        
+        Uses COALESCE to ensure we always return 0 instead of NULL when no users exist.
+        
+        Args:
+            db: Database session
+            org_id: Organization ID to count users for
+            
+        Returns:
+            Total number of users in the organization, 0 if no users exist
+            
+        Example:
+            # Get total user count for pagination
+            total_users = await dao.get_user_count_in_org(db, org_id)
+            total_pages = (total_users + page_size - 1) // page_size
+        """
+        try:
+            statement = select(func.coalesce(func.count(models.UserOrganizationRole.user_id), 0)).where(
+                models.UserOrganizationRole.organization_id == org_id
+            ).group_by(models.UserOrganizationRole.organization_id)
+            
+            result = await db.exec(statement)
+            user_count = result.scalar()
+            
+            auth_logger.debug(f"User count for organization {org_id}: {user_count}")
+            return int(user_count or 0)
+            
+        except Exception as e:
+            auth_logger.error(f"Error counting users for organization {org_id}: {e}", exc_info=True)
+            raise
+
 
 class UserDAO(BaseDAO[models.User, schemas.UserCreate, schemas.UserAdminUpdate]): # Use AdminUpdate for full updates
     def __init__(self):
@@ -281,8 +370,10 @@ class UserDAO(BaseDAO[models.User, schemas.UserCreate, schemas.UserAdminUpdate])
                         all_permissions.add(perm.name)
         return all_permissions
 
-    async def add_user_to_org(self, db: AsyncSession, *, user: models.User, organization: models.Organization, role: models.Role) -> models.UserOrganizationRole:
-        """Adds a user to an organization with a specific role."""
+    async def add_user_to_org(self, db: AsyncSession, *, user: models.User, organization: models.Organization, role: models.Role, current_user_is_superuser: bool) -> models.UserOrganizationRole:
+        """Adds a user to an organization with a specific role.
+        # TODO: move logic to service!
+        """
         # Check if exists first
         link = await self.get_user_org_role(db, user_id=user.id, org_id=organization.id)
         if link:
@@ -295,6 +386,15 @@ class UserDAO(BaseDAO[models.User, schemas.UserCreate, schemas.UserAdminUpdate])
             return link
         else:
             # Create new link
+            if not current_user_is_superuser:
+                from kiwi_app.billing.crud import OrganizationSubscriptionDAO
+                subscription_dao = OrganizationSubscriptionDAO()
+                seats_allowed = await subscription_dao.get_total_seat_count_for_org(db, org_id=organization.id)
+                seats_allowed = max(seats_allowed, settings.MIN_SEATS_ALLOWED_WITHOUT_SUBSCRIPTION)
+                current_user_count = await OrganizationDAO().get_user_count_in_org(db, org_id=organization.id)
+                if current_user_count >= seats_allowed:
+                    raise OrganizationSeatLimitExceededException(f"Cannot add user to organization. Current users: {current_user_count}, Seats allowed: {seats_allowed}")
+            
             new_link = models.UserOrganizationRole(user_id=user.id, organization_id=organization.id, role_id=role.id)
             db.add(new_link)
             await db.commit()

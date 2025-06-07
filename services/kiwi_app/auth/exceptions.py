@@ -33,6 +33,11 @@ class UserNotFoundException(HTTPException):
     def __init__(self, detail: str = "User not found"):
         super().__init__(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
 
+class OrganizationSeatLimitExceededException(HTTPException):
+    """Custom exception when a user tries to add a user to an organization that has reached the seat limit."""
+    def __init__(self, detail: str = "Organization seat limit exceeded"):
+        super().__init__(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
+
 class EmailAlreadyExistsException(HTTPException):
     """Custom exception for attempting to register with an existing email."""
     def __init__(self, detail: str = "Email already registered"):

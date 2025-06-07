@@ -573,7 +573,6 @@ class LinkedInScrapingNode(BaseDynamicNode):
             except Exception as e:
                 self.error(f"Failed to allocate credits for scraping operation: {e}")
                 raise
-                # Continue without billing if allocation fails
         
         if not test_mode and all_tasks:
             self.info(f"Executing {len(all_tasks)} scraping jobs concurrently...")
