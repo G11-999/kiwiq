@@ -295,8 +295,8 @@ class WebSocketTestClient:
             websocket.WebSocketApp: The configured WebSocketApp instance
         """
         # Construct the simple WebSocket URL at /ws (no authentication required)
-        base_url = BASE_HOST.replace("http", "ws")
-        ws_url = f"{base_url}/ws"
+        # Note: /ws is at the root level, not under /api/v1
+        ws_url = BASE_HOST.replace("http", "ws").replace("https", "wss") + "/ws"
         
         logger.info(f"Connecting to simple test WebSocket at {ws_url}")
         
@@ -308,6 +308,56 @@ class WebSocketTestClient:
             on_error=on_error or default_on_error,
             on_close=on_close or default_on_close,
             on_open=on_open or default_on_open_echo
+        )
+    
+    def connect_to_debug_endpoint(
+        self,
+        on_message: Optional[Callable] = None,
+        on_error: Optional[Callable] = None,
+        on_close: Optional[Callable] = None,
+        on_open: Optional[Callable] = None
+    ) -> websocket.WebSocketApp:
+        """
+        Creates a WebSocketApp for the debug endpoint.
+        
+        This endpoint helps troubleshoot cookie and authentication issues.
+        
+        Args:
+            on_message: Callback for message events
+            on_error: Callback for error events
+            on_close: Callback for connection close events
+            on_open: Callback for connection open events
+            
+        Returns:
+            websocket.WebSocketApp: The configured WebSocketApp instance
+        """
+        # Construct the debug WebSocket URL (similar to WS_NOTIFICATIONS_URL pattern)
+        debug_url = API_BASE_URL.replace("https", "wss").replace("http", "ws") + "/ws/debug"
+        
+        logger.info(f"Connecting to debug WebSocket endpoint at {debug_url}")
+        
+        # Default on_message handler for debug endpoint
+        def debug_on_message(ws, message):
+            logger.info(f"Debug endpoint message: {message}")
+            try:
+                data = json.loads(message)
+                if data.get("event") == "debug_info":
+                    logger.info("=== Debug Info from Server ===")
+                    logger.info(f"Headers received: {data.get('headers', {})}")
+                    logger.info(f"Cookie header: {data.get('cookie_header', 'None')}")
+                    logger.info(f"Access token present: {data.get('access_token_present', False)}")
+                    logger.info(f"Access token preview: {data.get('access_token_first_10', 'None')}")
+            except json.JSONDecodeError:
+                pass
+        
+        return self.create_websocket_app(
+            url=debug_url,
+            include_active_org=False,  # Debug endpoint doesn't need org ID
+            include_auth=True,         # Include auth to test cookie passing
+            on_message=on_message or debug_on_message,
+            on_error=on_error or default_on_error,
+            on_close=on_close or default_on_close,
+            on_open=on_open or default_on_open
         )
     
     def run_websocket(
@@ -610,8 +660,7 @@ def test_simple_endpoint():
     import rel
     
     # Construct the WebSocket URL
-    base_url = BASE_HOST.replace("http", "ws")
-    ws_url = f"{base_url}/ws"
+    ws_url = BASE_HOST.replace("http", "ws").replace("https", "wss") + "/ws"
     
     print(f"=== Testing Simple WebSocket at {ws_url} ===")
     
@@ -665,19 +714,76 @@ def test_simple_endpoint():
     rel.dispatch()
 
 
+def test_debug_endpoint():
+    """
+    Test function for the debug WebSocket endpoint.
+    This helps troubleshoot cookie and authentication issues.
+    """
+    import asyncio
+    
+    async def run_debug_test():
+        # Create authenticated client
+        async with AuthenticatedClient() as auth_client:
+            # Verify auth client has the access_token cookie
+            if not auth_client.access_token:
+                print("Failed to get access_token cookie. Check your credentials.")
+                return
+                
+            print(f"Access token cookie: {auth_client.access_token[:10]}...")
+            print(f"Active Org ID: {auth_client.active_org_id}")
+            print(f"All cookies: {list(auth_client.client.cookies.keys())}")
+            
+            # Create WebSocket test client
+            ws_client = WebSocketTestClient(auth_client, enable_trace=ENABLE_WEBSOCKET_TRACE)
+            
+            print("\n=== Testing Debug WebSocket Endpoint ===")
+            
+            # Connect to debug endpoint
+            debug_ws = ws_client.connect_to_debug_endpoint()
+            
+            # Run without dispatcher for simple test
+            ws_client.run_websocket(debug_ws, use_dispatcher=False)
+            
+            # Wait a bit to see results
+            await asyncio.sleep(3)
+            
+            # Send a test message
+            WebSocketTestClient.send_text_message(debug_ws, "Test message from client")
+            
+            await asyncio.sleep(2)
+            
+            # Close connection
+            ws_client.close_connection(debug_ws)
+            
+            print("\n=== Debug Test Complete ===")
+    
+    # Run the test
+    import asyncio
+    asyncio.run(run_debug_test())
+
+
 if __name__ == "__main__":
     import sys
 
     # test_simple_endpoint()
     
     # Check for command-line arguments to determine which test to run
-    if len(sys.argv) > 1 and sys.argv[1] == "simple":
-        # Just test the simple /ws endpoint without authentication
-        print("Running simple WebSocket test (no authentication required)")
-        test_simple_endpoint()
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "simple":
+            # Just test the simple /ws endpoint without authentication
+            print("Running simple WebSocket test (no authentication required)")
+            test_simple_endpoint()
+        elif sys.argv[1] == "debug":
+            # Test the debug endpoint to troubleshoot cookie issues
+            print("Running debug WebSocket test to check cookie passing")
+            test_debug_endpoint()
+        else:
+            print("Unknown test option. Available options: simple, debug")
     else:
         # Run the full example with authentication
         print("Attempting to run full WebSocket test client...")
         print("To test only the simple endpoint without authentication, run:")
         print("PYTHONPATH=. python standalone_test_client/kiwi_client/websocket_client.py simple")
+        print("To test cookie passing and authentication, run:")
+        print("PYTHONPATH=. python standalone_test_client/kiwi_client/websocket_client.py debug")
         example_usage() 

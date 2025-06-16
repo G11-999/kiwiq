@@ -287,12 +287,12 @@ async def websocket_endpoint(
         db: The database session
     """
     # Log connection attempt with details
-    logger.debug(f"WebSocket connection attempt to run {run_id}")
-    logger.debug(f"Request headers: {websocket.headers}")
-    logger.debug(f"Active org ID from query: {active_org_id}")
-    logger.debug(f"Access token cookie received: {'present' if access_token else 'missing'}")
-    if access_token:
-        logger.debug(f"Token first 10 chars: {access_token[:10]}...")
+    # logger.debug(f"WebSocket connection attempt to run {run_id}")
+    # logger.debug(f"Request headers: {websocket.headers}")
+    # logger.debug(f"Active org ID from query: {active_org_id}")
+    # logger.debug(f"Access token cookie received: {'present' if access_token else 'missing'}")
+    # if access_token:
+    #     logger.debug(f"Token first 10 chars: {access_token[:10]}...")
     
     # Authenticate the user from the token
     if not access_token:
@@ -301,14 +301,14 @@ async def websocket_endpoint(
         return
         
     try:
-        logger.debug(f"Attempting to authenticate user with token")
+        # logger.debug(f"Attempting to authenticate user with token")
         user = await get_current_user_non_dependency(db, access_token)
         if not user:
             logger.warning(f"Invalid token for WebSocket connection to run {run_id}")
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
         
-        logger.debug(f"User authenticated successfully: {user.email} (ID: {user.id})")
+        # logger.debug(f"User authenticated successfully: {user.email} (ID: {user.id})")
             
         # Verify user is active and verified
         if not user.is_active:
@@ -316,18 +316,18 @@ async def websocket_endpoint(
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
         
-        logger.debug(f"User is active: {user.is_active}")
+        # logger.debug(f"User is active: {user.is_active}")
             
         if not user.is_verified:
             logger.warning(f"Unverified user {user.id} attempted WebSocket connection")
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
         
-        logger.debug(f"User is verified: {user.is_verified}")
+        # logger.debug(f"User is verified: {user.is_verified}")
             
         # Check permission directly using _check_permissions_for_org
         user_dao = get_user_dao()
-        logger.debug(f"Checking permissions for user {user.id} in org {active_org_id}")
+        # logger.debug(f"Checking permissions for user {user.id} in org {active_org_id}")
         try:
             await _check_permissions_for_org(
                 db=db,
@@ -336,7 +336,7 @@ async def websocket_endpoint(
                 org_id=active_org_id,
                 required_permissions=[WorkflowPermissions.RUN_READ]
             )
-            logger.debug(f"Permission check passed for user {user.id} in org {active_org_id}")
+            # logger.debug(f"Permission check passed for user {user.id} in org {active_org_id}")
         except Exception as e:
             logger.warning(f"Permission denied: User {user.id} cannot access run {run_id}: {str(e)}")
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
@@ -344,14 +344,14 @@ async def websocket_endpoint(
         
         # Verify the run exists and belongs to the active organization
         workflow_run_dao = crud.WorkflowRunDAO()
-        logger.debug(f"Verifying run {run_id} exists and belongs to org {active_org_id}")
+        # logger.debug(f"Verifying run {run_id} exists and belongs to org {active_org_id}")
         run = await workflow_run_dao.get_run_by_id_and_org(db, run_id=run_id, org_id=active_org_id)
         if not run:
             logger.warning(f"Run {run_id} not found or not accessible by user {user.id} in org {active_org_id}")
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
         
-        logger.debug(f"Run {run_id} found and belongs to org {active_org_id}")
+        # logger.debug(f"Run {run_id} found and belongs to org {active_org_id}")
     except Exception as e:
         logger.error(f"Error during WebSocket authentication or permission check: {e}", exc_info=True)
         await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
@@ -496,9 +496,9 @@ async def notifications_websocket_endpoint(
         db: The database session
     """
     # Log connection attempt with details
-    logger.debug(f"WebSocket connection attempt to general notifications")
-    logger.debug(f"Request headers: {websocket.headers}")
-    logger.debug(f"Access token cookie received: {'present' if access_token else 'missing'}")
+    # logger.debug(f"WebSocket connection attempt to general notifications")
+    # logger.debug(f"Request headers: {websocket.headers}")
+    # logger.debug(f"Access token cookie received: {'present' if access_token else 'missing'}")
     
     # Check if access token is present
     if not access_token:
@@ -592,46 +592,46 @@ async def notifications_websocket_endpoint(
             pass
 
 
-@websocket_router.websocket("/ws/debug")
-async def debug_websocket_endpoint(
-    websocket: WebSocket,
-    # Try to get the cookie without requiring it
-    access_token: Optional[str] = Cookie(None, alias=settings.ACCESS_TOKEN_COOKIE_NAME),
-):
-    """
-    Debug WebSocket endpoint to test cookie passing.
+# @websocket_router.websocket("/ws/debug")
+# async def debug_websocket_endpoint(
+#     websocket: WebSocket,
+#     # Try to get the cookie without requiring it
+#     access_token: Optional[str] = Cookie(None, alias=settings.ACCESS_TOKEN_COOKIE_NAME),
+# ):
+#     """
+#     Debug WebSocket endpoint to test cookie passing.
     
-    This endpoint logs all headers and cookie information to help troubleshoot
-    WebSocket authentication issues.
-    """
-    await websocket.accept()
+#     This endpoint logs all headers and cookie information to help troubleshoot
+#     WebSocket authentication issues.
+#     """
+#     await websocket.accept()
     
-    # Log all headers
-    logger.info("=== WebSocket Debug Endpoint ===")
-    logger.info(f"Headers: {dict(websocket.headers)}")
-    logger.info(f"Cookies in headers: {websocket.headers.get('cookie', 'No cookie header')}")
-    logger.info(f"Access token from Cookie dependency: {'present' if access_token else 'missing'}")
-    if access_token:
-        logger.info(f"Access token first 10 chars: {access_token[:10]}...")
+#     # Log all headers
+#     logger.info("=== WebSocket Debug Endpoint ===")
+#     logger.info(f"Headers: {dict(websocket.headers)}")
+#     logger.info(f"Cookies in headers: {websocket.headers.get('cookie', 'No cookie header')}")
+#     logger.info(f"Access token from Cookie dependency: {'present' if access_token else 'missing'}")
+#     if access_token:
+#         logger.info(f"Access token first 10 chars: {access_token[:10]}...")
     
-    # Send debug info back to client
-    debug_info = {
-        "event": "debug_info",
-        "headers": dict(websocket.headers),
-        "cookie_header": websocket.headers.get('cookie', 'No cookie header'),
-        "access_token_present": bool(access_token),
-        "access_token_first_10": access_token[:10] if access_token else None
-    }
+#     # Send debug info back to client
+#     debug_info = {
+#         "event": "debug_info",
+#         "headers": dict(websocket.headers),
+#         "cookie_header": websocket.headers.get('cookie', 'No cookie header'),
+#         "access_token_present": bool(access_token),
+#         "access_token_first_10": access_token[:10] if access_token else None
+#     }
     
-    await websocket.send_json(debug_info)
+#     await websocket.send_json(debug_info)
     
-    # Keep the connection open for testing
-    try:
-        while True:
-            data = await websocket.receive_text()
-            await websocket.send_text(f"Echo: {data}")
-    except WebSocketDisconnect:
-        logger.info("Debug WebSocket disconnected")
+#     # Keep the connection open for testing
+#     try:
+#         while True:
+#             data = await websocket.receive_text()
+#             await websocket.send_text(f"Echo: {data}")
+#     except WebSocketDisconnect:
+#         logger.info("Debug WebSocket disconnected")
 
 
 # Export the connection manager for use by event consumers
