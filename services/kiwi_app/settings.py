@@ -132,15 +132,15 @@ class Settings(GlobalSettings):
     VERIFY_PASSWORD_RESET_TOKEN_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/auth/verify-password-reset-token"
     MAGIC_LOGIN_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/auth/email-login"
     LINKEDIN_OAUTH_CALLBACK_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/auth/linkedin-callback"
-    LINKEDIN_VERIFY_LINKING_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/auth/linkedin-verify"
+    LINKEDIN_VERIFY_LINKING_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/auth/linkedin-verify"  # URL to handle email verification links for linkedin account creation / linking / verification
     
     # LinkedIn OAuth Frontend URLs
-    LINKEDIN_LOGIN_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/login"
-    LINKEDIN_DASHBOARD_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/dashboard"
-    LINKEDIN_SETTINGS_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/settings"
-    LINKEDIN_REGISTER_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/register"
-    LINKEDIN_VERIFY_ACCOUNT_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/verify-account"
-    LINKEDIN_CONFLICT_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/linkedin-conflict"
+    LINKEDIN_LOGIN_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/login"  # Show user errors during login with query params that linkedin linking failed
+    LINKEDIN_DASHBOARD_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/dashboard"  # redirect to dashboard after login via linkedin
+    LINKEDIN_SETTINGS_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/settings"  # redirect to settings to show newly linkedin linkedin account
+    LINKEDIN_REGISTER_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/register"  # Ask user to complete new account registration to finish linkedin linking
+    LINKEDIN_VERIFY_ACCOUNT_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/verify-account"  # For unverified linkedin emails i.e. user email is not verified by Linkedin
+    LINKEDIN_CONFLICT_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/linkedin-conflict"  # Conflict: show user that linkedin account linked to another KIWIQ user account
     # NOTE: if API prefix var name changes, change it here: `security.py` to set `OAuth2PasswordBearer``
     # NOTE: also used in verify email url!
     API_V1_PREFIX: str = "/api/v1"
