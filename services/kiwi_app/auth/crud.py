@@ -424,7 +424,10 @@ class UserDAO(BaseDAO[models.User, schemas.UserCreate, schemas.UserAdminUpdate])
 
     async def create_user(self, db: AsyncSession, *, user_in: schemas.UserCreate) -> models.User:
         """Create user, hashing the password."""
-        hashed_password = get_password_hash(user_in.password)
+        if user_in.password:
+            hashed_password = get_password_hash(user_in.password)
+        else:
+            hashed_password = None
         user_data = user_in.model_dump(exclude={"password"})
         db_user = self.model(**user_data, hashed_password=hashed_password)
         db.add(db_user)

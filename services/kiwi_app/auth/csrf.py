@@ -356,4 +356,4 @@ def clear_auth_cookies(response: Response) -> None:
     # Clear CSRF token cookie
     delete_csrf_cookie(response)
     
-    auth_logger.info("All authentication cookies cleared") 
+    auth_logger.info("All authentication cookies cleared")

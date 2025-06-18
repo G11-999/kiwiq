@@ -72,14 +72,6 @@ class Settings(BaseSettings):
     # Worker pool settings
     WORKER_POOL_SIZE: int = 4
 
-    # LinkedIn integration settings
-    LINKEDIN_CLIENT_ID: str = ""
-    LINKEDIN_CLIENT_SECRET: str = ""
-    LINKEDIN_ACCESS_TOKEN: str = ""
-    LINKEDIN_API_VERSION: str = "202505"
-    LINKEDIN_REDIRECT_URL: str = "http://localhost:3001/oauth"
-    LINKEDIN_ACCESS_TOKEN: str = ""
-
     LOG_LEVEL: str = "INFO"
     LOG_FILE_NAME: str = "kiwiq_backend.log"
     LOG_PREFECT_FILE_NAME: str = "prefect_worker.log"

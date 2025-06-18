@@ -10,7 +10,7 @@ from fastapi.responses import RedirectResponse
 import uvicorn
 from pydantic import BaseModel, Field
 
-from global_config.settings import global_settings
+from kiwi_app.settings import settings
 
 import logging
 logging.basicConfig(level=logging.INFO)
@@ -52,8 +52,8 @@ class LinkedInAccessTokenSchema(BaseModel):
         description="Refresh token for obtaining new access tokens. Must be kept secure."
     )
     
-    scope: str = Field(
-        ...,
+    scope: Optional[str] = Field(
+        None,
         description="URL-encoded, space-delimited list of authorized permissions"
     )
     
@@ -163,9 +163,9 @@ LINKEDIN_SCOPES = [
 
 load_dotenv(find_dotenv())
 
-CLIENT_ID = global_settings.LINKEDIN_CLIENT_ID
-CLIENT_SECRET = global_settings.LINKEDIN_CLIENT_SECRET
-OAUTH2_REDIRECT_URL = global_settings.LINKEDIN_REDIRECT_URL
+CLIENT_ID = settings.LINKEDIN_CLIENT_ID
+CLIENT_SECRET = settings.LINKEDIN_CLIENT_SECRET
+OAUTH2_REDIRECT_URL = settings.LINKEDIN_REDIRECT_URL
 
 # Global variable to store structured access token for testing purposes
 # In production, this should be stored securely (database, secure session, etc.)
@@ -304,4 +304,4 @@ async def root():
 
 
 if __name__ == "__main__":
-    uvicorn.run("linkedin_auth_client:app", host="localhost", port=3001, reload=True)
+    uvicorn.run("linkedin_auth_client:app", host="localhost", port=3002, reload=True)

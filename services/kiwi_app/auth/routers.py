@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db.session import get_async_session, get_async_db_dependency # Added get_async_db_dependency
 # Change relative to absolute imports
 from kiwi_app.email import email_verify
-from kiwi_app.auth import crud, models, schemas, security, dependencies, linkedin, utils, services # Added email_verify
+from kiwi_app.auth import crud, models, schemas, security, dependencies, utils, services # Added email_verify
 from kiwi_app.auth.csrf import setup_auth_cookies_with_csrf, clear_auth_cookies, validate_csrf_protection, set_csrf_cookie, generate_csrf_token # Import CSRF utilities
 # from kiwi_app.auth.utils import auth_logger
 from kiwi_app.utils import get_kiwi_logger
@@ -60,7 +60,7 @@ router = APIRouter(
 
 def _get_base_url(request: Request, dev_env_suffix: str = ""):
     URL = f"{str(request.base_url).rstrip('/')}{settings.API_V1_PREFIX}{dev_env_suffix}"
-    return f"{settings.REDIRECT_BASE_URL}{dev_env_suffix}" if settings.APP_ENV == "PROD" else URL
+    return URL
 
 # === Email/Password Authentication Endpoints ===
 
@@ -78,7 +78,7 @@ async def register_user_endpoint(
     using background tasks.
     """
     # Get base URL for verification link
-    base_url = _get_base_url(request, settings.AUTH_VERIFY_EMAIL_URL)
+    base_url = settings.VERIFY_EMAIL_SPA_URL if settings.APP_ENV in ["PROD", "STAGE"] else _get_base_url(request, settings.AUTH_VERIFY_EMAIL_URL)
     try:
         # Service method now handles adding email task to background
         user = await auth_service.register_new_user(
@@ -252,7 +252,7 @@ async def request_magic_login_email(
         )
 
         # Construct base URL pointing to the magic login verification endpoint
-        base_url = _get_base_url(request, settings.MAGIC_LOGIN_URL)
+        base_url = settings.MAGIC_LOGIN_SPA_URL if settings.APP_ENV in ["PROD", "STAGE"] else _get_base_url(request, settings.MAGIC_LOGIN_URL)
         
         # Send magic login email via background tasks
         await email_verify.trigger_send_magic_login_email(
@@ -279,7 +279,7 @@ async def request_magic_login_email(
 async def refresh_token_endpoint(
     response: Response, # Inject Response to set new cookie
     # user: models.User = Depends(dependencies.get_current_active_user),  # This won't work since access token is probably expired!
-    csrf_validation: None = Depends(validate_csrf_protection),
+    # csrf_validation: None = Depends(validate_csrf_protection),
     refresh_token_from_cookie: Optional[str] = Cookie(None, alias=settings.REFRESH_COOKIE_NAME), # Get from cookie
     db: AsyncSession = Depends(get_async_db_dependency),
     auth_service: services.AuthService = Depends(dependencies.get_auth_service)
@@ -434,7 +434,7 @@ async def request_email_verification_endpoint(
         if user.is_verified:
             return JSONResponse(content={"message": "Email is already verified."}, status_code=status.HTTP_200_OK)
 
-        base_url = _get_base_url(request, settings.AUTH_VERIFY_EMAIL_URL)
+        base_url = settings.VERIFY_EMAIL_SPA_URL if settings.APP_ENV in ["PROD", "STAGE"] else _get_base_url(request, settings.AUTH_VERIFY_EMAIL_URL)
         # Use the trigger function which adds to background tasks
         await email_verify.trigger_send_verification_email(background_tasks=background_tasks, db=db, user=user, base_url=base_url)
         # Message returned is generic, log action
@@ -566,20 +566,24 @@ async def request_password_reset_endpoint(
     Initiates the password reset process by sending an email with a reset link.
     Always returns a 202 Accepted response to prevent email enumeration.
     """
+    # Return the generic message from the service
+    response = JSONResponse(content={"message": "If an account with this email exists, a password reset link will be sent."}, status_code=status.HTTP_202_ACCEPTED)
+    
     try:
-        base_url = _get_base_url(request, settings.AUTH_VERIFY_PASSWORD_RESET_TOKEN_URL) # API base URL
+        base_url = settings.VERIFY_PASSWORD_RESET_TOKEN_SPA_URL if settings.APP_ENV in ["PROD", "STAGE"] else _get_base_url(request, settings.AUTH_VERIFY_PASSWORD_RESET_TOKEN_URL)  # API base URL 
         result = await auth_service.request_password_reset(
             db=db,
             email=request_data.email,
             background_tasks=background_tasks,
-            base_url=base_url
+            base_url=base_url,
+            # csrf_token=csrf_token,
         )
-        # Return the generic message from the service
-        return JSONResponse(content=result, status_code=status.HTTP_202_ACCEPTED)
+
+        return response
     except Exception as e:
         # Log the error but still return 202
         auth_logger.exception(f"Error requesting password reset for {request_data.email}", exc_info=e)
-        return JSONResponse(content={"message": "If an account with this email exists, a password reset link will be sent."}, status_code=status.HTTP_202_ACCEPTED)
+        return response
 
 @router.get("/verify-password-reset-token", status_code=status.HTTP_200_OK, tags=["auth"])
 async def verify_password_reset_token_endpoint(
@@ -633,62 +637,134 @@ async def reset_password_endpoint(
         auth_logger.exception(f"Error resetting password with token: {reset_data.token[:8]}...", exc_info=e)
         raise HTTPException(status_code=500, detail="An internal error occurred during password reset.")
 
-# === LinkedIn OAuth Endpoints ===
+# --- Email Change Management Endpoints ---
 
-@router.get("/linkedin/login", include_in_schema=False, tags=["auth"]) # Hide from OpenAPI UI if desired
-async def linkedin_login_redirect_endpoint():
-    """
-    Redirects the user to LinkedIn for authentication.
-    """
-    if not linkedin.linkedin_sso:
-        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="LinkedIn Login not configured")
-    login_url = await linkedin.get_linkedin_login_url()
-    if not login_url:
-        raise HTTPException(status_code=500, detail="Could not generate LinkedIn login URL")
-    return RedirectResponse(login_url)
-
-@router.get("/linkedin/callback", include_in_schema=False, tags=["auth"]) # Removed response_model=schemas.Token
-async def linkedin_callback_endpoint(
+@router.post("/users/me/request-email-change", status_code=status.HTTP_202_ACCEPTED, tags=["auth"])
+async def request_email_change_endpoint(
+    email_change_request: schemas.RequestEmailChange,
     request: Request,
-    response: Response, # Inject Response
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_async_db_dependency),
+    current_user: models.User = Depends(dependencies.get_current_active_user),
     auth_service: services.AuthService = Depends(dependencies.get_auth_service)
-) -> schemas.AccessTokenResponse:
+):
     """
-    Handles LinkedIn callback, returns access token in body, refresh token in cookie.
+    Request an email address change for the current authenticated user.
+    
+    This endpoint:
+    1. Validates the current password for security
+    2. Checks that the new email is not already in use
+    3. Generates a secure verification token
+    4. Sends verification email to the NEW email address
+    5. Returns success response (generic to prevent enumeration)
+    
+    The email change is not completed until the verification token is confirmed.
+    
+    Args:
+        email_change_request: Contains new email and current password
+        
+    Returns:
+        202 Accepted with generic message
+        
+    Security Features:
+        - Current password verification required
+        - Verification sent only to new email address
+        - Generic response prevents email enumeration
+        - Token contains both old and new email for validation
+        - Comprehensive error logging for security monitoring
     """
-    if not linkedin.linkedin_sso:
-        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="LinkedIn Login not configured")
     try:
-        linkedin_user_data = await linkedin.verify_linkedin_callback(request)
-        if not linkedin_user_data:
-             raise HTTPException(status_code=400, detail="Could not verify LinkedIn callback.")
-
-        # Assuming linkedin_user_data is dict-like or can be validated
-        linkedin_user = schemas.LinkedInUser.model_validate(linkedin_user_data)
-
-        user = await auth_service.handle_linkedin_callback(db=db, linkedin_user=linkedin_user)
-        # Generate tokens
-        access_token_str, refresh_token_obj = await auth_service.generate_tokens_for_user(db=db, user=user)
-        auth_logger.info(f"User successfully authenticated via LinkedIn: {user.email}")
-
-        # Set up all authentication cookies with CSRF protection
-        csrf_token = setup_auth_cookies_with_csrf(
-            response=response,
-            access_token=access_token_str,
-            refresh_token_obj=refresh_token_obj,
-            keep_me_logged_in=True  # LinkedIn login implies user wants to stay logged in
+        # Get base URL for verification link
+        base_url = settings.VERIFY_EMAIL_CHANGE_SPA_URL if settings.APP_ENV in ["PROD", "STAGE"] else _get_base_url(request, settings.AUTH_VERIFY_EMAIL_CHANGE_URL)
+        # auth_logger.info(f"Base URL {settings.APP_ENV} for email change: {base_url}")
+        
+        # Service handles all validation and email sending
+        result = await auth_service.request_email_change(
+            db=db,
+            user=current_user,
+            new_email=email_change_request.new_email,
+            current_password=email_change_request.current_password,
+            background_tasks=background_tasks,
+            base_url=base_url
+        )
+        
+        auth_logger.info(f"Email change requested by user {current_user.email} to {email_change_request.new_email}")
+        return JSONResponse(content=result, status_code=status.HTTP_202_ACCEPTED)
+        
+    except CredentialsException as e:
+        # Current password incorrect
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=e.detail)
+    except EmailAlreadyExistsException as e:
+        # New email already in use
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=e.detail)
+    except Exception as e:
+        auth_logger.exception(f"Error requesting email change for {current_user.email}", exc_info=e)
+        # Return generic success to prevent information leakage
+        return JSONResponse(
+            content={"message": "If the new email address is valid and available, a verification link will be sent to it."},
+            status_code=status.HTTP_202_ACCEPTED
         )
 
-        auth_logger.info(f"LinkedIn authentication cookies set with CSRF protection for user: {user.email}")
-
-        # Return success status (CSRF token is available in cookie for frontend)
-        return {"status": "success"}
-    except HTTPException as e:
-        raise e
+@router.post("/verify-email-change", response_model=schemas.EmailChangeResponse, tags=["auth"])
+async def confirm_email_change_endpoint(
+    confirmation_data: schemas.ConfirmEmailChange,
+    response: Response,
+    db: AsyncSession = Depends(get_async_db_dependency),
+    auth_service: services.AuthService = Depends(dependencies.get_auth_service)
+):
+    """
+    Confirm and complete an email address change using a verification token.
+    
+    This endpoint:
+    1. Validates the email change token from the new email
+    2. Extracts and validates old/new email information
+    3. Verifies the user still exists and matches the old email
+    4. Checks that the new email is still available
+    5. Updates the user's email address in the database
+    6. Revokes all refresh tokens for security (forces re-login)
+    7. Returns success response with new email
+    
+    Args:
+        confirmation_data: Contains the verification token from new email
+        
+    Returns:
+        EmailChangeResponse: Success message and new email address
+        
+    Security Features:
+        - Token validation with signature and expiry checks
+        - Old/new email validation against current state
+        - Availability check to prevent race conditions
+        - All refresh tokens revoked (forces re-login)
+        - Comprehensive error logging for security monitoring
+        
+    Note:
+        After successful email change, the user must log in again with their new email.
+    """
+    try:
+        # Service handles all token validation and email updating
+        result = await auth_service.confirm_email_change(
+            db=db,
+            token=confirmation_data.token
+        )
+        
+        # Clear all authentication cookies since refresh tokens are revoked
+        clear_auth_cookies(response)
+        
+        auth_logger.info(f"Email change confirmed successfully: token ending in ...{confirmation_data.token[-8:]}")
+        return result
+        
+    except CredentialsException as e:
+        # Invalid/expired token or validation failure
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=e.detail)
+    except UserNotFoundException as e:
+        # User no longer exists
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=e.detail)
+    except EmailAlreadyExistsException as e:
+        # New email now taken by another user
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=e.detail)
     except Exception as e:
-        auth_logger.exception(f"Unexpected error during LinkedIn callback processing", exc_info=e)
-        raise HTTPException(status_code=500, detail="Error processing LinkedIn login")
+        auth_logger.exception(f"Error confirming email change with token: {confirmation_data.token[:8]}...", exc_info=e)
+        raise HTTPException(status_code=500, detail="An internal error occurred during email change confirmation.")
 
 # === User Management Endpoints ===
 

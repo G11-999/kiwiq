@@ -95,8 +95,8 @@ async def trigger_send_verification_email(
     URL = base_url
     # URL = f"{base_url.rstrip('/')}{settings.API_V1_PREFIX}{settings.AUTH_VERIFY_EMAIL_URL}"
     verification_link = f"{URL}?token={token}"
-    if settings.VERIFY_EMAIL_SPA_URL:
-        verification_link = f"{settings.VERIFY_EMAIL_SPA_URL}?token={token}"
+    # if settings.VERIFY_EMAIL_SPA_URL:
+    #     verification_link = f"{settings.VERIFY_EMAIL_SPA_URL}?token={token}"
 
     try:
         # Create email content using the new template system
@@ -229,11 +229,11 @@ async def trigger_send_password_reset_email(
     try:
         expires_delta = timedelta(minutes=settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES)
         # Add the password_reset claim
-        additional_claims = {"password_reset": True}
+        # additional_claims = {"password_reset": True}
         token = create_access_token(
             subject=user.id,
             expires_delta=expires_delta,
-            additional_claims=additional_claims,
+            # additional_claims=additional_claims,
             token_type="password_reset"
         )
         auth_logger.debug(f"Generated password reset JWT for user {user.email} ({user.id}). Expires in {expires_delta}.")
@@ -248,8 +248,8 @@ async def trigger_send_password_reset_email(
     URL = base_url
     # URL = f"{base_url.rstrip('/')}{settings.API_V1_PREFIX}{settings.AUTH_VERIFY_PASSWORD_RESET_TOKEN_URL}"
     reset_link = f"{URL}?token={token}"
-    if settings.VERIFY_PASSWORD_RESET_TOKEN_SPA_URL:
-        reset_link = f"{settings.VERIFY_PASSWORD_RESET_TOKEN_SPA_URL}?token={token}"
+    # if settings.VERIFY_PASSWORD_RESET_TOKEN_SPA_URL:
+    #     reset_link = f"{settings.VERIFY_PASSWORD_RESET_TOKEN_SPA_URL}?token={token}"
 
     try:
         # Create email content using the new template system
@@ -371,8 +371,8 @@ async def trigger_send_magic_login_email(
     # The frontend will validate the token and CSRF, then call the backend magic login endpoint
     URL = base_url
     magic_login_link = f"{URL}?token={magic_token}"
-    if settings.MAGIC_LOGIN_SPA_URL:
-        magic_login_link = f"{settings.MAGIC_LOGIN_SPA_URL}?token={magic_token}"
+    # if settings.MAGIC_LOGIN_SPA_URL:
+    #     magic_login_link = f"{settings.MAGIC_LOGIN_SPA_URL}?token={magic_token}"
 
     try:
         # Create email content using the new template system
@@ -418,3 +418,137 @@ async def trigger_send_magic_login_email(
         return magic_token
 
     return magic_token
+
+# --- Email Change Verification Utilities ---
+
+async def trigger_send_email_change_verification_email(
+    background_tasks: BackgroundTasks,
+    user: models.User,
+    new_email: str,
+    base_url: str,
+    email_change_token: str,
+) -> Optional[str]:
+    """
+    Sends an email change verification email to the NEW email address.
+    
+    This function constructs an email change verification link and sends it to the
+    new email address to verify ownership before completing the email change.
+    
+    Args:
+        background_tasks: FastAPI BackgroundTasks instance
+        user: The user object requesting the email change
+        new_email: The new email address to send verification to
+        base_url: Base URL for link generation
+        email_change_token: The JWT token for email change verification
+        
+    Returns:
+        The email change token if email was successfully queued, otherwise None
+        
+    Security considerations:
+        - Email sent only to the NEW email address
+        - Token contains both old and new email for validation
+        - Short expiry time for security
+        - Single-use token design
+    """
+    
+    # Construct the email change verification link
+    verification_link = f"{base_url}?token={email_change_token}"
+    # if settings.VERIFY_EMAIL_SPA_URL:
+    #     verification_link = f"{settings.VERIFY_EMAIL_SPA_URL}?token={email_change_token}"
+
+    try:
+        # Create email content using the account confirmation template (reuse for email change)
+        email_data = AccountConfirmationEmailData(
+            user_name=user.full_name or user.email.split('@')[0],
+            opening_message=f"You requested to change your email address from {user.email} to {new_email}.",
+            confirmation_url=verification_link,
+            expiry_hours=settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_MINUTES // 60 or 1,
+            is_email_confirmation=True,
+        )
+        
+        # Render both HTML and text versions
+        html_content = email_renderer.render_account_confirmation_email(email_data)
+        text_content = email_renderer.html_to_text(html_content)
+        
+        # Create email content object
+        email_content = EmailContent(
+            subject="Verify Your New Email Address for KiwiQ",
+            html_body=html_content,
+            text_body=text_content,
+            from_name="KiwiQ Team"
+        )
+        
+        # Create recipient object - IMPORTANT: Send to NEW email address
+        recipient = EmailRecipient(
+            email=new_email,  # Send to the NEW email address
+            name=user.full_name
+        )
+        
+        # Send email using the dispatch service
+        success = await email_dispatch.send_email_async(
+            background_tasks=background_tasks,
+            recipient=recipient,
+            content=email_content
+        )
+        
+        if success:
+            auth_logger.info(f"Email change verification email task queued for {user.email} -> {new_email}")
+        else:
+            auth_logger.warning(f"Failed to queue email change verification email for {user.email} -> {new_email}")
+            
+    except Exception as e:
+        auth_logger.error(f"Error preparing email change verification email for {user.email} -> {new_email}: {e}", exc_info=True)
+        # Still return the token - useful for testing or manual verification if needed
+        return email_change_token
+
+    return email_change_token
+
+async def verify_email_change_token(token: str) -> TokenData:
+    """
+    Validates an email change JWT token.
+    
+    This function verifies the token's signature, expiry, and ensures it's specifically
+    for email change operations. It extracts the user ID and email information from
+    the token for further processing.
+    
+    Args:
+        token: The email change JWT token string
+        
+    Returns:
+        TokenData containing user ID and email change information
+        
+    Raises:
+        CredentialsException: If the token is invalid, expired, or not for email change
+        
+    Security considerations:
+        - Validates token signature and expiry
+        - Ensures token is specifically for email change
+        - Extracts old and new email for validation
+    """
+    if not token:
+        raise CredentialsException(detail="Email change token is missing.")
+
+    try:
+        # Decode and validate the JWT (handles signature, expiry, and token type)
+        token_data = decode_access_token(token, expected_token_type="email_change")
+
+        # Ensure the token contains the required email information
+        old_email = token_data.additional_claims.get("old_email")
+        new_email = token_data.additional_claims.get("new_email")
+        
+        if not old_email or not new_email:
+            auth_logger.error(f"Email change token missing required email claims: old_email={old_email}, new_email={new_email}")
+            raise CredentialsException(detail="Invalid email change token format")
+
+        auth_logger.info(f"Email change token successfully verified for user ID: {token_data.sub} ({old_email} -> {new_email})")
+        return token_data
+
+    except CredentialsException as e:
+        # Re-raise specific exceptions from decode_access_token or our validation
+        auth_logger.warning(f"Invalid or expired email change token provided: {e.detail}")
+        auth_logger.debug(f"Token (start): {token[:10]}...")
+        raise e
+    except Exception as e:
+        # Catch unexpected errors
+        auth_logger.error(f"Unexpected error during email change token verification: {e}", exc_info=True)
+        raise CredentialsException(detail="Could not validate email change token due to an internal error.")

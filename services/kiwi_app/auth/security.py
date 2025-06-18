@@ -238,6 +238,53 @@ def create_magic_link_token(subject: Union[str, Any], csrf_token: str, keep_me_l
     auth_logger.info(f"Generated magic link token with CSRF protection for subject: {subject}")
     return magic_token, csrf_token
 
+
+def create_email_change_token(
+    user_id: Union[str, uuid.UUID],
+    old_email: str,
+    new_email: str,
+    expires_delta: Optional[timedelta] = None
+) -> str:
+    """
+    Creates a JWT token for email change verification.
+    
+    This token contains both the old and new email addresses for security validation.
+    It's sent to the NEW email address and must be used to complete the email change.
+    
+    Args:
+        user_id: The user ID (UUID) whose email is being changed
+        old_email: The current email address
+        new_email: The new email address to change to
+        expires_delta: Optional timedelta for token expiration
+        
+    Returns:
+        The encoded JWT email change token
+        
+    Security considerations:
+        - Contains both old and new email for validation
+        - Short expiry time (default from settings)
+        - Single-use design
+        - Sent only to the new email address
+    """
+    if expires_delta is None:
+        expires_delta = timedelta(minutes=settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_MINUTES)
+    
+    additional_claims = {
+        "old_email": old_email,
+        "new_email": new_email
+    }
+    
+    token = create_access_token(
+        subject=user_id,
+        expires_delta=expires_delta,
+        additional_claims=additional_claims,
+        token_type="email_change"
+    )
+    
+    auth_logger.debug(f"Created email change token for user {user_id}: {old_email} -> {new_email}")
+    return token
+
+
 def decode_access_token(token: str, expected_token_type: Optional[str] = None) -> TokenData:
     """
     Decodes a JWT access token and validates its claims using PyJWT.
@@ -274,7 +321,8 @@ def decode_access_token(token: str, expected_token_type: Optional[str] = None) -
             token_sub_uuid = uuid.UUID(token_sub_str)
         except ValueError:
             auth_logger.warning(f"Invalid UUID format in token subject: {token_sub_str}")
-            raise CredentialsException(detail="Invalid subject (sub) format in token.")
+            token_sub_uuid = token_sub_str
+            # raise CredentialsException(detail="Invalid subject (sub) format in token.")
 
         # Validate expiration (PyJWT does this, but double-checking doesn't hurt if needed)
         # ... (expiration check commented out as PyJWT handles it)

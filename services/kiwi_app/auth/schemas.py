@@ -1,5 +1,5 @@
 import uuid
-from typing import Any, Dict, List, Literal, Optional, Set
+from typing import Any, Dict, List, Literal, Optional, Set, Union
 from pydantic import BaseModel, EmailStr, Field, HttpUrl, model_validator # Use Field for validation
 from datetime import datetime
 
@@ -130,7 +130,7 @@ class UserRemoveRole(BaseModel):
 # --- User Schemas ---
 class UserCreate(BaseModel):
     email: EmailStr
-    password: str = Field(..., min_length=8)
+    password: Optional[str] = Field(None, min_length=8)
     full_name: Optional[str] = None
     # User creates account, org is created automatically
 
@@ -183,8 +183,8 @@ class UserLogin(BaseModel):
 
 class TokenData(BaseModel):
     # Use user *ID* (UUID) in the token subject for uniqueness
-    token_type: Literal["access", "password_reset", "email_verification", "magic_link", ] = "access"
-    sub: uuid.UUID # Changed from email to UUID
+    token_type: Literal["access", "password_reset", "email_verification", "magic_link", "email_change", "linkedin_verification", "oauth_session", "oauth_state"] = "access"
+    sub: Union[uuid.UUID, str] # Changed from email to UUID
     csrf_token: Optional[str] = None
     additional_claims: Dict[str, Any] = {}
     # Optional claim to specifically allow password reset
@@ -228,4 +228,43 @@ class ResetPassword(BaseModel):
     """Schema for resetting the password using a token."""
     token: str
     new_password: str = Field(..., min_length=8)
+
+# --- Email Change Management Schemas ---
+
+class RequestEmailChange(BaseModel):
+    """
+    Schema for requesting an email address change.
+    
+    Requires current password for security verification before sending
+    verification email to the new address.
+    
+    Attributes:
+        new_email: The new email address to change to
+        current_password: Current password for security verification
+    """
+    new_email: EmailStr = Field(..., description="New email address to change to")
+    current_password: str = Field(..., description="Current password for security verification")
+
+class ConfirmEmailChange(BaseModel):
+    """
+    Schema for confirming an email address change using a verification token.
+    
+    The token is sent to the new email address and must be used to complete
+    the email change process.
+    
+    Attributes:
+        token: Verification token from the new email address
+    """
+    token: str = Field(..., description="Email change verification token from the new email")
+
+class EmailChangeResponse(BaseModel):
+    """
+    Response schema for successful email change operations.
+    
+    Attributes:
+        message: Success message
+        new_email: The new email address that was set
+    """
+    message: str
+    new_email: EmailStr
 

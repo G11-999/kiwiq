@@ -3,7 +3,7 @@
 {% from "components/text.html" import paragraph, url_display %}
 {% from "components/signature.html" import team_signature %}
 {% from "components/preheader.html" import preheader %}
-{% from "components/notice.html" import important_notice %}
+{% from "components/notice.html" import important_notice, warning_notice %}
 
 {% block title %}[ACTION REQUIRED] Confirm Your KiwiQ Account{% endblock %}
 
@@ -14,7 +14,12 @@
 {% block content %}
   {{ paragraph("Hello " + user_name + ",") }}
   
+  {% if opening_message %}
+  {{ paragraph(opening_message) }}
+  {% else %}
   {{ paragraph("Welcome to KiwiQ AI! We're excited to have you join our platform to help streamline your LinkedIn content creation.") }}
+  {% endif %}
+  
   
   {{ paragraph("Please confirm your email address by clicking the button below:") }}
   
@@ -24,10 +29,21 @@
   {{ paragraph("If the button doesn't work, copy and paste this link into your browser:") }}
   {{ url_display(confirmation_url) }}
 
+  <!-- Additional message notice -->
+  {% if additional_message %}
+  {{ warning_notice(additional_message) }}
+  {% endif %}
+
   <!-- Expiry notice -->
+  {% if expiry_hours %}
   {{ important_notice("This link will expire in " + expiry_hours|string + " hours.") }}
+  {% elif expiry_minutes %}
+  {{ important_notice("This link will expire in " + expiry_minutes|string + " minutes.") }}
+  {% endif %}
   
+  {% if not is_email_confirmation %}
   {{ paragraph("If you did not create a KiwiQ account, please disregard this email.") }}
+  {% endif %}
   
   {{ team_signature() }}
 {% endblock %} 

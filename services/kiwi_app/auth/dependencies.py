@@ -176,6 +176,8 @@ async def get_current_user_from_token_non_dependency(
     token: str,  # oauth2_authorization_code_scheme  oauth2_scheme
     expected_token_type: str = "access",
     csrf_validation_token: Optional[str] = None,
+    check_active: bool = True,
+    check_verified: bool = True
 ) -> Tuple[models.User, TokenData]:
     """
     Dependency to get the current user from the JWT token (UUID sub).
@@ -197,9 +199,9 @@ async def get_current_user_from_token_non_dependency(
     user_dao = get_user_dao()
     user = await user_dao.get(db, id=token_data.sub)
 
-    if not user.is_active:
+    if check_active and not user.is_active:
         raise InactiveUserException()
-    if not user.is_verified:
+    if check_verified and not user.is_verified:
         raise UserNotVerifiedException()
 
     # Explicit relationship loading removed - handled by permission checks if needed
@@ -207,6 +209,81 @@ async def get_current_user_from_token_non_dependency(
     if user is None:
         raise UserNotFoundException(detail="User associated with token not found")
     return user, token_data
+
+
+class OptionalCurrentUserChecker:
+    """
+    Dependency class to get current user if authenticated, None otherwise.
+    
+    This dependency is used for endpoints that support both authenticated
+    and unauthenticated access, such as the OAuth initiation endpoint.
+    
+    Design decisions:
+    - Parameterized class allows for flexible configuration of user checks
+    - Maintains same interface as original function for easy migration
+    - Supports both authenticated and unauthenticated access patterns
+    """
+    
+    def __init__(self, check_active: bool = True, check_verified: bool = True):
+        """
+        Initialize the dependency with user validation settings.
+        
+        Args:
+            check_active: Whether to check if user is active
+            check_verified: Whether to check if user is verified
+        """
+        self.check_active = check_active
+        self.check_verified = check_verified
+    
+    async def __call__(
+        self,
+        access_token: Optional[str] = Cookie(None, alias=settings.ACCESS_TOKEN_COOKIE_NAME),
+        csrf_cookie: Optional[str] = Cookie(None, alias=settings.CSRF_TOKEN_COOKIE_NAME),
+        csrf_header: Optional[str] = Header(None, alias=settings.CSRF_TOKEN_HEADER_NAME),
+        db: AsyncSession = Depends(get_async_db_dependency),
+    ) -> Optional[models.User]:
+        """
+        Get current user if authenticated, None otherwise.
+        
+        Args:
+            access_token: JWT access token from cookie
+            csrf_cookie: CSRF token from cookie
+            csrf_header: CSRF token from header
+            db: Database session
+            
+        Returns:
+            Optional[models.User]: User object if authenticated, None otherwise
+            
+        Raises:
+            CSRFTokenException: If CSRF validation fails
+        """
+        # Validate CSRF protection if cookie is present
+        if csrf_cookie:
+            if not validate_csrf_token(cookie_token=csrf_cookie, header_token=csrf_header):
+                raise CSRFTokenException()
+        
+        # Return None if no access token (unauthenticated)
+        if not access_token:
+            return None
+        
+        # Get user from token with configured validation settings
+        try:
+            user, token_data = await get_current_user_from_token_non_dependency(
+                db, 
+                access_token, 
+                expected_token_type="access", 
+                check_active=self.check_active, 
+                check_verified=self.check_verified
+            )
+            
+            return user
+        
+        except (CredentialsException, InactiveUserException, UserNotVerifiedException, UserNotFoundException) as e:
+            auth_logger.exception(f"Unexpected error in OptionalCurrentUserChecker for user {access_token}", exc_info=e)
+            return None
+        except Exception as e:
+            auth_logger.exception(f"Unexpected error in OptionalCurrentUserChecker for user {access_token}", exc_info=e)
+            raise e        
 
 
 # async def get_current_active_verified_user_non_dependency(

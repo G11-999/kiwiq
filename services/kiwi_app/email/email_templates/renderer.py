@@ -88,8 +88,11 @@ class WelcomeEmailData(BaseEmailData):
 
 class AccountConfirmationEmailData(BaseEmailData):
     """Data model for account confirmation emails."""
+    opening_message: Optional[str] = Field(default=None, description="Opening message to include in the email")
     confirmation_url: str = Field(description="Account confirmation link")
     expiry_hours: int = Field(default=24, description="Link expiry time in hours")
+    additional_message: Optional[str] = Field(default=None, description="Additional message to include in the email")
+    is_email_confirmation: bool = Field(default=False, description="Whether the email is a confirmation of email address")
 
 
 class FirstStepsGuideEmailData(BaseEmailData):

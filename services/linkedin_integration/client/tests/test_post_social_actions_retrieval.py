@@ -34,7 +34,7 @@ from urllib.parse import quote
 
 # Import our LinkedInClient and required models
 from linkedin_integration.client.linkedin_client import LinkedInClient
-from global_config.settings import global_settings
+from kiwi_app.settings import settings
 
 async def test_post_retrieval_and_metrics(linkedin_client: LinkedInClient, post_id: str) -> None:
     """Helper function to test post retrieval and metrics for a given post."""
@@ -227,6 +227,9 @@ async def test_getting_post_reactions(linkedin_client: LinkedInClient) -> None:
         import ipdb; ipdb.set_trace()
 
         """
+        https://learn.microsoft.com/en-us/linkedin/marketing/community-management/members/post-statistics?view=li-lms-2025-06&tabs=curl
+
+        
         # REACTIONS (Works with Curl! --> but doesn't work with REst Li client)
         curl -X GET 'https://api.linkedin.com/rest/reactions/(entity:urn%3Ali%3Aactivity%3A7313213674821730304)?q=entity&sort=(value:REVERSE_CHRONOLOGICAL)' \
         -H 'X-Restli-Protocol-Version: 2.0.0' \
@@ -243,21 +246,87 @@ async def test_getting_post_reactions(linkedin_client: LinkedInClient) -> None:
         
         curl -X GET 'https://api.linkedin.com/rest/memberCreatorPostAnalytics?q=me&dateRange=(start:(year:2024,month:5,day:4),end:(year:2024,month:5,day:6))&queryType=IMPRESSION' \
         -H 'X-Restli-Protocol-Version: 2.0.0' \
-        -H 'LinkedIn-Version: 202505' \
-        -H 'Authorization: Bearer XXXXXXXX'
+        -H 'LinkedIn-Version: 202506' \
+        -H 'Authorization: Bearer XXXXXXX'
+        
+        curl -X GET 'https://api.linkedin.com/rest/memberCreatorPostAnalytics?q=me&dateRange=(start:(year:2024,month:5,day:4),end:(year:2024,month:5,day:6))&aggregation=DAILY&queryType=IMPRESSION' \
+        -H 'X-Restli-Protocol-Version: 2.0.0' \
+        -H 'LinkedIn-Version: 202506' \
+        -H 'Authorization: Bearer XXXXXXX'
+        
+        
+        curl -X GET 'https://api.linkedin.com/rest/memberCreatorPostAnalytics?q=me&aggregation=DAILY&queryType=IMPRESSION' \
+        -H 'X-Restli-Protocol-Version: 2.0.0' \
+        -H 'LinkedIn-Version: 202506' \
+        -H 'Authorization: Bearer XXXXXXX'
         
 
-        curl -X GET 'https://api.linkedin.com/rest/memberCreatorPostAnalytics?q=entity&entity=IMPRESSION' \
-        -H 'X-Restli-Protocol-Version: 2.0.0' \
-        -H 'LinkedIn-Version: 202505' \
-        -H 'Authorization: Bearer XXXXXXXX'
         
+        
+
+
+
+        curl -X GET 'https://api.linkedin.com/rest/memberCreatorPostAnalytics?q=entity&entity=(share:urn%3Ali%3Ashare%3A7340981576178024448)&dateRange=(start:(year:2024,month:5,day:4),end:(year:2024,month:5,day:6))&queryType=IMPRESSION' \
+        -H 'X-Restli-Protocol-Version: 2.0.0' \
+        -H 'LinkedIn-Version: 202506' \
+        -H 'Authorization: Bearer XXXXXXX'
+        
+        curl -X GET 'https://api.linkedin.com/rest/memberCreatorPostAnalytics?q=entity&entity=(share:urn%3Ali%3Ashare%3A7340981576178024448)&dateRange=(start:(year:2024,month:5,day:4),end:(year:2024,month:5,day:6))&aggregation=DAILY&queryType=IMPRESSION' \
+        -H 'X-Restli-Protocol-Version: 2.0.0' \
+        -H 'LinkedIn-Version: 202506' \
+        -H 'Authorization: Bearer XXXXXXX'
+        
+        
+        curl -X GET 'https://api.linkedin.com/rest/memberCreatorPostAnalytics?q=entity&entity=(share:urn%3Ali%3Ashare%3A7340981576178024448)&aggregation=DAILY&queryType=IMPRESSION' \
+        -H 'X-Restli-Protocol-Version: 2.0.0' \
+        -H 'LinkedIn-Version: 202506' \
+        -H 'Authorization: Bearer XXXXXXX'
+        
+
+        curl -X GET 'https://api.linkedin.com/rest/memberCreatorPostAnalytics?q=entity&entity=(share:urn%3Ali%3Ashare%3A7340981576178024448)&queryType=REACTION' \
+        -H 'X-Restli-Protocol-Version: 2.0.0' \
+        -H 'LinkedIn-Version: 202506' \
+        -H 'Authorization: Bearer XXXXXXX'
+        
+
+        curl -X GET 'https://api.linkedin.com/rest/memberCreatorPostAnalytics?q=entity&entity=(share:urn%3Ali%3Ashare%3A7340981576178024448)&queryType=REACTION&aggregation=DAILY&dateRange=(start:(day:4,month:5,year:2024),end:(day:6,month:5,year:2024))' \
+        -H 'X-Restli-Protocol-Version: 2.0.0' \
+        -H 'Authorization: Bearer XXXXXXX'\
+        -H 'Linkedin-Version: 202506'
+
+
+
+        curl -X GET 'https://api.linkedin.com/rest/memberCreatorPostAnalytics?q=entity&entity=(share:urn%3Ali%3Ashare%3A7288408228378427392)&queryType=MEMBERS_REACHED' \
+        -H 'X-Restli-Protocol-Version: 2.0.0' \
+        -H 'LinkedIn-Version: 202506' \
+        -H 'Authorization: Bearer XXXXXXX'
+        
+        
+        Error containing internal details when using entity=(ugcPost:urn%3Ali%3Aactivity%3A7288408229108203520): {"message":"Input field validation failure, reason: ERROR ::  :: \"ugcPost\" is not a member type of union [ { \"alias\" : \"share\", \"type\" : { \"type\" : \"typeref\", \"name\" : \"ShareUrn\", \"namespace\" : \"com.linkedin.common\", \"ref\" : \"string\", \"java\" : { \"class\" : \"com.linkedin.common.urn.ShareUrn\" }, \"resourceKey\" : [ { \"entity\" : \"com.linkedin.ugc.UgcPostV2\", \"keyConfig\" : { \"keys\" : { \"shareUrn\" : { \"simpleKey\" : \"$URN\" } }, \"queryParameters\" : { \"$actor\" : \"VIEWER_URN\" } }, \"resourcePath\" : \"/ugcPostsV2/{shareUrn}\" } ], \"validate\" : { \"com.linkedin.common.validator.TypedUrnValidator\" : { \"doc\" : \"\", \"entityType\" : \"share\", \"fields\" : [ { \"doc\" : \"Generated torrent style id with 's' prefix. Maxlength is transposed from db column.\", \"javaType\" : \"String\", \"maxLength\" : 36, \"name\" : \"shareId\", \"type\" : \"string\" } ], \"maxLength\" : 49, \"name\" : \"Share\", \"namespace\" : \"li\", \"owners\" : [ \"urn:li:corpuser:aolin\", \"urn:li:corpuser:azhengxie\", \"urn:li:corpuser:caoconnor\", \"urn:li:corpuser:jko\", \"urn:li:corpuser:jnlau\", \"urn:li:corpuser:jusong\", \"urn:li:corpuser:mgoyal\", \"urn:li:corpuser:sabrooks\", \"urn:li:corpuser:sgwak\", \"urn:li:corpuser:wchen\", \"urn:li:corpuser:yepark\" ], \"owningTeam\" : \"urn:li:internalTeam:ugc\", \"resourceKey\" : [ { \"entity\" : \"com.linkedin.ugc.UgcPostV2\", \"keyConfig\" : { \"keys\" : { \"shareUrn\" : { \"simpleKey\" : \"$URN\" } }, \"queryParameters\" : { \"$actor\" : \"VIEWER_URN\" } }, \"resourcePath\" : \"/ugcPostsV2/{shareUrn}\" } ] } } } }, { \"alias\" : \"ugc\", \"type\" : { \"type\" : \"typeref\", \"name\" : \"UserGeneratedContentPostUrn\", \"namespace\" : \"com.linkedin.common\", \"doc\" : \"Uniquely identifies a LinkedIn user-generated content post.  Posts are content shared on LinkedIn that can encapsulate types such as text, articles, images, etc.\", \"ref\" : \"string\", \"java\" : { \"class\" : \"com.linkedin.common.urn.UserGeneratedContentPostUrn\" }, \"resourceKey\" : [ { \"entity\" : \"com.linkedin.ugc.UgcPostV2\", \"keyConfig\" : { \"keys\" : { \"id\" : { \"simpleKey\" : \"$URN\" } }, \"queryParameters\" : { \"$actor\" : \"VIEWER_URN\" } }, \"resourcePath\" : \"/ugcPostsV2/{id}\" } ], \"validate\" : { \"com.linkedin.common.validator.TypedUrnValidator\" : { \"doc\" : \"Uniquely identifies a LinkedIn user-generated content post.  Posts are content shared on LinkedIn that can encapsulate types such as text, articles, images, etc.\", \"entityType\" : \"ugcPost\", \"fields\" : [ { \"doc\" : \"The unique id for a UserGeneratedContentPost stored in UGC (User Generated Content) backend.\", \"javaType\" : \"Long\", \"name\" : \"userGeneratedContentId\", \"type\" : \"long\" } ], \"maxLength\" : 35, \"name\" : \"UserGeneratedContentPost\", \"namespace\" : \"li\", \"owners\" : [ \"urn:li:corpuser:aolin\", \"urn:li:corpuser:azhengxie\", \"urn:li:corpuser:caoconnor\", \"urn:li:corpuser:jko\", \"urn:li:corpuser:jnlau\", \"urn:li:corpuser:jusong\", \"urn:li:corpuser:mgoyal\", \"urn:li:corpuser:sabrooks\", \"urn:li:corpuser:sgwak\", \"urn:li:corpuser:wchen\", \"urn:li:corpuser:yepark\" ], \"owningTeam\" : \"urn:li:internalTeam:ugc\", \"resourceKey\" : [ { \"entity\" : \"com.linkedin.ugc.UgcPostV2\", \"keyConfig\" : { \"keys\" : { \"id\" : { \"simpleKey\" : \"$URN\" } }, \"queryParameters\" : { \"$actor\" : \"VIEWER_URN\" } }, \"resourcePath\" : \"/ugcPostsV2/{id}\" } ] } } } } ]\n","status":400}%
+
+
+
+        ###############################################################################
+        # CRITICAL: convert UGC activity URN to share URN for use in analytics APIs!
+        ###############################################################################
+
+        curl -X GET 'https://api.linkedin.com/v2/activities?ids=urn:li:activity:7288408229108203520' \
+        -H 'Authorization: Bearer XXXXXXX'
+
+        curl -X GET 'https://api.linkedin.com/v2/activities?ids=urn:li:activity:7288408229108203520&ids=urn:li:activity:7311079094459252736' \
+        -H 'Authorization: Bearer XXXXXXX'
+
         """
 
         org_post_id = "urn:li:activity:7313213674821730304"  # KIWIQ Post
         other_user_post_id = "urn:li:activity:7311079094459252736"  # (test post)
-        user_post_id = "urn:li:activity:7288408229108203520"  # (test post with reshare)
-        org_share_post_id = "urn:li:share:7328113604275142657"  # KIWIQ Post
+        other_post_id_share_urn = "urn:li:share:7311079092169187328"  # (test post)      urn%3Ali%3Ashare%3A7311079092169187328
+        user_post_id = "urn:li:activity:7288408229108203520"  # (test post with reshare)     urn%3Ali%3Aactivity%3A7288408229108203520
+        user_post_id_share_urn = "urn:li:share:7288408228378427392"  # (test post with reshare)      urn%3Ali%3Ashare%3A7288408228378427392
+        org_share_post_id = "urn:li:share:7328113604275142657"  # KIWIQ Post      urn%3Ali%3Ashare%3A7328113604275142657
+
+        print(quote(user_post_id_share_urn, safe=""))
+        return
 
 
         ###############################################################################
@@ -355,16 +424,19 @@ async def test_getting_post_reactions(linkedin_client: LinkedInClient) -> None:
 
 
         # return
+
+
+
         ###############################################################################
         ###############################################################################
 
 
-        for post_id in [org_post_id, other_user_post_id, user_post_id, org_share_post_id]:
-            await test_post_retrieval_and_metrics(linkedin_client, post_id)
-            print("\n\n\n\n\n\n" + "=END="*80 + "\n\n\n\n\n\n")
-            import ipdb; ipdb.set_trace()
+        # for post_id in [org_post_id, other_user_post_id, user_post_id, org_share_post_id]:
+        #     await test_post_retrieval_and_metrics(linkedin_client, post_id)
+        #     print("\n\n\n\n\n\n" + "=END="*80 + "\n\n\n\n\n\n")
+        #     import ipdb; ipdb.set_trace()
 
-        import ipdb; ipdb.set_trace()
+        # import ipdb; ipdb.set_trace()
 
         
         user_post_content = "Planning for a productive day? Follow along on the comment thread"
@@ -425,12 +497,12 @@ async def main() -> None:
     print("=== LinkedIn Organization API Testing ===\n")
     
     # Prompt user for necessary credentials.
-    client_id = global_settings.LINKEDIN_CLIENT_ID
-    client_secret = global_settings.LINKEDIN_CLIENT_SECRET
-    access_token = global_settings.LINKEDIN_ACCESS_TOKEN  # LINKEDIN_ACCESS_TOKEN  LINKEDIN_ACCESS_TOKEN
+    client_id = settings.LINKEDIN_CLIENT_ID
+    client_secret = settings.LINKEDIN_CLIENT_SECRET
+    access_token = settings.LINKEDIN_ACCESS_TOKEN  # LINKEDIN_ACCESS_TOKEN  LINKEDIN_ACCESS_TOKEN
     # urn:li:person:NxwL-IvR2n
     # urn:li:person:qUvas1UvE2
-    version_input = global_settings.LINKEDIN_API_VERSION
+    version_input = settings.LINKEDIN_API_VERSION
 
     # Instantiate the LinkedInClient with caching disabled for testing.
     linkedin_client = LinkedInClient(

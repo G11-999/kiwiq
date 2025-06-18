@@ -31,7 +31,7 @@ from pydantic import BaseModel, Field
 #     LinkedInComment,
 #     LinkedInReaction, LinkedInAnalytics, LinkedInPostAnalytics
 # )
-from global_config.settings import global_settings
+from kiwi_app.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -1081,7 +1081,7 @@ class LinkedInClient:
         client_id: str,
         client_secret: str,
         access_token: Optional[str] = None,
-        version: str = global_settings.LINKEDIN_API_VERSION,
+        version: str = settings.LINKEDIN_API_VERSION,
         enable_caching: bool = False
     ):
         """
@@ -1375,7 +1375,7 @@ class LinkedInClient:
             logger.error(f"Error fetching person profile for {person_id}: {str(e)}")
             raise
     
-    async def get_member_info_including_email(self) -> UserInfo:
+    async def get_member_info_including_email(self) -> Tuple[bool, UserInfo]:
         """
         Fetch user information from the LinkedIn /v2/userinfo endpoint.
         
@@ -1384,7 +1384,7 @@ class LinkedInClient:
         This endpoint provides different information compared to the standard profile APIs.
         
         Returns:
-            UserInfo: User information including subject ID, names, picture, locale, and optional email data
+            Tuple[bool, UserInfo]: Tuple containing success flag and UserInfo object containing information including subject ID, names, picture, locale, and optional email data
             
         Raises:
             Exception: If there is an error fetching the user information

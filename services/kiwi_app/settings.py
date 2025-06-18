@@ -24,10 +24,12 @@ class Settings(GlobalSettings):
     DB_TABLE_WORKFLOW_PREFIX: str = "kw_wf_" # Added prefix for workflow tables
     DB_TABLE_LINKEDIN_PREFIX: str = "linkedin_"
 
-    # --- LinkedIn Settings --- #
-    LINKEDIN_CLIENT_ID: Optional[str] = None
-    LINKEDIN_CLIENT_SECRET: Optional[str] = None
-    LINKEDIN_REDIRECT_URI: Optional[str] = None
+    # LinkedIn integration settings
+    LINKEDIN_CLIENT_ID: str = ""
+    LINKEDIN_CLIENT_SECRET: str = ""
+    LINKEDIN_API_VERSION: str = "202505"
+    LINKEDIN_REDIRECT_URL: str = ""
+    LINKEDIN_ACCESS_TOKEN: str = ""  # NOTE: only for testing!
 
     # --- Gmail SMTP Settings --- #
     """
@@ -111,8 +113,11 @@ class Settings(GlobalSettings):
     AUTH_TOKEN_URL: str = "/auth/login/token"
     AUTH_REFRESH_URL: str = "/auth/refresh"
     AUTH_VERIFY_EMAIL_URL: str = "/auth/verify-email"
+    AUTH_VERIFY_EMAIL_CHANGE_URL: str = "/auth/verify-email-change"
     AUTH_VERIFY_PASSWORD_RESET_TOKEN_URL: str = "/auth/verify-password-reset-token"
     MAGIC_LOGIN_URL: str = "/auth/magic-login"
+    LINKEDIN_AUTH_CALLBACK_URL: str = "/linkedin/auth/callback"
+    LINKEDIN_AUTH_VERIFY_LINKING_URL: str = "/linkedin/auth/verify-linking"
     REDIRECT_BASE_URL: str = "https://beta.kiwiq.ai"  # "http://localhost:3000"
     # Frontend URLs for first steps guide email
     # These URLs are used in the first steps guide email sent after email verification
@@ -122,9 +127,20 @@ class Settings(GlobalSettings):
     URL_CONTENT_CALENDAR: str = f"{REDIRECT_BASE_URL}/calendar"
     
     # TODO: FIXME: fill these up in production to redirect correctly to the SPA to handle verification / password reset!
-    VERIFY_EMAIL_SPA_URL: Optional[str] = "https://beta.kiwiq.ai/auth/verify-email"
-    VERIFY_PASSWORD_RESET_TOKEN_SPA_URL: Optional[str] = "https://beta.kiwiq.ai/auth/verify-password-reset-token"
-    MAGIC_LOGIN_SPA_URL: Optional[str] = "https://beta.kiwiq.ai/auth/email-login"
+    VERIFY_EMAIL_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/auth/verify-email"
+    VERIFY_EMAIL_CHANGE_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/auth/verify-email-change"
+    VERIFY_PASSWORD_RESET_TOKEN_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/auth/verify-password-reset-token"
+    MAGIC_LOGIN_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/auth/email-login"
+    LINKEDIN_OAUTH_CALLBACK_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/auth/linkedin-callback"
+    LINKEDIN_VERIFY_LINKING_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/auth/linkedin-verify"
+    
+    # LinkedIn OAuth Frontend URLs
+    LINKEDIN_LOGIN_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/login"
+    LINKEDIN_DASHBOARD_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/dashboard"
+    LINKEDIN_SETTINGS_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/settings"
+    LINKEDIN_REGISTER_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/register"
+    LINKEDIN_VERIFY_ACCOUNT_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/verify-account"
+    LINKEDIN_CONFLICT_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/linkedin-conflict"
     # NOTE: if API prefix var name changes, change it here: `security.py` to set `OAuth2PasswordBearer``
     # NOTE: also used in verify email url!
     API_V1_PREFIX: str = "/api/v1"

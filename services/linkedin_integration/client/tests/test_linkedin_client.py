@@ -33,7 +33,7 @@ from typing import Any
 
 # Import our LinkedInClient and required models
 from linkedin_integration.client.linkedin_client import LinkedInClient
-from global_config.settings import global_settings
+from kiwi_app.settings import settings
 
 async def test_post_retrieval_and_metrics(linkedin_client: LinkedInClient, post_id: str) -> None:
     """Helper function to test post retrieval and metrics for a given post."""
@@ -1238,12 +1238,12 @@ async def main() -> None:
     print("=== LinkedIn Organization API Testing ===\n")
     
     # Prompt user for necessary credentials.
-    client_id = global_settings.LINKEDIN_CLIENT_ID
-    client_secret = global_settings.LINKEDIN_CLIENT_SECRET
-    access_token = global_settings.LINKEDIN_ACCESS_TOKEN  # LINKEDIN_ACCESS_TOKEN  LINKEDIN_ACCESS_TOKEN
+    client_id = settings.LINKEDIN_CLIENT_ID
+    client_secret = settings.LINKEDIN_CLIENT_SECRET
+    access_token = settings.LINKEDIN_ACCESS_TOKEN  # LINKEDIN_ACCESS_TOKEN  LINKEDIN_ACCESS_TOKEN
     # urn:li:person:NxwL-IvR2n
     # urn:li:person:qUvas1UvE2
-    version_input = global_settings.LINKEDIN_API_VERSION
+    version_input = settings.LINKEDIN_API_VERSION
 
     # Instantiate the LinkedInClient with caching disabled for testing.
     linkedin_client = LinkedInClient(

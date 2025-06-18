@@ -52,7 +52,7 @@ class AuthService:
         self.refresh_token_dao = refresh_token_dao # Store DAO instance
 
     async def register_new_user(
-        self, db: AsyncSession, user_in: schemas.UserCreate | schemas.UserAdminCreate, background_tasks: BackgroundTasks, base_url: str, registered_by_admin: bool = False
+        self, db: AsyncSession, user_in: schemas.UserCreate | schemas.UserAdminCreate, background_tasks: BackgroundTasks, base_url: str, registered_by_admin: bool = False, is_verified: bool = False,
     ) -> models.User:
         """
         Handles user registration, creates a default organization, assigns admin role,
@@ -83,7 +83,7 @@ class AuthService:
         await self.user_dao.add_user_to_org(db=db, user=new_user, organization=default_org, role=admin_role)
 
         # 5. Trigger verification email using background tasks
-        if not registered_by_admin:
+        if not registered_by_admin and not is_verified:
             try:
                 await email_verify.trigger_send_verification_email(
                     background_tasks=background_tasks,
@@ -149,10 +149,8 @@ class AuthService:
             HTTPException: If database update fails
         """
         # 1. Verify the current password
-        # user = await self.user_dao.authenticate(db, email=user.email, password=current_password)
-        # if not user:
-        #     auth_logger.warning(f"Failed password change attempt for user {user.email}: current password verification failed")
-        #     raise CredentialsException(detail="Current password is incorrect")
+        if not security.verify_password(current_password, user.hashed_password):
+            raise CredentialsException(detail="Current password is incorrect")
         
         # 2. Hash the new password
         hashed_password = security.get_password_hash(new_password)
@@ -405,60 +403,6 @@ class AuthService:
                 status_code=500,
                 detail=f"Failed to retrieve organizations: {str(e)}"
             )
-
-
-    async def handle_linkedin_callback(self, db: AsyncSession, linkedin_user: schemas.LinkedInUser) -> models.User:
-        """
-        Handles user lookup/creation after successful LinkedIn OAuth.
-        Returns the local user model.
-        """
-        if not linkedin_user.id:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid LinkedIn user data (missing ID)")
-
-        user_email = linkedin_user.email
-        if not user_email:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Primary email not found for LinkedIn account.")
-
-        # Check by LinkedIn ID first
-        db_user = await self.user_dao.get_by_linkedin_id(db, linkedin_id=linkedin_user.id)
-
-        if not db_user:
-            # If not found by LinkedIn ID, check by email
-            db_user = await self.user_dao.get_by_email(db, email=user_email)
-            if db_user:
-                # User exists via email, link LinkedIn ID
-                if not db_user.linkedin_id:
-                    await self.user_dao.update(db, db_obj=db_user, obj_in=schemas.UserAdminUpdate(linkedin_id=linkedin_user.id))
-                # If linkedin_id exists but differs, potential conflict - decide strategy
-            else:
-                # User does not exist, create new OAuth user
-                db_user = await self.user_dao.create_oauth_user(
-                    db=db,
-                    email=user_email,
-                    full_name=linkedin_user.display_name,
-                    linkedin_id=linkedin_user.id
-                )
-                # Create a default organization and assign admin role for new OAuth user
-                org_name = f"{db_user.full_name or db_user.email.split('@')[0]}{DEFAULT_FIRST_USER_ORG_SUFFIX}"
-                try:
-                    default_org = await self.org_dao.create(db=db, obj_in=schemas.OrganizationCreate(name=org_name))
-                    admin_role = await self.role_dao.get_by_name(db, name=DefaultRoles.ADMIN)
-                    if not admin_role:
-                         # Log critical error, setup script should handle this
-                         auth_logger.critical(f"Default role '{DefaultRoles.ADMIN}' not found during LinkedIn signup for {user_email}")
-                         raise RoleNotFoundException(detail=f"Default role '{DefaultRoles.ADMIN}' not found.")
-                    await self.user_dao.add_user_to_org(db=db, user=db_user, organization=default_org, role=admin_role)
-                except Exception as e:
-                     # Log failure to create org/assign role, but user is already created
-                     auth_logger.error(f"Failed to create default org/assign role for LinkedIn user {user_email}: {e}", exc_info=True)
-                     # User creation succeeded, proceed without default org/role setup in this case?
-                     # Or raise a 500 error?
-                     # For now, log and continue.
-
-        if not db_user.is_active:
-            raise InactiveUserException()
-
-        return db_user # Return the found or created user
 
     async def send_first_steps_guide_email(
         self,
@@ -1130,6 +1074,190 @@ class AuthService:
                 status_code=500, 
                 detail="Failed to update billing email due to a database error"
             )
+
+    # --- Email Change Management ---
+
+    async def request_email_change(
+        self, 
+        db: AsyncSession, 
+        *, 
+        user: models.User, 
+        new_email: str, 
+        current_password: str,
+        background_tasks: BackgroundTasks,
+        base_url: str
+    ) -> dict:
+        """
+        Request an email address change for an authenticated user.
+        
+        This method:
+        1. Validates the current password for security
+        2. Checks that the new email is not already in use
+        3. Generates a secure verification token containing both old and new email
+        4. Sends verification email to the NEW email address
+        5. Returns success response without revealing if the new email exists
+        
+        The email change is not completed until the token is verified via the new email.
+        
+        Args:
+            db: Database session
+            user: The authenticated user requesting the email change
+            new_email: The new email address to change to
+            current_password: Current password for security verification
+            background_tasks: FastAPI BackgroundTasks for email sending
+            base_url: Base URL for the email verification link
+            
+        Returns:
+            dict: Success message (generic to prevent enumeration)
+            
+        Raises:
+            CredentialsException: If the current password is incorrect
+            EmailAlreadyExistsException: If the new email is already in use
+            HTTPException: If there's a database or email sending error
+        """
+        # 1. Verify current password for security
+        is_valid_password = security.verify_password(current_password, user.hashed_password)
+        if not is_valid_password:
+            auth_logger.warning(f"Email change request failed for {user.email}: incorrect current password")
+            raise CredentialsException(detail="Current password is incorrect")
+        
+        # 2. Check if new email is the same as current email
+        if new_email.lower() == user.email.lower():
+            auth_logger.info(f"Email change request ignored for {user.email}: new email same as current")
+            # Return success to avoid revealing this information
+            return {"message": "If the new email address is valid and available, a verification link will be sent to it."}
+        
+        # 3. Check if new email is already in use by another user
+        existing_user = await self.user_dao.get_by_email(db, email=new_email)
+        if existing_user and existing_user.id != user.id:
+            auth_logger.warning(f"Email change request failed for {user.email}: new email {new_email} already in use")
+            raise EmailAlreadyExistsException(detail="The new email address is already in use by another account")
+        
+        # 4. Generate email change verification token
+        # Store both old and new email in the token for security
+        try:
+            email_change_token = security.create_email_change_token(
+                user_id=user.id,
+                old_email=user.email,
+                new_email=new_email
+            )
+            
+            auth_logger.info(f"Email change verification token generated for user {user.email} -> {new_email}")
+        
+        except Exception as e:
+            auth_logger.error(f"Error generating email change token for {user.email}: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="Failed to generate verification token")
+        
+        # 5. Send verification email to NEW email address
+        try:
+            await email_verify.trigger_send_email_change_verification_email(
+                background_tasks=background_tasks,
+                user=user,
+                new_email=new_email,
+                base_url=base_url,
+                email_change_token=email_change_token,
+            )
+            
+            auth_logger.info(f"Email change verification email sent to {new_email} for user {user.email}")
+        
+        except Exception as e:
+            auth_logger.error(f"Error sending email change verification to {new_email} for user {user.email}: {e}", exc_info=True)
+            # Don't expose the specific error to prevent information leakage
+            raise HTTPException(status_code=500, detail="Failed to send verification email")
+        
+        # 6. Return generic success message
+        return {"message": "If the new email address is valid and available, a verification link will be sent to it."}
+
+    async def confirm_email_change(
+        self, 
+        db: AsyncSession, 
+        *, 
+        token: str
+    ) -> schemas.EmailChangeResponse:
+        """
+        Confirm and complete an email address change using a verification token.
+        
+        This method:
+        1. Validates the email change token
+        2. Extracts the old and new email from the token
+        3. Verifies the user still exists and matches the old email
+        4. Checks that the new email is still available
+        5. Updates the user's email address
+        6. Revokes all refresh tokens for security
+        7. Returns success response with new email
+        
+        Args:
+            db: Database session
+            token: Email change verification token from the new email
+            
+        Returns:
+            EmailChangeResponse: Success response with new email address
+            
+        Raises:
+            CredentialsException: If the token is invalid or expired
+            UserNotFoundException: If the user no longer exists
+            EmailAlreadyExistsException: If the new email is now taken by another user
+            HTTPException: If there's a database error during update
+        """
+        # 1. Verify the email change token
+        try:
+            token_data = await email_verify.verify_email_change_token(token)
+            user_id = token_data.sub
+            old_email = token_data.additional_claims.get("old_email")
+            new_email = token_data.additional_claims.get("new_email")
+            
+            if not old_email or not new_email:
+                auth_logger.error(f"Email change token missing required claims: old_email={old_email}, new_email={new_email}")
+                raise CredentialsException(detail="Invalid email change token format")
+                
+        except CredentialsException as e:
+            # Re-raise token validation errors
+            auth_logger.warning(f"Email change confirmation failed: {e.detail}")
+            raise e
+        except Exception as e:
+            auth_logger.error(f"Error verifying email change token: {e}", exc_info=True)
+            raise CredentialsException(detail="Invalid or expired email change token")
+        
+        # 2. Find the user and verify current email matches token
+        user = await self.user_dao.get(db, id=user_id)
+        if not user:
+            auth_logger.error(f"Email change token valid for user {user_id}, but user not found")
+            raise UserNotFoundException(detail="User associated with email change token not found")
+        
+        if user.email.lower() != old_email.lower():
+            auth_logger.error(f"Email change token old_email {old_email} doesn't match current user email {user.email}")
+            raise CredentialsException(detail="Email change token is no longer valid - user email has changed")
+        
+        # 3. Check if new email is still available
+        existing_user = await self.user_dao.get_by_email(db, email=new_email)
+        if existing_user and existing_user.id != user.id:
+            auth_logger.warning(f"Email change failed for {user.email}: new email {new_email} now taken by another user")
+            raise EmailAlreadyExistsException(detail="The new email address is no longer available")
+        
+        # 4. Update the user's email address
+        try:
+            email_update = schemas.UserAdminUpdate(email=new_email)
+            updated_user = await self.user_dao.update(db, db_obj=user, obj_in=email_update)
+            
+            auth_logger.info(f"Email successfully changed from {old_email} to {new_email} for user {user.id}")
+        
+        except Exception as e:
+            auth_logger.error(f"Database error during email change for user {user.email}: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="Failed to update email address due to a database error")
+        
+        # 5. Revoke all refresh tokens for security (user will need to log in again)
+        try:
+            await self.refresh_token_dao.revoke_all_for_user(db, user_id=user.id)
+            auth_logger.info(f"Revoked all refresh tokens for user after email change to {new_email}")
+        except Exception as e:
+            # Log but don't fail the email change if token revocation fails
+            auth_logger.error(f"Error revoking refresh tokens after email change: {e}", exc_info=True)
+        
+        # 6. Return success response
+        return schemas.EmailChangeResponse(
+            message="Email address successfully changed. Please log in again with your new email address.",
+            new_email=new_email
+        )
 
 # Instantiate service for use in routers/dependencies
 # auth_service = AuthService() 

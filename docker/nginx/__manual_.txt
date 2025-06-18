@@ -1,0 +1,5 @@
+
+chmod +x docker/nginx/init-letsencrypt.sh
+
+mkdir -p docker/nginx/data/nginx docker/nginx/data/certbot/conf docker/nginx/data/certbot/www
+

@@ -20,6 +20,7 @@ from kiwi_app.workflow_app import app_state as app_state_routes
 from kiwi_app.workflow_app import app_artifacts as app_artifacts_routes
 from kiwi_app.workflow_app import websockets as websocket_routes
 from kiwi_app.billing import routers as billing_routers
+from linkedin_integration import routers as linkedin_integration_routers
 
 # Get a logger instance for the main application
 
@@ -655,8 +656,8 @@ if settings.APP_ENV not in ("PROD", "STAGE"):
 # )
 
 # Include the authentication routes using the exposed router
+app.include_router(linkedin_integration_routers.linkedin_oauth_router, prefix=settings.API_V1_PREFIX)
 app.include_router(auth.router, prefix=settings.API_V1_PREFIX)
-
 # Include the billing routes using the exposed router
 app.include_router(billing_routers.billing_router, prefix=f"{settings.API_V1_PREFIX}")
 app.include_router(billing_routers.billing_admin_router, prefix=f"{settings.API_V1_PREFIX}")
