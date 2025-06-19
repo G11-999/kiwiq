@@ -65,10 +65,12 @@ async def test_share_statistics_comprehensive(
     # First, let's get some posts to use for specific post testing
     print(f"\n📋 Step 1: Fetching recent posts for specific post testing...")
     try:
-        posts = await linkedin_client.get_posts(
+        success, posts = await linkedin_client.get_posts(
             account_id=organization_urn,
             limit=5  # Get last 5 posts for testing
         )
+        if not success or not posts:
+            posts = []
 
         print(f"✅ Found {len(posts)} posts for testing")
         
@@ -80,7 +82,7 @@ async def test_share_statistics_comprehensive(
         for post in posts[:3]:  # Use max 3 posts for testing
             # Determine if it's a UGC post or share based on the post structure
             # For now, assume all are UGC posts (most common case)
-            post_urn = f"urn:li:ugcPost:{post.id}" if not post.id.startswith("urn:") else post.id
+            post_urn = f"urn:li:ugcPost:{post.get('id')}" if not post.get('id').startswith("urn:") else post.get('id')
             if "ugcPost" in post_urn:
                 ugc_post_urns.append(post_urn)
             else:
@@ -90,7 +92,7 @@ async def test_share_statistics_comprehensive(
         print(f"📌 UGC Post URNs for testing: {ugc_post_urns}")
         print(f"📌 Share URNs for testing: {share_urns}")
 
-        import ipdb; ipdb.set_trace()
+        # import ipdb; ipdb.set_trace()
         
     except Exception as e:
         print(f"⚠️  Could not fetch posts: {str(e)}")

@@ -598,4 +598,493 @@ class LinkedinOauthDAO(BaseDAO[models.LinkedinUserOauth, None, None]):
             
         except Exception as e:
             logger.error(f"ADMIN: Error retrieving LinkedIn OAuth records: {e}")
+            raise
+
+
+class LinkedinIntegrationDAO(BaseDAO[models.LinkedinIntegration, None, None]):
+    """
+    Data Access Object for LinkedIn Integration operations.
+    
+    This DAO handles database operations for LinkedIn integrations that users
+    add to manage multiple LinkedIn accounts (separate from OAuth login).
+    """
+    
+    def __init__(self):
+        super().__init__(models.LinkedinIntegration)
+    
+    async def get_by_user_and_linkedin_id(
+        self,
+        db: AsyncSession,
+        user_id: uuid.UUID,
+        linkedin_id: str
+    ) -> Optional[models.LinkedinIntegration]:
+        """Get integration by user ID and LinkedIn ID."""
+        try:
+            statement = select(self.model).where(
+                and_(
+                    self.model.user_id == user_id,
+                    self.model.linkedin_id == linkedin_id
+                )
+            )
+            result = await db.execute(statement)
+            return result.scalars().first()
+        except Exception as e:
+            logger.error(f"Error getting integration for user {user_id}, linkedin {linkedin_id}: {e}")
+            raise
+    
+    async def get_by_user_id(
+        self,
+        db: AsyncSession,
+        user_id: uuid.UUID
+    ) -> List[models.LinkedinIntegration]:
+        """Get all integrations for a user."""
+        try:
+            statement = select(self.model).where(self.model.user_id == user_id)
+            result = await db.execute(statement)
+            return result.scalars().all()
+        except Exception as e:
+            logger.error(f"Error getting integrations for user {user_id}: {e}")
+            raise
+    
+    async def create_integration(
+        self,
+        db: AsyncSession,
+        user_id: uuid.UUID,
+        linkedin_id: str,
+        access_token: str,
+        refresh_token: Optional[str],
+        scope: str,
+        expires_in: int,
+        refresh_token_expires_in: Optional[int],
+        linkedin_orgs_roles: Optional[dict] = None,
+        commit: bool = True
+    ) -> models.LinkedinIntegration:
+        """Create a new LinkedIn integration."""
+        try:
+            integration = models.LinkedinIntegration(
+                user_id=user_id,
+                linkedin_id=linkedin_id,
+                access_token=access_token,
+                refresh_token=refresh_token,
+                scope=scope,
+                expires_in=expires_in,
+                refresh_token_expires_in=refresh_token_expires_in,
+                linkedin_orgs_roles=linkedin_orgs_roles,
+                integration_state=models.LinkedinOauthState.ACTIVE,
+                last_sync_at=datetime_now_utc()
+            )
+            integration.update_expiration_timestamps()
+            
+            db.add(integration)
+            if commit:
+                await db.commit()
+                await db.refresh(integration)
+            
+            logger.info(f"Created LinkedIn integration {integration.id} for user {user_id}")
+            return integration
+        except Exception as e:
+            if commit:
+                await db.rollback()
+            logger.error(f"Error creating LinkedIn integration: {e}")
+            raise
+    
+    async def update_tokens(
+        self,
+        db: AsyncSession,
+        integration_id: uuid.UUID,
+        access_token: str,
+        refresh_token: Optional[str],
+        expires_in: int,
+        refresh_token_expires_in: Optional[int],
+        commit: bool = True
+    ) -> Optional[models.LinkedinIntegration]:
+        """Update tokens for an integration."""
+        try:
+            integration = await self.get(db, integration_id)
+            if not integration:
+                return None
+            
+            integration.access_token = access_token
+            if refresh_token:
+                integration.refresh_token = refresh_token
+            integration.expires_in = expires_in
+            integration.refresh_token_expires_in = refresh_token_expires_in
+            integration.update_expiration_timestamps()
+            integration.last_sync_at = datetime_now_utc()
+            
+            db.add(integration)
+            if commit:
+                await db.commit()
+                await db.refresh(integration)
+            
+            return integration
+        except Exception as e:
+            if commit:
+                await db.rollback()
+            logger.error(f"Error updating integration tokens: {e}")
+            raise
+    
+    async def update_linkedin_orgs_roles(
+        self,
+        db: AsyncSession,
+        integration_id: uuid.UUID,
+        linkedin_orgs_roles: dict,
+        commit: bool = True
+    ) -> Optional[models.LinkedinIntegration]:
+        """Update LinkedIn organizations and roles data."""
+        try:
+            integration = await self.get(db, integration_id)
+            if not integration:
+                return None
+            
+            integration.linkedin_orgs_roles = linkedin_orgs_roles
+            integration.last_sync_at = datetime_now_utc()
+            
+            db.add(integration)
+            if commit:
+                await db.commit()
+                await db.refresh(integration)
+            
+            return integration
+        except Exception as e:
+            if commit:
+                await db.rollback()
+            logger.error(f"Error updating LinkedIn orgs/roles: {e}")
+            raise
+    
+    async def update_state(
+        self,
+        db: AsyncSession,
+        integration_id: uuid.UUID,
+        integration_state: models.LinkedinOauthState,
+        commit: bool = True
+    ) -> Optional[models.LinkedinIntegration]:
+        """Update integration state."""
+        try:
+            integration = await self.get(db, integration_id)
+            if not integration:
+                return None
+            
+            integration.integration_state = integration_state.value
+            
+            db.add(integration)
+            if commit:
+                await db.commit()
+                await db.refresh(integration)
+            
+            return integration
+        except Exception as e:
+            if commit:
+                await db.rollback()
+            logger.error(f"Error updating integration state: {e}")
+            raise
+
+
+class LinkedinAccountDAO(BaseDAO[models.LinkedinAccount, None, None]):
+    """
+    Data Access Object for LinkedIn Account operations.
+    
+    This DAO handles database operations for LinkedIn accounts (persons or organizations).
+    """
+    
+    def __init__(self):
+        super().__init__(models.LinkedinAccount)
+    
+    async def create_or_update(
+        self,
+        db: AsyncSession,
+        linkedin_id: str,
+        account_type: str,
+        name: Optional[str] = None,
+        vanity_name: Optional[str] = None,
+        profile_data: Optional[dict] = None,
+        commit: bool = True
+    ) -> models.LinkedinAccount:
+        """Create or update a LinkedIn account."""
+        try:
+            existing = await self.get(db, linkedin_id)
+            
+            if existing:
+                # Update existing
+                if name:
+                    existing.name = name
+                if vanity_name is not None:
+                    existing.vanity_name = vanity_name
+                if profile_data:
+                    existing.profile_data = profile_data
+                existing.last_updated_at = datetime_now_utc()
+                
+                db.add(existing)
+                if commit:
+                    await db.commit()
+                    await db.refresh(existing)
+                
+                return existing
+            else:
+                # Create new
+                account = models.LinkedinAccount(
+                    id=linkedin_id,
+                    account_type=account_type,
+                    name=name,
+                    vanity_name=vanity_name,
+                    profile_data=profile_data,
+                    last_updated_at=datetime_now_utc()
+                )
+                
+                db.add(account)
+                if commit:
+                    await db.commit()
+                    await db.refresh(account)
+                
+                logger.info(f"Created LinkedIn account {linkedin_id} ({account_type})")
+                return account
+        except Exception as e:
+            if commit:
+                await db.rollback()
+            logger.error(f"Error creating/updating LinkedIn account: {e}")
+            raise
+    
+    async def update(
+        self,
+        db: AsyncSession,
+        linkedin_id: str,
+        name: Optional[str] = None,
+        vanity_name: Optional[str] = None,
+        profile_data: Optional[dict] = None,
+        commit: bool = True
+    ) -> Optional[models.LinkedinAccount]:
+        """Update a LinkedIn account."""
+        try:
+            account = await self.get(db, linkedin_id)
+            if not account:
+                return None
+            
+            if name is not None:
+                account.name = name
+            if vanity_name is not None:
+                account.vanity_name = vanity_name
+            if profile_data is not None:
+                account.profile_data = profile_data
+            account.last_updated_at = datetime_now_utc()
+            
+            db.add(account)
+            if commit:
+                await db.commit()
+                await db.refresh(account)
+            
+            return account
+        except Exception as e:
+            if commit:
+                await db.rollback()
+            logger.error(f"Error updating LinkedIn account {linkedin_id}: {e}")
+            raise
+    
+    async def get_by_type(
+        self,
+        db: AsyncSession,
+        account_type: str
+    ) -> List[models.LinkedinAccount]:
+        """Get all accounts of a specific type."""
+        try:
+            statement = select(self.model).where(self.model.account_type == account_type)
+            result = await db.execute(statement)
+            return result.scalars().all()
+        except Exception as e:
+            logger.error(f"Error getting accounts by type {account_type}: {e}")
+            raise
+
+
+class OrgLinkedinAccountDAO(BaseDAO[models.OrgLinkedinAccount, None, None]):
+    """
+    Data Access Object for Org LinkedIn Account operations.
+    
+    This DAO handles database operations for LinkedIn accounts shared within organizations.
+    """
+    
+    def __init__(self):
+        super().__init__(models.OrgLinkedinAccount)
+    
+    async def create_org_linkedin_account(
+        self,
+        db: AsyncSession,
+        linkedin_account_id: str,
+        linkedin_integration_id: uuid.UUID,
+        managed_by_user_id: uuid.UUID,
+        organization_id: uuid.UUID,
+        role_in_linkedin_entity: Optional[str] = None,
+        is_shared: bool = True,
+        commit: bool = True
+    ) -> models.OrgLinkedinAccount:
+        """Create a new org LinkedIn account."""
+        try:
+            org_account = models.OrgLinkedinAccount(
+                linkedin_account_id=linkedin_account_id,
+                linkedin_integration_id=linkedin_integration_id,
+                managed_by_user_id=managed_by_user_id,
+                organization_id=organization_id,
+                role_in_linkedin_entity=role_in_linkedin_entity,
+                is_shared=is_shared,
+                is_active=True,
+                status=models.OrgLinkedinAccountStatus.ACTIVE
+            )
+            
+            db.add(org_account)
+            if commit:
+                await db.commit()
+                await db.refresh(org_account)
+            
+            logger.info(f"Created org LinkedIn account {org_account.id} for org {organization_id}")
+            return org_account
+        except Exception as e:
+            if commit:
+                await db.rollback()
+            logger.error(f"Error creating org LinkedIn account: {e}")
+            raise
+    
+    async def get_by_organization(
+        self,
+        db: AsyncSession,
+        organization_id: uuid.UUID,
+        active_only: bool = True,
+        shared_only: bool = True
+    ) -> List[models.OrgLinkedinAccount]:
+        """Get all LinkedIn accounts for an organization."""
+        try:
+            statement = select(self.model).where(
+                self.model.organization_id == organization_id
+            )
+            
+            if active_only:
+                statement = statement.where(self.model.is_active == True)
+            
+            if shared_only:
+                statement = statement.where(self.model.is_shared == True)
+            
+            result = await db.execute(statement)
+            return result.scalars().all()
+        except Exception as e:
+            logger.error(f"Error getting org LinkedIn accounts: {e}")
+            raise
+    
+    async def get_by_user_in_org(
+        self,
+        db: AsyncSession,
+        user_id: uuid.UUID,
+        organization_id: uuid.UUID
+    ) -> List[models.OrgLinkedinAccount]:
+        """Get LinkedIn accounts managed by a specific user in an organization."""
+        try:
+            statement = select(self.model).where(
+                and_(
+                    self.model.managed_by_user_id == user_id,
+                    self.model.organization_id == organization_id
+                )
+            )
+            result = await db.execute(statement)
+            return result.scalars().all()
+        except Exception as e:
+            logger.error(f"Error getting user's org LinkedIn accounts: {e}")
+            raise
+    
+    async def update_sharing_status(
+        self,
+        db: AsyncSession,
+        org_account_id: uuid.UUID,
+        is_shared: bool,
+        commit: bool = True
+    ) -> Optional[models.OrgLinkedinAccount]:
+        """Update the sharing status of an org LinkedIn account."""
+        try:
+            org_account = await self.get(db, org_account_id)
+            if not org_account:
+                return None
+            
+            org_account.is_shared = is_shared
+            
+            db.add(org_account)
+            if commit:
+                await db.commit()
+                await db.refresh(org_account)
+            
+            return org_account
+        except Exception as e:
+            if commit:
+                await db.rollback()
+            logger.error(f"Error updating sharing status: {e}")
+            raise
+    
+    async def deactivate_by_integration(
+        self,
+        db: AsyncSession,
+        integration_id: uuid.UUID,
+        commit: bool = True
+    ) -> int:
+        """Deactivate all org accounts using a specific integration."""
+        try:
+            statement = update(self.model).where(
+                self.model.linkedin_integration_id == integration_id
+            ).values(is_active=False)
+            
+            result = await db.execute(statement)
+            if commit:
+                await db.commit()
+            
+            count = result.rowcount
+            logger.info(f"Deactivated {count} org LinkedIn accounts for integration {integration_id}")
+            return count
+        except Exception as e:
+            if commit:
+                await db.rollback()
+            logger.error(f"Error deactivating org accounts: {e}")
+            raise
+    
+    async def get_by_integration(
+        self,
+        db: AsyncSession,
+        integration_id: uuid.UUID
+    ) -> List[models.OrgLinkedinAccount]:
+        """Get all org LinkedIn accounts using a specific integration."""
+        try:
+            statement = select(self.model).where(
+                self.model.linkedin_integration_id == integration_id
+            )
+            result = await db.execute(statement)
+            return result.scalars().all()
+        except Exception as e:
+            logger.error(f"Error getting org accounts by integration: {e}")
+            raise
+    
+    async def delete_org_linkedin_account(
+        self,
+        db: AsyncSession,
+        org_account_id: uuid.UUID,
+        commit: bool = True
+    ) -> bool:
+        """
+        Delete an org LinkedIn account.
+        
+        Args:
+            db: Database session
+            org_account_id: ID of the org LinkedIn account to delete
+            commit: Whether to commit the transaction
+            
+        Returns:
+            True if deleted, False if not found
+        """
+        try:
+            org_account = await self.get(db, org_account_id)
+            if not org_account:
+                return False
+            
+            await db.delete(org_account)
+            
+            if commit:
+                await db.commit()
+            
+            logger.info(f"Deleted org LinkedIn account {org_account_id}")
+            return True
+        except Exception as e:
+            if commit:
+                await db.rollback()
+            logger.error(f"Error deleting org LinkedIn account: {e}")
             raise 

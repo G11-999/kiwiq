@@ -30,8 +30,23 @@ logger = get_kiwi_logger("linkedin_integration.dependencies")
 
 
 def get_linkedin_oauth_dao() -> crud.LinkedinOauthDAO:
-    """Get LinkedinOauthDAO instance"""
+    """Get LinkedIn OAuth DAO instance."""
     return crud.LinkedinOauthDAO()
+
+
+def get_linkedin_integration_dao() -> crud.LinkedinIntegrationDAO:
+    """Get LinkedIn Integration DAO instance."""
+    return crud.LinkedinIntegrationDAO()
+
+
+def get_linkedin_account_dao() -> crud.LinkedinAccountDAO:
+    """Get LinkedIn Account DAO instance."""
+    return crud.LinkedinAccountDAO()
+
+
+def get_org_linkedin_account_dao() -> crud.OrgLinkedinAccountDAO:
+    """Get Org LinkedIn Account DAO instance."""
+    return crud.OrgLinkedinAccountDAO()
 
 
 def get_linkedin_oauth_service(
@@ -50,6 +65,23 @@ def get_linkedin_oauth_service(
         linkedin_oauth_dao=linkedin_oauth_dao,
         user_dao=user_dao,
         org_dao=org_dao,
+        auth_service=auth_service
+    )
+
+
+def get_linkedin_integration_service(
+    linkedin_integration_dao: crud.LinkedinIntegrationDAO = Depends(get_linkedin_integration_dao),
+    linkedin_account_dao: crud.LinkedinAccountDAO = Depends(get_linkedin_account_dao),
+    org_linkedin_account_dao: crud.OrgLinkedinAccountDAO = Depends(get_org_linkedin_account_dao),
+    user_dao: auth_crud.UserDAO = Depends(get_user_dao),
+    auth_service: AuthService = Depends(get_auth_service)
+) -> services.LinkedinIntegrationService:
+    """Get LinkedIn Integration service instance."""
+    return services.LinkedinIntegrationService(
+        linkedin_integration_dao=linkedin_integration_dao,
+        linkedin_account_dao=linkedin_account_dao,
+        org_linkedin_account_dao=org_linkedin_account_dao,
+        user_dao=user_dao,
         auth_service=auth_service
     )
 

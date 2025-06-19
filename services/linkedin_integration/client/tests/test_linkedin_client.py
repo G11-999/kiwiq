@@ -45,11 +45,11 @@ async def test_post_retrieval_and_metrics(linkedin_client: LinkedInClient, post_
         print(f"ARGS: {json.dumps([post_id])}")
         print(f"KWARGS: {json.dumps({'view_context': 'AUTHOR'}, indent=2)}")
         print("="*80)
-        post_by_urn = await linkedin_client.get_post_by_urn(
+        success, post_by_urn = await linkedin_client.get_post_by_urn(
             post_urn=post_id,
             view_context="AUTHOR"
         )
-        if post_by_urn:
+        if success and post_by_urn:
             print(f"Retrieved post by URN: {json.dumps(post_by_urn, indent=2)}")
         else:
             print("No post found by URN")
@@ -61,10 +61,10 @@ async def test_post_retrieval_and_metrics(linkedin_client: LinkedInClient, post_
         print(f"ARGS: {json.dumps([post_id])}")
         print("KWARGS: {}")
         print("="*80)
-        social_actions = await linkedin_client.get_post_social_actions(
+        success, social_actions = await linkedin_client.get_post_social_actions(
             post_id=post_id
         )
-        print(f"Retrieved social actions: {json.dumps(social_actions.model_dump() if social_actions else None, indent=2)}")
+        print(f"Retrieved social actions: {json.dumps(social_actions.model_dump() if success and social_actions else None, indent=2)}")
 
         # Test getting comments for the post
         ########################################################################
@@ -73,11 +73,14 @@ async def test_post_retrieval_and_metrics(linkedin_client: LinkedInClient, post_
         print(f"ARGS: {json.dumps([post_id])}")
         print("KWARGS: {}")
         print("="*80)
-        comments = await linkedin_client.get_post_comments(
+        success, comments = await linkedin_client.get_post_comments(
             post_urn=post_id
         )
-        print(f"Retrieved {len(comments)} comments:")
-        print([comment.model_dump() for comment in comments])
+        if success and comments:
+            print(f"Retrieved {len(comments)} comments:")
+            print([comment.model_dump() for comment in comments])
+        else:
+            print("No comments retrieved")
 
         # Test getting likes for the post
         ########################################################################
@@ -86,11 +89,14 @@ async def test_post_retrieval_and_metrics(linkedin_client: LinkedInClient, post_
         print(f"ARGS: {json.dumps([post_id])}")
         print("KWARGS: {}")
         print("="*80)
-        likes = await linkedin_client.get_post_likes(
+        success, likes = await linkedin_client.get_post_likes(
             post_urn=post_id
         )
-        print(f"Retrieved {len(likes)} likes:")
-        print([like.model_dump() for like in likes])
+        if success and likes:
+            print(f"Retrieved {len(likes)} likes:")
+            print([like.model_dump() for like in likes])
+        else:
+            print("No likes retrieved")
         
         import ipdb; ipdb.set_trace()
         
@@ -113,17 +119,20 @@ async def test_org_selection(linkedin_client: LinkedInClient) -> None:
     print("="*80)
 
     user_urn = "urn:li:person:UPV9MhVHZy"  # Raina / Khyati probably!
-    person_profile = await linkedin_client.get_person_profile(user_urn)
-    print(f"\n\n\n\nPerson profile: {person_profile.model_dump_json(indent=2)}\n\n\n\n")
+    success, person_profile = await linkedin_client.get_person_profile(user_urn)
+    if success:
+        print(f"\n\n\n\nPerson profile: {person_profile.model_dump_json(indent=2)}\n\n\n\n")
 
 
-    member_followers_count_lifetime = await linkedin_client.get_member_followers_count_lifetime()
-    print(f"\n\n\n\nMember followers count lifetime: {member_followers_count_lifetime}\n\n\n\n")
+    success, member_followers_count_lifetime = await linkedin_client.get_member_followers_count_lifetime()
+    if success:
+        print(f"\n\n\n\nMember followers count lifetime: {member_followers_count_lifetime}\n\n\n\n")
     
     start_date = datetime(2025, 4, 4)
     end_date = datetime(2025, 5, 3)
-    member_followers_count_by_date_range = await linkedin_client.get_member_followers_count_by_date_range(start_date, end_date)
-    print(f"\n\n\n\nMember followers count by date range: {member_followers_count_by_date_range}\n\n\n\n")
+    success, member_followers_count_by_date_range = await linkedin_client.get_member_followers_count_by_date_range(start_date, end_date)
+    if success:
+        print(f"\n\n\n\nMember followers count by date range: {member_followers_count_by_date_range}\n\n\n\n")
 
     # ########################################################################
     # ########################################################################
@@ -243,7 +252,10 @@ async def test_org_selection(linkedin_client: LinkedInClient) -> None:
         print("ARGS: {}")
         print("KWARGS: {}")
         print("="*80)
-        roles_response = await linkedin_client.get_member_organization_roles()
+        success, roles_response = await linkedin_client.get_member_organization_roles()
+        if not success or not roles_response:
+            print("Failed to fetch organization roles.")
+            return
         ########################################################################
         roles = roles_response.elements
 
@@ -259,7 +271,10 @@ async def test_org_selection(linkedin_client: LinkedInClient) -> None:
         print("ARGS: {}")
         print("KWARGS: {}")
         print("="*80)
-        member_profile = await linkedin_client.get_member_profile()
+        success, member_profile = await linkedin_client.get_member_profile()
+        if not success or not member_profile:
+            print("Failed to fetch member profile.")
+            return
         ########################################################################
 
         print(f"\nAuthenticated Member Profile:")
@@ -280,7 +295,10 @@ async def test_org_selection(linkedin_client: LinkedInClient) -> None:
             print("KWARGS: {}")
             print("="*80)
             print(role.organization)
-            org_details = await linkedin_client.get_organization_details(role.organization)
+            success, org_details = await linkedin_client.get_organization_details(role.organization)
+            if not success or not org_details:
+                print("Failed to fetch organization details.")
+                return
             ########################################################################
             org_name = org_details.display_name
             
@@ -979,10 +997,12 @@ async def test_org_selection(linkedin_client: LinkedInClient) -> None:
                 'limit': 50
             }, indent=2)}")
             print("="*80)
-            org_posts = await linkedin_client.get_posts(
+            success, org_posts = await linkedin_client.get_posts(
                 account_id=organization_urn,
                 limit=50
             )
+            if not success or not org_posts:
+                org_posts = []
             ########################################################################
             print(f"Found {len(org_posts)} organization posts:")
             for i, post in enumerate(org_posts, 1):
@@ -1017,10 +1037,12 @@ async def test_org_selection(linkedin_client: LinkedInClient) -> None:
                 'limit': 50
             }, indent=2)}")
             print("="*80)
-            user_posts = await linkedin_client.get_posts(
+            success, user_posts = await linkedin_client.get_posts(
                 account_id=user_urn,
                 limit=50
             )
+            if not success or not user_posts:
+                user_posts = []
             ########################################################################
             
             print(f"Found {len(user_posts)} user posts:")
@@ -1056,7 +1078,9 @@ async def test_org_selection(linkedin_client: LinkedInClient) -> None:
                 print("KWARGS: {}")
                 print("="*80)
                 # linkedin_client.enable_caching = False
-                user_social_actions = await linkedin_client.batch_get_post_social_actions(user_post_ids)
+                success, user_social_actions = await linkedin_client.batch_get_post_social_actions(user_post_ids)
+                if not success or not user_social_actions:
+                    user_social_actions = {}
                 ########################################################################
                 print(f"Retrieved social actions for {len(user_social_actions)} user posts:")
                 for post_id, actions in user_social_actions.items():
@@ -1115,7 +1139,9 @@ async def test_org_selection(linkedin_client: LinkedInClient) -> None:
                 print("KWARGS: {}")
                 print("="*80)
                 # linkedin_client.enable_caching = False
-                org_social_actions = await linkedin_client.batch_get_post_social_actions(org_post_ids)
+                success, org_social_actions = await linkedin_client.batch_get_post_social_actions(org_post_ids)
+                if not success or not org_social_actions:
+                    org_social_actions = {}
                 ########################################################################
                 print(f"Retrieved social actions for {len(org_social_actions)} organization posts:")
                 for post_id, actions in org_social_actions.items():
@@ -1156,7 +1182,9 @@ async def test_org_selection(linkedin_client: LinkedInClient) -> None:
             print("KWARGS: {}")
             print("="*80)
             # linkedin_client.enable_caching = False
-            lifetime_stats = await linkedin_client.get_organization_lifetime_share_statistics(organization_urn)
+            success, lifetime_stats = await linkedin_client.get_organization_lifetime_share_statistics(organization_urn)
+            if not success:
+                lifetime_stats = None
             ########################################################################
             print("Lifetime Share Statistics:")
             print(lifetime_stats)
@@ -1181,7 +1209,9 @@ async def test_org_selection(linkedin_client: LinkedInClient) -> None:
             print("KWARGS: {}")
             print("="*80)
             # linkedin_client.enable_caching = False
-            follower_count = await linkedin_client.get_organization_follower_count(organization_urn)
+            success, follower_count = await linkedin_client.get_organization_follower_count(organization_urn)
+            if not success:
+                follower_count = None
             ########################################################################
             print("Current Follower Count:")
             print(follower_count)
@@ -1210,9 +1240,11 @@ async def test_org_selection(linkedin_client: LinkedInClient) -> None:
                 'granularity': 'DAY'
             }, indent=2)}")
             print("="*80)
-            timebound_stats = await linkedin_client.get_organization_timebound_share_statistics(
+            success, timebound_stats = await linkedin_client.get_organization_timebound_share_statistics(
                 organization_urn, start_date, end_date, granularity="DAY"
             )
+            if not success:
+                timebound_stats = None
             ########################################################################
             print("Time-bound Share Statistics (Last 7 Days):")
             print(timebound_stats)

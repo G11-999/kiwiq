@@ -10,6 +10,7 @@ class DefaultRoles(str, Enum):
     ADMIN = "admin"
     TEAM_MEMBER = "team_member"
     BILLING = "billing"
+    LINKEDIN_OAUTH_USER = "client"
 
 # --- Permission Names (Org-Level Only) ---
 # Define permissions granularly - all permissions operate within an organization context.
@@ -21,6 +22,8 @@ class Permissions(str, Enum):
     ORG_MANAGE_MEMBERS = "org:manage_members" # Add/remove/change roles within the org
     ORG_VIEW_MEMBERS = "org:view_members" # View members within the org
     ORG_MANAGE_ROLES = "org:manage_roles" # Create/update/delete custom roles within the org
+    ORG_ADD_LINKEDIN_INTEGRATIONS = "org:add_linkedin_integrations" # Add LinkedIn integrations to the org
+    ORG_DELETE_LINKEDIN_INTEGRATIONS = "org:delete_linkedin_integrations" # Delete LinkedIn integrations from the org
     # ORG_MANAGE_BILLING = "org:manage_billing"
 
     # # Workflow Management (within the org)
@@ -45,8 +48,12 @@ DEFAULT_ROLE_PERMISSIONS = {
     DefaultRoles.ADMIN: [
         *ALL_PERMISSIONS # Grant all permissions
     ],
+    DefaultRoles.LINKEDIN_OAUTH_USER: [
+        Permissions.ORG_ADD_LINKEDIN_INTEGRATIONS, # Can add LinkedIn integrations to org
+    ],
     DefaultRoles.TEAM_MEMBER: [
         Permissions.ORG_READ, # Can see org details
+        Permissions.ORG_ADD_LINKEDIN_INTEGRATIONS, # Can add LinkedIn integrations to org
         # Permissions.ORG_VIEW_MEMBERS, # Can see org details
         WorkflowPermissions.WORKFLOW_CREATE,
         WorkflowPermissions.WORKFLOW_READ,

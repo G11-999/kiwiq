@@ -13,7 +13,7 @@ import uuid
 from pydantic import BaseModel, Field, EmailStr, field_validator, ConfigDict
 
 from kiwi_app.auth.models import User
-from linkedin_integration.models import LinkedinUserOauth
+from linkedin_integration.models import LinkedinUserOauth, LinkedinAccountType, OrgLinkedinAccountStatus
 
 
 # Enums
@@ -256,5 +256,189 @@ class AdminLinkedinOauthListResponse(BaseModel):
     limit: int = Field(..., description="Records per page limit")
     offset: int = Field(..., description="Number of records skipped")
     has_more: bool = Field(..., description="Whether there are more records available")
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+# LinkedIn Integration Schemas
+
+class LinkedinIntegrationBase(BaseModel):
+    """Base schema for LinkedIn integrations."""
+    linkedin_id: str = Field(..., description="LinkedIn sub/ID of the integration owner")
+    scope: Optional[str] = Field(None, description="OAuth scopes for the integration")
+    integration_state: str = Field(..., description="Current state of the integration")
+    linkedin_orgs_roles: Optional[Dict[str, Any]] = Field(None, description="LinkedIn organizations and roles")
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LinkedinIntegrationCreate(BaseModel):
+    """Schema for creating a LinkedIn integration."""
+    pass  # Created through OAuth callback process
+
+
+class LinkedinIntegrationRead(LinkedinIntegrationBase):
+    """Read schema for LinkedIn integration."""
+    id: uuid.UUID
+    user_id: uuid.UUID
+    is_expired: Optional[bool] = Field(None, description="Whether the access token is expired")
+    token_expires_at: Optional[datetime]
+    last_sync_at: Optional[datetime]
+    created_at: datetime
+    updated_at: datetime
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LinkedinIntegrationUpdate(BaseModel):
+    """Schema for updating LinkedIn integration."""
+    linkedin_orgs_roles: Optional[Dict[str, Any]] = Field(None, description="Updated organizations and roles")
+
+
+class LinkedinAccountBase(BaseModel):
+    """Base schema for LinkedIn accounts."""
+    id: str = Field(..., description="LinkedIn identifier (person or org ID)")
+    account_type: LinkedinAccountType = Field(..., description="Type of LinkedIn account (person or organization)")
+    name: Optional[str] = Field(None, description="Account name")
+    vanity_name: Optional[str] = Field(None, description="LinkedIn vanity name/username (e.g., company URL slug)")
+    profile_data: Optional[Dict[str, Any]] = Field(None, description="Cached profile data")
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LinkedinAccountCreate(BaseModel):
+    """Schema for creating a LinkedIn account."""
+    id: str = Field(..., description="LinkedIn identifier")
+    account_type: LinkedinAccountType = Field(..., description="Type of LinkedIn account (person or organization)")
+    name: Optional[str] = Field(None, description="Account name")
+    vanity_name: Optional[str] = Field(None, description="LinkedIn vanity name/username")
+    profile_data: Optional[Dict[str, Any]] = Field(None, description="Profile data")
+
+
+class LinkedinAccountRead(LinkedinAccountBase):
+    """Read schema for LinkedIn account."""
+    last_updated_at: Optional[datetime]
+    created_at: datetime
+    updated_at: datetime
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+class OrgLinkedinAccountBase(BaseModel):
+    """Base schema for org LinkedIn accounts."""
+    linkedin_account_id: str = Field(..., description="LinkedIn account ID")
+    linkedin_integration_id: uuid.UUID = Field(..., description="Integration ID")
+    role_in_linkedin_entity: Optional[str] = Field(None, description="Role in the LinkedIn entity (e.g., ADMINISTRATOR, DIRECT_SPONSORED_CONTENT_POSTER)")
+    is_shared: bool = Field(True, description="Whether shared with org")
+    is_active: bool = Field(True, description="Whether the account is active")
+    status: OrgLinkedinAccountStatus = Field(OrgLinkedinAccountStatus.ACTIVE, description="Current status of the LinkedIn account integration")
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+class OrgLinkedinAccountCreate(BaseModel):
+    """Schema for creating an org LinkedIn account."""
+    linkedin_account_id: str = Field(..., description="LinkedIn account ID to share")
+    linkedin_integration_id: uuid.UUID = Field(..., description="Integration to use")
+    is_shared: bool = Field(True, description="Whether to share with org")
+
+
+class OrgLinkedinAccountRead(OrgLinkedinAccountBase):
+    """Read schema for org LinkedIn account."""
+    id: uuid.UUID
+    managed_by_user_id: uuid.UUID
+    organization_id: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
+    
+    # Nested data
+    linkedin_account: Optional[LinkedinAccountRead] = None
+    linkedin_integration: Optional[LinkedinIntegrationRead] = None
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+class OrgLinkedinAccountUpdate(BaseModel):
+    """Schema for updating org LinkedIn account."""
+    is_shared: Optional[bool] = Field(None, description="Update sharing status")
+    is_active: Optional[bool] = Field(None, description="Update active status")
+
+
+class LinkedinIntegrationInitiateResponse(BaseModel):
+    """Response for initiating LinkedIn integration flow."""
+    authorization_url: str = Field(..., description="URL to redirect user for LinkedIn authorization")
+
+
+class LinkedinIntegrationCallbackResponse(BaseModel):
+    """Response for LinkedIn integration callback."""
+    success: bool
+    integration_id: Optional[uuid.UUID] = Field(None, description="Created integration ID")
+    message: str
+    linkedin_orgs_roles: Optional[Dict[str, Any]] = Field(None, description="Available organizations and roles")
+
+
+class LinkedinIntegrationListResponse(BaseModel):
+    """Response for listing user's LinkedIn integrations."""
+    integrations: List[LinkedinIntegrationRead]
+    total: int
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+class OrgLinkedinAccountListResponse(BaseModel):
+    """Response for listing organization's LinkedIn accounts."""
+    accounts: List[OrgLinkedinAccountRead]
+    total: int
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+# New schemas for sync and listing user's accessible accounts
+
+class LinkedinAccountWithRole(BaseModel):
+    """LinkedIn account with user's role information."""
+    account: LinkedinAccountRead
+    role: Optional[str] = Field(None, description="User's role in this LinkedIn entity")
+    integration_id: uuid.UUID = Field(..., description="Integration ID used to access this account")
+    integration_state: str = Field(..., description="State of the integration")
+    can_post: bool = Field(..., description="Whether user can post on behalf of this account")
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UserAccessibleLinkedinAccountsResponse(BaseModel):
+    """Response for listing all user's accessible LinkedIn accounts."""
+    personal_account: Optional[LinkedinAccountWithRole] = Field(None, description="User's personal LinkedIn account")
+    organization_accounts: List[LinkedinAccountWithRole] = Field(default_factory=list, description="Organization accounts user has access to")
+    total: int = Field(..., description="Total number of accessible accounts")
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SyncIntegrationRequest(BaseModel):
+    """Request to sync a LinkedIn integration."""
+    integration_id: uuid.UUID = Field(..., description="Integration ID to sync")
+    
+    
+class SyncIntegrationResponse(BaseModel):
+    """Response for syncing LinkedIn integration."""
+    success: bool
+    integration_id: uuid.UUID
+    message: str
+    accounts_synced: int = Field(0, description="Number of accounts synced")
+    new_accounts: int = Field(0, description="Number of new accounts discovered")
+    updated_accounts: int = Field(0, description="Number of accounts updated")
+    errors: List[str] = Field(default_factory=list, description="Any errors encountered during sync")
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RefreshAllIntegrationsResponse(BaseModel):
+    """Response for refreshing all user's LinkedIn integrations."""
+    success: bool
+    message: str
+    integrations_processed: int = Field(0, description="Number of integrations processed")
+    accounts_synced: int = Field(0, description="Total number of accounts synced")
+    errors: Dict[str, List[str]] = Field(default_factory=dict, description="Errors by integration ID")
     
     model_config = ConfigDict(from_attributes=True)

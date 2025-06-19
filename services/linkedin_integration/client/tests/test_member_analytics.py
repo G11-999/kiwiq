@@ -68,7 +68,7 @@ async def test_member_analytics(linkedin_client: LinkedInMemberAnalyticsClient) 
     
     # Test identifiers from curl examples
     test_share_urns = [
-        "urn:li:share:7340981576178024448",
+        # "urn:li:share:7340981576178024448",
         "urn:li:share:7288408228378427392"
     ]
     

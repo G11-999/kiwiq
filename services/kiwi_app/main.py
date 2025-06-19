@@ -657,6 +657,7 @@ if settings.APP_ENV not in ("PROD", "STAGE"):
 
 # Include the authentication routes using the exposed router
 app.include_router(linkedin_integration_routers.linkedin_oauth_router, prefix=settings.API_V1_PREFIX)
+app.include_router(linkedin_integration_routers.linkedin_integration_router, prefix=settings.API_V1_PREFIX)
 app.include_router(auth.router, prefix=settings.API_V1_PREFIX)
 # Include the billing routes using the exposed router
 app.include_router(billing_routers.billing_router, prefix=f"{settings.API_V1_PREFIX}")

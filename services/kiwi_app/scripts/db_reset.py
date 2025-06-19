@@ -27,6 +27,8 @@ from kiwi_app.workflow_app.models import (
     UserNotification,
     HITLJob,
 )
+# this import is required so User / Org models correctly reconcile relationships to linkedin integration models
+from linkedin_integration.models import *
 # Import the function to get a database session
 # This is a placeholder; replace with your project's actual session provider.
 # Common patterns include a context manager or a dependency injection function.

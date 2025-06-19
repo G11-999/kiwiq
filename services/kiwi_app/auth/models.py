@@ -12,7 +12,7 @@ from kiwi_app.settings import settings
 
 # Type checking imports to avoid circular imports
 if TYPE_CHECKING:
-    from linkedin_integration.models import LinkedinUserOauth
+    from linkedin_integration.models import LinkedinUserOauth, LinkedinIntegration, OrgLinkedinAccount
 
 table_prefix = f"{settings.DB_TABLE_NAMESPACE_PREFIX}{settings.DB_TABLE_AUTH_PREFIX}"
 
@@ -122,6 +122,9 @@ class Organization(SQLModel, table=True):
 
     # Relationships
     user_links: List[UserOrganizationRole] = Relationship(back_populates="organization", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
+    
+    # LinkedIn accounts shared within the organization
+    linkedin_accounts: List["OrgLinkedinAccount"] = Relationship(back_populates="organization", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
 
 # --- User Model --- #
 class User(SQLModel, table=True):
@@ -149,6 +152,9 @@ class User(SQLModel, table=True):
     organization_links: List[UserOrganizationRole] = Relationship(back_populates="user", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
     refresh_tokens: List["RefreshToken"] = Relationship(back_populates="user", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
     linkedin_oauth: Optional["LinkedinUserOauth"] = Relationship(back_populates="user", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
+    
+    # LinkedIn Integrations (1:many mapping for managing multiple LinkedIn accounts)
+    linkedin_integrations: List["LinkedinIntegration"] = Relationship(back_populates="user", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
 
 # --- NEW: Refresh Token Model --- #
 class RefreshToken(SQLModel, table=True):

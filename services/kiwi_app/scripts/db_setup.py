@@ -21,6 +21,8 @@ from kiwi_app.auth.constants import (
     DEFAULT_SUPERUSER_EMAIL_ENV,
     DEFAULT_SUPERUSER_PASSWORD_ENV,
 )
+# this import is required so User / Org models correctly reconcile relationships to linkedin integration models
+from linkedin_integration.models import *
 
 # --- Logging Setup for Script --- #
 # REMOVED: Specific basicConfig for this script, use the imported logger

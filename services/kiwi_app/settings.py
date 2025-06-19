@@ -119,6 +119,7 @@ class Settings(GlobalSettings):
     MAGIC_LOGIN_URL: str = "/auth/magic-login"
     LINKEDIN_AUTH_CALLBACK_URL: str = "/linkedin/auth/callback"
     LINKEDIN_AUTH_VERIFY_LINKING_URL: str = "/linkedin/auth/verify-linking"
+    LINKEDIN_INTEGRATION_CALLBACK_URL: str = "/linkedin/integrations/callback"
     REDIRECT_BASE_URL: str = "https://beta.kiwiq.ai"  # "http://localhost:3000"
     # Frontend URLs for first steps guide email
     # These URLs are used in the first steps guide email sent after email verification
@@ -134,6 +135,7 @@ class Settings(GlobalSettings):
     MAGIC_LOGIN_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/auth/email-login"
     LINKEDIN_OAUTH_CALLBACK_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/auth/linkedin-callback"
     LINKEDIN_VERIFY_LINKING_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/auth/linkedin-verify"  # URL to handle email verification links for linkedin account creation / linking / verification
+    LINKEDIN_INTEGRATION_CALLBACK_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/linkedin/integrations/callback"  # For linkedin integrations not Oauth where user can add potentially multiple linkedin accounts to manage via LinkedIn including org page accounts
     
     # LinkedIn OAuth Frontend URLs
     LINKEDIN_LOGIN_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/login"  # Show user errors during login with query params that linkedin linking failed

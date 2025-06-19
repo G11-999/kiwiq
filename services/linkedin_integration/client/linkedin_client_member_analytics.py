@@ -885,13 +885,18 @@ class LinkedInMemberAnalyticsClient:
                 kwargs["path_keys"] = path_keys
             if method == "finder":
                 kwargs["finder_name"] = finder_name
-                full_response = self.client.finder(**kwargs)
+                full_response = await asyncio.to_thread(self.client.finder, **kwargs)
             elif method == "get_all":
-                full_response = self.client.get_all(**kwargs)
+                full_response = await asyncio.to_thread(self.client.get_all, **kwargs)
             else:
                 raise ValueError(f"Invalid method: {method}")
             
             status_code = full_response.status_code
+            if status_code != 200:
+                if all_elements:
+                    return all_elements
+                logger.error(f"Failed to fetch {resource_path}. Status: {status_code}")
+                raise Exception(f"Failed to fetch {resource_path}. Status: {status_code}")
             raw_content = full_response.response.content
             # print("\n\nSTATUS CODE: ", status_code)
             # print("\n\nRAW CONTENT: ", raw_content)

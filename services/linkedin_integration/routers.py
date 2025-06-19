@@ -14,11 +14,13 @@ from fastapi.responses import RedirectResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.session import get_async_db_dependency
+from kiwi_app.auth.constants import Permissions
 from kiwi_app.auth.models import User
-from kiwi_app.auth.dependencies import get_current_active_user, get_current_active_verified_user, get_auth_service, OptionalCurrentUserChecker
+from kiwi_app.auth.dependencies import get_current_active_user, get_current_active_verified_user, get_auth_service, OptionalCurrentUserChecker, SpecificOrgPermissionChecker, _check_permissions_for_org, get_user_dao, get_current_active_superuser, get_current_user_from_token_non_dependency
 from kiwi_app.auth.csrf import setup_auth_cookies_with_csrf, clear_auth_cookies, generate_csrf_token, set_csrf_cookie, validate_csrf_protection, validate_csrf_token
-from kiwi_app.auth.exceptions import CredentialsException, EmailAlreadyExistsException
+from kiwi_app.auth.exceptions import CredentialsException, EmailAlreadyExistsException, PermissionDeniedException
 from kiwi_app.auth.services import AuthService
+from kiwi_app.auth.crud import UserDAO
 from kiwi_app.settings import settings
 from kiwi_app.utils import get_kiwi_logger
 
@@ -30,6 +32,8 @@ logger = get_kiwi_logger("linkedin_integration.routers")
 
 # Create router with prefix
 linkedin_oauth_router = APIRouter(prefix="/linkedin", tags=["linkedin-oauth"])
+# Create router for LinkedIn integrations
+linkedin_integration_router = APIRouter(prefix="/linkedin/integrations", tags=["linkedin-integrations"])
 
 
 def _set_linkedin_oauth_state_cookie(response: Response, state_token: str):
@@ -716,7 +720,7 @@ async def refresh_linkedin_token(
 @linkedin_oauth_router.delete("/admin/oauth/by-linkedin-id", response_model=schemas.AdminDeleteLinkedinOauthResponse, tags=["linkedin-oauth-admin"])
 async def admin_delete_oauth_by_linkedin_id(
     delete_request: schemas.AdminDeleteLinkedinOauthByLinkedinId,
-    current_user: User = Depends(get_current_active_verified_user),
+    current_superuser: User = Depends(get_current_active_superuser),
     csrf_check: None = Depends(validate_csrf_protection),
     db: AsyncSession = Depends(get_async_db_dependency),
     service: services.LinkedinOauthService = Depends(dependencies.get_linkedin_oauth_service)
@@ -737,12 +741,6 @@ async def admin_delete_oauth_by_linkedin_id(
         HTTPException: 403 if not superuser, 400 if confirmation not provided
     """
     # Check superuser privileges
-    if not current_user.is_superuser:
-        logger.warning(f"Non-superuser {current_user.email} attempted to delete LinkedIn OAuth {delete_request.linkedin_id}")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Superuser privileges required for this operation"
-        )
     
     # Validate confirmation
     if not delete_request.confirm:
@@ -751,7 +749,7 @@ async def admin_delete_oauth_by_linkedin_id(
             detail="Confirmation required to delete LinkedIn OAuth record"
         )
     
-    logger.warning(f"ADMIN: Superuser {current_user.email} deleting LinkedIn OAuth {delete_request.linkedin_id}")
+    logger.warning(f"ADMIN: Superuser {current_superuser.email} deleting LinkedIn OAuth {delete_request.linkedin_id}")
     
     result = await service.admin_delete_oauth_by_linkedin_id(
         db, 
@@ -765,7 +763,7 @@ async def admin_delete_oauth_by_linkedin_id(
 @linkedin_oauth_router.delete("/admin/oauth/by-user-id", response_model=schemas.AdminDeleteLinkedinOauthResponse, tags=["linkedin-oauth-admin"])
 async def admin_delete_oauth_by_user_id(
     delete_request: schemas.AdminDeleteLinkedinOauthByUserId,
-    current_user: User = Depends(get_current_active_verified_user),
+    current_superuser: User = Depends(get_current_active_superuser),
     csrf_check: None = Depends(validate_csrf_protection),
     db: AsyncSession = Depends(get_async_db_dependency),
     service: services.LinkedinOauthService = Depends(dependencies.get_linkedin_oauth_service)
@@ -786,12 +784,6 @@ async def admin_delete_oauth_by_user_id(
         HTTPException: 403 if not superuser, 400 if confirmation not provided
     """
     # Check superuser privileges
-    if not current_user.is_superuser:
-        logger.warning(f"Non-superuser {current_user.email} attempted to delete LinkedIn OAuth for user {delete_request.user_id}")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Superuser privileges required for this operation"
-        )
     
     # Validate confirmation
     if not delete_request.confirm:
@@ -800,7 +792,7 @@ async def admin_delete_oauth_by_user_id(
             detail="Confirmation required to delete LinkedIn OAuth record"
         )
     
-    logger.warning(f"ADMIN: Superuser {current_user.email} deleting LinkedIn OAuth for user {delete_request.user_id}")
+    logger.warning(f"ADMIN: Superuser {current_superuser.email} deleting LinkedIn OAuth for user {delete_request.user_id}")
     
     result = await service.admin_delete_oauth_by_user_id(
         db,
@@ -815,7 +807,7 @@ async def admin_delete_oauth_by_user_id(
 async def admin_list_oauth_records(
     limit: int = Query(100, ge=1, le=500, description="Maximum number of records to return"),
     offset: int = Query(0, ge=0, description="Number of records to skip"),
-    current_user: User = Depends(get_current_active_verified_user),
+    current_superuser: User = Depends(get_current_active_superuser), 
     db: AsyncSession = Depends(get_async_db_dependency),
     service: services.LinkedinOauthService = Depends(dependencies.get_linkedin_oauth_service)
 ):
@@ -836,14 +828,8 @@ async def admin_list_oauth_records(
         HTTPException: 403 if not superuser
     """
     # Check superuser privileges
-    if not current_user.is_superuser:
-        logger.warning(f"Non-superuser {current_user.email} attempted to list LinkedIn OAuth records")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Superuser privileges required for this operation"
-        )
     
-    logger.info(f"ADMIN: Superuser {current_user.email} listing LinkedIn OAuth records (limit={limit}, offset={offset})")
+    logger.info(f"ADMIN: Superuser {current_superuser.email} listing LinkedIn OAuth records (limit={limit}, offset={offset})")
     
     result = await service.admin_list_oauth_records(
         db,
@@ -852,3 +838,285 @@ async def admin_list_oauth_records(
     )
     
     return result 
+
+
+# LinkedIn Integration Endpoints
+@linkedin_integration_router.get("/initiate", response_model=schemas.LinkedinIntegrationInitiateResponse)
+async def initiate_linkedin_integration(
+    response: Response,
+    request: Request,
+    current_user: User = Depends(get_current_active_verified_user),
+    service: services.LinkedinIntegrationService = Depends(dependencies.get_linkedin_integration_service),
+):
+    """
+    Initiate LinkedIn integration OAuth flow.
+    
+    This endpoint generates the LinkedIn authorization URL for adding a new
+    LinkedIn integration. Requires an authenticated and verified user.
+    """
+    redirect_uri = settings.LINKEDIN_INTEGRATION_CALLBACK_SPA_URL if settings.APP_ENV in ["PROD", "STAGE"] else _get_base_url(request, settings.LINKEDIN_INTEGRATION_CALLBACK_URL)
+    
+    csrf_token = generate_csrf_token()
+    set_csrf_cookie(response, csrf_token, settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60)
+    
+    response = await service.initiate_integration_flow(
+        user_id=current_user.id,
+        redirect_uri=redirect_uri,
+        csrf_token=csrf_token,
+    )
+    
+    return response
+
+
+@linkedin_integration_router.get("/callback", response_model=schemas.LinkedinIntegrationCallbackResponse)
+async def linkedin_integration_callback(
+    request: Request,
+    code: Optional[str] = Query(None, description="Authorization code from LinkedIn"),
+    state: Optional[str] = Query(None, description="State parameter for CSRF protection"),
+    error: Optional[str] = Query(None, description="Error from LinkedIn"),
+    error_description: Optional[str] = Query(None, description="Error description"),
+    access_token: Optional[str] = Cookie(None, alias=settings.ACCESS_TOKEN_COOKIE_NAME),
+    csrf_cookie: Optional[str] = Cookie(None, alias=settings.CSRF_TOKEN_COOKIE_NAME),
+    db: AsyncSession = Depends(get_async_db_dependency),
+    service: services.LinkedinIntegrationService = Depends(dependencies.get_linkedin_integration_service)
+):
+    """
+    Handle LinkedIn integration OAuth callback.
+    
+    Processes the OAuth callback to create or update a LinkedIn integration
+    for the authenticated user.
+    """
+    if error:
+        logger.error(f"LinkedIn integration OAuth error: {error} - {error_description}")
+        return schemas.LinkedinIntegrationCallbackResponse(
+            success=False,
+            message=f"LinkedIn authorization failed: {error_description or error}",
+            linkedin_orgs_roles=None
+        )
+    
+    if not code:
+        return schemas.LinkedinIntegrationCallbackResponse(
+            success=False,
+            message="Authorization code is missing",
+            linkedin_orgs_roles=None
+        )
+    current_user, token_data = await get_current_user_from_token_non_dependency(db, 
+        token=access_token, 
+        # expected_token_type="access", 
+        # # csrf_validation_token=csrf_cookie,
+        # check_active=True,
+        # check_verified=True,
+    )
+    
+    
+    redirect_uri = settings.LINKEDIN_INTEGRATION_CALLBACK_SPA_URL if settings.APP_ENV in ["PROD", "STAGE"] else _get_base_url(request, settings.LINKEDIN_INTEGRATION_CALLBACK_URL)
+    
+    result = await service.process_integration_callback(
+        db=db,
+        user_id=current_user.id,
+        code=code,
+        redirect_uri=redirect_uri,
+        state=state,
+        csrf_cookie=csrf_cookie,
+    )
+    
+    return result
+
+
+@linkedin_integration_router.get("/", response_model=schemas.LinkedinIntegrationListResponse)
+async def list_user_integrations(
+    current_user: User = Depends(get_current_active_verified_user),
+    db: AsyncSession = Depends(get_async_db_dependency),
+    service: services.LinkedinIntegrationService = Depends(dependencies.get_linkedin_integration_service),
+):
+    """
+    List all LinkedIn integrations for the current user.
+    """
+    return await service.list_user_integrations(db, current_user.id)
+
+
+@linkedin_integration_router.delete("/{integration_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_integration(
+    integration_id: uuid.UUID,
+    current_user: User = Depends(get_current_active_verified_user),
+    db: AsyncSession = Depends(get_async_db_dependency),
+    service: services.LinkedinIntegrationService = Depends(dependencies.get_linkedin_integration_service)
+):
+    """
+    Delete a LinkedIn integration.
+    
+    This will also deactivate all organization LinkedIn accounts using this integration.
+    """
+    success = await service.delete_integration(db, current_user.id, integration_id)
+    
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="LinkedIn integration not found or unauthorized"
+        )
+
+
+# Organization LinkedIn Account Endpoints
+@linkedin_integration_router.post("/organizations/{org_id}/accounts", response_model=schemas.OrgLinkedinAccountRead)
+async def share_linkedin_account_with_org(
+    org_id: uuid.UUID,
+    create_data: schemas.OrgLinkedinAccountCreate,
+    db: AsyncSession = Depends(get_async_db_dependency),
+    current_user: User = Depends(SpecificOrgPermissionChecker([Permissions.ORG_ADD_LINKEDIN_INTEGRATIONS])),
+    service: services.LinkedinIntegrationService = Depends(dependencies.get_linkedin_integration_service)
+):
+    """
+    Share a LinkedIn account with an organization.
+    
+    Requires ORG_ADD_LINKEDIN_INTEGRATIONS permission in the organization.
+    """
+    return await service.share_linkedin_account_with_org(
+        db=db,
+        user_id=current_user.id,
+        organization_id=org_id,
+        create_data=create_data
+    )
+
+
+@linkedin_integration_router.get("/organizations/{org_id}/accounts", response_model=schemas.OrgLinkedinAccountListResponse)
+async def list_org_linkedin_accounts(
+    org_id: uuid.UUID,
+    active_only: bool = Query(True, description="Filter for active accounts only"),
+    shared_only: bool = Query(True, description="Filter for shared accounts only"),
+    db: AsyncSession = Depends(get_async_db_dependency),
+    current_user: User = Depends(SpecificOrgPermissionChecker([Permissions.ORG_READ])),
+    service: services.LinkedinIntegrationService = Depends(dependencies.get_linkedin_integration_service)
+):
+    """
+    List LinkedIn accounts shared with an organization.
+    
+    Requires ORG_READ permission in the organization.
+    """
+    return await service.list_org_linkedin_accounts(
+        db=db,
+        organization_id=org_id,
+        active_only=active_only,
+        shared_only=shared_only
+    )
+
+
+@linkedin_integration_router.patch("/accounts/{org_account_id}", response_model=schemas.OrgLinkedinAccountRead)
+async def update_org_linkedin_account(
+    org_account_id: uuid.UUID,
+    update_data: schemas.OrgLinkedinAccountUpdate,
+    current_user: User = Depends(get_current_active_verified_user),
+    db: AsyncSession = Depends(get_async_db_dependency),
+    service: services.LinkedinIntegrationService = Depends(dependencies.get_linkedin_integration_service)
+):
+    """
+    Update an organization LinkedIn account.
+    
+    Can only be updated by the user who manages it.
+    """
+    return await service.update_org_linkedin_account(
+        db=db,
+        user_id=current_user.id,
+        org_account_id=org_account_id,
+        update_data=update_data
+    )
+
+
+@linkedin_integration_router.delete("/organizations/{org_id}/accounts/{org_account_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_org_linkedin_account(
+    org_id: uuid.UUID,
+    org_account_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_db_dependency),
+    # current_user: User = Depends(SpecificOrgPermissionChecker([Permissions.ORG_DELETE_LINKEDIN_INTEGRATIONS])),
+    current_user: User = Depends(get_current_active_verified_user),
+    user_dao: UserDAO = Depends(get_user_dao),
+    service: services.LinkedinIntegrationService = Depends(dependencies.get_linkedin_integration_service)
+):
+    """
+    Delete a LinkedIn account from an organization.
+    
+    Requires ORG_DELETE_LINKEDIN_INTEGRATIONS permission in the organization.
+    Only organization admins with the appropriate permission can delete
+    LinkedIn accounts shared with the organization.
+    """
+    user_has_org_delete_linkedin_account_permission = True
+    try:
+        await _check_permissions_for_org(
+            db=db,
+            user_dao=user_dao,
+            user=current_user,
+            org_id=org_id,
+            required_permissions=[Permissions.ORG_DELETE_LINKEDIN_INTEGRATIONS]
+        )
+    except PermissionDeniedException as e:
+        logger.warning(f"User {current_user.email} does not have the required permissions to delete this Org {org_id} LinkedIn Account")
+        user_has_org_delete_linkedin_account_permission = False
+
+    success = await service.delete_org_linkedin_account(
+        db=db,
+        org_account_id=org_account_id,
+        organization_id=org_id,
+        user_id=current_user.id,
+        user_has_org_delete_linkedin_account_permission=user_has_org_delete_linkedin_account_permission,
+    )
+    
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="LinkedIn account not found in organization"
+        ) 
+
+
+# New endpoints for sync, refresh, and listing accessible accounts
+
+@linkedin_integration_router.post("/{integration_id}/sync", response_model=schemas.SyncIntegrationResponse)
+async def sync_integration(
+    integration_id: uuid.UUID,
+    current_user: User = Depends(get_current_active_verified_user),
+    db: AsyncSession = Depends(get_async_db_dependency),
+    service: services.LinkedinIntegrationService = Depends(dependencies.get_linkedin_integration_service)
+):
+    """
+    Sync a LinkedIn integration to update organizations and accounts.
+    
+    This endpoint:
+    - Refreshes tokens if needed
+    - Fetches current organization roles from LinkedIn
+    - Updates LinkedIn accounts (personal and organization profiles)
+    - Updates the integration state
+    - Updates status of org LinkedIn accounts
+    """
+    return await service.sync_integration(db, current_user.id, integration_id)
+
+
+@linkedin_integration_router.post("/refresh-all", response_model=schemas.RefreshAllIntegrationsResponse)
+async def refresh_all_integrations(
+    current_user: User = Depends(get_current_active_verified_user),
+    db: AsyncSession = Depends(get_async_db_dependency),
+    service: services.LinkedinIntegrationService = Depends(dependencies.get_linkedin_integration_service)
+):
+    """
+    Refresh all LinkedIn integrations for the current user.
+    
+    This endpoint syncs all integrations belonging to the user,
+    updating tokens, organizations, and account information.
+    """
+    return await service.refresh_all_integrations(db, current_user.id)
+
+
+@linkedin_integration_router.get("/accessible-accounts", response_model=schemas.UserAccessibleLinkedinAccountsResponse)
+async def list_user_accessible_accounts(
+    current_user: User = Depends(get_current_active_verified_user),
+    db: AsyncSession = Depends(get_async_db_dependency),
+    service: services.LinkedinIntegrationService = Depends(dependencies.get_linkedin_integration_service)
+):
+    """
+    List all LinkedIn accounts accessible to the current user.
+    
+    This includes:
+    - User's personal LinkedIn account
+    - Organization accounts the user has access to via integrations
+    
+    The response includes the user's role in each organization and whether
+    they have permission to post on behalf of that organization.
+    """
+    return await service.list_user_accessible_accounts(db, current_user.id) 

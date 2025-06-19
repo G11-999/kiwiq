@@ -14,7 +14,7 @@ from enum import Enum
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status, BackgroundTasks, Request
 
-from kiwi_app.auth.models import User, Organization, UserOrganizationRole
+from kiwi_app.auth.models import User
 from kiwi_app.auth.services import AuthService
 from kiwi_app.auth import crud as auth_crud
 from kiwi_app.auth import schemas as auth_schemas
@@ -26,9 +26,10 @@ from kiwi_app.settings import settings
 from kiwi_app.email import email_verify
 from kiwi_app.email.email_dispatch import email_dispatch, EmailContent, EmailRecipient
 from kiwi_app.email.email_templates.renderer import EmailRenderer, AccountConfirmationEmailData
+from global_utils import datetime_now_utc
 
 from linkedin_integration.client.linkedin_auth_client import LinkedInAccessTokenSchema, AuthClient, LINKEDIN_SCOPES
-from linkedin_integration.client.linkedin_client import LinkedInClient, UserInfo
+from linkedin_integration.client.linkedin_client import LinkedInClient, UserInfo, OrganizationRolesResponse, OrganizationRolesResponse, LinkedinOrganization, LinkedinMemberProfile
 
 from linkedin_integration import crud, models, schemas, exceptions
 from linkedin_integration.state_manager import LinkedInStateManager
@@ -59,12 +60,6 @@ class LinkedinOauthService:
         self.org_dao = org_dao
         self.auth_service = auth_service
         self.email_renderer = EmailRenderer()
-        
-        # LinkedIn API client for user data
-        self._linkedin_client = LinkedInClient(
-            client_id=settings.LINKEDIN_CLIENT_ID,
-            client_secret=settings.LINKEDIN_CLIENT_SECRET
-        )
     
     async def initiate_oauth_flow(
         self,
@@ -108,6 +103,22 @@ class LinkedinOauthService:
             client_id=settings.LINKEDIN_CLIENT_ID,
             client_secret=settings.LINKEDIN_CLIENT_SECRET,
             redirect_url=redirect_uri
+        )
+    
+    def _get_linkedin_client(self, access_token: str) -> LinkedInClient:
+        """
+        Create a LinkedIn API client with a specific access token.
+        
+        Args:
+            access_token: The user's access token
+            
+        Returns:
+            LinkedInClient configured with the access token
+        """
+        return LinkedInClient(
+            client_id=settings.LINKEDIN_CLIENT_ID,
+            client_secret=settings.LINKEDIN_CLIENT_SECRET,
+            access_token=access_token
         )
     
     async def process_oauth_callback(
@@ -186,11 +197,11 @@ class LinkedinOauthService:
                 # _datetime_now_=datetime_now,
             )
             
-            # Set access token for API calls
-            await self._linkedin_client._set_access_token(token_data.access_token)
+            # Create LinkedIn client with user's access token
+            linkedin_client = self._get_linkedin_client(token_data.access_token)
             
             # Get LinkedIn user info
-            success, user_info = await self._linkedin_client.get_member_info_including_email()
+            success, user_info = await linkedin_client.get_member_info_including_email()
             if not success:
                 raise exceptions.LinkedInAPIException(
                     "Failed to retrieve LinkedIn user info"
@@ -581,7 +592,7 @@ class LinkedinOauthService:
 
         # Perform CSRF check
         jwt_csrf_token = token_data.get("csrf_token")
-        logger.info(f"JWT CSRF token: {jwt_csrf_token} -- token_data: {token_data}")
+        # logger.info(f"JWT CSRF token: {jwt_csrf_token} -- token_data: {token_data}")
         if not validate_csrf_token(cookie_token=csrf_cookie, header_token=jwt_csrf_token):
             raise exceptions.LinkedInStateException(f"CSRF token mismatch: {'state token null' if jwt_csrf_token is None else ('csrf token mismatch' if csrf_cookie else 'csrf token null')}")
 
@@ -1217,4 +1228,1233 @@ class LinkedinOauthService:
             raise exceptions.LinkedInOauthException(
                 "Failed to retrieve LinkedIn OAuth records",
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-            ) 
+            )
+
+
+class LinkedinIntegrationService:
+    """
+    Service layer for LinkedIn Integration operations.
+    
+    This service handles LinkedIn integrations for managing multiple LinkedIn
+    accounts/organizations, separate from the OAuth login functionality.
+    """
+    
+    def __init__(
+        self,
+        linkedin_integration_dao: crud.LinkedinIntegrationDAO,
+        linkedin_account_dao: crud.LinkedinAccountDAO,
+        org_linkedin_account_dao: crud.OrgLinkedinAccountDAO,
+        user_dao: auth_crud.UserDAO,
+        auth_service: AuthService
+    ):
+        self.linkedin_integration_dao = linkedin_integration_dao
+        self.linkedin_account_dao = linkedin_account_dao
+        self.org_linkedin_account_dao = org_linkedin_account_dao
+        self.user_dao = user_dao
+        self.auth_service = auth_service
+    
+    # Helper methods for common operations
+    
+    def _get_auth_client(self) -> AuthClient:
+        """
+        Create and return a LinkedIn AuthClient instance.
+        
+        Returns:
+            AuthClient: Configured LinkedIn auth client
+        """
+        return AuthClient(
+            client_id=settings.LINKEDIN_CLIENT_ID,
+            client_secret=settings.LINKEDIN_CLIENT_SECRET
+        )
+    
+    def _get_linkedin_client(self, access_token: str) -> LinkedInClient:
+        """
+        Create a LinkedIn API client with a specific access token.
+        
+        Args:
+            access_token: The user's access token
+            
+        Returns:
+            LinkedInClient configured with the access token
+        """
+        return LinkedInClient(
+            client_id=settings.LINKEDIN_CLIENT_ID,
+            client_secret=settings.LINKEDIN_CLIENT_SECRET,
+            access_token=access_token
+        )
+    
+    async def _refresh_integration_tokens(
+        self,
+        db: AsyncSession,
+        integration: models.LinkedinIntegration
+    ) -> Optional[models.LinkedinIntegration]:
+        """
+        Refresh access tokens for an integration if expired.
+        
+        Args:
+            db: Database session
+            integration: LinkedIn integration to refresh
+            
+        Returns:
+            Updated integration if successful, None if refresh failed
+            
+        Raises:
+            Exception: If token refresh fails
+        """
+        if not integration.is_access_token_expired() or not integration.refresh_token:
+            return integration
+        
+        auth_client = self._get_auth_client()
+        
+        token_response = await asyncio.to_thread(
+            auth_client.exchange_refresh_token_for_access_token,
+            integration.refresh_token
+        )
+        
+        if token_response.status_code != 200:
+            logger.error(f"Token refresh failed for integration {integration.id}: {token_response.status_code}")
+            await self.linkedin_integration_dao.update_state(
+                db, integration.id, models.LinkedinOauthState.EXPIRED
+            )
+            await self._update_org_account_statuses(
+                db, integration.id, models.OrgLinkedinAccountStatus.EXPIRED
+            )
+            return None
+        
+        # Update tokens
+        updated_integration = await self.linkedin_integration_dao.update_tokens(
+            db,
+            integration_id=integration.id,
+            access_token=token_response.access_token,
+            refresh_token=token_response.refresh_token or integration.refresh_token,
+            expires_in=token_response.expires_in,
+            refresh_token_expires_in=token_response.refresh_token_expires_in
+        )
+        
+        return updated_integration
+    
+    def _extract_member_profile_data(self, member_profile: LinkedinMemberProfile) -> Dict[str, Any]:
+        """
+        Extract profile data from LinkedIn member profile response.
+        
+        Args:
+            member_profile: LinkedIn API member profile response
+            
+        Returns:
+            Dict containing extracted profile data
+        """
+        return {
+            "localized_first_name": member_profile.localized_first_name,
+            "localized_last_name": member_profile.localized_last_name,
+            "localized_headline": member_profile.localized_headline,
+            "vanity_name": member_profile.vanity_name,
+            "id": member_profile.id
+        }
+    
+    def _extract_organization_profile_data(self, org_details: LinkedinOrganization) -> Dict[str, Any]:
+        """
+        Extract profile data from LinkedIn organization details response.
+        
+        Args:
+            org_details: LinkedIn API organization details response
+            
+        Returns:
+            Dict containing extracted organization profile data
+        """
+        return {
+            "vanity_name": org_details.vanity_name,
+            "website": org_details.display_website,
+            "description": org_details.display_description,
+            "organization_type": org_details.organization_type,
+            "staff_count_range": org_details.staff_count_range,
+            "founded_year": org_details.founded_year
+        }
+    
+    async def _parse_organization_roles(
+        self,
+        org_roles_response: OrganizationRolesResponse,
+    ) -> Dict[str, Dict[str, Any]]:
+        """
+        Parse organization roles from LinkedIn API response.
+        
+        Args:
+            org_roles_response: LinkedIn API organization roles response
+            
+        Returns:
+            Dict mapping org_id (URN) to org info including role, urn, and state
+        """
+        linkedin_orgs_roles = {}
+        
+        for role in org_roles_response.elements:
+            # Use the full URN as the org_id, don't split it
+            org_id = role.organization
+            # User has only one role per organization
+            linkedin_orgs_roles[org_id] = {
+                "organization_urn": role.organization,
+                "role": role.role,  # Single role, not array
+                "state": role.state
+            }
+        
+        return linkedin_orgs_roles
+    
+    async def _sync_organization_accounts(
+        self,
+        db: AsyncSession,
+        linkedin_client: LinkedInClient,
+        linkedin_orgs_roles: Dict[str, Dict[str, Any]]
+    ) -> Tuple[int, int, int, List[str]]:
+        """
+        Sync organization accounts with LinkedIn.
+        
+        Args:
+            db: Database session
+            linkedin_client: LinkedIn client with user's access token
+            linkedin_orgs_roles: Parsed organization roles data
+            
+        Returns:
+            Tuple of (accounts_synced, new_accounts, updated_accounts, errors)
+        """
+        accounts_synced = 0
+        new_accounts = 0
+        updated_accounts = 0
+        errors = []
+        
+        for org_id, org_info in linkedin_orgs_roles.items():
+            try:
+                success, org_details = await linkedin_client.get_organization_details(org_info["organization_urn"])
+                if not success:
+                    raise Exception(f"Failed to fetch organization details for {org_id}")
+                
+                # Update org_info with fetched details
+                org_info["organization_name"] = org_details.display_name
+                org_info["organization_vanity_name"] = org_details.vanity_name
+                
+                # Extract profile data (including numeric ID)
+                profile_data = self._extract_organization_profile_data(org_details)
+                profile_data["id"] = org_details.id  # Store numeric ID in profile data
+                
+                # Use the URN as the LinkedIn ID
+                linkedin_id = org_id  # This is the full URN
+                
+                # Check if account exists
+                existing_account = await self.linkedin_account_dao.get(db, linkedin_id)
+                
+                if existing_account:
+                    await self.linkedin_account_dao.update(
+                        db,
+                        linkedin_id=linkedin_id,
+                        name=org_details.display_name,
+                        vanity_name=org_details.vanity_name,
+                        profile_data=profile_data
+                    )
+                    updated_accounts += 1
+                else:
+                    await self.linkedin_account_dao.create_or_update(
+                        db,
+                        linkedin_id=linkedin_id,
+                        account_type=models.LinkedinAccountType.ORGANIZATION,
+                        name=org_details.display_name,
+                        vanity_name=org_details.vanity_name,
+                        profile_data=profile_data
+                    )
+                    new_accounts += 1
+                
+                accounts_synced += 1
+                
+            except Exception as e:
+                logger.warning(f"Failed to sync organization {org_id}: {e}")
+                errors.append(f"Organization {org_id} sync failed: {str(e)}")
+        
+        return accounts_synced, new_accounts, updated_accounts, errors
+    
+    async def _create_org_linkedin_account_response(
+        self,
+        db: AsyncSession,
+        org_account: models.OrgLinkedinAccount
+    ) -> schemas.OrgLinkedinAccountRead:
+        """
+        Create OrgLinkedinAccountRead response with nested data.
+        
+        Args:
+            db: Database session
+            org_account: OrgLinkedinAccount model instance
+            
+        Returns:
+            OrgLinkedinAccountRead with populated nested relationships
+        """
+        # Load related data
+        linkedin_account = await self.linkedin_account_dao.get(
+            db, org_account.linkedin_account_id
+        )
+        integration = await self.linkedin_integration_dao.get(
+            db, org_account.linkedin_integration_id
+        )
+        
+        return schemas.OrgLinkedinAccountRead(
+            id=org_account.id,
+            linkedin_account_id=org_account.linkedin_account_id,
+            linkedin_integration_id=org_account.linkedin_integration_id,
+            managed_by_user_id=org_account.managed_by_user_id,
+            organization_id=org_account.organization_id,
+            role_in_linkedin_entity=org_account.role_in_linkedin_entity,
+            is_shared=org_account.is_shared,
+            is_active=org_account.is_active,
+            status=org_account.status,
+            created_at=org_account.created_at,
+            updated_at=org_account.updated_at,
+            linkedin_account=schemas.LinkedinAccountRead.model_validate(linkedin_account) if linkedin_account else None,
+            linkedin_integration=schemas.LinkedinIntegrationRead.model_validate(integration) if integration else None
+        )
+    
+    def _can_user_post_to_organization(self, role: Optional[str]) -> bool:
+        """
+        Determine if a user can post to an organization based on their role.
+        
+        Args:
+            role: User's role in the organization
+            
+        Returns:
+            True if user can post, False otherwise
+        """
+        return role in ["ADMINISTRATOR", "DIRECT_SPONSORED_CONTENT_POSTER"]
+
+    async def initiate_integration_flow(
+        self,
+        user_id: uuid.UUID,
+        redirect_uri: str,
+        csrf_token: str,
+    ) -> schemas.LinkedinIntegrationInitiateResponse:
+        """
+        Initiate LinkedIn integration OAuth flow for a logged-in user.
+        
+        Args:
+            user_id: ID of the authenticated user
+            redirect_uri: OAuth callback redirect URI
+            csrf_token: CSRF token for protection
+            
+        Returns:
+            LinkedinIntegrationInitiateResponse with authorization URL
+        """
+        # Create state token for integration flow
+        state_token = LinkedInStateManager.create_state_token(
+            user_id=str(user_id),
+            additional_data={"csrf_token": csrf_token},  # "flow_type": "integration", 
+        )
+        logger.info(f" $$$ state: {state_token}")
+        
+        auth_client = AuthClient(
+            client_id=settings.LINKEDIN_CLIENT_ID,
+            client_secret=settings.LINKEDIN_CLIENT_SECRET,
+            redirect_url=redirect_uri
+        )
+        
+        authorization_url = await asyncio.to_thread(
+            auth_client.generate_member_auth_url,
+            scopes=LINKEDIN_SCOPES,
+            state=state_token
+        )
+        
+        logger.info(f"Generated LinkedIn integration auth URL for user: {user_id}")
+        
+        return schemas.LinkedinIntegrationInitiateResponse(
+            authorization_url=authorization_url
+        )
+    
+    async def process_integration_callback(
+        self,
+        db: AsyncSession,
+        user_id: uuid.UUID,
+        code: str,
+        redirect_uri: str,
+        state: Optional[str] = None,
+        csrf_cookie: Optional[str] = None,
+    ) -> schemas.LinkedinIntegrationCallbackResponse:
+        """
+        Process LinkedIn integration OAuth callback.
+        
+        Handles the OAuth callback after user authorizes the integration:
+        - Validates state token
+        - Exchanges authorization code for access tokens
+        - Fetches user profile and organization data
+        - Creates or updates integration records
+        - Syncs LinkedIn accounts (personal and organizational)
+        
+        Args:
+            db: Database session
+            user_id: Authenticated user ID
+            code: Authorization code from LinkedIn
+            redirect_uri: OAuth redirect URI
+            state: State token for verification
+            csrf_cookie: CSRF token for protection
+
+        Returns:
+            LinkedinIntegrationCallbackResponse with integration details
+            
+        Raises:
+            LinkedInStateException: If state token validation fails
+            LinkedInOauthException: If token exchange fails
+            LinkedInAPIException: If API calls fail
+        """
+        try:
+            # Verify state if provided
+            if state:
+                logger.info(f" $$$ 2 state: {state}")
+                state_data = LinkedInStateManager.verify_state_token(state)
+                jwt_csrf_token = state_data.get("csrf_token")
+                if not validate_csrf_token(cookie_token=csrf_cookie, header_token=jwt_csrf_token):
+                    raise exceptions.LinkedInStateException(f"CSRF token mismatch: {'state token null' if jwt_csrf_token is None else ('csrf token mismatch' if csrf_cookie else 'csrf token null')}")
+                if state_data.get("user_id") != str(user_id):
+                    raise exceptions.LinkedInStateException("State token user mismatch")
+            
+            # Exchange code for tokens
+            auth_client = AuthClient(
+                client_id=settings.LINKEDIN_CLIENT_ID,
+                client_secret=settings.LINKEDIN_CLIENT_SECRET,
+                redirect_url=redirect_uri
+            )
+            
+            token_response = await asyncio.to_thread(
+                auth_client.exchange_auth_code_for_access_token, code
+            )
+            
+            if token_response.status_code != 200:
+                raise exceptions.LinkedInOauthException(
+                    "Failed to exchange authorization code",
+                    status_code=status.HTTP_502_BAD_GATEWAY
+                )
+            
+            # Create LinkedIn client with user's access token
+            linkedin_client = self._get_linkedin_client(token_response.access_token)
+            
+            # Get LinkedIn user info
+            success, user_info = await linkedin_client.get_member_info_including_email()
+            
+            if not success:
+                raise exceptions.LinkedInAPIException(
+                    "Failed to retrieve LinkedIn user info"
+                )
+            
+            # Get member profile for detailed information
+            member_profile = None
+            profile_data = {"email": user_info.email}
+            
+            try:
+                success, member_profile = await linkedin_client.get_member_profile()
+                if not success:
+                    raise Exception("Failed to fetch member profile")
+                profile_data = self._extract_member_profile_data(member_profile)
+                profile_data["email"] = user_info.email
+            except Exception as e:
+                logger.warning(f"Failed to fetch member profile: {e}")
+            
+            # Get LinkedIn organizations/roles
+            linkedin_orgs_roles = {}
+            try:
+                success, org_roles_response = await linkedin_client.get_member_organization_roles()
+                if not success:
+                    raise Exception("Failed to fetch member organization roles")
+                
+                # Parse organization roles
+                linkedin_orgs_roles = await self._parse_organization_roles(org_roles_response)
+                
+                # Sync organization accounts
+                await self._sync_organization_accounts(db, linkedin_client, linkedin_orgs_roles)
+                        
+            except Exception as e:
+                logger.warning(f"Failed to fetch organization roles: {e}")
+            
+            # Check if integration already exists
+            existing = await self.linkedin_integration_dao.get_by_user_and_linkedin_id(
+                db, user_id, user_info.sub
+            )
+            
+            if existing:
+                # Update existing integration
+                integration = await self.linkedin_integration_dao.update_tokens(
+                    db,
+                    integration_id=existing.id,
+                    access_token=token_response.access_token,
+                    refresh_token=token_response.refresh_token,
+                    expires_in=token_response.expires_in,
+                    refresh_token_expires_in=token_response.refresh_token_expires_in
+                )
+                
+                # Update orgs/roles if changed
+                if linkedin_orgs_roles != existing.linkedin_orgs_roles:
+                    await self.linkedin_integration_dao.update_linkedin_orgs_roles(
+                        db, existing.id, linkedin_orgs_roles
+                    )
+                
+                message = "LinkedIn integration updated successfully"
+            else:
+                # Create new integration
+                integration = await self.linkedin_integration_dao.create_integration(
+                    db,
+                    user_id=user_id,
+                    linkedin_id=user_info.sub,
+                    access_token=token_response.access_token,
+                    refresh_token=token_response.refresh_token,
+                    scope=token_response.scope,
+                    expires_in=token_response.expires_in,
+                    refresh_token_expires_in=token_response.refresh_token_expires_in,
+                    linkedin_orgs_roles=linkedin_orgs_roles
+                )
+                
+                message = "LinkedIn integration created successfully"
+            
+            # Create/update LinkedIn account record for the person
+            full_name = user_info.name
+            vanity_name = None
+            if member_profile:
+                full_name = f"{member_profile.localized_first_name} {member_profile.localized_last_name}"
+                vanity_name = member_profile.vanity_name if hasattr(member_profile, 'vanity_name') else None
+                
+            await self.linkedin_account_dao.create_or_update(
+                db,
+                linkedin_id=user_info.sub,
+                account_type=models.LinkedinAccountType.PERSON,
+                name=full_name,
+                vanity_name=vanity_name,
+                profile_data=profile_data
+            )
+            
+            logger.info(f"LinkedIn integration processed for user {user_id}")
+            
+            return schemas.LinkedinIntegrationCallbackResponse(
+                success=True,
+                integration_id=integration.id,
+                message=message,
+                linkedin_orgs_roles=linkedin_orgs_roles
+            )
+            
+        except exceptions.LinkedInOauthException:
+            raise
+        except Exception as e:
+            logger.error(f"Error processing integration callback: {e}", exc_info=True)
+            return schemas.LinkedinIntegrationCallbackResponse(
+                success=False,
+                message=f"Failed to process LinkedIn integration: {str(e)}",
+                linkedin_orgs_roles=None
+            )
+    
+    async def list_user_integrations(
+        self,
+        db: AsyncSession,
+        user_id: uuid.UUID
+    ) -> schemas.LinkedinIntegrationListResponse:
+        """
+        List all LinkedIn integrations for a user.
+        
+        Args:
+            db: Database session
+            user_id: User ID
+            
+        Returns:
+            LinkedinIntegrationListResponse with integrations
+        """
+        integrations = await self.linkedin_integration_dao.get_by_user_id(db, user_id)
+        
+        integration_reads = []
+        for integration in integrations:
+            integration_reads.append(schemas.LinkedinIntegrationRead(
+                id=integration.id,
+                user_id=integration.user_id,
+                linkedin_id=integration.linkedin_id,
+                scope=integration.scope,
+                integration_state=integration.integration_state,
+                linkedin_orgs_roles=integration.linkedin_orgs_roles,
+                is_expired=integration.is_access_token_expired(),
+                token_expires_at=integration.token_expires_at,
+                last_sync_at=integration.last_sync_at,
+                created_at=integration.created_at,
+                updated_at=integration.updated_at
+            ))
+        
+        return schemas.LinkedinIntegrationListResponse(
+            integrations=integration_reads,
+            total=len(integration_reads)
+        )
+    
+    async def share_linkedin_account_with_org(
+        self,
+        db: AsyncSession,
+        user_id: uuid.UUID,
+        organization_id: uuid.UUID,
+        create_data: schemas.OrgLinkedinAccountCreate
+    ) -> schemas.OrgLinkedinAccountRead:
+        """
+        Share a LinkedIn account with an organization.
+        
+        Allows a user to share their LinkedIn account (personal or organizational)
+        with their KiwiQ organization. The user must own the integration and have
+        the appropriate permissions.
+        
+        Args:
+            db: Database session
+            user_id: User sharing the account
+            organization_id: Target organization ID
+            create_data: Account sharing configuration including:
+                - linkedin_integration_id: Integration to use
+                - linkedin_account_id: Account to share
+                - is_shared: Whether to share with org members
+                Role is automatically determined from the integration
+            
+        Returns:
+            Created OrgLinkedinAccountRead with nested relationships
+            
+        Raises:
+            HTTPException: If integration not found, unauthorized, or account doesn't exist
+        """
+        # Verify user owns the integration
+        integration = await self.linkedin_integration_dao.get(
+            db, create_data.linkedin_integration_id
+        )
+        
+        if not integration or integration.user_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="LinkedIn integration not found or unauthorized"
+            )
+        
+        # Verify LinkedIn account exists
+        linkedin_account = await self.linkedin_account_dao.get(
+            db, create_data.linkedin_account_id
+        )
+        
+        if not linkedin_account:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="LinkedIn account not found"
+            )
+        
+        # Determine the role based on account type
+        role_in_linkedin_entity = None
+        
+        if linkedin_account.account_type == models.LinkedinAccountType.PERSON:
+            # For personal accounts, user has full control
+            role_in_linkedin_entity = "OWNER"
+        elif linkedin_account.account_type == models.LinkedinAccountType.ORGANIZATION:
+            # For organization accounts, get role from integration's linkedin_orgs_roles
+            if integration.linkedin_orgs_roles:
+                org_info = integration.linkedin_orgs_roles.get(create_data.linkedin_account_id)
+                if org_info:
+                    role_in_linkedin_entity = org_info.get("role")
+                else:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="You don't have access to this LinkedIn organization account"
+                    )
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="No organization roles found in integration"
+                )
+        
+        # Create org LinkedIn account
+        org_account = await self.org_linkedin_account_dao.create_org_linkedin_account(
+            db,
+            linkedin_account_id=create_data.linkedin_account_id,
+            linkedin_integration_id=create_data.linkedin_integration_id,
+            managed_by_user_id=user_id,
+            organization_id=organization_id,
+            role_in_linkedin_entity=role_in_linkedin_entity,
+            is_shared=create_data.is_shared
+        )
+        
+        # Return with nested data using helper method
+        return await self._create_org_linkedin_account_response(db, org_account)
+    
+    async def list_org_linkedin_accounts(
+        self,
+        db: AsyncSession,
+        organization_id: uuid.UUID,
+        active_only: bool = True,
+        shared_only: bool = True
+    ) -> schemas.OrgLinkedinAccountListResponse:
+        """
+        List LinkedIn accounts shared with an organization.
+        
+        Retrieves all LinkedIn accounts that have been shared with the specified
+        organization by its members. Includes nested account and integration details.
+        
+        Args:
+            db: Database session
+            organization_id: Organization ID to list accounts for
+            active_only: If True, only return active accounts (default: True)
+            shared_only: If True, only return accounts marked as shared (default: True)
+            
+        Returns:
+            OrgLinkedinAccountListResponse containing:
+            - accounts: List of OrgLinkedinAccountRead objects with nested data
+            - total: Total number of accounts matching the criteria
+        """
+        org_accounts = await self.org_linkedin_account_dao.get_by_organization(
+            db, organization_id, active_only, shared_only
+        )
+        
+        # Build response list with nested data
+        account_reads = []
+        for org_account in org_accounts:
+            try:
+                account_read = await self._create_org_linkedin_account_response(db, org_account)
+                account_reads.append(account_read)
+            except Exception as e:
+                # Log but continue - don't fail the entire list if one account has issues
+                logger.warning(
+                    f"Failed to load nested data for org account {org_account.id}: {e}"
+                )
+                # Create a minimal response without nested data
+                account_reads.append(schemas.OrgLinkedinAccountRead(
+                    id=org_account.id,
+                    linkedin_account_id=org_account.linkedin_account_id,
+                    linkedin_integration_id=org_account.linkedin_integration_id,
+                    managed_by_user_id=org_account.managed_by_user_id,
+                    organization_id=org_account.organization_id,
+                    role_in_linkedin_entity=org_account.role_in_linkedin_entity,
+                    is_shared=org_account.is_shared,
+                    is_active=org_account.is_active,
+                    status=org_account.status,
+                    created_at=org_account.created_at,
+                    updated_at=org_account.updated_at,
+                    linkedin_account=None,
+                    linkedin_integration=None
+                ))
+        
+        return schemas.OrgLinkedinAccountListResponse(
+            accounts=account_reads,
+            total=len(account_reads)
+        )
+    
+    async def update_org_linkedin_account(
+        self,
+        db: AsyncSession,
+        user_id: uuid.UUID,
+        org_account_id: uuid.UUID,
+        update_data: schemas.OrgLinkedinAccountUpdate
+    ) -> schemas.OrgLinkedinAccountRead:
+        """
+        Update an organization's LinkedIn account settings.
+        
+        Only the user who shared the account can update its settings.
+        This allows updating sharing status and active status.
+        
+        Args:
+            db: Database session
+            user_id: User making the update (must be the account manager)
+            org_account_id: Org account ID to update
+            update_data: Fields to update:
+                - is_shared: Whether to share with org members
+                - is_active: Whether the account is active
+            
+        Returns:
+            Updated OrgLinkedinAccountRead with nested relationships
+            
+        Raises:
+            HTTPException: If account not found or user is not the manager
+        """
+        # Get the org account and verify ownership
+        org_account = await self.org_linkedin_account_dao.get(db, org_account_id)
+        
+        if not org_account or org_account.managed_by_user_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Org LinkedIn account not found or unauthorized"
+            )
+        
+        # Update fields
+        if update_data.is_shared is not None:
+            await self.org_linkedin_account_dao.update_sharing_status(
+                db, org_account_id, update_data.is_shared
+            )
+            # Refresh the object to get updated value
+            org_account = await self.org_linkedin_account_dao.get(db, org_account_id)
+        
+        if update_data.is_active is not None:
+            org_account.is_active = update_data.is_active
+            db.add(org_account)
+            await db.commit()
+            await db.refresh(org_account)
+        
+        # Return updated account with nested data
+        return await self._create_org_linkedin_account_response(db, org_account)
+    
+    async def delete_integration(
+        self,
+        db: AsyncSession,
+        user_id: uuid.UUID,
+        integration_id: uuid.UUID
+    ) -> bool:
+        """
+        Delete a LinkedIn integration and deactivate all associated org accounts.
+        
+        This method performs a cascading soft-delete:
+        1. Verifies the user owns the integration
+        2. Deactivates all organization accounts using this integration
+        3. Deletes the integration record
+        
+        Note: This does not delete the LinkedIn account records themselves,
+        as they may be referenced by other integrations.
+        
+        Args:
+            db: Database session
+            user_id: User ID requesting deletion (must own the integration)
+            integration_id: Integration ID to delete
+            
+        Returns:
+            True if successfully deleted, False if not found or unauthorized
+        """
+        # Verify ownership
+        integration = await self.linkedin_integration_dao.get(db, integration_id)
+        
+        if not integration or integration.user_id != user_id:
+            return False
+        
+        # Deactivate all org accounts using this integration
+        await self.org_linkedin_account_dao.deactivate_by_integration(
+            db, integration_id
+        )
+        
+        # Delete the integration
+        await self.linkedin_integration_dao.delete(db, integration_id)
+        
+        logger.info(f"Deleted LinkedIn integration {integration_id} for user {user_id}")
+        return True
+    
+    async def delete_org_linkedin_account(
+        self,
+        db: AsyncSession,
+        org_account_id: uuid.UUID,
+        organization_id: uuid.UUID,
+        user_id: uuid.UUID,
+        user_has_org_delete_linkedin_account_permission: bool = False,
+    ) -> bool:
+        """
+        Delete an org LinkedIn account.
+        
+        This method is for organization admins to remove LinkedIn accounts
+        shared with the organization.
+        
+        Args:
+            db: Database session
+            org_account_id: ID of the org LinkedIn account to delete
+            organization_id: Organization ID (for verification)
+            user_has_org_delete_linkedin_account_permission: Whether the user has the permission to delete LinkedIn accounts
+            
+        Returns:
+            True if deleted, False if not found
+            
+        Raises:
+            HTTPException: If account not found or doesn't belong to org
+        """
+        # Get the org account
+        org_account = await self.org_linkedin_account_dao.get(db, org_account_id)
+        
+        if not org_account:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Org LinkedIn account not found"
+            )
+        
+        # Verify it belongs to the specified organization
+        if org_account.organization_id != organization_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="This LinkedIn account does not belong to your organization"
+            )
+        
+        if (not user_has_org_delete_linkedin_account_permission) and (org_account.managed_by_user_id != user_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You are not authorized to delete this Org LinkedIn Account"
+            )
+        
+        # Delete the account
+        success = await self.org_linkedin_account_dao.delete_org_linkedin_account(
+            db, org_account_id
+        )
+        
+        if success:
+            logger.info(f"Deleted org LinkedIn account {org_account_id} from organization {organization_id}")
+        
+        return success
+    
+    async def sync_integration(
+        self,
+        db: AsyncSession,
+        user_id: uuid.UUID,
+        integration_id: uuid.UUID
+    ) -> schemas.SyncIntegrationResponse:
+        """
+        Sync a LinkedIn integration to update available organizations and accounts.
+        
+        This method performs a complete synchronization:
+        1. Refreshes tokens if expired
+        2. Fetches current organization roles from LinkedIn
+        3. Updates LinkedIn accounts (personal and organizational)
+        4. Updates integration state and status
+        5. Updates status of org LinkedIn accounts
+        
+        Args:
+            db: Database session
+            user_id: User ID (for authorization check)
+            integration_id: Integration ID to sync
+            
+        Returns:
+            SyncIntegrationResponse with detailed sync results including:
+            - Number of accounts synced, created, and updated
+            - Any errors encountered during sync
+            - Overall success status
+        """
+        try:
+            # Get and verify integration ownership
+            integration = await self.linkedin_integration_dao.get(db, integration_id)
+            
+            if not integration or integration.user_id != user_id:
+                return schemas.SyncIntegrationResponse(
+                    success=False,
+                    integration_id=integration_id,
+                    message="Integration not found or unauthorized"
+                )
+            
+            # Refresh tokens if needed
+            try:
+                integration = await self._refresh_integration_tokens(db, integration)
+                if not integration:
+                    return schemas.SyncIntegrationResponse(
+                        success=False,
+                        integration_id=integration_id,
+                        message="Token refresh failed - integration expired",
+                        errors=["Failed to refresh access token"]
+                    )
+            except Exception as e:
+                logger.error(f"Token refresh error for integration {integration_id}: {e}")
+                await self.linkedin_integration_dao.update_state(
+                    db, integration.id, models.LinkedinOauthState.EXPIRED
+                )
+                await self._update_org_account_statuses(
+                    db, integration_id, models.OrgLinkedinAccountStatus.EXPIRED
+                )
+                
+                return schemas.SyncIntegrationResponse(
+                    success=False,
+                    integration_id=integration_id,
+                    message="Token refresh error",
+                    errors=[str(e)]
+                )
+            
+            # Create LinkedIn client with current access token
+            linkedin_client = self._get_linkedin_client(integration.access_token)
+            
+            # Initialize counters
+            accounts_synced = 0
+            new_accounts = 0
+            updated_accounts = 0
+            errors = []
+            
+            # Sync personal account
+            try:
+                success, member_profile = await linkedin_client.get_member_profile()
+                if not success:
+                    raise Exception("Failed to fetch member profile")
+                profile_data = self._extract_member_profile_data(member_profile)
+                full_name = f"{member_profile.localized_first_name} {member_profile.localized_last_name}"
+                vanity_name = member_profile.vanity_name if hasattr(member_profile, 'vanity_name') else None
+                
+                # Check if account exists
+                existing_account = await self.linkedin_account_dao.get(db, integration.linkedin_id)
+                
+                if existing_account:
+                    await self.linkedin_account_dao.update(
+                        db,
+                        linkedin_id=integration.linkedin_id,
+                        name=full_name,
+                        vanity_name=vanity_name,
+                        profile_data=profile_data
+                    )
+                    updated_accounts += 1
+                else:
+                    await self.linkedin_account_dao.create_or_update(
+                        db,
+                        linkedin_id=integration.linkedin_id,
+                        account_type=models.LinkedinAccountType.PERSON,
+                        name=full_name,
+                        vanity_name=vanity_name,
+                        profile_data=profile_data
+                    )
+                    new_accounts += 1
+                
+                accounts_synced += 1
+            except Exception as e:
+                logger.warning(f"Failed to sync personal account: {e}")
+                errors.append(f"Personal account sync failed: {str(e)}")
+            
+            # Sync organization accounts
+            linkedin_orgs_roles = {}
+            try:
+                success, org_roles_response = await linkedin_client.get_member_organization_roles()
+                if not success:
+                    raise Exception("Failed to fetch member organization roles")
+                
+                # Parse organization roles
+                linkedin_orgs_roles = await self._parse_organization_roles(org_roles_response)
+                
+                # Sync organization accounts and get stats
+                org_synced, org_new, org_updated, org_errors = await self._sync_organization_accounts(
+                    db, linkedin_client, linkedin_orgs_roles
+                )
+                
+                # Update counters
+                accounts_synced += org_synced
+                new_accounts += org_new
+                updated_accounts += org_updated
+                errors.extend(org_errors)
+                        
+            except Exception as e:
+                logger.warning(f"Failed to fetch organization roles: {e}")
+                errors.append(f"Organization roles fetch failed: {str(e)}")
+            
+            # Update integration with new orgs/roles if changed
+            if linkedin_orgs_roles != integration.linkedin_orgs_roles:
+                await self.linkedin_integration_dao.update_linkedin_orgs_roles(
+                    db, integration.id, linkedin_orgs_roles
+                )
+            
+            # Update integration state to active and refresh last sync timestamp
+            await self.linkedin_integration_dao.update_state(
+                db, integration.id, models.LinkedinOauthState.ACTIVE
+            )
+            
+            integration.last_sync_at = datetime_now_utc()
+            db.add(integration)
+            await db.commit()
+            
+            # Update all org account statuses to active
+            await self._update_org_account_statuses(
+                db, integration_id, models.OrgLinkedinAccountStatus.ACTIVE
+            )
+            
+            logger.info(
+                f"Synced integration {integration_id} for user {user_id}: "
+                f"{accounts_synced} accounts, {new_accounts} new, {updated_accounts} updated"
+            )
+            
+            return schemas.SyncIntegrationResponse(
+                success=True,
+                integration_id=integration_id,
+                message="Integration synced successfully",
+                accounts_synced=accounts_synced,
+                new_accounts=new_accounts,
+                updated_accounts=updated_accounts,
+                errors=errors
+            )
+            
+        except Exception as e:
+            logger.error(f"Error syncing integration {integration_id}: {e}", exc_info=True)
+            return schemas.SyncIntegrationResponse(
+                success=False,
+                integration_id=integration_id,
+                message=f"Sync failed: {str(e)}",
+                errors=[str(e)]
+            )
+    
+    async def _update_org_account_statuses(
+        self,
+        db: AsyncSession,
+        integration_id: uuid.UUID,
+        status: models.OrgLinkedinAccountStatus
+    ) -> None:
+        """
+        Update status for all organization accounts using a specific integration.
+        
+        This is typically called when an integration's status changes (e.g., tokens expire)
+        to reflect that change across all associated organization accounts.
+        
+        Args:
+            db: Database session
+            integration_id: Integration ID whose accounts should be updated
+            status: New status to set (ACTIVE, EXPIRED, or REVOKED)
+        """
+        try:
+            org_accounts = await self.org_linkedin_account_dao.get_by_integration(db, integration_id)
+            
+            if org_accounts:
+                for org_account in org_accounts:
+                    org_account.status = status
+                    db.add(org_account)
+                
+                await db.commit()
+                logger.info(
+                    f"Updated {len(org_accounts)} org accounts to status {status.value} "
+                    f"for integration {integration_id}"
+                )
+            else:
+                logger.debug(f"No org accounts found for integration {integration_id}")
+                
+        except Exception as e:
+            logger.error(
+                f"Error updating org account statuses for integration {integration_id}: {e}",
+                exc_info=True
+            )
+            # Don't raise - this is a best-effort operation
+            # The main operation should continue even if status update fails
+    
+    async def refresh_all_integrations(
+        self,
+        db: AsyncSession,
+        user_id: uuid.UUID
+    ) -> schemas.RefreshAllIntegrationsResponse:
+        """
+        Refresh all LinkedIn integrations for a user.
+        
+        Performs a sync operation on each of the user's LinkedIn integrations,
+        updating all associated accounts and organization data. This is useful
+        for bulk updates or scheduled synchronization tasks.
+        
+        The method continues processing even if individual integrations fail,
+        collecting all errors for reporting.
+        
+        Args:
+            db: Database session
+            user_id: User ID whose integrations should be refreshed
+            
+        Returns:
+            RefreshAllIntegrationsResponse containing:
+            - success: True if all integrations synced successfully
+            - message: Summary message
+            - integrations_processed: Total number of integrations attempted
+            - accounts_synced: Total accounts successfully synced across all integrations
+            - errors: Dict mapping integration_id to list of error messages
+        """
+        integrations = await self.linkedin_integration_dao.get_by_user_id(db, user_id)
+        
+        if not integrations:
+            logger.info(f"No integrations found for user {user_id}")
+            return schemas.RefreshAllIntegrationsResponse(
+                success=True,
+                message="No integrations to refresh",
+                integrations_processed=0,
+                accounts_synced=0,
+                errors={}
+            )
+        
+        logger.info(f"Starting refresh of {len(integrations)} integrations for user {user_id}")
+        
+        integrations_processed = 0
+        total_accounts_synced = 0
+        errors = {}
+        
+        for integration in integrations:
+            try:
+                sync_result = await self.sync_integration(db, user_id, integration.id)
+                integrations_processed += 1
+                
+                if sync_result.success:
+                    total_accounts_synced += sync_result.accounts_synced or 0
+                else:
+                    errors[str(integration.id)] = sync_result.errors
+                    
+            except Exception as e:
+                # Catch any unexpected errors to continue processing other integrations
+                logger.error(
+                    f"Unexpected error refreshing integration {integration.id}: {e}",
+                    exc_info=True
+                )
+                errors[str(integration.id)] = [f"Unexpected error: {str(e)}"]
+                integrations_processed += 1
+        
+        success = len(errors) == 0
+        
+        if success:
+            message = f"Successfully refreshed {integrations_processed} integrations"
+        else:
+            message = f"Refresh completed with errors in {len(errors)} of {integrations_processed} integrations"
+        
+        logger.info(
+            f"Completed refresh for user {user_id}: {integrations_processed} processed, "
+            f"{total_accounts_synced} accounts synced, {len(errors)} errors"
+        )
+        
+        return schemas.RefreshAllIntegrationsResponse(
+            success=success,
+            message=message,
+            integrations_processed=integrations_processed,
+            accounts_synced=total_accounts_synced,
+            errors=errors
+        )
+    
+    async def list_user_accessible_accounts(
+        self,
+        db: AsyncSession,
+        user_id: uuid.UUID
+    ) -> schemas.UserAccessibleLinkedinAccountsResponse:
+        """
+        List all LinkedIn accounts accessible to a user.
+        
+        Returns a comprehensive list of LinkedIn accounts the user can access:
+        - Personal LinkedIn account (if connected)
+        - Organization accounts the user has access to via integrations
+        
+        For each account, includes:
+        - Account details (name, type, profile data)
+        - User's role in the organization (if applicable)
+        - Whether the user can post to the account
+        - Integration status (active, expired, etc.)
+        
+        Args:
+            db: Database session
+            user_id: User ID to list accounts for
+            
+        Returns:
+            UserAccessibleLinkedinAccountsResponse containing:
+            - personal_account: User's personal LinkedIn account (if any)
+            - organization_accounts: List of accessible organization accounts
+            - total: Total number of accessible accounts
+        """
+        integrations = await self.linkedin_integration_dao.get_by_user_id(db, user_id)
+        
+        personal_account = None
+        organization_accounts = []
+        
+        for integration in integrations:
+            # Process personal account
+            personal_linkedin_account = await self.linkedin_account_dao.get(db, integration.linkedin_id)
+            
+            if personal_linkedin_account and personal_linkedin_account.account_type == models.LinkedinAccountType.PERSON:
+                personal_account = schemas.LinkedinAccountWithRole(
+                    account=schemas.LinkedinAccountRead.model_validate(personal_linkedin_account),
+                    role=None,  # Personal accounts don't have roles
+                    integration_id=integration.id,
+                    integration_state=integration.integration_state,
+                    can_post=True  # Users can always post to their own account
+                )
+            
+            # Process organization accounts
+            if integration.linkedin_orgs_roles:
+                for org_id, org_info in integration.linkedin_orgs_roles.items():
+                    org_linkedin_account = await self.linkedin_account_dao.get(db, org_id)
+                    
+                    if org_linkedin_account:
+                        # Get the user's role in this organization
+                        role = org_info.get("role")
+                        
+                        # Check if user can post based on their role
+                        can_post = self._can_user_post_to_organization(role)
+                        
+                        org_account_with_role = schemas.LinkedinAccountWithRole(
+                            account=schemas.LinkedinAccountRead.model_validate(org_linkedin_account),
+                            role=role,
+                            integration_id=integration.id,
+                            integration_state=integration.integration_state,
+                            can_post=can_post
+                        )
+                        
+                        organization_accounts.append(org_account_with_role)
+        
+        # Calculate total accessible accounts
+        total = (1 if personal_account else 0) + len(organization_accounts)
+        
+        return schemas.UserAccessibleLinkedinAccountsResponse(
+            personal_account=personal_account,
+            organization_accounts=organization_accounts,
+            total=total
+        ) 

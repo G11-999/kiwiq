@@ -967,7 +967,7 @@ class OrganizationLocation(ResponseBaseModel):
     pass
 
 
-class Organization(ResponseBaseModel):
+class LinkedinOrganization(ResponseBaseModel):
     """
     Represents a LinkedIn organization profile.
     
@@ -1056,7 +1056,7 @@ class Organization(ResponseBaseModel):
 
 
 # Type alias for member profile - reuse existing Person model
-MemberProfile = Person
+LinkedinMemberProfile = Person
 
 
 class LinkedInClient:
@@ -1109,10 +1109,53 @@ class LinkedInClient:
         self.client.access_token = access_token
         self.access_token = access_token
 
+    async def get_member_organization_roles(self) -> Tuple[bool, Optional[OrganizationRolesResponse]]:
+        """
+        Fetch all organizations and member roles for the authenticated member.
+
+        This method retrieves the roles assigned to the authenticated member within
+        various organizations using the LinkedIn API's organization access control endpoint.
+
+        Returns:
+            Tuple[bool, Optional[OrganizationRolesResponse]]: Tuple containing:
+                - bool: True if the roles were successfully retrieved
+                - Optional[OrganizationRolesResponse]: Response object containing organization role assignments if successful, None otherwise
+
+        Raises:
+            Exception: If there is an error fetching the organization roles.
+        """
+
+        try:
+            # Make API call to fetch organization roles
+            response = await asyncio.to_thread(
+                self.client.finder,
+                resource_path="/organizationAcls",
+                finder_name="roleAssignee",
+                # query_params={"q": "roleAssignee"},
+                version_string=self.version,
+                access_token=self.access_token
+            )
+            
+            # Check response status code
+            success = response.status_code == 200
+            if success:
+                response_data = {"elements": response.elements}
+                # Parse into OrganizationRolesResponse
+                roles_response = OrganizationRolesResponse(**response_data)
+                logger.info(f"Successfully retrieved {len(roles_response.elements)} organization roles")
+                return success, roles_response
+            else:
+                logger.error(f"Failed to fetch organization roles. Status: {response.status_code}")
+                return False, None
+
+        except Exception as e:
+            logger.error(f"Error fetching organization roles for the authenticated member: {str(e)}")
+            return False, None
+
     async def get_organization_details(
         self,
         organization_id: str
-    ) -> Organization:
+    ) -> Tuple[bool, Optional[LinkedinOrganization]]:
         """
         Fetch detailed information about a LinkedIn organization.
         
@@ -1123,7 +1166,9 @@ class LinkedInClient:
             organization_id: LinkedIn organization ID or URN
             
         Returns:
-            Organization: Organization profile details as a Pydantic model with optional fields
+            Tuple[bool, Optional[LinkedinOrganization]]: Tuple containing:
+                - bool: True if the organization details were successfully retrieved
+                - Optional[LinkedinOrganization]: Organization profile details as a Pydantic model if successful, None otherwise
             
         Raises:
             Exception: If there is an error fetching the organization details
@@ -1242,28 +1287,36 @@ class LinkedInClient:
             # ]
             
             # Make API call to get organization details
-            response = self.client.get(
+            response = await asyncio.to_thread(
+                self.client.get,
                 resource_path=f"/organizations/{organization_id}",
                 # query_params={"fields": ",".join(fields)},
                 version_string=self.version,
                 access_token=self.access_token
             )
-            response_data = response.entity
             
-            # Parse response with Pydantic model
-            organization = Organization(**response_data)
-            
-            logger.info(f"Successfully retrieved organization profile for ID: {organization_id}")
-            return organization
+            # Check response status code
+            success = response.status_code == 200
+            if success:
+                response_data = response.entity
+                
+                # Parse response with Pydantic model
+                organization = LinkedinOrganization(**response_data)
+                
+                logger.info(f"Successfully retrieved organization profile for ID: {organization_id}")
+                return success, organization
+            else:
+                logger.error(f"Failed to fetch organization details for {organization_id}. Status: {response.status_code}")
+                return False, None
             
         except Exception as e:
             logger.error(f"Error fetching organization details for {organization_id}: {str(e)}")
-            raise
+            return False, None
     
     async def get_member_profile(
         self,
         # member_id: str
-    ) -> MemberProfile:
+    ) -> Tuple[bool, Optional[LinkedinMemberProfile]]:
         """
         Fetch detailed information about the authenticated LinkedIn member profile.
         
@@ -1273,7 +1326,9 @@ class LinkedInClient:
         privacy settings or API permissions.
             
         Returns:
-            MemberProfile: Member profile details as a Pydantic model (alias for Person)
+            Tuple[bool, Optional[LinkedinMemberProfile]]: Tuple containing:
+                - bool: True if the member profile was successfully retrieved
+                - Optional[LinkedinMemberProfile]: Member profile details as a Pydantic model (alias for Person) if successful, None otherwise
             
         Raises:
             Exception: If there is an error fetching the member profile
@@ -1297,27 +1352,35 @@ class LinkedInClient:
         
         try:
             # Make API call to get authenticated member profile
-            response = self.client.get(
+            response = await asyncio.to_thread(
+                self.client.get,
                 resource_path=f"/me",
                 version_string=self.version,
                 access_token=self.access_token
             )
-            response_data = response.entity
             
-            # Parse response with Pydantic model
-            member_profile = MemberProfile(**response_data)
-            
-            logger.info(f"Successfully retrieved authenticated member profile")
-            return member_profile
+            # Check response status code
+            success = response.status_code == 200
+            if success:
+                response_data = response.entity
+                
+                # Parse response with Pydantic model
+                member_profile = LinkedinMemberProfile(**response_data)
+                
+                logger.info(f"Successfully retrieved authenticated member profile")
+                return success, member_profile
+            else:
+                logger.error(f"Failed to fetch member profile. Status: {response.status_code}")
+                return False, None
             
         except Exception as e:
             logger.error(f"Error fetching member profile: {str(e)}")
-            raise
+            return False, None
 
     async def get_person_profile(
         self,
         person_id: str
-    ) -> Person:
+    ) -> Tuple[bool, Optional[Person]]:
         """
         Fetch detailed information about a LinkedIn person profile by ID.
         
@@ -1330,7 +1393,9 @@ class LinkedInClient:
             person_id: LinkedIn person ID (can be with or without URN prefix)
             
         Returns:
-            Person: Person profile details as a Pydantic model with optional fields
+            Tuple[bool, Optional[Person]]: Tuple containing:
+                - bool: True if the person profile was successfully retrieved
+                - Optional[Person]: Person profile details as a Pydantic model with optional fields if successful, None otherwise
             
         Raises:
             Exception: If there is an error fetching the person profile
@@ -1358,22 +1423,30 @@ class LinkedInClient:
                 clean_person_id = person_id
             
             # Make API call to get person profile
-            response = self.client.get(
+            response = await asyncio.to_thread(
+                self.client.get,
                 resource_path=f"/people/(id:{clean_person_id})",
                 version_string=self.version,
                 access_token=self.access_token
             )
-            response_data = response.entity
             
-            # Parse response with Pydantic model
-            person = Person(**response_data)
-            
-            logger.info(f"Successfully retrieved person profile for ID: {person_id}")
-            return person
+            # Check response status code
+            success = response.status_code == 200
+            if success:
+                response_data = response.entity
+                
+                # Parse response with Pydantic model
+                person = Person(**response_data)
+                
+                logger.info(f"Successfully retrieved person profile for ID: {person_id}")
+                return success, person
+            else:
+                logger.error(f"Failed to fetch person profile for {person_id}. Status: {response.status_code}")
+                return False, None
             
         except Exception as e:
             logger.error(f"Error fetching person profile for {person_id}: {str(e)}")
-            raise
+            return False, None
     
     async def get_member_info_including_email(self) -> Tuple[bool, UserInfo]:
         """
@@ -1594,13 +1667,18 @@ class LinkedInClient:
                 kwargs["path_keys"] = path_keys
             if method == "finder":
                 kwargs["finder_name"] = finder_name
-                full_response = self.client.finder(**kwargs)
+                full_response = await asyncio.to_thread(self.client.finder, **kwargs)
             elif method == "get_all":
-                full_response = self.client.get_all(**kwargs)
+                full_response = await asyncio.to_thread(self.client.get_all, **kwargs)
             else:
                 raise ValueError(f"Invalid method: {method}")
             
             status_code = full_response.status_code
+            if status_code != 200:
+                if all_elements:
+                    return all_elements
+                logger.error(f"Failed to fetch {resource_path}. Status: {status_code}")
+                raise Exception(f"Failed to fetch {resource_path}. Status: {status_code}")
             raw_content = full_response.response.content
             # print("\n\nSTATUS CODE: ", status_code)
             # print("\n\nRAW CONTENT: ", raw_content)
@@ -1651,7 +1729,7 @@ class LinkedInClient:
         days: Optional[int] = None,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None
-    ) -> List[Dict[str, Any]]:
+    ) -> Tuple[bool, Optional[List[Dict[str, Any]]]]:
         """
         Fetch posts from a LinkedIn account with optional filtering by limit or date range.
         
@@ -1674,7 +1752,9 @@ class LinkedInClient:
             end_date: Optional end date for post range (requires start_date)
             
         Returns:
-            List[Dict[str, Any]]: List of LinkedIn posts matching the criteria
+            Tuple[bool, Optional[List[Dict[str, Any]]]]: Tuple containing:
+                - bool: True if the posts were successfully retrieved
+                - Optional[List[Dict[str, Any]]]: List of LinkedIn posts matching the criteria if successful, None otherwise
             
         Raises:
             ValueError: If both days and start_date/end_date are provided
@@ -1732,12 +1812,13 @@ class LinkedInClient:
                 # Apply limit after filtering
                 if limit and len(posts) >= limit:
                     break
-                
-            return posts
+            
+            logger.info(f"Successfully retrieved {len(posts)} posts for account {author_urn}")
+            return True, posts
             
         except Exception as e:
             logger.error(f"Error fetching posts for account {author_urn}: {str(e)}")
-            raise
+            return False, None
     
     # Post Management Methods
     
@@ -1745,7 +1826,7 @@ class LinkedInClient:
         self,
         post_urn: str,
         view_context: str = "READER"
-    ) -> Dict[str, Any]:
+    ) -> Tuple[bool, Optional[Dict[str, Any]]]:
         """
         Get a LinkedIn post by its URN.
         
@@ -1759,7 +1840,9 @@ class LinkedInClient:
                         - "AUTHOR": Latest version which may be in DRAFT, PROCESSING, or PUBLISHED state
                         
         Returns:
-            Dict[str, Any]: Post data including content, metadata, and analytics information
+            Tuple[bool, Optional[Dict[str, Any]]]: Tuple containing:
+                - bool: True if the post was successfully retrieved
+                - Optional[Dict[str, Any]]: Post data including content, metadata, and analytics information if successful, None otherwise
             
         Raises:
             Exception: If there is an error fetching the post
@@ -1782,20 +1865,27 @@ class LinkedInClient:
             query_params["viewContext"] = view_context
             
             # Make API call to get the post
-            response = self.client.get(
+            response = await asyncio.to_thread(
+                self.client.get,
                 resource_path=f"/posts/{encoded_urn}",
                 query_params=query_params if query_params else None,
                 version_string=self.version,
                 access_token=self.access_token
             )
-            response = response.entity
             
-            logger.info(f"Successfully retrieved post with URN: {post_urn}")
-            return response
+            # Check response status code
+            success = response.status_code == 200
+            if success:
+                response_data = response.entity
+                logger.info(f"Successfully retrieved post with URN: {post_urn}")
+                return success, response_data
+            else:
+                logger.error(f"Failed to fetch post with URN {post_urn}. Status: {response.status_code}")
+                return False, None
             
         except Exception as e:
             logger.error(f"Error fetching post by URN {post_urn}: {str(e)}")
-            raise
+            return False, None
     
     async def create_post(
         self,
@@ -1843,7 +1933,8 @@ class LinkedInClient:
         
         try:
             # Make API call
-            response = self.client.create(
+            response = await asyncio.to_thread(
+                self.client.create,
                 resource_path="/posts",
                 entity=post_request,
                 version_string=self.version,
@@ -1916,7 +2007,8 @@ class LinkedInClient:
         
         try:
             # Make API call
-            response = self.client.create(
+            response = await asyncio.to_thread(
+                self.client.create,
                 resource_path="/posts",
                 entity=reshare_post_request,
                 version_string=self.version,
@@ -1968,7 +2060,8 @@ class LinkedInClient:
             # Ensure we have a clean post ID (remove URN prefix if present)
             
             # Make API call to delete the post
-            response = self.client.delete(
+            response = await asyncio.to_thread(
+                self.client.delete,
                 resource_path=f"/posts/{encoded_urn}",
                 version_string=self.version,
                 access_token=self.access_token
@@ -1999,44 +2092,11 @@ class LinkedInClient:
         except Exception as e:
             logger.error(f"Error deleting LinkedIn post {post_urn}: {str(e)}")
             raise
-
-    async def get_member_organization_roles(self) -> OrganizationRolesResponse:
-        """
-        Fetch all organizations and member roles for the authenticated member.
-
-        This method retrieves the roles assigned to the authenticated member within
-        various organizations using the LinkedIn API's organization access control endpoint.
-
-        Returns:
-            OrganizationRolesResponse: A response object containing organization role assignments.
-
-        Raises:
-            Exception: If there is an error fetching the organization roles.
-        """
-
-        try:
-            # Make API call to fetch organization roles
-            response = self.client.finder(
-                resource_path="/organizationAcls",
-                finder_name="roleAssignee",
-                # query_params={"q": "roleAssignee"},
-                version_string=self.version,
-                access_token=self.access_token
-            )
-            response = {"elements": response.elements}
-            # Parse into OrganizationRolesResponse
-            roles_response = OrganizationRolesResponse(**response)
-
-            return roles_response
-
-        except Exception as e:
-            logger.error(f"Error fetching organization roles for the authenticated member: {str(e)}")
-            raise
     
     async def get_post_social_actions(
         self,
         post_id: str
-    ) -> SocialActionsSummary:
+    ) -> Tuple[bool, Optional[SocialActionsSummary]]:
         """
         Fetch social actions (likes, comments) for a specific post.
         
@@ -2044,38 +2104,49 @@ class LinkedInClient:
             post_id: LinkedIn post URN (already formatted as URN)
             
         Returns:
-            SocialActionsSummary: Summary of social actions on the post
+            Tuple[bool, Optional[SocialActionsSummary]]: Tuple containing:
+                - bool: True if the social actions were successfully retrieved
+                - Optional[SocialActionsSummary]: Summary of social actions on the post if successful, None otherwise
         """
             
         # Make API call if no cached data
         encoded_urn = quote(post_id, safe="")
         
         try:
-            response = self.client.get(
+            response = await asyncio.to_thread(
+                self.client.get,
                 resource_path=f"/socialActions/{encoded_urn}",
                 version_string=self.version,
                 access_token=self.access_token
             )
-            response = response.entity
             
-            # Add target field if not present
-            if "target" not in response:
-                response["target"] = post_id
-            # print(json.dumps(response, indent=4))    
-            # Parse response with Pydantic model
-            # print(json.dumps(response, indent=4))
-            social_actions = SocialActionsSummary(**response)
-            
-            return social_actions
+            # Check response status code
+            success = response.status_code == 200
+            if success:
+                response_data = response.entity
+                
+                # Add target field if not present
+                if "target" not in response_data:
+                    response_data["target"] = post_id
+                # print(json.dumps(response_data, indent=4))    
+                # Parse response with Pydantic model
+                # print(json.dumps(response_data, indent=4))
+                social_actions = SocialActionsSummary(**response_data)
+                
+                logger.info(f"Successfully retrieved social actions for post {post_id}")
+                return success, social_actions
+            else:
+                logger.error(f"Failed to fetch social actions for post {post_id}. Status: {response.status_code}")
+                return False, None
             
         except Exception as e:
             logger.error(f"Error fetching social actions for post {post_id}: {str(e)}")
-            raise
+            return False, None
     
     async def batch_get_post_social_actions(
         self,
         post_ids: List[str]
-    ) -> Dict[str, SocialActionsSummary]:
+    ) -> Tuple[bool, Optional[Dict[str, SocialActionsSummary]]]:
         """
         Batch fetch social actions for multiple posts.
         
@@ -2083,7 +2154,9 @@ class LinkedInClient:
             post_ids: List of LinkedIn post URNs
             
         Returns:
-            Dict[str, SocialActionsSummary]: Dictionary mapping post URNs to their social actions summaries
+            Tuple[bool, Optional[Dict[str, SocialActionsSummary]]]: Tuple containing:
+                - bool: True if the social actions were successfully retrieved
+                - Optional[Dict[str, SocialActionsSummary]]: Dictionary mapping post URNs to their social actions summaries if successful, None otherwise
         """
             
         # Make API call if no cached data
@@ -2091,34 +2164,43 @@ class LinkedInClient:
             # Prepare batch request with Rest.li batch_get method
             # Format the URNs for batch_get request
             
-            response = self.client.batch_get(
+            response = await asyncio.to_thread(
+                self.client.batch_get,
                 resource_path="/socialActions",
                 ids=post_ids,  # ids_param,  # TODO: check! potentially incorrect escape
                 version_string=self.version,
                 access_token=self.access_token
             )
-            response = {"results": response.results}
-            # Parse response with Pydantic models
-            result = {}
-            for post_id, data in response.get("results", {}).items():
-                # Add target field if not present
-                if "target" not in data:
-                    data["target"] = post_id
-                result[post_id] = SocialActionsSummary(**data)
             
-            # Cache the results - convert SocialActionsSummary objects to dicts
-            result_dict = {post_id: model.model_dump(by_alias=True) for post_id, model in result.items()}
-            
-            return result
+            # Check response status code
+            success = response.status_code == 200
+            if success:
+                response_data = {"results": response.results}
+                # Parse response with Pydantic models
+                result = {}
+                for post_id, data in response_data.get("results", {}).items():
+                    # Add target field if not present
+                    if "target" not in data:
+                        data["target"] = post_id
+                    result[post_id] = SocialActionsSummary(**data)
+                
+                # Cache the results - convert SocialActionsSummary objects to dicts
+                result_dict = {post_id: model.model_dump(by_alias=True) for post_id, model in result.items()}
+                
+                logger.info(f"Successfully batch retrieved social actions for {len(result)} posts")
+                return success, result
+            else:
+                logger.error(f"Failed to batch fetch social actions. Status: {response.status_code}")
+                return False, None
             
         except Exception as e:
             logger.error(f"Error batch fetching social actions: {str(e)}")
-            raise
+            return False, None
 
     async def batch_get_reactions(
         self,
         actor_entity_pairs: List[tuple[str, str]]
-    ) -> List[Reaction]:
+    ) -> Tuple[bool, Optional[List[Reaction]]]:
         """
         Batch fetch reactions for multiple (actor, entity) pairs.
         
@@ -2131,7 +2213,9 @@ class LinkedInClient:
                                - entity_urn: URN of the content that was reacted to (post, share, comment, etc.)
             
         Returns:
-            List[Reaction]: List of Reaction objects
+            Tuple[bool, Optional[List[Reaction]]]: Tuple containing:
+                - bool: True if the reactions were successfully retrieved
+                - Optional[List[Reaction]]: List of Reaction objects if successful, None otherwise
             
         Raises:
             Exception: If there is an error fetching reactions
@@ -2203,7 +2287,8 @@ class LinkedInClient:
                 string_key = f"(actor:{actor_urn},entity:{entity_urn})"
                 original_pair_map[string_key] = (actor_urn, entity_urn)
             
-            response = self.client.batch_get(
+            response = await asyncio.to_thread(
+                self.client.batch_get,
                 resource_path="/reactions",
                 ids=batch_ids,
                 version_string=self.version,
@@ -2214,20 +2299,26 @@ class LinkedInClient:
             # print("\n\nRAW_CONTENT: ", response.response.content)
             # print("\n\nRESPONSE RESULTS: ", json.dumps(response.results, indent=4))
             
-            # Parse response
-            result = []
-            
-            # The response.results keys are URL-encoded versions of the batch_ids
-            for encoded_key, reaction_data in response.results.items():
-                # URL decode the key to get back the original batch_id format
-                result.append(Reaction(**reaction_data))
-            
-            logger.info(f"Successfully retrieved {len(result)} reactions from batch request")
-            return result
+            # Check response status code
+            success = response.status_code == 200
+            if success:
+                # Parse response
+                result = []
+                
+                # The response.results keys are URL-encoded versions of the batch_ids
+                for encoded_key, reaction_data in response.results.items():
+                    # URL decode the key to get back the original batch_id format
+                    result.append(Reaction(**reaction_data))
+                
+                logger.info(f"Successfully retrieved {len(result)} reactions from batch request")
+                return success, result
+            else:
+                logger.error(f"Failed to batch fetch reactions. Status: {response.status_code}")
+                return False, None
             
         except Exception as e:
             logger.error(f"Error batch fetching reactions: {str(e)}")
-            raise
+            return False, None
 
     def batch_reactions_to_dict(
         self,
@@ -2367,7 +2458,8 @@ class LinkedInClient:
                 #     query_params[f"ugcPosts[{i}]"] = ugc_post_urn
             
             # Make API call using Rest.li finder method
-            response = self.client.finder(
+            response = await asyncio.to_thread(
+                self.client.finder,
                 resource_path="/organizationalEntityShareStatistics",
                 finder_name="organizationalEntity",
                 query_params=query_params,
@@ -2428,7 +2520,7 @@ class LinkedInClient:
         start_date: datetime,
         end_date: datetime,
         granularity: str = "DAY"
-    ) -> FollowerStatisticsResponse:
+    ) -> Tuple[bool, Optional[FollowerStatisticsResponse]]:
         """
         Fetch follower statistics for an organization.
         
@@ -2442,7 +2534,9 @@ class LinkedInClient:
             granularity: Time granularity for aggregation ("DAY" or "MONTH")
             
         Returns:
-            FollowerStatisticsResponse: Follower statistics for the organization
+            Tuple[bool, Optional[FollowerStatisticsResponse]]: Tuple containing:
+                - bool: True if the follower statistics were successfully retrieved
+                - Optional[FollowerStatisticsResponse]: Follower statistics for the organization if successful, None otherwise
             
         Reference:
             https://learn.microsoft.com/en-us/linkedin/marketing/community-management/organizations/follower-statistics?view=li-lms-2025-02&tabs=http
@@ -2470,7 +2564,8 @@ class LinkedInClient:
             #     version_string=self.version,
             #     access_token=self.access_token
             # )
-            response = self.client.finder(
+            response = await asyncio.to_thread(
+                self.client.finder,
                 resource_path=f"/organizationalEntityFollowerStatistics",
                 finder_name="organizationalEntity",
                 query_params={  # TODO: check!!! manually corrected version
@@ -2481,21 +2576,29 @@ class LinkedInClient:
                 version_string=self.version,
                 access_token=self.access_token
             )
-            response = {"elements": response.elements}
             
-            # Parse response with Pydantic model
-            follower_stats = FollowerStatisticsResponse(**response)
-            
-            return follower_stats
+            # Check response status code
+            success = response.status_code == 200
+            if success:
+                response_data = {"elements": response.elements}
+                
+                # Parse response with Pydantic model
+                follower_stats = FollowerStatisticsResponse(**response_data)
+                
+                logger.info(f"Successfully retrieved follower statistics for organization {organization_id}")
+                return success, follower_stats
+            else:
+                logger.error(f"Failed to fetch follower statistics for organization {organization_id}. Status: {response.status_code}")
+                return False, None
             
         except Exception as e:
             logger.error(f"Error fetching follower statistics for organization {organization_id}: {str(e)}")
-            raise
+            return False, None
     
     async def get_organization_follower_count(
         self,
         organization_id: str
-    ) -> int:
+    ) -> Tuple[bool, Optional[Dict[str, Any]]]:
         """
         Fetch the current follower count for an organization.
         
@@ -2505,7 +2608,9 @@ class LinkedInClient:
             organization_id: LinkedIn organization ID
             
         Returns:
-            int: Current follower count
+            Tuple[bool, Optional[Dict[str, Any]]]: Tuple containing:
+                - bool: True if the follower count was successfully retrieved
+                - Optional[Dict[str, Any]]: Flattened follower counts dictionary if successful, None otherwise
             
         Reference:
             https://learn.microsoft.com/en-us/linkedin/marketing/community-management/organizations/follower-statistics?view=li-lms-2025-02&tabs=http
@@ -2515,7 +2620,8 @@ class LinkedInClient:
             org_urn = organization_id  # f"urn:li:organization:{organization_id}"
             # encoded_org_urn = quote(org_urn, safe="")
             
-            response = self.client.finder(
+            response = await asyncio.to_thread(
+                self.client.finder,
                 resource_path=f"/organizationalEntityFollowerStatistics",
                 finder_name="organizationalEntity",
                 query_params={  # TODO: check!!! manually corrected version
@@ -2525,20 +2631,28 @@ class LinkedInClient:
                 version_string=self.version,
                 access_token=self.access_token
             )
-            response = {"elements": response.elements}
-            flattened_follower_counts = process_follower_counts(response)
             
-            # Extract follower count from the response
-            # follower_count = 0
-            # if "elements" in response and len(response["elements"]) > 0:
-            #     if "followerCounts" in response["elements"][0]:
-            #         follower_count = response["elements"][0]["followerCounts"].get("end", 0)
-            
-            return flattened_follower_counts
+            # Check response status code
+            success = response.status_code == 200
+            if success:
+                response_data = {"elements": response.elements}
+                flattened_follower_counts = process_follower_counts(response_data)
+                
+                # Extract follower count from the response
+                # follower_count = 0
+                # if "elements" in response_data and len(response_data["elements"]) > 0:
+                #     if "followerCounts" in response_data["elements"][0]:
+                #         follower_count = response_data["elements"][0]["followerCounts"].get("end", 0)
+                
+                logger.info(f"Successfully retrieved follower count for organization {organization_id}")
+                return success, flattened_follower_counts
+            else:
+                logger.error(f"Failed to fetch follower count for organization {organization_id}. Status: {response.status_code}")
+                return False, None
             
         except Exception as e:
             logger.error(f"Error fetching follower count for organization {organization_id}: {str(e)}")
-            raise
+            return False, None
     
     async def get_post_likes(
         self,
@@ -2546,7 +2660,7 @@ class LinkedInClient:
         total_limit: Optional[int] = None,
         elements_per_page: Optional[int] = None,
         start: int = 0
-    ) -> List[Like]:
+    ) -> Tuple[bool, Optional[List[Like]]]:
         """
         Fetch likes for a specific LinkedIn post, share, or comment.
         
@@ -2559,7 +2673,9 @@ class LinkedInClient:
             start: Starting position for pagination (default: 0)
             
         Returns:
-            List[Like]: List of likes on the specified content
+            Tuple[bool, Optional[List[Like]]]: Tuple containing:
+                - bool: True if the likes were successfully retrieved
+                - Optional[List[Like]]: List of likes on the specified content if successful, None otherwise
             
         Raises:
             Exception: If there is an error fetching likes
@@ -2587,11 +2703,11 @@ class LinkedInClient:
             )
             
             logger.info(f"Successfully retrieved {len(likes)} likes for post {post_urn}")
-            return likes
+            return True, likes
             
         except Exception as e:
             logger.error(f"Error fetching likes for post {post_urn}: {str(e)}")
-            raise
+            return False, None
     
     async def get_post_comments(
         self,
@@ -2599,7 +2715,7 @@ class LinkedInClient:
         total_limit: Optional[int] = None,
         elements_per_page: Optional[int] = None,
         start: int = 0
-    ) -> List[Comment]:
+    ) -> Tuple[bool, Optional[List[Comment]]]:
         """
         Fetch comments for a specific LinkedIn post, share, or comment.
         
@@ -2612,7 +2728,9 @@ class LinkedInClient:
             start: Starting position for pagination (default: 0)
             
         Returns:
-            List[Comment]: List of comments on the specified content
+            Tuple[bool, Optional[List[Comment]]]: Tuple containing:
+                - bool: True if the comments were successfully retrieved
+                - Optional[List[Comment]]: List of comments on the specified content if successful, None otherwise
             
         Raises:
             Exception: If there is an error fetching comments
@@ -2641,17 +2759,17 @@ class LinkedInClient:
             )
 
             logger.info(f"Successfully retrieved {len(comments)} comments for post {post_urn}")
-            return comments
+            return True, comments
             
         except Exception as e:
             logger.error(f"Error fetching comments for post {post_urn}: {str(e)}")
-            raise
+            return False, None
     
     async def get_all_post_likes(
         self,
         post_urn: str,
         elements_per_page: Optional[int] = None
-    ) -> List[Like]:
+    ) -> Tuple[bool, Optional[List[Like]]]:
         """
         Fetch all likes for a specific LinkedIn post, share, or comment.
         
@@ -2662,7 +2780,9 @@ class LinkedInClient:
             elements_per_page: Number of likes to fetch per API call (default: DEFAULT_ELEMENTS_PER_PAGE)
             
         Returns:
-            List[Like]: Complete list of all likes on the specified content (up to MAX_TOTAL_ELEMENTS_FETCHED_LIMIT)
+            Tuple[bool, Optional[List[Like]]]: Tuple containing:
+                - bool: True if the likes were successfully retrieved
+                - Optional[List[Like]]: Complete list of all likes on the specified content (up to MAX_TOTAL_ELEMENTS_FETCHED_LIMIT) if successful, None otherwise
             
         Raises:
             Exception: If there is an error fetching likes
@@ -2681,7 +2801,7 @@ class LinkedInClient:
         self,
         post_urn: str,
         elements_per_page: Optional[int] = None
-    ) -> List[Comment]:
+    ) -> Tuple[bool, Optional[List[Comment]]]:
         """
         Fetch all comments for a specific LinkedIn post, share, or comment.
         
@@ -2692,7 +2812,9 @@ class LinkedInClient:
             elements_per_page: Number of comments to fetch per API call (default: DEFAULT_ELEMENTS_PER_PAGE)
             
         Returns:
-            List[Comment]: Complete list of all comments on the specified content (up to MAX_TOTAL_ELEMENTS_FETCHED_LIMIT)
+            Tuple[bool, Optional[List[Comment]]]: Tuple containing:
+                - bool: True if the comments were successfully retrieved
+                - Optional[List[Comment]]: Complete list of all comments on the specified content (up to MAX_TOTAL_ELEMENTS_FETCHED_LIMIT) if successful, None otherwise
             
         Raises:
             Exception: If there is an error fetching comments
@@ -2877,7 +2999,8 @@ class LinkedInClient:
             encoded_urn = quote(post_urn, safe="")
             
             # Make API call to update the post
-            response = self.client.partial_update(
+            response = await asyncio.to_thread(
+                self.client.partial_update,
                 resource_path=f"/posts/{encoded_urn}",
                 patch_set_object=partial_update_data,
                 version_string=self.version,
@@ -2997,7 +3120,8 @@ class LinkedInClient:
             encoded_target_urn = quote(target_urn, safe="")
             
             # Make API call to create the comment
-            response = self.client.create(
+            response = await asyncio.to_thread(
+                self.client.create,
                 resource_path=f"/socialActions/{encoded_target_urn}/comments",
                 entity=comment_request,
                 version_string=self.version,
@@ -3145,7 +3269,8 @@ class LinkedInClient:
                 }
             }
 
-            response = self.client._RestliClient__send_and_format_response(
+            response = await asyncio.to_thread(
+                self.client._RestliClient__send_and_format_response,
                 restli_method=RESTLI_METHODS.PARTIAL_UPDATE,
                 resource_path=resource_path,
                 # path_keys=path_keys,
@@ -3226,7 +3351,8 @@ class LinkedInClient:
                 query_params["actor"] = actor_urn
             
             # Make API call to delete the comment
-            response = self.client.delete(
+            response = await asyncio.to_thread(
+                self.client.delete,
                 resource_path=f"/socialActions/{encoded_target_urn}/comments/{encoded_comment_id}",
                 query_params=query_params if query_params else None,
                 version_string=self.version,
@@ -3310,7 +3436,8 @@ class LinkedInClient:
             encoded_target_urn = quote(target_urn, safe="")
             
             # Make API call to create the like
-            response = self.client.create(
+            response = await asyncio.to_thread(
+                self.client.create,
                 resource_path=f"/socialActions/{encoded_target_urn}/likes",
                 entity=like_request,
                 version_string=self.version,
@@ -3390,7 +3517,8 @@ class LinkedInClient:
             
             # Make API call to delete the like
             # The actor URN is used both in the path and as a query parameter
-            response = self.client.delete(
+            response = await asyncio.to_thread(
+                self.client.delete,
                 resource_path=f"/socialActions/{encoded_target_urn}/likes/{encoded_actor_urn}",
                 query_params=query_params,
                 version_string=self.version,
@@ -3416,7 +3544,7 @@ class LinkedInClient:
 
     # Member Follower Count Methods
     
-    async def get_member_followers_count_lifetime(self) -> int:
+    async def get_member_followers_count_lifetime(self) -> Tuple[bool, Optional[int]]:
         """
         Fetch the current lifetime follower count for the authenticated member.
         
@@ -3424,7 +3552,9 @@ class LinkedInClient:
         across their entire LinkedIn history.
         
         Returns:
-            int: Current lifetime follower count for the member
+            Tuple[bool, Optional[int]]: Tuple containing:
+                - bool: True if the follower count was successfully retrieved
+                - Optional[int]: Current lifetime follower count for the member if successful, None otherwise
             
         Raises:
             Exception: If there is an error fetching the follower count
@@ -3444,34 +3574,42 @@ class LinkedInClient:
         
         try:
             # Make API call using Rest.li finder method with "me" finder
-            response = self.client.finder(
+            response = await asyncio.to_thread(
+                self.client.finder,
                 resource_path="/memberFollowersCount",
                 finder_name="me",
                 version_string=self.version,
                 access_token=self.access_token
             )
-            response_data = {"paging": {"start": response.paging.start, "count": response.paging.count, "total": response.paging.total}, "elements": response.elements}
             
-            # Parse response with Pydantic model
-            followers_response = MemberFollowersCountResponse(**response_data)
-            
-            # Extract follower count from the response
-            follower_count = 0
-            if followers_response.elements:
-                follower_count = followers_response.elements[0].member_followers_count
-            
-            logger.info(f"Successfully retrieved lifetime follower count: {follower_count}")
-            return follower_count
+            # Check response status code
+            success = response.status_code == 200
+            if success:
+                response_data = {"paging": {"start": response.paging.start, "count": response.paging.count, "total": response.paging.total}, "elements": response.elements}
+                
+                # Parse response with Pydantic model
+                followers_response = MemberFollowersCountResponse(**response_data)
+                
+                # Extract follower count from the response
+                follower_count = 0
+                if followers_response.elements:
+                    follower_count = followers_response.elements[0].member_followers_count
+                
+                logger.info(f"Successfully retrieved lifetime follower count: {follower_count}")
+                return success, follower_count
+            else:
+                logger.error(f"Failed to fetch lifetime member follower count. Status: {response.status_code}")
+                return False, None
             
         except Exception as e:
             logger.error(f"Error fetching lifetime member follower count: {str(e)}")
-            raise
+            return False, None
     
     async def get_member_followers_count_by_date_range(
         self,
         start_date: datetime,
         end_date: datetime
-    ) -> List[MemberFollowersCountByDate]:
+    ) -> Tuple[bool, Optional[List[MemberFollowersCountByDate]]]:
         """
         Fetch member followers count changes within a specific date range.
         
@@ -3484,7 +3622,9 @@ class LinkedInClient:
             end_date: End date for the follower count range
             
         Returns:
-            List[MemberFollowersCountByDate]: List of follower count changes by date range
+            Tuple[bool, Optional[List[MemberFollowersCountByDate]]]: Tuple containing:
+                - bool: True if the follower count changes were successfully retrieved
+                - Optional[List[MemberFollowersCountByDate]]: List of follower count changes by date range if successful, None otherwise
             
         Raises:
             Exception: If there is an error fetching the follower count data
@@ -3535,7 +3675,8 @@ class LinkedInClient:
             }
             
             # Make API call using Rest.li finder method with "dateRange" finder
-            response = self.client.finder(
+            response = await asyncio.to_thread(
+                self.client.finder,
                 resource_path="/memberFollowersCount",
                 finder_name="dateRange",
                 query_params={
@@ -3544,22 +3685,29 @@ class LinkedInClient:
                 version_string=self.version,
                 access_token=self.access_token
             )
-            response_data = {"paging": {"start": response.paging.start, "count": response.paging.count, "total": response.paging.total}, "elements": response.elements}
             
-            # Parse response with Pydantic model
-            followers_response = MemberFollowersCountByDateResponse(**response_data)
-            
-            logger.info(f"Successfully retrieved follower count changes for date range: {len(followers_response.elements)} entries")
-            return followers_response.elements
+            # Check response status code
+            success = response.status_code == 200
+            if success:
+                response_data = {"paging": {"start": response.paging.start, "count": response.paging.count, "total": response.paging.total}, "elements": response.elements}
+                
+                # Parse response with Pydantic model
+                followers_response = MemberFollowersCountByDateResponse(**response_data)
+                
+                logger.info(f"Successfully retrieved follower count changes for date range: {len(followers_response.elements)} entries")
+                return success, followers_response.elements
+            else:
+                logger.error(f"Failed to fetch member follower count by date range. Status: {response.status_code}")
+                return False, None
             
         except Exception as e:
             logger.error(f"Error fetching member follower count by date range: {str(e)}")
-            raise
+            return False, None
 
     async def get_social_metadata(
         self,
         entity_urn: str
-    ) -> SocialMetadata:
+    ) -> Tuple[bool, Optional[SocialMetadata]]:
         """
         Fetch social metadata for a specific LinkedIn content.
         
@@ -3570,7 +3718,9 @@ class LinkedInClient:
             entity_urn: LinkedIn entity URN (post, share, or comment) to get metadata for
             
         Returns:
-            SocialMetadata: Social metadata for the specified content
+            Tuple[bool, Optional[SocialMetadata]]: Tuple containing:
+                - bool: True if the social metadata was successfully retrieved
+                - Optional[SocialMetadata]: Social metadata for the specified content if successful, None otherwise
             
         Raises:
             Exception: If there is an error fetching social metadata
@@ -3583,23 +3733,32 @@ class LinkedInClient:
             encoded_urn = quote(entity_urn, safe="")
             
             # Make API call
-            response = self.client.get(
+            response = await asyncio.to_thread(
+                self.client.get,
                 resource_path=f"/socialMetadata/{encoded_urn}",
                 version_string=self.version,
                 access_token=self.access_token
             )
             
-            # Parse response with Pydantic model
-            return SocialMetadata(**response.entity)
+            # Check response status code
+            success = response.status_code == 200
+            if success:
+                # Parse response with Pydantic model
+                social_metadata = SocialMetadata(**response.entity)
+                logger.info(f"Successfully retrieved social metadata for entity {entity_urn}")
+                return success, social_metadata
+            else:
+                logger.error(f"Failed to fetch social metadata for entity {entity_urn}. Status: {response.status_code}")
+                return False, None
             
         except Exception as e:
             logger.error(f"Error fetching social metadata for entity {entity_urn}: {str(e)}")
-            raise
+            return False, None
 
     async def batch_get_social_metadata(
         self,
         entity_urns: List[str]
-    ) -> Dict[str, SocialMetadata]:
+    ) -> Tuple[bool, Optional[Dict[str, SocialMetadata]]]:
         """
         Batch fetch social metadata for multiple LinkedIn content items.
         
@@ -3610,7 +3769,9 @@ class LinkedInClient:
             entity_urns: List of LinkedIn entity URNs (posts, shares, or comments)
             
         Returns:
-            Dict[str, SocialMetadata]: Dictionary mapping entity URNs to their social metadata
+            Tuple[bool, Optional[Dict[str, SocialMetadata]]]: Tuple containing:
+                - bool: True if the social metadata was successfully retrieved
+                - Optional[Dict[str, SocialMetadata]]: Dictionary mapping entity URNs to their social metadata if successful, None otherwise
             
         Raises:
             Exception: If there is an error fetching social metadata
@@ -3621,18 +3782,26 @@ class LinkedInClient:
         try:
             
             # Make API call
-            response = self.client.batch_get(
+            response = await asyncio.to_thread(
+                self.client.batch_get,
                 resource_path="/socialMetadata",
                 version_string=self.version,
                 access_token=self.access_token,
                 ids=entity_urns,
             )
             
-            # Parse response with Pydantic model
-            metadata_response = SocialMetadataResponse(results=response.results)
-            return metadata_response.results
+            # Check response status code
+            success = response.status_code == 200
+            if success:
+                # Parse response with Pydantic model
+                metadata_response = SocialMetadataResponse(results=response.results)
+                logger.info(f"Successfully batch retrieved social metadata for {len(metadata_response.results)} entities")
+                return success, metadata_response.results
+            else:
+                logger.error(f"Failed to batch fetch social metadata. Status: {response.status_code}")
+                return False, None
             
         except Exception as e:
             logger.error(f"Error batch fetching social metadata for entities: {str(e)}")
-            raise
+            return False, None
 
