@@ -717,7 +717,7 @@ class LinkedinOauthService:
             email=registration_data.email,
             full_name=registration_data.full_name,
             password=None,  # No password for OAuth users
-            agree_to_terms=registration_data.agree_to_terms
+            # agree_to_terms=registration_data.agree_to_terms
         )
         
         # Register new user (skip email verification if LinkedIn verified)

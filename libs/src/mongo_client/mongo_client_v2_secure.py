@@ -421,7 +421,6 @@ class AsyncMongoDBClient:
                         regex_pattern = regex_pattern[:-3]
                     
                     query[segment_name] = {'$regex': regex_pattern}
-                    print(f"\n\n$$$$$ DEBUG: regex pattern:", regex_pattern, "\n\n")
                 else:
                     query[segment_name] = part
         

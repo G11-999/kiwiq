@@ -141,7 +141,7 @@ class Settings(GlobalSettings):
     LINKEDIN_SETTINGS_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/settings"  # redirect to settings to show newly linkedin linkedin account
     LINKEDIN_REGISTER_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/register"  # Ask user to complete new account registration to finish linkedin linking
     LINKEDIN_VERIFY_ACCOUNT_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/verify-account"  # For unverified linkedin emails i.e. user email is not verified by Linkedin
-    LINKEDIN_CONFLICT_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/linkedin-conflict"  # Conflict: show user that linkedin account linked to another KIWIQ user account
+    # LINKEDIN_CONFLICT_SPA_URL: Optional[str] = f"{REDIRECT_BASE_URL}/linkedin-conflict"  # Conflict: show user that linkedin account linked to another KIWIQ user account
     # NOTE: if API prefix var name changes, change it here: `security.py` to set `OAuth2PasswordBearer``
     # NOTE: also used in verify email url!
     API_V1_PREFIX: str = "/api/v1"

@@ -276,22 +276,6 @@ async def linkedin_oauth_callback(
                     user_info=result.user_info,
                     requires_cookies=True
                 )
-                
-            elif result.action == schemas.OauthAction.CONFLICT_RESOLUTION:
-                # LinkedIn already linked to different account
-                base_conflict_url = settings.LINKEDIN_CONFLICT_SPA_URL if settings.APP_ENV in ["PROD", "STAGE"] else f"{_get_base_url(request)}/linkedin-conflict"
-                redirect_url = (
-                    f"{base_conflict_url}"
-                    f"?email={result.user_info.get('conflict_email', '')}"
-                )
-                return schemas.OauthCallbackResponse(
-                    success=False,
-                    action=schemas.OauthAction.CONFLICT_RESOLUTION,
-                    redirect_url=redirect_url,
-                    message="This LinkedIn account is already linked to another KIWIQ account",
-                    error_code="account_conflict",
-                    user_info=result.user_info
-                )
         else:
             # OAuth processing failed
             redirect_url = f"{settings.LINKEDIN_LOGIN_SPA_URL}?error=oauth_failed" if settings.APP_ENV in ["PROD", "STAGE"] else f"{_get_base_url(request)}/login?error=oauth_failed"
@@ -553,7 +537,7 @@ async def request_verification_for_linkedin_unverified_email(
 
 
 @linkedin_oauth_router.get("/auth/verify-linking", response_model=schemas.OauthVerificationResponse)
-async def verify_linkedin_linking(
+async def verify_linkedin_linking_from_email_token(
     request: Request,
     response: Response,
     token: str = Query(..., description="LinkedIn linking verification token"),
@@ -598,7 +582,7 @@ async def verify_linkedin_linking(
 
 
 @linkedin_oauth_router.post("/auth/provide-email", response_model=schemas.ProvideEmailResult)
-async def provide_email_for_linkedin(
+async def provide_email_for_linkedin_when_linkedin_email_unavailable(
     request: Request,
     provide_email_data: schemas.ProvideEmail,
     background_tasks: BackgroundTasks,

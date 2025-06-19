@@ -41,13 +41,7 @@ class CompleteLinkedinRegistration(BaseModel):
     full_name: str = Field(..., min_length=1, max_length=200)
     email: EmailStr
     organization_name: Optional[str] = Field(None, max_length=200)
-    agree_to_terms: bool = Field(..., description="User agreement to terms")
-    
-    @field_validator('agree_to_terms')
-    def terms_must_be_accepted(cls, v):
-        if not v:
-            raise ValueError('Terms must be accepted')
-        return v
+    # agree_to_terms: bool = Field(..., description="User agreement to terms")
 
 
 class LinkExistingAccount(BaseModel):
