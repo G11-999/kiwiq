@@ -61,6 +61,7 @@ from workflow_service.utils.utils import get_node_output_state_key # Util for fi
 from workflow_service.config.constants import STATE_KEY_DELIMITER
 
 from workflow_service.services.cron_flows import billing_expire_organization_credits_flow, search_scheduled_briefs_and_send_reminders_flow
+from linkedin_integration.models import *
 
 # --- Core Workflow Execution Flow ---
 

@@ -580,9 +580,9 @@ async def main_test_idea_to_brief_workflow():
         # Output document
         {'namespace': CONTENT_STRATEGY_NAMESPACE_TEMPLATE.format(item=entity_username), 'docname': CONTENT_STRATEGY_DOCNAME, 'is_versioned': CONTENT_STRATEGY_IS_VERSIONED, 'is_shared': False, 'is_system_entity': False},
         
-        # System documents
-        {'namespace': METHODOLOGY_IMPLEMENTATION_NAMESPACE_TEMPLATE, 'docname': METHODOLOGY_IMPLEMENTATION_DOCNAME, 'is_versioned': False, 'is_shared': METHODOLOGY_IMPLEMENTATION_IS_SHARED, 'is_system_entity': METHODOLOGY_IMPLEMENTATION_IS_SYSTEM_ENTITY},
-        {'namespace': BUILDING_BLOCKS_NAMESPACE_TEMPLATE, 'docname': BUILDING_BLOCKS_DOCNAME, 'is_versioned': False, 'is_shared': BUILDING_BLOCKS_IS_SHARED, 'is_system_entity': BUILDING_BLOCKS_IS_SYSTEM_ENTITY},
+        # # System documents
+        # {'namespace': METHODOLOGY_IMPLEMENTATION_NAMESPACE_TEMPLATE, 'docname': METHODOLOGY_IMPLEMENTATION_DOCNAME, 'is_versioned': False, 'is_shared': METHODOLOGY_IMPLEMENTATION_IS_SHARED, 'is_system_entity': METHODOLOGY_IMPLEMENTATION_IS_SYSTEM_ENTITY},
+        # {'namespace': BUILDING_BLOCKS_NAMESPACE_TEMPLATE, 'docname': BUILDING_BLOCKS_DOCNAME, 'is_versioned': False, 'is_shared': BUILDING_BLOCKS_IS_SHARED, 'is_system_entity': BUILDING_BLOCKS_IS_SYSTEM_ENTITY},
     ]
 
     # Predefined HITL inputs

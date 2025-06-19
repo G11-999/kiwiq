@@ -30,6 +30,7 @@ from prefect import get_client as prefect_get_client
 from workflow_service.services.events import WorkflowBaseEvent # Assuming path for event schemas
 
 from kiwi_app.workflow_app.service_customer_data import CustomerDataService
+from linkedin_integration.models import *
 
 # Global clients storage
 _mongo_clients: Dict[str, AsyncMongoDBClient] = {}
