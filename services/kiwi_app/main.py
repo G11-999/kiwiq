@@ -369,7 +369,7 @@ app = FastAPI(
     title="KiwiQ Backend - Refactored Auth",
     lifespan=lifespan,
     docs_url=None,  # Disable built-in docs, we'll create our own
-    redoc_url="/secret-redoc",
+    redoc_url="/kiwiq-secret-redoc",
     openapi_url="/openapi.json",
     openapi_tags=tags_metadata,
 )
@@ -387,7 +387,7 @@ app = FastAPI(
 # )
 
 # --- Custom Swagger UI Route --- #
-@app.get("/secret-docs", include_in_schema=False)
+@app.get("/kiwiq-secret-docs", include_in_schema=False)
 async def custom_swagger_ui_html(req: Request):
     """
     Custom Swagger UI route with proper CSRF support.
@@ -398,10 +398,10 @@ async def custom_swagger_ui_html(req: Request):
     return get_swagger_ui_html(
         openapi_url="/openapi.json",
         title=app.title,
-        oauth2_redirect_url="/secret-docs/oauth2-redirect",
+        oauth2_redirect_url="/kiwiq-secret-docs/oauth2-redirect",
     )
 
-@app.get("/secret-docs/oauth2-redirect", include_in_schema=False)
+@app.get("/kiwiq-secret-docs/oauth2-redirect", include_in_schema=False)
 async def swagger_ui_oauth2_redirect():
     """
     OAuth2 redirect handler for Swagger UI authentication flows.
