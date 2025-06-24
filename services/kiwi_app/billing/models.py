@@ -213,8 +213,6 @@ class SubscriptionPlan(SQLModel, table=True):
         default_factory=datetime_now_utc, 
         sa_column=sa.Column(sa.DateTime(timezone=True), nullable=False, onupdate=datetime_now_utc)
     )
-
-    linkedin_profiles: int = Field(default=1, description="Number of LinkedIn profiles allowed")
     
     # Relationships
     subscriptions: List["OrganizationSubscription"] = Relationship(back_populates="plan")
