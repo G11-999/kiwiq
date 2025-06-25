@@ -768,6 +768,88 @@ async def get_promotion_codes(
         )
 
 
+
+
+@billing_admin_router.delete("/promo-codes/bulk", response_model=schemas.PromotionCodeBulkDeleteResult, tags=["billing-admin"])
+async def bulk_delete_promotion_codes(
+    delete_request: schemas.PromotionCodeBulkDeleteRequest,
+    current_user: User = Depends(get_current_active_superuser),
+    db: AsyncSession = Depends(get_async_db_dependency),
+    billing_service: services.BillingService = Depends(dependencies.get_billing_service)
+):
+    """
+    Bulk delete promotion codes with flexible targeting (Admin only).
+    
+    This endpoint provides comprehensive bulk deletion capabilities with support for:
+    - **Direct Targeting**: Specific promotion code IDs or code strings
+    - **Query-Based Targeting**: All the same filters as the GET endpoint
+    - **Bulk Operations**: Delete multiple codes at once with safety controls
+    - **Usage Protection**: Automatic skipping of codes with usage history
+    - **Force Deletion**: Override protection for complete cleanup (dangerous)
+    
+    **Targeting Options:**
+    - `promo_code_ids`: List of specific promotion code UUIDs
+    - `codes`: List of specific promotion code strings
+    - `is_active`: Filter by current active status
+    - `credit_type`: Filter by credit type (workflows, web_searches, dollar_credits)
+    - `search_text`: Search within code names or descriptions
+    - `expires_after/expires_before`: Filter by expiration date ranges
+    - `has_usage_limit`: Filter codes with/without usage limits
+    - `delete_all`: Explicit flag to delete all codes (if no other filters)
+    - `force_delete_used`: Allow deletion of codes with usage records (DANGEROUS)
+    
+    **Safety Features:**
+    - **Default Protection**: Automatically skips codes with usage records
+    - **Explicit Confirmation**: Requires `delete_all` flag for mass deletion
+    - **Force Override**: `force_delete_used` flag for complete cleanup
+    - **Detailed Reporting**: Shows deleted vs skipped codes with reasons
+    - **Comprehensive Logging**: Full audit trail for compliance
+    
+    **⚠️ DANGER ZONE:**
+    Setting `force_delete_used=true` will delete promotion codes that have been used,
+    potentially breaking audit trails and billing history. Use with extreme caution
+    and only when you're certain about the consequences.
+    
+    **Recommended Workflow:**
+    1. First run with `force_delete_used=false` (default) to see what would be skipped
+    2. Consider deactivating used codes instead of deleting them
+    3. Only use `force_delete_used=true` if you absolutely need to purge everything
+    
+    Requires superuser permissions.
+    
+    Returns:
+        PromotionCodeBulkDeleteResult with operation details including:
+        - Number of codes deleted and skipped
+        - Lists of deleted/skipped promotion code strings
+        - Summary of applied targeting filters
+    """
+    try:
+        result = await billing_service.bulk_delete_promotion_codes(
+            db=db,
+            delete_request=delete_request
+        )
+        
+        billing_logger.warning(
+            f"Admin {current_user.id} bulk deleted {result.deleted_count} promotion codes, "
+            f"skipped {result.skipped_count} codes with usage records. "
+            f"Filters: {result.filters_applied}"
+        )
+        
+        return result
+        
+    except BillingException as e:
+        raise HTTPException(
+            status_code=e.status_code,
+            detail=e.detail
+        )
+    except Exception as e:
+        billing_logger.error(f"Error bulk deleting promotion codes: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to bulk delete promotion codes"
+        )
+
+
 @billing_admin_router.delete("/promo-codes/{promo_code_id}", response_model=schemas.PromotionCodeDeleteResult, tags=["billing-admin"])
 async def delete_promotion_code(
     promo_code_id: uuid.UUID = Path(..., description="ID of the promotion code to delete"),
@@ -906,86 +988,6 @@ async def deactivate_promotion_codes(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to deactivate promotion codes"
-        )
-
-
-@billing_admin_router.delete("/promo-codes/bulk", response_model=schemas.PromotionCodeBulkDeleteResult, tags=["billing-admin"])
-async def bulk_delete_promotion_codes(
-    delete_request: schemas.PromotionCodeBulkDeleteRequest,
-    current_user: User = Depends(get_current_active_superuser),
-    db: AsyncSession = Depends(get_async_db_dependency),
-    billing_service: services.BillingService = Depends(dependencies.get_billing_service)
-):
-    """
-    Bulk delete promotion codes with flexible targeting (Admin only).
-    
-    This endpoint provides comprehensive bulk deletion capabilities with support for:
-    - **Direct Targeting**: Specific promotion code IDs or code strings
-    - **Query-Based Targeting**: All the same filters as the GET endpoint
-    - **Bulk Operations**: Delete multiple codes at once with safety controls
-    - **Usage Protection**: Automatic skipping of codes with usage history
-    - **Force Deletion**: Override protection for complete cleanup (dangerous)
-    
-    **Targeting Options:**
-    - `promo_code_ids`: List of specific promotion code UUIDs
-    - `codes`: List of specific promotion code strings
-    - `is_active`: Filter by current active status
-    - `credit_type`: Filter by credit type (workflows, web_searches, dollar_credits)
-    - `search_text`: Search within code names or descriptions
-    - `expires_after/expires_before`: Filter by expiration date ranges
-    - `has_usage_limit`: Filter codes with/without usage limits
-    - `delete_all`: Explicit flag to delete all codes (if no other filters)
-    - `force_delete_used`: Allow deletion of codes with usage records (DANGEROUS)
-    
-    **Safety Features:**
-    - **Default Protection**: Automatically skips codes with usage records
-    - **Explicit Confirmation**: Requires `delete_all` flag for mass deletion
-    - **Force Override**: `force_delete_used` flag for complete cleanup
-    - **Detailed Reporting**: Shows deleted vs skipped codes with reasons
-    - **Comprehensive Logging**: Full audit trail for compliance
-    
-    **⚠️ DANGER ZONE:**
-    Setting `force_delete_used=true` will delete promotion codes that have been used,
-    potentially breaking audit trails and billing history. Use with extreme caution
-    and only when you're certain about the consequences.
-    
-    **Recommended Workflow:**
-    1. First run with `force_delete_used=false` (default) to see what would be skipped
-    2. Consider deactivating used codes instead of deleting them
-    3. Only use `force_delete_used=true` if you absolutely need to purge everything
-    
-    Requires superuser permissions.
-    
-    Returns:
-        PromotionCodeBulkDeleteResult with operation details including:
-        - Number of codes deleted and skipped
-        - Lists of deleted/skipped promotion code strings
-        - Summary of applied targeting filters
-    """
-    try:
-        result = await billing_service.bulk_delete_promotion_codes(
-            db=db,
-            delete_request=delete_request
-        )
-        
-        billing_logger.warning(
-            f"Admin {current_user.id} bulk deleted {result.deleted_count} promotion codes, "
-            f"skipped {result.skipped_count} codes with usage records. "
-            f"Filters: {result.filters_applied}"
-        )
-        
-        return result
-        
-    except BillingException as e:
-        raise HTTPException(
-            status_code=e.status_code,
-            detail=e.detail
-        )
-    except Exception as e:
-        billing_logger.error(f"Error bulk deleting promotion codes: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to bulk delete promotion codes"
         )
 
 

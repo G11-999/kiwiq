@@ -70,6 +70,23 @@ ORG_DETAIL_URL = lambda org_id: f"{ORGANIZATIONS_URL}/{org_id}"
 # Roles (Admin)
 ROLES_URL = f"{API_BASE_URL}/auth/roles"
 
+# Billing - Promotion Codes (Admin)
+PROMO_CODES_CREATE_URL = f"{API_BASE_URL}/billing/admin/promo-codes"
+PROMO_CODES_QUERY_URL = f"{API_BASE_URL}/billing/admin/promo-codes/query"
+PROMO_CODE_DELETE_URL = lambda promo_code_id: f"{API_BASE_URL}/billing/admin/promo-codes/{promo_code_id}"
+PROMO_CODES_DEACTIVATE_URL = f"{API_BASE_URL}/billing/admin/promo-codes/deactivate"
+PROMO_CODES_BULK_DELETE_URL = f"{API_BASE_URL}/billing/admin/promo-codes/bulk"
+
+# Billing - General
+BILLING_PLANS_URL = f"{API_BASE_URL}/billing/plans"
+BILLING_DASHBOARD_CREDITS_URL = f"{API_BASE_URL}/billing/dashboard/credits"
+BILLING_DASHBOARD_USAGE_URL = f"{API_BASE_URL}/billing/dashboard/usage"
+BILLING_CHECKOUT_DOLLAR_CREDITS_URL = f"{API_BASE_URL}/billing/checkout/dollar-credits/session"
+BILLING_CHECKOUT_SUBSCRIPTION_URL = f"{API_BASE_URL}/billing/checkout/subscription/session"
+BILLING_PORTAL_URL = f"{API_BASE_URL}/billing/portal"
+BILLING_CHECKOUT_RESULT_URL = f"{API_BASE_URL}/billing/checkout-result"
+BILLING_PROMO_APPLY_URL = f"{API_BASE_URL}/billing/promo-codes/apply"
+
 # Templates
 # --- API Endpoint URLs ---
 # Construct absolute URLs using the base URL from config

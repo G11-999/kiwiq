@@ -1735,7 +1735,7 @@ class PromotionCodeDAO(BaseDAO[models.PromotionCode, schemas.PromotionCodeCreate
         # Check if there are any usage records
         usage_count = await db.scalar(
             select(func.count(models.PromotionCodeUsage.id))
-            .where(models.PromotionCodeUsage.promotion_code_id == promo_code_id)
+            .where(models.PromotionCodeUsage.promo_code_id == promo_code_id)
         )
         
         if usage_count > 0:
@@ -1956,7 +1956,7 @@ class PromotionCodeDAO(BaseDAO[models.PromotionCode, schemas.PromotionCodeCreate
             # Check if there are any usage records
             usage_count = await db.scalar(
                 select(func.count(models.PromotionCodeUsage.id))
-                .where(models.PromotionCodeUsage.promotion_code_id == promo_code.id)
+                .where(models.PromotionCodeUsage.promo_code_id == promo_code.id)
             )
             
             if usage_count > 0 and not delete_request.force_delete_used:

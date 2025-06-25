@@ -210,82 +210,89 @@ async def run_graph(
     final_output_node_id = None # Initialize
     final_outputs = None
     sequence_id_counter = 0 # Start event sequence counter
-    
-    # Check if this is a resume after HITL
-    if workflow_run_job.resume_after_hitl:
-        logger.info(f"Resuming workflow after HITL for Run ID: {run_id}")
-        # # Fetch any pending HITL jobs for this run to process their responses
-        # async with get_async_db_as_manager() as db:
-        #     # NOTE: this is sorted by descending created at, latest first!
-        #     pending_hitl_jobs = await external_context.daos.hitl_job.get_pending_by_run(
-        #         db=db, 
-        #         requesting_run_id=run_id
-        #     ) 
-        #     if pending_hitl_jobs:
-        #         logger.info(f"Found {len(pending_hitl_jobs)} pending HITL jobs to process")
-        #         for job in pending_hitl_jobs:
-        #             logger.info(f"Processing HITL job: {job.id}")
-        #             logger.info(f"Request details: {job.request_details}")
-        #             logger.info(f"Response schema: {job.response_schema}")
-        #     else:
-        #         logger.info("No pending HITL jobs found for this run")
-        
-        # # Check if resuming from FAILED state, then consume workflow credit if that's case, since after workflow fails, the consumed credit is returned!
-        # async with get_async_db_as_manager() as db:
-        #     workflow_run = await external_context.daos.workflow_run.get(
-        #         db=db,
-        #         id=run_id,
-        #     )
-        #     resume_from_status = workflow_run.status
-        #     if resume_from_status == wf_schemas.WorkflowRunStatus.FAILED:
-        #         await external_context.billing_service.allocate_credits_for_operation(
-        #             db=db,
-        #             org_id=org_id,
-        #             user_id=user_id,
-        #             operation_id=run_id,
-        #             credit_type=CreditType.WORKFLOWS,
-        #             estimated_credits=1,
-        #         )
-    else:
-        # Create a new workflow run instance if this is not a resume
-        # This is needed when run_id is None and we need to create a new run
-        if not run_id:
-            raise ValueError("Non NULL, existing Run ID is required to create a new workflow run")
-            # logger.info("Creating new workflow run instance")
-            # async with get_async_db_as_manager() as db:
-            #     new_workflow_run = await external_context.daos.workflow_run.create(
-            #         db=db,
-            #         workflow_id=workflow_run_job.workflow_id,
-            #         owner_org_id=org_id,
-            #         triggered_by_user_id=user_id,
-            #         inputs=workflow_run_job.inputs,
-            #         thread_id=workflow_run_job.thread_id
-            #     )
-            #     # Update the run_id in the job
-            #     run_id = new_workflow_run.id
-            #     workflow_run_job.run_id = run_id
-            #     logger.info(f"Created new workflow run with ID: {run_id}")
-
-        async with get_async_db_as_manager() as db:
-            await external_context.billing_service.consume_credits(
-                db=db,
-                org_id=org_id,
-                user_id=user_id,
-                consumption_request=billing_schemas.CreditConsumptionRequest(
-                    credit_type=CreditType.WORKFLOWS,
-                    credits_consumed=1,
-                    event_type="workflow_run_start",
-                    metadata={"operation_id": str(run_id)}
-                )
-            )
-    
-    # If thread_id is not provided, use run_id as the thread_id
-    thread_id = workflow_run_job.thread_id or run_id
-
-    logger.info(f"Building graph for Run ID: {run_id}")
-    error_message = None
 
     try:
+
+        ################################################################
+        ######################### INIT INIT ##############################
+
+        # Check if this is a resume after HITL
+        if workflow_run_job.resume_after_hitl:
+            logger.info(f"Resuming workflow after HITL for Run ID: {run_id}")
+            # # Fetch any pending HITL jobs for this run to process their responses
+            # async with get_async_db_as_manager() as db:
+            #     # NOTE: this is sorted by descending created at, latest first!
+            #     pending_hitl_jobs = await external_context.daos.hitl_job.get_pending_by_run(
+            #         db=db, 
+            #         requesting_run_id=run_id
+            #     ) 
+            #     if pending_hitl_jobs:
+            #         logger.info(f"Found {len(pending_hitl_jobs)} pending HITL jobs to process")
+            #         for job in pending_hitl_jobs:
+            #             logger.info(f"Processing HITL job: {job.id}")
+            #             logger.info(f"Request details: {job.request_details}")
+            #             logger.info(f"Response schema: {job.response_schema}")
+            #     else:
+            #         logger.info("No pending HITL jobs found for this run")
+            
+            # # Check if resuming from FAILED state, then consume workflow credit if that's case, since after workflow fails, the consumed credit is returned!
+            # async with get_async_db_as_manager() as db:
+            #     workflow_run = await external_context.daos.workflow_run.get(
+            #         db=db,
+            #         id=run_id,
+            #     )
+            #     resume_from_status = workflow_run.status
+            #     if resume_from_status == wf_schemas.WorkflowRunStatus.FAILED:
+            #         await external_context.billing_service.allocate_credits_for_operation(
+            #             db=db,
+            #             org_id=org_id,
+            #             user_id=user_id,
+            #             operation_id=run_id,
+            #             credit_type=CreditType.WORKFLOWS,
+            #             estimated_credits=1,
+            #         )
+        else:
+            # Create a new workflow run instance if this is not a resume
+            # This is needed when run_id is None and we need to create a new run
+            if not run_id:
+                raise ValueError("Non NULL, existing Run ID is required to create a new workflow run")
+                # logger.info("Creating new workflow run instance")
+                # async with get_async_db_as_manager() as db:
+                #     new_workflow_run = await external_context.daos.workflow_run.create(
+                #         db=db,
+                #         workflow_id=workflow_run_job.workflow_id,
+                #         owner_org_id=org_id,
+                #         triggered_by_user_id=user_id,
+                #         inputs=workflow_run_job.inputs,
+                #         thread_id=workflow_run_job.thread_id
+                #     )
+                #     # Update the run_id in the job
+                #     run_id = new_workflow_run.id
+                #     workflow_run_job.run_id = run_id
+                #     logger.info(f"Created new workflow run with ID: {run_id}")
+
+            async with get_async_db_as_manager() as db:
+                await external_context.billing_service.consume_credits(
+                    db=db,
+                    org_id=org_id,
+                    user_id=user_id,
+                    consumption_request=billing_schemas.CreditConsumptionRequest(
+                        credit_type=CreditType.WORKFLOWS,
+                        credits_consumed=1,
+                        event_type="workflow_run_start",
+                        metadata={"operation_id": str(run_id)}
+                    )
+                )
+        
+        # If thread_id is not provided, use run_id as the thread_id
+        thread_id = workflow_run_job.thread_id or run_id
+
+        logger.info(f"Building graph for Run ID: {run_id}")
+        error_message = None
+
+        ################################################################
+        ################################################################
+        
         # --- Graph Building ---
         builder = GraphBuilder(external_context.db_registry)
         # Pass run job directly for context if builder needs it
