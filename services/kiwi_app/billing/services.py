@@ -1069,6 +1069,89 @@ class BillingService:
                 detail="Failed to bulk delete promotion codes"
             ) from e
 
+
+    async def reset_organization_credits_to_zero(
+        self,
+        db: AsyncSession,
+        admin_user_id: uuid.UUID,
+        reset_request: schemas.AdminCreditResetRequest
+    ) -> schemas.AdminCreditResetResponse:
+        """
+        Reset organization's net credits to zero for specified credit types.
+        
+        This is an admin-only operation that sets all specified credit types to zero
+        for an organization while creating comprehensive audit records. The operation
+        is performed atomically per credit type.
+        
+        Args:
+            db: Database session
+            admin_user_id: Admin user performing the reset
+            reset_request: Reset request with organization and parameters
+            
+        Returns:
+            AdminCreditResetResponse with detailed results
+            
+        Raises:
+            Exception: If reset operation fails
+        """
+        try:
+            # Verify organization exists
+            organization = await self.org_dao.get(db, reset_request.org_id)
+            if not organization:
+                raise ValueError(f"Organization {reset_request.org_id} not found")
+            
+            billing_logger.info(
+                f"Admin {admin_user_id} initiating credit reset for org {reset_request.org_id} "
+                f"with reason: {reset_request.reason}"
+            )
+            
+            # Perform the reset using the DAO method
+            reset_results = await self.org_net_credits_dao.reset_organization_credits_to_zero(
+                db=db,
+                org_id=reset_request.org_id,
+                admin_user_id=admin_user_id,
+                credit_types=reset_request.credit_types,
+                reason=reset_request.reason,
+                commit=True
+            )
+            
+            # Calculate summary statistics
+            total_credit_types_processed = len(reset_results)
+            successful_resets = sum(1 for result in reset_results.values() if result.success)
+            failed_resets = total_credit_types_processed - successful_resets
+            overall_success = failed_resets == 0
+            
+            # Convert CreditType keys to strings for response serialization
+            reset_results_serializable = {
+                credit_type.value: result 
+                for credit_type, result in reset_results.items()
+            }
+            
+            response = schemas.AdminCreditResetResponse(
+                success=overall_success,
+                org_id=reset_request.org_id,
+                admin_user_id=admin_user_id,
+                reason=reset_request.reason,
+                reset_results=reset_results_serializable,
+                total_credit_types_processed=total_credit_types_processed,
+                successful_resets=successful_resets,
+                failed_resets=failed_resets
+            )
+            
+            billing_logger.info(
+                f"Credit reset completed for org {reset_request.org_id}: "
+                f"{successful_resets}/{total_credit_types_processed} successful resets"
+            )
+            
+            return response
+            
+        except Exception as e:
+            billing_logger.error(
+                f"Error resetting organization credits for org {reset_request.org_id}: {e}", 
+                exc_info=True
+            )
+            raise
+
     # --- Usage Analytics --- #
     
     async def get_usage_summary(

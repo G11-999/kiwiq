@@ -45,6 +45,7 @@ class CreditSourceType(str, Enum):
     PROMOTION = "01_promotion"
     SUBSCRIPTION = "02_subscription"
     PURCHASE = "03_purchase"
+    ADMIN_ADJUSTMENT = "04_admin_adjustment"
 
 class PaymentStatus(str, Enum):
     """Payment status for credit purchases."""

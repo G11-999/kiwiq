@@ -791,4 +791,36 @@ class PaginatedPromotionCodes(BillingBaseSchema):
     page: int
     per_page: int
     pages: int
-    filters_applied: Dict[str, Any] = Field(description="Summary of applied filters") 
+    filters_applied: Dict[str, Any] = Field(description="Summary of applied filters")
+
+
+class AdminCreditResetRequest(BillingBaseSchema):
+    """Schema for admin credit reset request."""
+    org_id: uuid.UUID = Field(..., description="Organization ID to reset credits for")
+    credit_types: Optional[List[CreditType]] = Field(None, description="Credit types to reset (null for all types)")
+    reason: str = Field("Admin credit reset", description="Reason for the reset (for audit purposes)")
+
+
+class CreditResetResult(BillingBaseSchema):
+    """Result of credit reset operation for a single credit type."""
+    success: bool = Field(description="Whether the reset was successful")
+    credit_type: CreditType = Field(description="Credit type that was reset")
+    credits_granted_before: float = Field(description="Granted credits before reset")
+    credits_consumed_before: float = Field(description="Consumed credits before reset")
+    credits_granted_after: float = Field(description="Granted credits after reset")
+    credits_consumed_after: float = Field(description="Consumed credits after reset")
+    adjustment_amount: float = Field(description="Amount adjusted to reach zero")
+    error_message: Optional[str] = Field(None, description="Error message if reset failed")
+
+
+class AdminCreditResetResponse(BillingBaseSchema):
+    """Schema for admin credit reset response."""
+    success: bool = Field(description="Whether the overall reset operation was successful")
+    org_id: uuid.UUID = Field(description="Organization ID that was reset")
+    admin_user_id: uuid.UUID = Field(description="Admin user who performed the reset")
+    reason: str = Field(description="Reason for the reset")
+    reset_results: Dict[str, CreditResetResult] = Field(description="Results by credit type")
+    total_credit_types_processed: int = Field(description="Number of credit types processed")
+    successful_resets: int = Field(description="Number of successful resets")
+    failed_resets: int = Field(description="Number of failed resets")
+    timestamp: datetime = Field(default_factory=datetime_now_utc, description="When the reset was performed") 

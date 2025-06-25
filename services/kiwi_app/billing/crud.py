@@ -1223,6 +1223,173 @@ class OrganizationNetCreditsDAO(BaseDAO[models.OrganizationNetCredits, SQLModel,
             billing_logger.error(f"Error getting credit summary: {e}", exc_info=True)
             raise
 
+    async def reset_organization_credits_to_zero(
+        self,
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        admin_user_id: uuid.UUID,
+        credit_types: Optional[List[CreditType]] = None,
+        reason: str = "Admin credit reset",
+        commit: bool = True
+    ) -> Dict[CreditType, schemas.CreditResetResult]:
+        """
+        Reset organization's net credits to zero for specified credit types.
+        
+        This method creates audit records in OrganizationCredits and sets
+        OrganizationNetCredits to zero atomically. It's designed for admin
+        operations to reset credit balances.
+        
+        Args:
+            db: Database session
+            org_id: Organization ID
+            admin_user_id: Admin user performing the reset
+            credit_types: List of credit types to reset (None for all types)
+            reason: Reason for the reset (for audit purposes)
+            commit: Whether to commit the transaction
+            
+        Returns:
+            Dictionary mapping credit types to reset results
+        """
+        try:
+            if credit_types is None:
+                credit_types = list(CreditType)
+            
+            reset_results = {}
+            
+            for credit_type in credit_types:
+                # Get current net credits state
+                current_state = await self.get_net_credits_by_org_and_type(db, org_id, credit_type)
+                
+                if not current_state:
+                    # No existing record - create one with zeros
+                    await self._ensure_net_credits_record_exists(db, org_id, credit_type)
+                    reset_results[credit_type] = schemas.CreditResetResult(
+                        success=True,
+                        credit_type=credit_type,
+                        credits_granted_before=0,
+                        credits_consumed_before=0,
+                        credits_granted_after=0,
+                        credits_consumed_after=0,
+                        adjustment_amount=0
+                    )
+                    continue
+                
+                credits_granted_before = current_state.credits_granted
+                credits_consumed_before = current_state.credits_consumed
+
+                # Skip if both credits are already zero
+                if credits_granted_before == 0 and credits_consumed_before == 0:
+                    reset_results[credit_type] = schemas.CreditResetResult(
+                        success=True,
+                        credit_type=credit_type,
+                        credits_granted_before=0,
+                        credits_consumed_before=0,
+                        credits_granted_after=0,
+                        credits_consumed_after=0,
+                        adjustment_amount=0
+                    )
+                    continue
+                
+                # Calculate adjustment amounts needed to bring both to zero
+                granted_adjustment = -credits_granted_before
+                consumed_adjustment = -credits_consumed_before
+                
+                # Create audit record in OrganizationCredits for the adjustment
+                audit_metadata = {
+                    "reason": reason,
+                    "admin_user_id": str(admin_user_id),
+                    "credits_granted_before": credits_granted_before,
+                    "credits_consumed_before": credits_consumed_before,
+                    "operation_type": "admin_reset_to_zero"
+                }
+                
+                # Create audit record for granted credits adjustment
+                if granted_adjustment != 0:
+                    granted_audit_record = models.OrganizationCredits(
+                        org_id=org_id,
+                        credit_type=credit_type,
+                        credits_granted=granted_adjustment,  # Negative to reduce to zero
+                        source_type=CreditSourceType.ADMIN_ADJUSTMENT,
+                        source_id=f"admin_reset_{admin_user_id}_{datetime_now_utc().isoformat()}",
+                        source_metadata=audit_metadata,
+                        expires_at=None,
+                        is_expired=False,
+                        period_start=datetime_now_utc(),
+                        created_at=datetime_now_utc(),
+                        updated_at=datetime_now_utc()
+                    )
+                    db.add(granted_audit_record)
+                
+                # Atomic update to set both granted and consumed to zero
+                update_stmt = (
+                    update(models.OrganizationNetCredits)
+                    .where(
+                        and_(
+                            models.OrganizationNetCredits.org_id == org_id,
+                            models.OrganizationNetCredits.credit_type == credit_type
+                        )
+                    )
+                    .values(
+                        credits_granted=0,
+                        credits_consumed=0,
+                        # updated_at=func.now()
+                    )
+                    .execution_options(synchronize_session=False)
+                    .returning(
+                        models.OrganizationNetCredits.credits_granted,
+                        models.OrganizationNetCredits.credits_consumed
+                    )
+                )
+                
+                result = await db.execute(update_stmt)
+                updated_row = result.fetchone()
+                
+                if updated_row is None:
+                    billing_logger.warning(f"No net credits record found for reset: org {org_id}, type {credit_type}")
+                    reset_results[credit_type] = schemas.CreditResetResult(
+                        success=False,
+                        credit_type=credit_type,
+                        credits_granted_before=credits_granted_before,
+                        credits_consumed_before=credits_consumed_before,
+                        credits_granted_after=credits_granted_before,
+                        credits_consumed_after=credits_consumed_before,
+                        adjustment_amount=0,
+                        error_message="No net credits record found"
+                    )
+                    continue
+                
+                # The updated values should be 0,0 after the update
+                credits_granted_after = updated_row.credits_granted
+                credits_consumed_after = updated_row.credits_consumed
+                
+                reset_results[credit_type] = schemas.CreditResetResult(
+                    success=True,
+                    credit_type=credit_type,
+                    credits_granted_before=credits_granted_before,
+                    credits_consumed_before=credits_consumed_before,
+                    credits_granted_after=credits_granted_after,
+                    credits_consumed_after=credits_consumed_after,
+                    adjustment_amount=granted_adjustment
+                )
+                
+                billing_logger.info(
+                    f"Reset credits to zero for org {org_id}, credit_type {credit_type}: "
+                    f"granted {credits_granted_before} -> {credits_granted_after}, "
+                    f"consumed {credits_consumed_before} -> {credits_consumed_after}"
+                )
+            
+            if commit:
+                await db.commit()
+            
+            billing_logger.info(f"Admin reset completed for org {org_id} by admin {admin_user_id}")
+            return reset_results
+            
+        except Exception as e:
+            billing_logger.error(f"Error resetting organization credits: {e}", exc_info=True)
+            if commit:
+                await db.rollback()
+            raise
+
 
 class UsageEventDAO(BaseDAO[models.UsageEvent, SQLModel, SQLModel]):
     """Data Access Object for usage event operations."""

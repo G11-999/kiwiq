@@ -204,6 +204,10 @@ PYTHONPATH=$(pwd):$(pwd)/services poetry run alembic -c libs/src/db/alembic.ini 
 # migration #25
 PYTHONPATH=$(pwd):$(pwd)/services poetry run alembic -c libs/src/db/alembic.ini revision --autogenerate -m "promotion code usage promo ID SET NULL constraint"
 
+# migration #26
+PYTHONPATH=$(pwd):$(pwd)/services poetry run alembic -c libs/src/db/alembic.ini revision --autogenerate -m "Add admin adjustment credit source type"
+
+
 ```
 
 7. apply migration script

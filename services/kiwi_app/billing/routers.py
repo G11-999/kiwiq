@@ -1951,3 +1951,72 @@ async def delete_stripe_events_by_time_window(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete Stripe events"
         ) 
+
+@billing_admin_router.post("/organizations/credits/reset-danger", response_model=schemas.AdminCreditResetResponse, tags=["billing-admin"])
+async def reset_organization_credits_to_zero_danger(
+    reset_request: schemas.AdminCreditResetRequest,
+    current_superuser: User = Depends(get_current_active_superuser),
+    db: AsyncSession = Depends(get_async_db_dependency),
+    billing_service: services.BillingService = Depends(dependencies.get_billing_service)
+):
+    """
+    DANGER! Reset organization's net credits to zero for specified credit types.
+    
+    This is a powerful admin-only operation that resets all specified credit types
+    to zero for an organization. The operation creates comprehensive audit records
+    and is performed atomically per credit type.
+    
+    **Operation Details:**
+    - Sets both granted and consumed credits to zero
+    - Creates audit records in OrganizationCredits table with ADMIN_ADJUSTMENT source type
+    - Preserves full audit trail with admin user ID and reason
+    - Atomic operation per credit type (partial failures possible)
+    
+    **Request Parameters:**
+    - `org_id`: Organization to reset credits for (required)
+    - `credit_types`: List of credit types to reset (null for all types)
+    - `reason`: Reason for reset (for audit purposes, defaults to "Admin credit reset")
+    
+    **Safety Considerations:**
+    - This operation is irreversible
+    - All existing credit balances will be set to zero
+    - Users will lose access to any existing credits
+    - Consider alternative approaches like credit expiration for less severe adjustments
+    
+    **Use Cases:**
+    - Account reconciliation after billing disputes
+    - Reset credits after subscription changes or refunds
+    - Clean slate for organizations with credit tracking issues
+    - Emergency credit adjustments for system errors
+    
+    **Audit Trail:**
+    - Full operation details logged to application logs
+    - Audit records created in OrganizationCredits table
+    - Before/after credit amounts tracked
+    - Admin user and timestamp recorded
+    
+    Returns detailed results for each credit type processed, including:
+    - Success/failure status per credit type
+    - Before and after credit amounts
+    - Adjustment amounts applied
+    - Error messages for any failures
+    """
+    try:
+        result = await billing_service.reset_organization_credits_to_zero(
+            db=db,
+            admin_user_id=current_superuser.id,
+            reset_request=reset_request
+        )
+        
+        return result
+        
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to reset organization credits: {str(e)}"
+        )
