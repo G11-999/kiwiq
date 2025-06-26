@@ -84,7 +84,7 @@ async def get_node_template_registry() -> registry.DBRegistry:
 # --- Service Dependency Factory --- #
 
 # TODO: FIXME: for fastapi dependencies, lifecycle is managed by yield, so do graceful shutdown!
-def get_workflow_service_dependency(
+async def get_workflow_service_dependency(
     node_template_dao: crud.NodeTemplateDAO = Depends(get_node_template_dao),
     workflow_dao: crud.WorkflowDAO = Depends(get_workflow_dao),
     workflow_run_dao: crud.WorkflowRunDAO = Depends(get_workflow_run_dao),
@@ -96,9 +96,9 @@ def get_workflow_service_dependency(
     mongo_client: AsyncMongoDBClient = Depends(get_workflow_mongo_client),
     db_registry: registry.DBRegistry = Depends(get_node_template_registry),
     billing_service: billing_services.BillingService = Depends(billing_dependencies.get_billing_service_no_dependencies),
-) -> services.WorkflowService:
+) -> AsyncGenerator[services.WorkflowService, None]:
     """Dependency function to instantiate WorkflowService with its DAO dependencies."""
-    return services.WorkflowService(
+    workflow_service = services.WorkflowService(
         node_template_dao=node_template_dao,
         workflow_dao=workflow_dao,
         workflow_run_dao=workflow_run_dao,
@@ -112,6 +112,8 @@ def get_workflow_service_dependency(
         billing_service=billing_service,
         # Pass NoSQL client here
     )
+    yield workflow_service
+    await workflow_service.mongo_client.close()
 
 # --- Customer Data Service Dependency --- #
 
@@ -131,18 +133,23 @@ def get_workflow_service_dependency(
 #     return versioned_client
 
 # TODO: FIXME: REFACTOR TO MOVE this to external dependencies and refactor customer data service to use an underlying DAO so as not to raise HTTP exceptions and potentially use it in prefect worker too!
-def get_customer_data_service_dependency(
+async def get_customer_data_service_dependency(
     customer_mongo_client: AsyncMongoDBClient = Depends(get_customer_mongo_client),
     versioned_mongo_client: AsyncMongoVersionedClient = Depends(get_customer_versioned_mongo_client),
     schema_template_dao: crud.SchemaTemplateDAO = Depends(get_schema_template_dao),
     # workflow_service: services.WorkflowService = Depends(get_workflow_service_dependency),
-) -> CustomerDataService:
+) -> AsyncGenerator[CustomerDataService, None]:
     """Dependency function to instantiate CustomerDataService."""
-    return CustomerDataService(
+    customer_data_service = CustomerDataService(
         mongo_client=customer_mongo_client,
         versioned_mongo_client=versioned_mongo_client,
         schema_template_dao=schema_template_dao,
     )
+    yield customer_data_service
+    await customer_data_service.mongo_client.close()
+    await customer_data_service.versioned_mongo_client.client.close()
+    await customer_data_service.versioned_mongo_client._redis_client.close()
+
 
 # --- Permission Checkers (using Auth checkers) --- #
 # We can reuse the permission checker logic from the auth service.

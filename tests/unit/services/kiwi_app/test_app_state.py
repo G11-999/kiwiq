@@ -1,42 +1,14 @@
 import unittest
-import uuid
-import asyncio
-from typing import Dict, Any, Optional, List, Tuple, Type, cast
-from unittest.mock import patch, AsyncMock, MagicMock
 
 from pydantic import HttpUrl, ValidationError
-
-# FastAPI
-from fastapi import HTTPException, status
 
 # Models and services to test
 from kiwi_app.workflow_app.app_state import (
     UserStateEntry,
     UserState,
     StateUpdate,
-    InitializeUserStateRequest,
-    UpdateUserStateRequest,
-    GetUserStateResponse,
-    initialize_user_state,
-    get_user_state_route,
-    update_user_state_route,
-    TYPE_MAP,
-    SUPPORTED_TYPE_NAMES,
-    app_state_router
-)
-from kiwi_app.workflow_app.service_customer_data import CustomerDataService
-from kiwi_app.auth.models import User as AuthUser 
-
-# Dependencies for mocking
-from db.session import get_async_db_dependency
-from kiwi_app.auth.dependencies import get_current_active_verified_user
-from kiwi_app.workflow_app.dependencies import (
-    get_active_org_id,
-    get_customer_data_service_dependency,
 )
 
-from mongo_client import AsyncMongoDBClient, AsyncMongoVersionedClient
-from kiwi_app.settings import settings as kiwi_settings
 
 
 class TestUserStateEntryModel(unittest.TestCase):

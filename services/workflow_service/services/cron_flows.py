@@ -345,7 +345,7 @@ async def search_scheduled_briefs_for_today(
             namespace_pattern=namespace_pattern,
             docname_pattern=docname_pattern,
             value_filter=value_filter,
-            limit=5000,  # Adjust based on expected volume
+            limit=9000,  # Adjust based on expected volume
             sort_by=None,  # Can add sorting if needed
             sort_order=None
         )
@@ -363,8 +363,8 @@ async def search_scheduled_briefs_for_today(
             if metadata.is_versioning_metadata:
                 continue
             
-            brief_id = metadata.id
-            if brief_id and brief_id in unique_brief_paths:
+            brief_id = metadata.versionless_path
+            if (brief_id and brief_id in unique_brief_paths) or (metadata.is_active_version == False):
                 continue
             unique_brief_paths.add(brief_id)
             

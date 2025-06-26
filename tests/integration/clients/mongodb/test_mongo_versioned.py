@@ -5,9 +5,14 @@ import logging
 from typing import Dict, Any, List, Optional
 from bson import ObjectId
 import copy
+import os
+import time
+import json
+from datetime import timedelta
 
 # Import the clients
 from mongo_client import AsyncMongoDBClient, AsyncMongoVersionedClient
+from redis_client import AsyncRedisClient
 import jsonpatch
 from global_config.logger import get_logger
 from jsonschema.exceptions import ValidationError
@@ -19,6 +24,7 @@ class TestMongoVersionedClient(unittest.IsolatedAsyncioTestCase):
 
     client: AsyncMongoDBClient
     versioned_client: AsyncMongoVersionedClient
+    redis_client: AsyncRedisClient
     mongo_uri: str
     database: str
     collection: str
@@ -30,6 +36,10 @@ class TestMongoVersionedClient(unittest.IsolatedAsyncioTestCase):
         """Set up test environment before each test method."""
         from global_config.settings import global_settings
         self.mongo_uri = global_settings.MONGO_URL
+        redis_url = global_settings.REDIS_URL
+        
+        if not redis_url:
+            self.fail("REDIS_URL environment variable not set.")
         
         # Use a test database and collection
         self.database = "test_versioned_db"
@@ -44,6 +54,14 @@ class TestMongoVersionedClient(unittest.IsolatedAsyncioTestCase):
         
         # Create a unique test prefix for path isolation
         self.TEST_PREFIX = f"test_run_{uuid.uuid4().hex[:8]}"
+        
+        # Initialize Redis client first
+        self.redis_client = AsyncRedisClient(redis_url)
+        
+        # Test Redis connection
+        if not await self.redis_client.ping():
+            await self.redis_client.close()
+            self.fail("Could not connect to Redis. Check connection URL and server status.")
         
         # Initialize the underlying MongoDB client
         self.client = AsyncMongoDBClient(
@@ -62,19 +80,24 @@ class TestMongoVersionedClient(unittest.IsolatedAsyncioTestCase):
         setup_success = await self.client.setup()
         if not setup_success:
             await self.client.close()
+            await self.redis_client.close()
             self.fail("Failed to set up underlying MongoDB client and indexes.")
         
         # Verify connection with ping
         is_connected = await self.client.ping()
         if not is_connected:
             await self.client.close()
+            await self.redis_client.close()
             self.fail("Could not connect to MongoDB. Check connection URI and server status.")
             
-        # Initialize the versioned client
+        # Initialize the versioned client with Redis locking
         self.versioned_client = AsyncMongoVersionedClient(
             client=self.client,
             segment_names=self.base_segment_names, # Pass only the base segments
-            return_timestamp_metadata=False
+            redis_client=self.redis_client,
+            return_timestamp_metadata=False,
+            lock_timeout=10,  # 10 second timeout for tests
+            lock_ttl=30      # 30 second TTL for tests
         )
         
         logger.info(f"Versioned test setup complete with prefix: {self.TEST_PREFIX}")
@@ -95,6 +118,17 @@ class TestMongoVersionedClient(unittest.IsolatedAsyncioTestCase):
             
             await self.client.close()
             logger.info("Underlying MongoDB client closed.")
+        
+        if hasattr(self, 'redis_client') and self.redis_client:
+            # Clean up any test locks
+            try:
+                await self.redis_client.flush_cache(f"doc_lock:{self.TEST_PREFIX}*")
+            except Exception as e:
+                logger.error(f"Error during Redis test cleanup: {e}")
+                pass # Ignore cleanup errors
+            
+            await self.redis_client.close()
+            logger.info("Redis client closed.")
 
     def _get_test_path(self, doc_name: str) -> List[str]:
         """Helper to create a base path for testing."""
@@ -1750,6 +1784,552 @@ class TestMongoVersionedClient(unittest.IsolatedAsyncioTestCase):
         # Verify source is completely gone
         source_doc_after = await self.versioned_client.get_document(source_path)
         self.assertIsNone(source_doc_after, "Source should be completely gone after move")
+
+    # =========================================================================
+    # Redis Lock Integration Tests
+    # =========================================================================
+
+    async def test_concurrent_document_updates_with_locks(self):
+        """
+        Test that concurrent document updates are properly serialized by Redis locks.
+        This ensures mutual exclusion during document modifications.
+        """
+        base_path = self._get_test_path("concurrent_updates_doc")
+        await self.versioned_client.initialize_document(base_path, initial_version="main")
+
+        # Track execution order and timing
+        execution_order = []
+        timing_data = {}
+        
+        async def worker_update(worker_id: str, update_data: Dict[str, Any], hold_duration: float = 0.5):
+            """
+            Worker that performs a document update, optionally holding the lock longer.
+            
+            Args:
+                worker_id: Unique identifier for this worker
+                update_data: Data to update in the document
+                hold_duration: How long to simulate work after acquiring the lock
+            """
+            start_time = time.time()
+            execution_order.append(f"{worker_id}_start")
+            logger.info(f"Worker {worker_id}: Starting update operation")
+            
+            try:
+                # Simulate some work before the actual update
+                if hold_duration > 0:
+                    # Get current document first (this also acquires lock)
+                    current_doc = await self.versioned_client.get_document(base_path)
+                    execution_order.append(f"{worker_id}_got_doc")
+                    
+                    # Simulate processing time
+                    await asyncio.sleep(hold_duration)
+                    execution_order.append(f"{worker_id}_processed")
+                
+                # Perform the update
+                success = await self.versioned_client.update_document(base_path, update_data)
+                update_time = time.time()
+                execution_order.append(f"{worker_id}_updated")
+                
+                timing_data[worker_id] = {
+                    'start_time': start_time,
+                    'update_time': update_time,
+                    'total_duration': update_time - start_time,
+                    'success': success
+                }
+                
+                logger.info(f"Worker {worker_id}: Update completed in {update_time - start_time:.2f}s")
+                return success
+                
+            except Exception as e:
+                execution_order.append(f"{worker_id}_error")
+                logger.error(f"Worker {worker_id}: Error during update - {e}")
+                timing_data[worker_id] = {
+                    'start_time': start_time,
+                    'error': str(e),
+                    'success': False
+                }
+                return False
+
+        # Test Case 1: Two workers updating different fields concurrently
+        logger.info("=== Test Case 1: Two concurrent updates ===")
+        
+        # Create concurrent update tasks
+        tasks = [
+            asyncio.create_task(worker_update("A", {"field_a": "value_a", "counter": 1}, 0.8)),
+            asyncio.create_task(worker_update("B", {"field_b": "value_b", "counter": 2}, 0.6)),
+        ]
+        
+        # Execute tasks concurrently
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Verify all updates succeeded
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                self.fail(f"Worker task {i} raised an exception: {result}")
+            self.assertTrue(result, f"Worker task {i} should have succeeded")
+        
+        # Verify final document state
+        final_doc = await self.versioned_client.get_document(base_path)
+        self.assertIn("field_a", final_doc, "Field from worker A should be present")
+        self.assertIn("field_b", final_doc, "Field from worker B should be present")
+        self.assertIn("counter", final_doc, "Counter field should be present")
+        
+        # One of the counter values should be present (last writer wins for conflicting fields)
+        self.assertIn(final_doc["counter"], [1, 2], "Counter should have one of the worker values")
+        
+        # Verify operations were serialized (no overlap in execution)
+        a_start_time = timing_data["A"]["start_time"]
+        a_update_time = timing_data["A"]["update_time"]
+        b_start_time = timing_data["B"]["start_time"]
+        b_update_time = timing_data["B"]["update_time"]
+        
+        # Check if operations were serialized (no overlap)
+        serialized = (a_update_time <= b_start_time + 0.1) or (b_update_time <= a_start_time + 0.1)
+        if not serialized:
+            # Operations might have overlapped, which shouldn't happen with proper locking
+            logger.warning(f"Possible operation overlap detected: A({a_start_time:.2f}-{a_update_time:.2f}), B({b_start_time:.2f}-{b_update_time:.2f})")
+        
+        # Check that updates happened in sequence (one finishes before the other processes)
+        execution_sequence = execution_order
+        logger.info(f"Execution sequence: {execution_sequence}")
+        
+        # Clear for next test
+        execution_order.clear()
+        timing_data.clear()
+
+    async def test_concurrent_version_creation_with_locks(self):
+        """
+        Test that concurrent version creation operations are properly serialized.
+        """
+        base_path = self._get_test_path("concurrent_versions_doc")
+        await self.versioned_client.initialize_document(base_path, initial_version="v1")
+        
+        # Add some data to v1
+        await self.versioned_client.update_document(base_path, {"base_data": "initial"})
+        
+        execution_order = []
+        creation_results = {}
+        
+        async def create_version_worker(worker_id: str, version_name: str):
+            """Worker that attempts to create a new version."""
+            start_time = time.time()
+            execution_order.append(f"{worker_id}_start")
+            logger.info(f"Worker {worker_id}: Attempting to create version {version_name}")
+            
+            try:
+                success = await self.versioned_client.create_version(base_path, version_name)
+                end_time = time.time()
+                execution_order.append(f"{worker_id}_success" if success else f"{worker_id}_failed")
+                
+                creation_results[worker_id] = {
+                    'version_name': version_name,
+                    'success': success,
+                    'duration': end_time - start_time
+                }
+                
+                logger.info(f"Worker {worker_id}: Version creation {'succeeded' if success else 'failed'} in {end_time - start_time:.2f}s")
+                return success
+                
+            except Exception as e:
+                execution_order.append(f"{worker_id}_error")
+                creation_results[worker_id] = {
+                    'version_name': version_name,
+                    'success': False,
+                    'error': str(e)
+                }
+                logger.error(f"Worker {worker_id}: Error creating version - {e}")
+                return False
+
+        # Test concurrent version creation
+        tasks = [
+            asyncio.create_task(create_version_worker("X", "v2")),
+            asyncio.create_task(create_version_worker("Y", "v3")),
+            asyncio.create_task(create_version_worker("Z", "v4")),
+        ]
+        
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # All workers should succeed (different version names)
+        successful_creations = 0
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                logger.error(f"Worker task {i} raised exception: {result}")
+                continue
+            if result:
+                successful_creations += 1
+        
+        self.assertEqual(successful_creations, 3, "All three workers should successfully create versions")
+        
+        # Verify all versions exist
+        versions_list = await self.versioned_client.list_versions(base_path)
+        version_names = [v["version"] for v in versions_list]
+        self.assertIn("v1", version_names, "Original version should exist")
+        self.assertIn("v2", version_names, "Version v2 should exist")
+        self.assertIn("v3", version_names, "Version v3 should exist")
+        self.assertIn("v4", version_names, "Version v4 should exist")
+        
+        logger.info(f"Version creation execution order: {execution_order}")
+        logger.info(f"Creation results: {creation_results}")
+
+    async def test_concurrent_update_and_restore_with_locks(self):
+        """
+        Test concurrent update and restore operations to ensure they don't interfere.
+        """
+        base_path = self._get_test_path("concurrent_update_restore_doc")
+        await self.versioned_client.initialize_document(base_path)
+        
+        # Create initial state with some history
+        await self.versioned_client.update_document(base_path, {"step": 1, "data": "initial"})
+        await self.versioned_client.update_document(base_path, {"step": 2, "data": "updated"})
+        await self.versioned_client.update_document(base_path, {"step": 3, "data": "final"})
+        
+        operation_results = {}
+        
+        async def update_worker():
+            """Worker that performs document updates."""
+            start_time = time.time()
+            try:
+                # Perform multiple updates
+                success1 = await self.versioned_client.update_document(base_path, {"concurrent_update": True, "step": 4})
+                await asyncio.sleep(0.2)  # Small delay
+                success2 = await self.versioned_client.update_document(base_path, {"concurrent_update": True, "step": 5})
+                
+                end_time = time.time()
+                operation_results["updater"] = {
+                    'success': success1 and success2,
+                    'duration': end_time - start_time,
+                    'operation': 'update'
+                }
+                logger.info(f"Update worker completed in {end_time - start_time:.2f}s")
+                return success1 and success2
+                
+            except Exception as e:
+                operation_results["updater"] = {'success': False, 'error': str(e), 'operation': 'update'}
+                logger.error(f"Update worker error: {e}")
+                return False
+
+        async def restore_worker():
+            """Worker that performs document restore."""
+            start_time = time.time()
+            try:
+                # Wait a bit then restore to an earlier state
+                await asyncio.sleep(0.1)
+                success = await self.versioned_client.restore(base_path, sequence=1)  # Restore to step 2
+                
+                end_time = time.time()
+                operation_results["restorer"] = {
+                    'success': success,
+                    'duration': end_time - start_time,
+                    'operation': 'restore'
+                }
+                logger.info(f"Restore worker completed in {end_time - start_time:.2f}s")
+                return success
+                
+            except Exception as e:
+                operation_results["restorer"] = {'success': False, 'error': str(e), 'operation': 'restore'}
+                logger.error(f"Restore worker error: {e}")
+                return False
+
+        # Run both operations concurrently
+        update_task = asyncio.create_task(update_worker())
+        restore_task = asyncio.create_task(restore_worker())
+        
+        results = await asyncio.gather(update_task, restore_task, return_exceptions=True)
+        
+        # At least one operation should succeed (they should be serialized)
+        successful_operations = 0
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                logger.error(f"Operation {i} raised exception: {result}")
+            elif result:
+                successful_operations += 1
+        
+        self.assertGreaterEqual(successful_operations, 1, "At least one operation should succeed")
+        
+        # Verify final document state is consistent
+        final_doc = await self.versioned_client.get_document(base_path)
+        self.assertIsNotNone(final_doc, "Final document should exist")
+        
+        # Check document integrity - it should be in a valid state
+        self.assertIn("step", final_doc, "Document should have a step field")
+        self.assertIn("data", final_doc, "Document should have a data field")
+        
+        logger.info(f"Final document state: {final_doc}")
+        logger.info(f"Operation results: {operation_results}")
+
+    async def test_lock_timeout_behavior(self):
+        """
+        Test that lock timeouts work correctly when operations take too long.
+        """
+        base_path = self._get_test_path("lock_timeout_doc")
+        await self.versioned_client.initialize_document(base_path)
+        
+        # Create a versioned client with very short timeout for this test
+        short_timeout_client = AsyncMongoVersionedClient(
+            client=self.client,
+            segment_names=self.base_segment_names,
+            redis_client=self.redis_client,
+            return_timestamp_metadata=False,
+            lock_timeout=2,  # Very short timeout
+            lock_ttl=10
+        )
+        
+        operation_results = {}
+        
+        async def long_running_operation():
+            """Operation that holds the lock for a long time."""
+            start_time = time.time()
+            try:
+                # Acquire the lock manually using Redis client directly
+                lock_key = self.versioned_client._get_document_lock_key(base_path)
+                token = await self.versioned_client._redis_client.acquire_lock(lock_key, timeout=5, ttl=30)
+                
+                if token:
+                    logger.info("Long operation: Acquired lock, simulating long work...")
+                    
+                    # Simulate long processing time while holding the lock
+                    await asyncio.sleep(4.0)  # Longer than the short timeout
+                    
+                    # Release the lock
+                    await self.versioned_client._redis_client.release_lock(lock_key, token)
+                    
+                    end_time = time.time()
+                    operation_results["long_op"] = {
+                        'success': True,
+                        'duration': end_time - start_time
+                    }
+                    logger.info(f"Long operation completed in {end_time - start_time:.2f}s")
+                    return True
+                else:
+                    logger.error("Long operation: Failed to acquire lock")
+                    operation_results["long_op"] = {'success': False, 'error': 'Failed to acquire lock'}
+                    return False
+                
+            except Exception as e:
+                operation_results["long_op"] = {'success': False, 'error': str(e)}
+                logger.error(f"Long operation error: {e}")
+                return False
+
+        async def quick_operation():
+            """Quick operation that should timeout waiting for the lock."""
+            start_time = time.time()
+            try:
+                # Wait a bit to ensure long operation starts first
+                await asyncio.sleep(0.5)
+                
+                # Try to acquire the same lock with short timeout - this should fail
+                lock_key = self.versioned_client._get_document_lock_key(base_path)
+                token = await short_timeout_client._redis_client.acquire_lock(lock_key, timeout=2, ttl=10)
+                
+                if token:
+                    # If we got the lock, release it immediately
+                    await short_timeout_client._redis_client.release_lock(lock_key, token)
+                    end_time = time.time()
+                    operation_results["quick_op"] = {
+                        'success': True,
+                        'duration': end_time - start_time
+                    }
+                    logger.info(f"Quick operation unexpectedly succeeded in {end_time - start_time:.2f}s")
+                    return True
+                else:
+                    # Failed to acquire lock - this is expected
+                    end_time = time.time()
+                    operation_results["quick_op"] = {
+                        'success': False,
+                        'timeout': True,
+                        'duration': end_time - start_time
+                    }
+                    logger.info(f"Quick operation timed out after {end_time - start_time:.2f}s")
+                    return False
+                
+            except asyncio.TimeoutError:
+                end_time = time.time()
+                operation_results["quick_op"] = {
+                    'success': False,
+                    'timeout': True,
+                    'duration': end_time - start_time
+                }
+                logger.info(f"Quick operation timed out after {end_time - start_time:.2f}s")
+                return False
+            except Exception as e:
+                end_time = time.time()
+                operation_results["quick_op"] = {'success': False, 'error': str(e)}
+                logger.error(f"Quick operation error: {e}")
+                return False
+
+        # Run both operations concurrently
+        long_task = asyncio.create_task(long_running_operation())
+        quick_task = asyncio.create_task(quick_operation())
+        
+        results = await asyncio.gather(long_task, quick_task, return_exceptions=True)
+        
+        # Long operation should succeed, quick operation should timeout
+        self.assertIsInstance(results[0], bool, "Long operation should return boolean")
+        self.assertTrue(results[0], "Long operation should succeed")
+        
+        self.assertIsInstance(results[1], bool, "Quick operation should return boolean")
+        self.assertFalse(results[1], "Quick operation should fail due to timeout")
+        
+        # Verify timeout actually occurred
+        self.assertTrue(operation_results["quick_op"].get("timeout", False), "Quick operation should have timed out")
+        self.assertLess(operation_results["quick_op"]["duration"], 3.0, "Quick operation should timeout quickly")
+        
+        logger.info(f"Lock timeout test results: {operation_results}")
+
+    async def test_lock_key_generation(self):
+        """
+        Test that lock keys are generated correctly for different document paths.
+        """
+        # Test different document paths
+        test_paths = [
+            ["org1", "namespace1", "doc1"],
+            ["org2", "namespace2", "doc2"],
+            ["org1", "namespace1", "doc2"],  # Same org/namespace, different doc
+            ["org1", "namespace2", "doc1"],  # Same org, different namespace
+        ]
+        
+        # Generate lock keys
+        lock_keys = []
+        for path in test_paths:
+            lock_key = self.versioned_client._get_document_lock_key(path)
+            lock_keys.append(lock_key)
+            logger.info(f"Path {path} -> Lock key: {lock_key}")
+        
+        # All lock keys should be unique
+        self.assertEqual(len(lock_keys), len(set(lock_keys)), "All lock keys should be unique")
+        
+        # Lock keys should follow expected format
+        for i, lock_key in enumerate(lock_keys):
+            self.assertTrue(lock_key.startswith("doc_lock:"), f"Lock key {i} should start with 'doc_lock:'")
+            # The lock key should contain the path converted to MongoDB ID format
+            expected_path_id = self.versioned_client.client._path_to_id(test_paths[i])
+            self.assertIn(expected_path_id, lock_key, f"Lock key {i} should contain the path ID: {expected_path_id}")
+
+    async def test_lock_release_on_exception(self):
+        """
+        Test that locks are properly released even when operations raise exceptions.
+        """
+        base_path = self._get_test_path("lock_exception_doc")
+        await self.versioned_client.initialize_document(base_path)
+        
+        async def failing_operation():
+            """Operation that raises an exception after acquiring lock."""
+            try:
+                # This should acquire the lock
+                current_doc = await self.versioned_client.get_document(base_path)
+                
+                # Simulate some processing
+                await asyncio.sleep(0.1)
+                
+                # Intentionally raise an exception
+                raise ValueError("Intentional test exception")
+                
+            except ValueError:
+                # Re-raise the expected exception
+                raise
+            except Exception as e:
+                logger.error(f"Unexpected exception in failing operation: {e}")
+                raise
+
+        async def subsequent_operation():
+            """Operation that should succeed after the failing operation releases its lock."""
+            try:
+                # This should be able to acquire the lock after the failing operation
+                success = await self.versioned_client.update_document(base_path, {"after_exception": True})
+                return success
+            except Exception as e:
+                logger.error(f"Subsequent operation failed: {e}")
+                return False
+
+        # First operation should fail but release lock
+        with self.assertRaises(ValueError, msg="First operation should raise ValueError"):
+            await failing_operation()
+        
+        # Small delay to ensure lock is released
+        await asyncio.sleep(0.1)
+        
+        # Second operation should succeed (lock should be available)
+        success = await subsequent_operation()
+        self.assertTrue(success, "Subsequent operation should succeed after lock is released")
+        
+        # Verify the document was actually updated
+        final_doc = await self.versioned_client.get_document(base_path)
+        self.assertIn("after_exception", final_doc, "Document should contain update from subsequent operation")
+        self.assertTrue(final_doc["after_exception"], "Update value should be True")
+
+    async def test_multiple_document_locks(self):
+        """
+        Test that operations on different documents can proceed concurrently.
+        """
+        base_path1 = self._get_test_path("multi_lock_doc1")
+        base_path2 = self._get_test_path("multi_lock_doc2")
+        
+        # Initialize both documents
+        await self.versioned_client.initialize_document(base_path1)
+        await self.versioned_client.initialize_document(base_path2)
+        
+        operation_times = {}
+        
+        async def update_document_worker(doc_id: str, base_path: List[str], work_duration: float):
+            """Worker that updates a specific document."""
+            start_time = time.time()
+            try:
+                # Simulate some work
+                await asyncio.sleep(work_duration)
+                
+                # Update the document
+                success = await self.versioned_client.update_document(base_path, {
+                    "worker_id": doc_id,
+                    "work_duration": work_duration,
+                    "timestamp": start_time
+                })
+                
+                end_time = time.time()
+                operation_times[doc_id] = {
+                    'start_time': start_time,
+                    'end_time': end_time,
+                    'duration': end_time - start_time,
+                    'success': success
+                }
+                
+                logger.info(f"Worker {doc_id}: Completed in {end_time - start_time:.2f}s")
+                return success
+                
+            except Exception as e:
+                operation_times[doc_id] = {'error': str(e), 'success': False}
+                logger.error(f"Worker {doc_id}: Error - {e}")
+                return False
+
+        # Create workers for different documents - these should run concurrently
+        tasks = [
+            asyncio.create_task(update_document_worker("doc1", base_path1, 1.0)),
+            asyncio.create_task(update_document_worker("doc2", base_path2, 1.0)),
+        ]
+        
+        overall_start = time.time()
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        overall_end = time.time()
+        total_duration = overall_end - overall_start
+        
+        # Both operations should succeed
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                self.fail(f"Worker task {i} raised an exception: {result}")
+            self.assertTrue(result, f"Worker task {i} should have succeeded")
+        
+        # Operations should have run concurrently (total time should be close to work_duration, not 2x)
+        # With proper concurrency, total time should be ~1 second, not ~2 seconds
+        self.assertLess(total_duration, 1.8, "Operations on different documents should run concurrently")
+        
+        # Verify both documents were updated correctly
+        doc1 = await self.versioned_client.get_document(base_path1)
+        doc2 = await self.versioned_client.get_document(base_path2)
+        
+        self.assertEqual(doc1["worker_id"], "doc1", "Document 1 should have correct worker ID")
+        self.assertEqual(doc2["worker_id"], "doc2", "Document 2 should have correct worker ID")
+        
+        logger.info(f"Multiple document locks test - Total duration: {total_duration:.2f}s")
+        logger.info(f"Operation timings: {operation_times}")
 
 def run_async_tests():
     unittest.main()

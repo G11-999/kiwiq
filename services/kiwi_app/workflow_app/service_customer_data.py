@@ -2360,6 +2360,7 @@ class CustomerDataService:
             customer_data_logger.debug(f"Total unique documents found: {len(all_docs)}")
             
             # Process results into metadata objects
+            active_versions_by_paths = {}
             result = []
             for doc_path, _doc_metadata in all_docs.items():
                 # Skip if not a list (should not happen)
@@ -2405,6 +2406,8 @@ class CustomerDataService:
                 
                 # Create metadata object
                 metadata = schemas.CustomerDocumentSearchResultMetadata(
+                    id=_doc_metadata.get("_id"),
+                    versionless_path=self.versioned_mongo_client.client._path_to_id(doc_path[:4]),
                     org_id=uuid.UUID(org_id_str) if not is_system else None,
                     user_id_or_shared_placeholder=user_id_str,
                     namespace=namespace,
@@ -2421,6 +2424,9 @@ class CustomerDataService:
                     metadata=metadata,
                     data=data,
                 )
+
+                if is_versioning_metadata:
+                    active_versions_by_paths[metadata.versionless_path] = data.get("active_version", None)
                 
                 result.append(search_result)
             
@@ -2432,6 +2438,12 @@ class CustomerDataService:
             
             for search_result in result:
                 metadata = search_result.metadata
+                
+                # set active version flag
+                if (not metadata.is_versioning_metadata) and metadata.versionless_path in active_versions_by_paths:
+                    active_version = active_versions_by_paths[metadata.versionless_path]
+                    metadata.is_active_version = metadata.version == active_version
+
                 path_key = f"{metadata.org_id or CustomerDataService.SYSTEM_DOC_PLACEHOLDER}/{metadata.user_id_or_shared_placeholder}/{metadata.namespace}/{metadata.docname}/{metadata.version}"
                 if path_key not in seen_paths:
                     seen_paths.add(path_key)
@@ -2528,6 +2540,8 @@ class CustomerDataService:
             )
             
             customer_data_logger.info(f"System search found {len(docs)} documents")
+
+            active_versions_by_paths = {}
             
             # Process results into search result objects
             result = []
@@ -2563,7 +2577,8 @@ class CustomerDataService:
                 
                 # Create metadata object
                 metadata = schemas.CustomerDocumentSearchResultMetadata(
-                    id=f"{org_id_str}:{user_id_str}:{namespace}:{docname}",  # doc.get("_id"),
+                    id=doc.get("_id"),
+                    versionless_path=self.versioned_mongo_client.client._path_to_id(doc_path[:4]),
                     org_id=uuid.UUID(org_id_str) if not is_system and org_id_str != "*" else None,
                     user_id_or_shared_placeholder=user_id_str,
                     namespace=namespace,
@@ -2574,6 +2589,9 @@ class CustomerDataService:
                     version=version,
                     is_versioning_metadata=is_versioning_metadata,
                 )
+
+                if is_versioning_metadata:
+                    active_versions_by_paths[metadata.versionless_path] = data.get("active_version", None)
                 
                 search_result = schemas.CustomerDocumentSearchResult(
                     metadata=metadata,
@@ -2581,6 +2599,11 @@ class CustomerDataService:
                 )
                 
                 result.append(search_result)
+            
+            for search_result in result:
+                if (not search_result.metadata.is_versioning_metadata) and search_result.metadata.versionless_path in active_versions_by_paths:
+                    active_version = active_versions_by_paths[search_result.metadata.versionless_path]
+                    search_result.metadata.is_active_version = search_result.metadata.version == active_version
             
             customer_data_logger.info(f"System search returning {len(result)} results")
             return result

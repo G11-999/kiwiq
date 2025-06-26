@@ -195,6 +195,17 @@ class AsyncMongoDBClient:
         # Path components are always stored in separate fields for querying
         return self.PATH_DELIMITER.join(path)
     
+    def _id_to_path(self, _id: str) -> List[str]:
+        """
+        Converts a document ID to a path list.
+        
+        Args:
+            _id: Document ID
+        
+        NOTE: INSECURE METHOD! this is only for system queries involving converting IDs to paths for further system queries!
+        """
+        return _id.split(self.PATH_DELIMITER)
+    
     def _validate_document_path(self, path: List[str]) -> None:
         """
         Validates a document path (not a pattern).

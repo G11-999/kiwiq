@@ -370,6 +370,218 @@ class TestAsyncRedisClient(unittest.IsolatedAsyncioTestCase):
         # Clean up
         await self.client_raw.delete_cache(cache_key)
 
+    async def test_concurrent_lock_waiting(self):
+        """
+        Test concurrent operations waiting for locks to be released.
+        This demonstrates how multiple tasks compete for the same lock and wait for each other.
+        """
+        lock_name = f"{self.TEST_PREFIX}lock:concurrent_test"
+        execution_order = []
+        lock_held_times = {}
+        
+        async def worker_task(worker_id: str, hold_duration: float, timeout: int = 15):
+            """
+            A worker task that tries to acquire a lock, holds it, then releases it.
+            
+            Args:
+                worker_id: Unique identifier for this worker
+                hold_duration: How long to hold the lock (seconds)
+                timeout: How long to wait for lock acquisition (seconds)
+            """
+            start_time = asyncio.get_event_loop().time()
+            logger.info(f"Worker {worker_id}: Starting lock acquisition attempt")
+            
+            try:
+                # Try to acquire the lock
+                token = await self.client.acquire_lock(lock_name, timeout=timeout, ttl=int(hold_duration + 5))
+                
+                if token:
+                    acquire_time = asyncio.get_event_loop().time()
+                    wait_time = acquire_time - start_time
+                    execution_order.append(f"{worker_id}_acquired")
+                    lock_held_times[worker_id] = {
+                        'acquired_at': acquire_time,
+                        'wait_time': wait_time
+                    }
+                    
+                    logger.info(f"Worker {worker_id}: Lock acquired after {wait_time:.2f}s wait")
+                    
+                    # Hold the lock for the specified duration
+                    await asyncio.sleep(hold_duration)
+                    
+                    # Release the lock
+                    released = await self.client.release_lock(lock_name, token)
+                    release_time = asyncio.get_event_loop().time()
+                    lock_held_times[worker_id]['released_at'] = release_time
+                    lock_held_times[worker_id]['held_duration'] = release_time - acquire_time
+                    
+                    execution_order.append(f"{worker_id}_released")
+                    logger.info(f"Worker {worker_id}: Lock released after holding for {release_time - acquire_time:.2f}s")
+                    
+                    return {"success": True, "token": token, "released": released}
+                else:
+                    logger.warning(f"Worker {worker_id}: Failed to acquire lock within {timeout}s")
+                    execution_order.append(f"{worker_id}_timeout")
+                    return {"success": False, "reason": "timeout"}
+                    
+            except Exception as e:
+                logger.error(f"Worker {worker_id}: Error during lock operation: {e}")
+                execution_order.append(f"{worker_id}_error")
+                return {"success": False, "reason": f"error: {e}"}
+        
+        # Test Case 1: Sequential lock acquisition with waiting
+        logger.info("=== Test Case 1: Sequential lock acquisition ===")
+        
+        # Create tasks that will compete for the same lock
+        # Worker A holds lock for 2 seconds, Worker B waits and then holds for 1 second
+        tasks = [
+            asyncio.create_task(worker_task("A", hold_duration=2.0, timeout=10)),
+            asyncio.create_task(worker_task("B", hold_duration=1.0, timeout=10)),
+        ]
+        
+        # Start all tasks simultaneously
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Verify results
+        self.assertEqual(len(results), 2, "Should have 2 task results")
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                self.fail(f"Task {i} raised an exception: {result}")
+            self.assertTrue(result["success"], f"Task {i} should have succeeded: {result}")
+        
+        # Verify execution order - both should acquire and release in sequence
+        expected_patterns = [
+            ["A_acquired", "A_released", "B_acquired", "B_released"],
+            ["B_acquired", "B_released", "A_acquired", "A_released"]
+        ]
+        self.assertIn(execution_order[:4], expected_patterns, 
+                     f"Execution order should follow one of the expected patterns. Got: {execution_order}")
+        
+        # Verify that locks were held for approximately the expected duration
+        for worker_id in ["A", "B"]:
+            if worker_id in lock_held_times:
+                held_duration = lock_held_times[worker_id]["held_duration"]
+                expected_duration = 2.0 if worker_id == "A" else 1.0
+                # Allow some tolerance for timing
+                self.assertAlmostEqual(held_duration, expected_duration, delta=0.5,
+                                     msg=f"Worker {worker_id} should hold lock for ~{expected_duration}s")
+        
+        # Clear for next test
+        execution_order.clear()
+        lock_held_times.clear()
+        
+        # Test Case 2: Multiple workers competing with different timeouts
+        logger.info("=== Test Case 2: Multiple workers with different timeouts ===")
+        
+        # Create more complex scenario with multiple workers
+        tasks = [
+            asyncio.create_task(worker_task("X", hold_duration=1.5, timeout=12)),
+            asyncio.create_task(worker_task("Y", hold_duration=0.5, timeout=12)),
+            asyncio.create_task(worker_task("Z", hold_duration=1.0, timeout=12)),
+        ]
+        
+        # Add a small delay between starting tasks to create more realistic timing
+        await asyncio.sleep(0.1)
+        
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Verify all tasks completed successfully
+        successful_tasks = 0
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                logger.error(f"Task {i} raised exception: {result}")
+                continue
+            if result["success"]:
+                successful_tasks += 1
+                
+        self.assertGreaterEqual(successful_tasks, 2, 
+                               "At least 2 out of 3 tasks should succeed in acquiring locks")
+        
+        # Verify no overlapping lock holds (mutual exclusion)
+        acquired_times = []
+        released_times = []
+        
+        for worker_id in ["X", "Y", "Z"]:
+            if worker_id in lock_held_times:
+                acquired_times.append((worker_id, lock_held_times[worker_id]["acquired_at"]))
+                released_times.append((worker_id, lock_held_times[worker_id]["released_at"]))
+        
+        # Sort by acquisition time
+        acquired_times.sort(key=lambda x: x[1])
+        
+        # Verify mutual exclusion: each lock should be released before the next is acquired
+        for i in range(len(acquired_times) - 1):
+            current_worker = acquired_times[i][0]
+            next_worker = acquired_times[i + 1][0]
+            
+            current_release_time = lock_held_times[current_worker]["released_at"]
+            next_acquire_time = lock_held_times[next_worker]["acquired_at"]
+            
+            self.assertLessEqual(current_release_time, next_acquire_time + 0.1,  # Small tolerance
+                               f"Worker {current_worker} should release before worker {next_worker} acquires")
+        
+        logger.info(f"Final execution order: {execution_order}")
+        logger.info(f"Lock timing details: {lock_held_times}")
+        
+        # Test Case 3: Context manager with concurrent access
+        logger.info("=== Test Case 3: Context manager concurrent access ===")
+        
+        execution_order.clear()
+        context_execution_order = []
+        
+        async def context_worker(worker_id: str, work_duration: float):
+            """Worker that uses the lock context manager."""
+            try:
+                context_execution_order.append(f"{worker_id}_waiting")
+                async with self.client.with_lock(lock_name, timeout=10, ttl=15):
+                    context_execution_order.append(f"{worker_id}_entered")
+                    logger.info(f"Context worker {worker_id}: Entered critical section")
+                    await asyncio.sleep(work_duration)
+                    context_execution_order.append(f"{worker_id}_exiting")
+                    logger.info(f"Context worker {worker_id}: Exiting critical section")
+                context_execution_order.append(f"{worker_id}_exited")
+                return {"success": True}
+            except Exception as e:
+                context_execution_order.append(f"{worker_id}_error")
+                logger.error(f"Context worker {worker_id}: Error: {e}")
+                return {"success": False, "error": str(e)}
+        
+        # Create concurrent context manager tasks
+        context_tasks = [
+            asyncio.create_task(context_worker("CTX1", 1.0)),
+            asyncio.create_task(context_worker("CTX2", 0.5)),
+        ]
+        
+        context_results = await asyncio.gather(*context_tasks, return_exceptions=True)
+        
+        # Verify both context manager tasks succeeded
+        for i, result in enumerate(context_results):
+            if isinstance(result, Exception):
+                self.fail(f"Context task {i} raised an exception: {result}")
+            self.assertTrue(result["success"], f"Context task {i} should have succeeded")
+        
+        # Verify proper sequencing in context manager execution
+        # Both workers should complete their full cycle
+        expected_context_events = 8  # 4 events per worker (waiting, entered, exiting, exited)
+        self.assertEqual(len(context_execution_order), expected_context_events,
+                        f"Should have {expected_context_events} context events")
+        
+        # Verify that no two workers are in the critical section simultaneously
+        in_critical_section = set()
+        for event in context_execution_order:
+            if event.endswith("_entered"):
+                worker_id = event.split("_")[0]
+                self.assertEqual(len(in_critical_section), 0, 
+                               f"Worker {worker_id} entered while {in_critical_section} still in critical section")
+                in_critical_section.add(worker_id)
+            elif event.endswith("_exiting"):
+                worker_id = event.split("_")[0]
+                self.assertIn(worker_id, in_critical_section, 
+                             f"Worker {worker_id} exiting but was not in critical section")
+                in_critical_section.remove(worker_id)
+        
+        logger.info(f"Context execution order: {context_execution_order}")
+
 
 def run_tests():
     unittest.main()

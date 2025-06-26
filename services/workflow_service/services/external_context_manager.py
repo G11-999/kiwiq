@@ -310,16 +310,19 @@ async def get_customer_mongo_client_with_extra_segments(extra_segments: List[str
     """
     return await get_mongo_client('customer', extra_segments=extra_segments)
 
-async def get_customer_versioned_mongo_client() -> AsyncMongoVersionedClient:
+async def get_customer_versioned_mongo_client(redis_client = None) -> AsyncMongoVersionedClient:  # : Optional[AsyncRedisClient]
     """Create and return a versioned MongoDB client for customer data."""
     # Create versioned client based on the base MongoDB client
     # Use base segment names without version/sequence segments that will be added internally
+    if redis_client is None:
+        redis_client = await get_redis_client(decode_responses=True)
     customer_mongo_client = await get_customer_mongo_client_with_extra_segments(extra_segments=AsyncMongoVersionedClient.VERSION_SEGMENT_NAMES)
     customer_mongo_client.version_mode = AsyncMongoDBClient.DOC_TYPE_VERSIONED
     versioned_client = AsyncMongoVersionedClient(
         client=customer_mongo_client,
         segment_names=settings.MONGO_CUSTOMER_SEGMENTS, # Base segments defined in settings
         return_timestamp_metadata=True,
+        redis_client=redis_client,
     )
     return versioned_client
 
@@ -479,7 +482,7 @@ async def get_external_context_manager_with_clients() -> ExternalContextManager:
         try:
             clients["mongo"]["customer"] = await get_mongo_client('customer')
             clients["mongo"]["workflow"] = await get_mongo_client('workflow')
-            clients["mongo"]["customer_versioned"] = await get_customer_versioned_mongo_client()
+            clients["mongo"]["customer_versioned"] = await get_customer_versioned_mongo_client(redis_client=clients["redis"]["text"])
         except Exception as e:
             print(f"Error initializing MongoDB clients: {e}")
     

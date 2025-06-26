@@ -12,6 +12,7 @@ from jsonschema.exceptions import ValidationError
 
 # Import the AsyncMongoDBClient
 from mongo_client.mongo_client_v2_secure import AsyncMongoDBClient
+from redis_client.redis_client import AsyncRedisClient
 
 from global_config.logger import get_logger
 from global_utils.utils import datetime_now_utc
@@ -101,6 +102,7 @@ class AsyncMongoVersionedClient:
     - Preview and restore to previous versions
     - JSON schema validation for documents
     - Fixed-length revision history
+    - Redis-based distributed locking for concurrent safety
     
     The document path structure is:
     - base_path: Original path segments (e.g., [org, shared, namespace, docname])
@@ -136,7 +138,10 @@ class AsyncMongoVersionedClient:
         self,
         client: AsyncMongoDBClient,
         segment_names: List[str],
+        redis_client: AsyncRedisClient,
         return_timestamp_metadata: bool = True,
+        lock_timeout: int = 30,
+        lock_ttl: int = 60,
         # metadata_segment_name: str = "metadata",
         # version_segment_name: str = "version",
         # sequence_segment_name: str = "sequence"
@@ -147,6 +152,10 @@ class AsyncMongoVersionedClient:
         Args:
             client: The underlying AsyncMongoDBClient instance
             segment_names: List of segment names for the base path
+            redis_client: AsyncRedisClient instance for distributed locking
+            return_timestamp_metadata: Whether to include timestamp metadata in responses
+            lock_timeout: Maximum time to wait for acquiring a lock (seconds)
+            lock_ttl: Time-to-live for locks (seconds)
             metadata_segment_name: Segment name for the metadata path
             version_segment_name: Segment name for the version path
             sequence_segment_name: Segment name for the sequence number
@@ -154,7 +163,10 @@ class AsyncMongoVersionedClient:
         assert client.version_mode == AsyncMongoDBClient.DOC_TYPE_VERSIONED, "Client must be versioned"
         self.client = client
         self.segment_names = segment_names
+        self._redis_client = redis_client
         self.return_timestamp_metadata = return_timestamp_metadata
+        self.lock_timeout = lock_timeout
+        self.lock_ttl = lock_ttl
         # self.metadata_segment_name = metadata_segment_name
         # self.version_segment_name = version_segment_name
         # self.sequence_segment_name = sequence_segment_name
@@ -169,6 +181,45 @@ class AsyncMongoVersionedClient:
         # uses for those segments.
         logger.info(f"AsyncMongoVersionedClient initialized with segment names: {segment_names}")
     
+    # =========================================================================
+    # Lock Management Helpers
+    # =========================================================================
+
+    def _get_document_lock_key(self, base_path: List[str]) -> str:
+        """
+        Generate a Redis lock key for a document based on its metadata path.
+        
+        Args:
+            base_path: The base path for the document
+            
+        Returns:
+            A string key for Redis locking
+        """
+        # Use the metadata path (base_path) as the lock key
+        # Join path segments with a delimiter that's unlikely to appear in path segments
+        lock_key = f"doc_lock:{self.client._path_to_id(base_path)}"
+        return lock_key
+
+    def _with_document_lock(self, base_path: List[str], operation_name: str = "document_operation"):
+        """
+        Context manager for acquiring a distributed lock on a document.
+        
+        Args:
+            base_path: The base path for the document
+            operation_name: Name of the operation for logging purposes
+            
+        Returns:
+            An async context manager for the lock
+        """
+        lock_key = self._get_document_lock_key(base_path)
+        logger.debug(f"Acquiring lock for {operation_name} on document path {base_path}, lock_key: {lock_key}")
+        
+        return self._redis_client.with_lock(
+            lock_name=lock_key, 
+            timeout=self.lock_timeout, 
+            ttl=self.lock_ttl
+        )
+
     # =========================================================================
     # Path Construction Helpers
     # =========================================================================
@@ -503,39 +554,40 @@ class AsyncMongoVersionedClient:
         Returns:
             True if the document was initialized successfully
         """
-        # Check if document already exists
-        existing_metadata = await self._get_document_metadata(base_path, allowed_prefixes)
-        if existing_metadata:
-            logger.info(f"Document at path {base_path} already exists, initialization skipped")
-            return False
-        
-        # Create initial metadata
-        timestamp = datetime_now_utc()
-        metadata = {
-            # AsyncMongoDBClient.DOC_TYPE_KEY: AsyncMongoDBClient.DOC_TYPE_VERSIONED,
-            AsyncMongoVersionedClient.CREATED_AT_KEY: timestamp,
-            AsyncMongoVersionedClient.UPDATED_AT_KEY: timestamp,
-            "active_version": initial_version,
-            "versions": [initial_version],
-            "schema": schema
-        }
-        
-        await self._create_or_update_metadata(base_path, metadata, allowed_prefixes)
-        
-        # Create initial version data
-        version_data = {
-            AsyncMongoVersionedClient.CREATED_AT_KEY: timestamp,
-            AsyncMongoVersionedClient.UPDATED_AT_KEY: timestamp,
-            AsyncMongoVersionedClient.MIN_SEQUENCE_KEY: 0,
-            AsyncMongoVersionedClient.MAX_SEQUENCE_KEY: -1,
-            AsyncMongoVersionedClient.IS_COMPLETE_KEY: False,
-            # AsyncMongoVersionedClient.DOCUMENT_KEY: {}
-        }
-        
-        await self._create_or_update_version_data(base_path, initial_version, version_data, allowed_prefixes)
-        logger.info(f"Initialized new document at path {base_path} with version {initial_version}")
-        
-        return True
+        async with self._with_document_lock(base_path, "initialize_document"):
+            # Check if document already exists
+            existing_metadata = await self._get_document_metadata(base_path, allowed_prefixes)
+            if existing_metadata:
+                logger.info(f"Document at path {base_path} already exists, initialization skipped")
+                return False
+            
+            # Create initial metadata
+            timestamp = datetime_now_utc()
+            metadata = {
+                # AsyncMongoDBClient.DOC_TYPE_KEY: AsyncMongoDBClient.DOC_TYPE_VERSIONED,
+                AsyncMongoVersionedClient.CREATED_AT_KEY: timestamp,
+                AsyncMongoVersionedClient.UPDATED_AT_KEY: timestamp,
+                "active_version": initial_version,
+                "versions": [initial_version],
+                "schema": schema
+            }
+            
+            await self._create_or_update_metadata(base_path, metadata, allowed_prefixes)
+            
+            # Create initial version data
+            version_data = {
+                AsyncMongoVersionedClient.CREATED_AT_KEY: timestamp,
+                AsyncMongoVersionedClient.UPDATED_AT_KEY: timestamp,
+                AsyncMongoVersionedClient.MIN_SEQUENCE_KEY: 0,
+                AsyncMongoVersionedClient.MAX_SEQUENCE_KEY: -1,
+                AsyncMongoVersionedClient.IS_COMPLETE_KEY: False,
+                # AsyncMongoVersionedClient.DOCUMENT_KEY: {}
+            }
+            
+            await self._create_or_update_version_data(base_path, initial_version, version_data, allowed_prefixes)
+            logger.info(f"Initialized new document at path {base_path} with version {initial_version}")
+            
+            return True
     
     async def create_version(
         self, 
@@ -556,58 +608,59 @@ class AsyncMongoVersionedClient:
         Returns:
             True if the version was created successfully
         """
-        # Get document metadata
-        metadata = await self._get_document_metadata(base_path, allowed_prefixes)
-        if not metadata:
-            logger.error(f"Cannot create version {new_version}: document at path {base_path} does not exist")
-            return False
-        
-        # Check if we've reached the maximum number of versions
-        if len(metadata.get("versions", [])) >= self.MAX_VERSIONS:
-            error_msg = f"Maximum number of versions reached ({self.MAX_VERSIONS})"
-            logger.error(f"Cannot create version {new_version}: {error_msg}")
-            raise ValueError(error_msg)
-        
-        # Check if version already exists
-        if new_version in metadata.get("versions", []):
-            error_msg = f"Version '{new_version}' already exists"
-            logger.error(f"Cannot create version {new_version}: {error_msg}")
-            raise ValueError(error_msg)
-        
-        # Determine source version
-        source_version = from_version or metadata.get("active_version")
-        if not source_version or source_version not in metadata.get("versions", []):
-            error_msg = f"Source version '{source_version}' does not exist"
-            logger.error(f"Cannot create version {new_version}: {error_msg}")
-            raise ValueError(error_msg)
-        
-        # Get source version data
-        source_data = await self._get_version_data(base_path, source_version, allowed_prefixes)
-        if not source_data:
-            logger.error(f"Cannot create version {new_version}: source version {source_version} data not found")
-            return False
-        
-        # Create new version data (copy from source)
-        timestamp = datetime_now_utc()
-        new_version_data = {
-            AsyncMongoVersionedClient.CREATED_AT_KEY: timestamp,
-            AsyncMongoVersionedClient.UPDATED_AT_KEY: timestamp,
-            AsyncMongoVersionedClient.MIN_SEQUENCE_KEY: 0,
-            AsyncMongoVersionedClient.MAX_SEQUENCE_KEY: -1,
-            AsyncMongoVersionedClient.IS_COMPLETE_KEY: source_data.get(AsyncMongoVersionedClient.IS_COMPLETE_KEY, False),
-            # AsyncMongoVersionedClient.DOCUMENT_KEY: copy.deepcopy(source_data.get(AsyncMongoVersionedClient.DOCUMENT_KEY, {}))
-            **copy.deepcopy({k:v for k,v in source_data.items() if k not in AsyncMongoVersionedClient.ALL_KEYS})
-        }
-        
-        await self._create_or_update_version_data(base_path, new_version, new_version_data, allowed_prefixes)
-        
-        # Update metadata
-        metadata["versions"].append(new_version)
-        metadata[AsyncMongoVersionedClient.UPDATED_AT_KEY] = timestamp
-        await self._create_or_update_metadata(base_path, metadata, allowed_prefixes)
-        
-        logger.info(f"Created new version {new_version} from {source_version} for document at path {base_path}")
-        return True
+        async with self._with_document_lock(base_path, "create_version"):
+            # Get document metadata
+            metadata = await self._get_document_metadata(base_path, allowed_prefixes)
+            if not metadata:
+                logger.error(f"Cannot create version {new_version}: document at path {base_path} does not exist")
+                return False
+            
+            # Check if we've reached the maximum number of versions
+            if len(metadata.get("versions", [])) >= self.MAX_VERSIONS:
+                error_msg = f"Maximum number of versions reached ({self.MAX_VERSIONS})"
+                logger.error(f"Cannot create version {new_version}: {error_msg}")
+                raise ValueError(error_msg)
+            
+            # Check if version already exists
+            if new_version in metadata.get("versions", []):
+                error_msg = f"Version '{new_version}' already exists"
+                logger.error(f"Cannot create version {new_version}: {error_msg}")
+                raise ValueError(error_msg)
+            
+            # Determine source version
+            source_version = from_version or metadata.get("active_version")
+            if not source_version or source_version not in metadata.get("versions", []):
+                error_msg = f"Source version '{source_version}' does not exist"
+                logger.error(f"Cannot create version {new_version}: {error_msg}")
+                raise ValueError(error_msg)
+            
+            # Get source version data
+            source_data = await self._get_version_data(base_path, source_version, allowed_prefixes)
+            if not source_data:
+                logger.error(f"Cannot create version {new_version}: source version {source_version} data not found")
+                return False
+            
+            # Create new version data (copy from source)
+            timestamp = datetime_now_utc()
+            new_version_data = {
+                AsyncMongoVersionedClient.CREATED_AT_KEY: timestamp,
+                AsyncMongoVersionedClient.UPDATED_AT_KEY: timestamp,
+                AsyncMongoVersionedClient.MIN_SEQUENCE_KEY: 0,
+                AsyncMongoVersionedClient.MAX_SEQUENCE_KEY: -1,
+                AsyncMongoVersionedClient.IS_COMPLETE_KEY: source_data.get(AsyncMongoVersionedClient.IS_COMPLETE_KEY, False),
+                # AsyncMongoVersionedClient.DOCUMENT_KEY: copy.deepcopy(source_data.get(AsyncMongoVersionedClient.DOCUMENT_KEY, {}))
+                **copy.deepcopy({k:v for k,v in source_data.items() if k not in AsyncMongoVersionedClient.ALL_KEYS})
+            }
+            
+            await self._create_or_update_version_data(base_path, new_version, new_version_data, allowed_prefixes)
+            
+            # Update metadata
+            metadata["versions"].append(new_version)
+            metadata[AsyncMongoVersionedClient.UPDATED_AT_KEY] = timestamp
+            await self._create_or_update_metadata(base_path, metadata, allowed_prefixes)
+            
+            logger.info(f"Created new version {new_version} from {source_version} for document at path {base_path}")
+            return True
     
     async def set_active_version(
         self, 
@@ -626,25 +679,26 @@ class AsyncMongoVersionedClient:
         Returns:
             True if the active version was set successfully
         """
-        # Get document metadata
-        metadata = await self._get_document_metadata(base_path, allowed_prefixes)
-        if not metadata:
-            logger.error(f"Cannot set active version: document at path {base_path} does not exist")
-            return False
-        
-        # Check if version exists
-        if version not in metadata.get("versions", []):
-            error_msg = f"Version '{version}' does not exist"
-            logger.error(f"Cannot set active version: {error_msg}")
-            raise ValueError(error_msg)
-        
-        # Update metadata
-        metadata["active_version"] = version
-        metadata[AsyncMongoVersionedClient.UPDATED_AT_KEY] = datetime_now_utc()
-        await self._create_or_update_metadata(base_path, metadata, allowed_prefixes)
-        
-        logger.info(f"Set active version to {version} for document at path {base_path}")
-        return True
+        async with self._with_document_lock(base_path, "set_active_version"):
+            # Get document metadata
+            metadata = await self._get_document_metadata(base_path, allowed_prefixes)
+            if not metadata:
+                logger.error(f"Cannot set active version: document at path {base_path} does not exist")
+                return False
+            
+            # Check if version exists
+            if version not in metadata.get("versions", []):
+                error_msg = f"Version '{version}' does not exist"
+                logger.error(f"Cannot set active version: {error_msg}")
+                raise ValueError(error_msg)
+            
+            # Update metadata
+            metadata["active_version"] = version
+            metadata[AsyncMongoVersionedClient.UPDATED_AT_KEY] = datetime_now_utc()
+            await self._create_or_update_metadata(base_path, metadata, allowed_prefixes)
+            
+            logger.info(f"Set active version to {version} for document at path {base_path}")
+            return True
     
     async def get_document(
         self, 
@@ -716,129 +770,130 @@ class AsyncMongoVersionedClient:
         Returns:
             True if the document was updated successfully
         """
-        # Get document metadata
-        metadata = await self._get_document_metadata(base_path, allowed_prefixes)
-        if not metadata:
-            logger.error(f"Cannot update document: document at path {base_path} does not exist")
-            return False
-        
-        # Determine which version to use
-        target_version = version or metadata.get("active_version")
-        if not target_version or target_version not in metadata.get("versions", []):
-            error_msg = f"Version '{target_version}' does not exist"
-            logger.error(f"Cannot update document: {error_msg}")
-            raise ValueError(error_msg)
-
-        if isinstance(data, dict) and any(k in data for k in AsyncMongoVersionedClient.RESERVED_KEYS):
-            raise ValueError("Cannot update document: data contains reserved keys")
-
-        # Get version data
-        version_data = await self._get_version_data(base_path, target_version, allowed_prefixes)
-        if not version_data:
-            logger.error(f"Version data for {target_version} not found at path {base_path}")
-            return False
-        
-        current_document = {k:v for k,v in version_data.items() if k not in AsyncMongoVersionedClient.ALL_KEYS}
-
-        # NOTE: DOCUMENT_KEY is used when object is a non-dict type!
-        current_document = current_document.get(AsyncMongoVersionedClient.DOCUMENT_KEY, current_document)
-        current_is_complete = version_data.get(AsyncMongoVersionedClient.IS_COMPLETE_KEY, False)
-        
-        # Handle different data types
-        if isinstance(data, dict):
-            for field in create_only_fields:
-                if field in data and (not keep_create_fields_if_missing):
-                    del data[field]
-        if isinstance(data, dict) and isinstance(current_document, dict):
-            # For dictionaries, merge the update with the current document
-            new_document = copy.deepcopy(current_document)
-            for field in create_only_fields:
-                if field in new_document and field in data:
-                    del data[field]
-            new_document.update(data)
-        else:
-            # For other types, replace the entire document
-            new_document = data
+        async with self._with_document_lock(base_path, "update_document"):
+            # Get document metadata
+            metadata = await self._get_document_metadata(base_path, allowed_prefixes)
+            if not metadata:
+                logger.error(f"Cannot update document: document at path {base_path} does not exist")
+                return False
             
-        
-        # Validate against schema if provided
-        schema = metadata.get("schema")
-        if schema:
-            is_partial = not (is_complete or False)
-            try:
-                await self._validate_object(new_document, schema, is_partial)
-                logger.debug(f"Document validation successful for path {base_path}, version {target_version}")
-            except ValidationError as e:
-                logger.error(f"Document validation failed: {str(e)}")
-                raise
-        
-        # Compute diff
-        diff = await self._compute_diff(current_document, new_document)
-        if not diff:
-            # No changes
-            logger.debug(f"No changes detected for document at path {base_path}, version {target_version}")
+            # Determine which version to use
+            target_version = version or metadata.get("active_version")
+            if not target_version or target_version not in metadata.get("versions", []):
+                error_msg = f"Version '{target_version}' does not exist"
+                logger.error(f"Cannot update document: {error_msg}")
+                raise ValueError(error_msg)
+
+            if isinstance(data, dict) and any(k in data for k in AsyncMongoVersionedClient.RESERVED_KEYS):
+                raise ValueError("Cannot update document: data contains reserved keys")
+
+            # Get version data
+            version_data = await self._get_version_data(base_path, target_version, allowed_prefixes)
+            if not version_data:
+                logger.error(f"Version data for {target_version} not found at path {base_path}")
+                return False
+            
+            current_document = {k:v for k,v in version_data.items() if k not in AsyncMongoVersionedClient.ALL_KEYS}
+
+            # NOTE: DOCUMENT_KEY is used when object is a non-dict type!
+            current_document = current_document.get(AsyncMongoVersionedClient.DOCUMENT_KEY, current_document)
+            current_is_complete = version_data.get(AsyncMongoVersionedClient.IS_COMPLETE_KEY, False)
+            
+            # Handle different data types
+            if isinstance(data, dict):
+                for field in create_only_fields:
+                    if field in data and (not keep_create_fields_if_missing):
+                        del data[field]
+            if isinstance(data, dict) and isinstance(current_document, dict):
+                # For dictionaries, merge the update with the current document
+                new_document = copy.deepcopy(current_document)
+                for field in create_only_fields:
+                    if field in new_document and field in data:
+                        del data[field]
+                new_document.update(data)
+            else:
+                # For other types, replace the entire document
+                new_document = data
+                
+            
+            # Validate against schema if provided
+            schema = metadata.get("schema")
+            if schema:
+                is_partial = not (is_complete or False)
+                try:
+                    await self._validate_object(new_document, schema, is_partial)
+                    logger.debug(f"Document validation successful for path {base_path}, version {target_version}")
+                except ValidationError as e:
+                    logger.error(f"Document validation failed: {str(e)}")
+                    raise
+            
+            # Compute diff
+            diff = await self._compute_diff(current_document, new_document)
+            if not diff:
+                # No changes
+                logger.debug(f"No changes detected for document at path {base_path}, version {target_version}")
+                return True
+                
+            # Determine if the update represents a primitive type replacement
+            # This occurs when the diff is a single 'replace' operation at the root path ('')
+            is_primitive_update = False
+            if isinstance(diff.patch, list) and len(diff.patch) == 1:
+                op = diff.patch[0]
+                if op.get('op') == 'replace' and op.get('path') == '':
+                    is_primitive_update = True
+            
+            # Update is_complete flag if provided
+            new_is_complete = is_complete if is_complete is not None else current_is_complete
+            
+            # Save the update
+            timestamp = datetime_now_utc()
+            new_sequence = version_data.get(AsyncMongoVersionedClient.MAX_SEQUENCE_KEY, -1) + 1
+            
+            # Create history item
+            history_data = {
+                "timestamp": timestamp,
+                "sequence": new_sequence,
+                # Store the full patch regardless, the flag indicates how it was applied
+                "patch": diff.to_string(), 
+                "is_primitive": is_primitive_update # Use the calculated flag based on the diff
+            }
+            
+            await self._create_history_item(base_path, target_version, new_sequence, history_data, allowed_prefixes)
+            
+            # Update version data object in DB first
+            version_data = {k:v for k,v in version_data.items() if k in AsyncMongoVersionedClient.ALL_KEYS}
+            version_data[AsyncMongoVersionedClient.UPDATED_AT_KEY] = timestamp
+            if not isinstance(new_document, dict):
+                version_data[AsyncMongoVersionedClient.DOCUMENT_KEY] = new_document
+            else:
+                if any(k in new_document for k in AsyncMongoVersionedClient.ALL_KEYS):
+                    logger.warning(f"Skipping reserved / shadowing keys in document update: {', '.join(k for k in new_document if k in AsyncMongoVersionedClient.ALL_KEYS)}")
+                version_data.update({k:v for k,v in new_document.items() if k not in AsyncMongoVersionedClient.ALL_KEYS})
+
+            version_data[AsyncMongoVersionedClient.MAX_SEQUENCE_KEY] = new_sequence
+            
+            if version_data.get(AsyncMongoVersionedClient.MIN_SEQUENCE_KEY) is None:
+                version_data[AsyncMongoVersionedClient.MIN_SEQUENCE_KEY] = 0
+                
+            # if new_is_complete != current_is_complete:
+            version_data[AsyncMongoVersionedClient.IS_COMPLETE_KEY] = new_is_complete
+
+            updated_version_store = version_data
+
+            # Save the updated version data *before* pruning
+            await self._create_or_update_version_data(base_path, target_version, updated_version_store, allowed_prefixes)
+
+            # Update metadata timestamp
+            metadata[AsyncMongoVersionedClient.UPDATED_AT_KEY] = timestamp
+            await self._create_or_update_metadata(base_path, metadata, allowed_prefixes)
+
+            logger.info(f"Updated document at path {base_path}, version {target_version}, sequence {new_sequence}")
+
+            # Prune history if necessary
+            # Pass only necessary info, _prune_history fetches fresh version data if needed
+            await self._prune_history(base_path, target_version, self.MAX_HISTORY_LENGTH, allowed_prefixes)
+
             return True
-            
-        # Determine if the update represents a primitive type replacement
-        # This occurs when the diff is a single 'replace' operation at the root path ('')
-        is_primitive_update = False
-        if isinstance(diff.patch, list) and len(diff.patch) == 1:
-            op = diff.patch[0]
-            if op.get('op') == 'replace' and op.get('path') == '':
-                is_primitive_update = True
-        
-        # Update is_complete flag if provided
-        new_is_complete = is_complete if is_complete is not None else current_is_complete
-        
-        # Save the update
-        timestamp = datetime_now_utc()
-        new_sequence = version_data.get(AsyncMongoVersionedClient.MAX_SEQUENCE_KEY, -1) + 1
-        
-        # Create history item
-        history_data = {
-            "timestamp": timestamp,
-            "sequence": new_sequence,
-            # Store the full patch regardless, the flag indicates how it was applied
-            "patch": diff.to_string(), 
-            "is_primitive": is_primitive_update # Use the calculated flag based on the diff
-        }
-        
-        await self._create_history_item(base_path, target_version, new_sequence, history_data, allowed_prefixes)
-        
-        # Update version data object in DB first
-        version_data = {k:v for k,v in version_data.items() if k in AsyncMongoVersionedClient.ALL_KEYS}
-        version_data[AsyncMongoVersionedClient.UPDATED_AT_KEY] = timestamp
-        if not isinstance(new_document, dict):
-            version_data[AsyncMongoVersionedClient.DOCUMENT_KEY] = new_document
-        else:
-            if any(k in new_document for k in AsyncMongoVersionedClient.ALL_KEYS):
-                logger.warning(f"Skipping reserved / shadowing keys in document update: {', '.join(k for k in new_document if k in AsyncMongoVersionedClient.ALL_KEYS)}")
-            version_data.update({k:v for k,v in new_document.items() if k not in AsyncMongoVersionedClient.ALL_KEYS})
-
-        version_data[AsyncMongoVersionedClient.MAX_SEQUENCE_KEY] = new_sequence
-        
-        if version_data.get(AsyncMongoVersionedClient.MIN_SEQUENCE_KEY) is None:
-            version_data[AsyncMongoVersionedClient.MIN_SEQUENCE_KEY] = 0
-            
-        # if new_is_complete != current_is_complete:
-        version_data[AsyncMongoVersionedClient.IS_COMPLETE_KEY] = new_is_complete
-
-        updated_version_store = version_data
-
-        # Save the updated version data *before* pruning
-        await self._create_or_update_version_data(base_path, target_version, updated_version_store, allowed_prefixes)
-
-        # Update metadata timestamp
-        metadata[AsyncMongoVersionedClient.UPDATED_AT_KEY] = timestamp
-        await self._create_or_update_metadata(base_path, metadata, allowed_prefixes)
-
-        logger.info(f"Updated document at path {base_path}, version {target_version}, sequence {new_sequence}")
-
-        # Prune history if necessary
-        # Pass only necessary info, _prune_history fetches fresh version data if needed
-        await self._prune_history(base_path, target_version, self.MAX_HISTORY_LENGTH, allowed_prefixes)
-
-        return True
     
     async def get_version_history(
         self, 
@@ -1051,104 +1106,105 @@ class AsyncMongoVersionedClient:
         Returns:
             True if the document was restored successfully
         """
-        # Get document metadata
-        metadata = await self._get_document_metadata(base_path, allowed_prefixes)
-        if not metadata:
-            logger.info(f"No metadata found for document at path {base_path}")
-            return False
-        
-        # Determine which version to use
-        target_version = version or metadata.get("active_version")
-        if not target_version or target_version not in metadata.get("versions", []):
-            logger.error(f"Version '{target_version}' does not exist for document at path {base_path}")
-            raise ValueError(f"Version '{target_version}' does not exist")
-        
-        # Get version data
-        version_data = await self._get_version_data(base_path, target_version, allowed_prefixes)
-        if not version_data:
-            logger.warning(f"No version data found for document at path {base_path}, version {target_version}")
-            return False
-        
-        min_sequence = version_data.get(AsyncMongoVersionedClient.MIN_SEQUENCE_KEY, 0)
-        max_sequence = version_data.get(AsyncMongoVersionedClient.MAX_SEQUENCE_KEY, -1)
-        
-        if sequence < min_sequence or sequence > max_sequence:
-            logger.error(f"Sequence number {sequence} is out of range ({min_sequence}-{max_sequence}) for path {base_path}")
-            raise ValueError(f"Sequence number {sequence} is out of range ({min_sequence}-{max_sequence})")
-        
-        # Preview the document at the specified sequence
-        restored_document = await self.preview_restore(base_path, sequence, target_version, allowed_prefixes)
-        if restored_document is None:
-            logger.warning(f"Failed to preview document for restoration at path {base_path}, sequence {sequence}")
-            return False
-        
-        # Delete history items after the specified sequence using batch delete
-        paths_to_delete = [
-            self._build_history_path(base_path, target_version, seq)
-            for seq in range(sequence + 1, max_sequence + 1)
-        ]
-        if paths_to_delete:
-            logger.info(f"Deleting {len(paths_to_delete)} history items after sequence {sequence} for path {base_path}")
-            await self.client.batch_delete_objects(paths_to_delete, allowed_prefixes)
-
-        # Update version data
-        timestamp = datetime_now_utc()
-        # version_data[AsyncMongoVersionedClient.UPDATED_AT_KEY] = timestamp
-        # if not isinstance(restored_document, dict):
-        #     version_data[AsyncMongoVersionedClient.DOCUMENT_KEY] = restored_document
-        # else:
-        #     if any(k in restored_document for k in AsyncMongoVersionedClient.ALL_KEYS):
-        #         logger.warning(f"Skipping reserved / shadowing keys in document update: {', '.join(k for k in restored_document if k in AsyncMongoVersionedClient.ALL_KEYS)}")
-        #     version_data.update({k:v for k,v in restored_document.items() if k not in AsyncMongoVersionedClient.ALL_KEYS})
-        # version_data[AsyncMongoVersionedClient.MAX_SEQUENCE_KEY] = sequence
-        
-        # Prepare the new version_data to be saved after restore
-        # Start with essential internal keys from the current version_data, but update relevant ones
-        new_version_store_after_restore = { 
-            k: v for k, v in version_data.items() 
-            if k in AsyncMongoVersionedClient.INTERNAL_KEYS # Keep existing internal keys like IS_COMPLETE, MIN_SEQUENCE
-        }
-        new_version_store_after_restore[AsyncMongoVersionedClient.CREATED_AT_KEY] = version_data.get(AsyncMongoVersionedClient.CREATED_AT_KEY, timestamp) # Preserve original creation time
-        new_version_store_after_restore[AsyncMongoVersionedClient.UPDATED_AT_KEY] = timestamp
-        new_version_store_after_restore[AsyncMongoVersionedClient.MAX_SEQUENCE_KEY] = sequence # This is the sequence we are restoring to
-        # MIN_SEQUENCE_KEY should already be correct in version_data from _get_version_data
-        # IS_COMPLETE_KEY should reflect the state of the restored_document. We need to re-validate or infer it.
-        # For now, let's assume preview_restore gives the complete document state, so infer IS_COMPLETE based on schema if available.
-        # This part is tricky without re-validation. Let's keep the existing IS_COMPLETE_KEY or default it.
-        if AsyncMongoVersionedClient.IS_COMPLETE_KEY not in new_version_store_after_restore:
-             new_version_store_after_restore[AsyncMongoVersionedClient.IS_COMPLETE_KEY] = False # Default if somehow missing
-
-        # Add restored user document data
-        if not isinstance(restored_document, dict):
-            # Primitive type: clear old user keys (if any) and set DOCUMENT_KEY
-            keys_to_delete = [
-                k for k in new_version_store_after_restore 
-                if k not in AsyncMongoVersionedClient.ALL_KEYS and k != AsyncMongoVersionedClient.DOCUMENT_KEY
-            ]
-            for k_del in keys_to_delete:
-                del new_version_store_after_restore[k_del]
-            new_version_store_after_restore[AsyncMongoVersionedClient.DOCUMENT_KEY] = restored_document
-        else:
-            # Dict type: clear old DOCUMENT_KEY (if any) and merge restored_document keys
-            if AsyncMongoVersionedClient.DOCUMENT_KEY in new_version_store_after_restore:
-                del new_version_store_after_restore[AsyncMongoVersionedClient.DOCUMENT_KEY]
+        async with self._with_document_lock(base_path, "restore"):
+            # Get document metadata
+            metadata = await self._get_document_metadata(base_path, allowed_prefixes)
+            if not metadata:
+                logger.info(f"No metadata found for document at path {base_path}")
+                return False
             
-            if any(k in restored_document for k in AsyncMongoVersionedClient.ALL_KEYS):
-                 logger.warning(f"Restored document contains reserved keys: {', '.join(k for k in restored_document if k in AsyncMongoVersionedClient.ALL_KEYS)}")
-            new_version_store_after_restore.update({ 
-                k: v for k, v in restored_document.items() 
-                if k not in AsyncMongoVersionedClient.ALL_KEYS 
-            })
+            # Determine which version to use
+            target_version = version or metadata.get("active_version")
+            if not target_version or target_version not in metadata.get("versions", []):
+                logger.error(f"Version '{target_version}' does not exist for document at path {base_path}")
+                raise ValueError(f"Version '{target_version}' does not exist")
+            
+            # Get version data
+            version_data = await self._get_version_data(base_path, target_version, allowed_prefixes)
+            if not version_data:
+                logger.warning(f"No version data found for document at path {base_path}, version {target_version}")
+                return False
+            
+            min_sequence = version_data.get(AsyncMongoVersionedClient.MIN_SEQUENCE_KEY, 0)
+            max_sequence = version_data.get(AsyncMongoVersionedClient.MAX_SEQUENCE_KEY, -1)
+            
+            if sequence < min_sequence or sequence > max_sequence:
+                logger.error(f"Sequence number {sequence} is out of range ({min_sequence}-{max_sequence}) for path {base_path}")
+                raise ValueError(f"Sequence number {sequence} is out of range ({min_sequence}-{max_sequence})")
+            
+            # Preview the document at the specified sequence
+            restored_document = await self.preview_restore(base_path, sequence, target_version, allowed_prefixes)
+            if restored_document is None:
+                logger.warning(f"Failed to preview document for restoration at path {base_path}, sequence {sequence}")
+                return False
+            
+            # Delete history items after the specified sequence using batch delete
+            paths_to_delete = [
+                self._build_history_path(base_path, target_version, seq)
+                for seq in range(sequence + 1, max_sequence + 1)
+            ]
+            if paths_to_delete:
+                logger.info(f"Deleting {len(paths_to_delete)} history items after sequence {sequence} for path {base_path}")
+                await self.client.batch_delete_objects(paths_to_delete, allowed_prefixes)
 
-        logger.info(f"Updating version data for path {base_path}, version {target_version} to sequence {sequence}")
-        await self._create_or_update_version_data(base_path, target_version, new_version_store_after_restore, allowed_prefixes)
-        
-        # Update metadata timestamp
-        metadata[AsyncMongoVersionedClient.UPDATED_AT_KEY] = timestamp
-        await self._create_or_update_metadata(base_path, metadata, allowed_prefixes)
-        
-        logger.info(f"Successfully restored document at path {base_path} to sequence {sequence}")
-        return True
+            # Update version data
+            timestamp = datetime_now_utc()
+            # version_data[AsyncMongoVersionedClient.UPDATED_AT_KEY] = timestamp
+            # if not isinstance(restored_document, dict):
+            #     version_data[AsyncMongoVersionedClient.DOCUMENT_KEY] = restored_document
+            # else:
+            #     if any(k in restored_document for k in AsyncMongoVersionedClient.ALL_KEYS):
+            #         logger.warning(f"Skipping reserved / shadowing keys in document update: {', '.join(k for k in restored_document if k in AsyncMongoVersionedClient.ALL_KEYS)}")
+            #     version_data.update({k:v for k,v in restored_document.items() if k not in AsyncMongoVersionedClient.ALL_KEYS})
+            # version_data[AsyncMongoVersionedClient.MAX_SEQUENCE_KEY] = sequence
+            
+            # Prepare the new version_data to be saved after restore
+            # Start with essential internal keys from the current version_data, but update relevant ones
+            new_version_store_after_restore = { 
+                k: v for k, v in version_data.items() 
+                if k in AsyncMongoVersionedClient.INTERNAL_KEYS # Keep existing internal keys like IS_COMPLETE, MIN_SEQUENCE
+            }
+            new_version_store_after_restore[AsyncMongoVersionedClient.CREATED_AT_KEY] = version_data.get(AsyncMongoVersionedClient.CREATED_AT_KEY, timestamp) # Preserve original creation time
+            new_version_store_after_restore[AsyncMongoVersionedClient.UPDATED_AT_KEY] = timestamp
+            new_version_store_after_restore[AsyncMongoVersionedClient.MAX_SEQUENCE_KEY] = sequence # This is the sequence we are restoring to
+            # MIN_SEQUENCE_KEY should already be correct in version_data from _get_version_data
+            # IS_COMPLETE_KEY should reflect the state of the restored_document. We need to re-validate or infer it.
+            # For now, let's assume preview_restore gives the complete document state, so infer IS_COMPLETE based on schema if available.
+            # This part is tricky without re-validation. Let's keep the existing IS_COMPLETE_KEY or default it.
+            if AsyncMongoVersionedClient.IS_COMPLETE_KEY not in new_version_store_after_restore:
+                 new_version_store_after_restore[AsyncMongoVersionedClient.IS_COMPLETE_KEY] = False # Default if somehow missing
+
+            # Add restored user document data
+            if not isinstance(restored_document, dict):
+                # Primitive type: clear old user keys (if any) and set DOCUMENT_KEY
+                keys_to_delete = [
+                    k for k in new_version_store_after_restore 
+                    if k not in AsyncMongoVersionedClient.ALL_KEYS and k != AsyncMongoVersionedClient.DOCUMENT_KEY
+                ]
+                for k_del in keys_to_delete:
+                    del new_version_store_after_restore[k_del]
+                new_version_store_after_restore[AsyncMongoVersionedClient.DOCUMENT_KEY] = restored_document
+            else:
+                # Dict type: clear old DOCUMENT_KEY (if any) and merge restored_document keys
+                if AsyncMongoVersionedClient.DOCUMENT_KEY in new_version_store_after_restore:
+                    del new_version_store_after_restore[AsyncMongoVersionedClient.DOCUMENT_KEY]
+                
+                if any(k in restored_document for k in AsyncMongoVersionedClient.ALL_KEYS):
+                     logger.warning(f"Restored document contains reserved keys: {', '.join(k for k in restored_document if k in AsyncMongoVersionedClient.ALL_KEYS)}")
+                new_version_store_after_restore.update({ 
+                    k: v for k, v in restored_document.items() 
+                    if k not in AsyncMongoVersionedClient.ALL_KEYS 
+                })
+
+            logger.info(f"Updating version data for path {base_path}, version {target_version} to sequence {sequence}")
+            await self._create_or_update_version_data(base_path, target_version, new_version_store_after_restore, allowed_prefixes)
+            
+            # Update metadata timestamp
+            metadata[AsyncMongoVersionedClient.UPDATED_AT_KEY] = timestamp
+            await self._create_or_update_metadata(base_path, metadata, allowed_prefixes)
+            
+            logger.info(f"Successfully restored document at path {base_path} to sequence {sequence}")
+            return True
     
     async def list_versions(
         self, 
@@ -1227,45 +1283,46 @@ class AsyncMongoVersionedClient:
         Returns:
             True if the version was deleted successfully
         """
-        # Get document metadata
-        metadata = await self._get_document_metadata(base_path, allowed_prefixes)
-        if not metadata:
-            logger.info(f"No metadata found for document at path {base_path}")
-            return False
-        
-        versions = metadata.get("versions", [])
-        active_version = metadata.get("active_version")
-        
-        # Check if version exists
-        if version not in versions:
-            logger.warning(f"Version '{version}' does not exist for document at path {base_path}")
-            return False
-        
-        # Can't delete active version
-        if version == active_version:
-            logger.error(f"Cannot delete active version '{version}' for document at path {base_path}")
-            raise ValueError("Cannot delete the active version")
-        
-        # Delete version data
-        version_path = self._build_version_path(base_path, version)
-        logger.info(f"Deleting version data for path {base_path}, version {version}")
-        version_deleted = await self.client.delete_object(version_path, allowed_prefixes)
-        
-        # Delete all history items using pattern matching (efficient enough)
-        history_pattern = self._build_history_pattern(base_path, version)
-        logger.info(f"Deleting history items for path {base_path}, version {version}")
-        await self.client.delete_objects(history_pattern, allowed_prefixes)
-        
-        # Update metadata
-        if version_deleted:
-            metadata["versions"] = [v for v in versions if v != version]
-            metadata[AsyncMongoVersionedClient.UPDATED_AT_KEY] = datetime_now_utc()
-            await self._create_or_update_metadata(base_path, metadata, allowed_prefixes)
-            logger.info(f"Successfully deleted version '{version}' for document at path {base_path}")
-        else:
-            logger.warning(f"Failed to delete version data for path {base_path}, version {version}")
-        
-        return version_deleted
+        async with self._with_document_lock(base_path, "delete_version"):
+            # Get document metadata
+            metadata = await self._get_document_metadata(base_path, allowed_prefixes)
+            if not metadata:
+                logger.info(f"No metadata found for document at path {base_path}")
+                return False
+            
+            versions = metadata.get("versions", [])
+            active_version = metadata.get("active_version")
+            
+            # Check if version exists
+            if version not in versions:
+                logger.warning(f"Version '{version}' does not exist for document at path {base_path}")
+                return False
+            
+            # Can't delete active version
+            if version == active_version:
+                logger.error(f"Cannot delete active version '{version}' for document at path {base_path}")
+                raise ValueError("Cannot delete the active version")
+            
+            # Delete version data
+            version_path = self._build_version_path(base_path, version)
+            logger.info(f"Deleting version data for path {base_path}, version {version}")
+            version_deleted = await self.client.delete_object(version_path, allowed_prefixes)
+            
+            # Delete all history items using pattern matching (efficient enough)
+            history_pattern = self._build_history_pattern(base_path, version)
+            logger.info(f"Deleting history items for path {base_path}, version {version}")
+            await self.client.delete_objects(history_pattern, allowed_prefixes)
+            
+            # Update metadata
+            if version_deleted:
+                metadata["versions"] = [v for v in versions if v != version]
+                metadata[AsyncMongoVersionedClient.UPDATED_AT_KEY] = datetime_now_utc()
+                await self._create_or_update_metadata(base_path, metadata, allowed_prefixes)
+                logger.info(f"Successfully deleted version '{version}' for document at path {base_path}")
+            else:
+                logger.warning(f"Failed to delete version data for path {base_path}, version {version}")
+            
+            return version_deleted
     
     async def delete_document(
         self, 
@@ -1282,43 +1339,44 @@ class AsyncMongoVersionedClient:
         Returns:
             True if the document was deleted successfully
         """
-        # Get document metadata
-        metadata = await self._get_document_metadata(base_path, allowed_prefixes)
-        if not metadata:
-            logger.info(f"No metadata found for document at path {base_path}")
-            return False
-        
-        # Delete all versions using batch delete for version data
-        versions = metadata.get("versions", [])
-        version_paths_to_delete = []
-        history_patterns_to_delete = []
-
-        for version in versions:
-            version_paths_to_delete.append(self._build_version_path(base_path, version))
-            # Collect history patterns for individual deletion (batch pattern deletion isn't directly supported)
-            history_patterns_to_delete.append(self._build_history_pattern(base_path, version))
-
-        # Batch delete version documents
-        if version_paths_to_delete:
-            logger.info(f"Deleting {len(version_paths_to_delete)} version documents for path {base_path}")
-            await self.client.batch_delete_objects(version_paths_to_delete, allowed_prefixes)
+        async with self._with_document_lock(base_path, "delete_document"):
+            # Get document metadata
+            metadata = await self._get_document_metadata(base_path, allowed_prefixes)
+            if not metadata:
+                logger.info(f"No metadata found for document at path {base_path}")
+                return False
             
-        # Delete history for each version using pattern delete
-        for pattern in history_patterns_to_delete:
-            logger.info(f"Deleting history items matching pattern {pattern} for path {base_path}")
-            await self.client.delete_objects(pattern, allowed_prefixes)
+            # Delete all versions using batch delete for version data
+            versions = metadata.get("versions", [])
+            version_paths_to_delete = []
+            history_patterns_to_delete = []
 
-        # Delete metadata
-        metadata_path = self._build_metadata_path(base_path)
-        logger.info(f"Deleting metadata for document at path {base_path}")
-        result = await self.client.delete_object(metadata_path, allowed_prefixes)
-        
-        if result:
-            logger.info(f"Successfully deleted document and all versions at path {base_path}")
-        else:
-            logger.warning(f"Failed to delete metadata for document at path {base_path}")
+            for version in versions:
+                version_paths_to_delete.append(self._build_version_path(base_path, version))
+                # Collect history patterns for individual deletion (batch pattern deletion isn't directly supported)
+                history_patterns_to_delete.append(self._build_history_pattern(base_path, version))
+
+            # Batch delete version documents
+            if version_paths_to_delete:
+                logger.info(f"Deleting {len(version_paths_to_delete)} version documents for path {base_path}")
+                await self.client.batch_delete_objects(version_paths_to_delete, allowed_prefixes)
+                
+            # Delete history for each version using pattern delete
+            for pattern in history_patterns_to_delete:
+                logger.info(f"Deleting history items matching pattern {pattern} for path {base_path}")
+                await self.client.delete_objects(pattern, allowed_prefixes)
+
+            # Delete metadata
+            metadata_path = self._build_metadata_path(base_path)
+            logger.info(f"Deleting metadata for document at path {base_path}")
+            result = await self.client.delete_object(metadata_path, allowed_prefixes)
             
-        return result
+            if result:
+                logger.info(f"Successfully deleted document and all versions at path {base_path}")
+            else:
+                logger.warning(f"Failed to delete metadata for document at path {base_path}")
+                
+            return result
     
     async def move_document(
         self,
@@ -1360,72 +1418,79 @@ class AsyncMongoVersionedClient:
                 logger.warning(f"Copy operation with identical source and destination paths: '{source_base_path}'. No operation performed.")
                 return True
         
-        # Get source document metadata to verify it exists and get structure info
-        source_metadata = await self._get_document_metadata(source_base_path, allowed_prefixes)
-        if not source_metadata:
-            logger.info(f"No document found at source path {source_base_path}")
-            return False
+        # Acquire locks in a consistent order to prevent deadlocks
+        # Sort paths to ensure consistent lock ordering
+        paths_to_lock = sorted([source_base_path, destination_base_path], key=lambda x: self.client._path_to_id(x))
         
-        # Check if destination exists
-        destination_metadata = await self._get_document_metadata(destination_base_path, allowed_prefixes)
-        if destination_metadata and not overwrite_destination:
-            error_msg = f"Document already exists at destination path '{destination_base_path}' and overwrite_destination is False"
-            logger.warning(error_msg)
-            raise ValueError(error_msg)
-        
-        try:
-            # Collect all paths that need to be moved/copied
-            move_pairs = []
-            
-            # 1. Add metadata path
-            source_metadata_path = self._build_metadata_path(source_base_path)
-            dest_metadata_path = self._build_metadata_path(destination_base_path)
-            move_pairs.append((source_metadata_path, dest_metadata_path))
-            
-            # 2. Add version data paths
-            versions = source_metadata.get("versions", [])
-            for version in versions:
-                source_version_path = self._build_version_path(source_base_path, version)
-                dest_version_path = self._build_version_path(destination_base_path, version)
-                move_pairs.append((source_version_path, dest_version_path))
+        # Acquire both locks
+        async with self._with_document_lock(paths_to_lock[0], f"move_document_lock_1"):
+            async with self._with_document_lock(paths_to_lock[1], f"move_document_lock_2"):
+                # Get source document metadata to verify it exists and get structure info
+                source_metadata = await self._get_document_metadata(source_base_path, allowed_prefixes)
+                if not source_metadata:
+                    logger.info(f"No document found at source path {source_base_path}")
+                    return False
                 
-                # 3. Add history paths for this version
-                version_data = await self._get_version_data(source_base_path, version, allowed_prefixes)
-                if version_data:
-                    min_sequence = version_data.get(AsyncMongoVersionedClient.MIN_SEQUENCE_KEY, 0)
-                    max_sequence = version_data.get(AsyncMongoVersionedClient.MAX_SEQUENCE_KEY, -1)
+                # Check if destination exists
+                destination_metadata = await self._get_document_metadata(destination_base_path, allowed_prefixes)
+                if destination_metadata and not overwrite_destination:
+                    error_msg = f"Document already exists at destination path '{destination_base_path}' and overwrite_destination is False"
+                    logger.warning(error_msg)
+                    raise ValueError(error_msg)
+                
+                try:
+                    # Collect all paths that need to be moved/copied
+                    move_pairs = []
                     
-                    # Add all history items
-                    for sequence in range(min_sequence, max_sequence + 1):
-                        source_history_path = self._build_history_path(source_base_path, version, sequence)
-                        dest_history_path = self._build_history_path(destination_base_path, version, sequence)
-                        move_pairs.append((source_history_path, dest_history_path))
-            
-            # Perform batch move/copy operation
-            operation_name = "move" if move else "copy"
-            logger.info(f"Starting batch {operation_name} of {len(move_pairs)} objects for versioned document from '{source_base_path}' to '{destination_base_path}'")
-            
-            result_ids = await self.client.batch_move_objects(
-                move_pairs, 
-                allowed_prefixes=allowed_prefixes,
-                overwrite_destination=overwrite_destination,
-                move=move
-            )
-            
-            # Check if all operations succeeded
-            successful_operations = sum(1 for result_id in result_ids if result_id is not None)
-            
-            if successful_operations == len(move_pairs):
-                logger.info(f"Successfully {operation_name}d versioned document from '{source_base_path}' to '{destination_base_path}'")
-                return True
-            else:
-                logger.warning(f"Partial {operation_name} completed: {successful_operations}/{len(move_pairs)} operations succeeded")
-                return False
-                
-        except Exception as e:
-            operation_name = "moving" if move else "copying"
-            logger.error(f"Error {operation_name} versioned document from '{source_base_path}' to '{destination_base_path}': {e}")
-            raise
+                    # 1. Add metadata path
+                    source_metadata_path = self._build_metadata_path(source_base_path)
+                    dest_metadata_path = self._build_metadata_path(destination_base_path)
+                    move_pairs.append((source_metadata_path, dest_metadata_path))
+                    
+                    # 2. Add version data paths
+                    versions = source_metadata.get("versions", [])
+                    for version in versions:
+                        source_version_path = self._build_version_path(source_base_path, version)
+                        dest_version_path = self._build_version_path(destination_base_path, version)
+                        move_pairs.append((source_version_path, dest_version_path))
+                        
+                        # 3. Add history paths for this version
+                        version_data = await self._get_version_data(source_base_path, version, allowed_prefixes)
+                        if version_data:
+                            min_sequence = version_data.get(AsyncMongoVersionedClient.MIN_SEQUENCE_KEY, 0)
+                            max_sequence = version_data.get(AsyncMongoVersionedClient.MAX_SEQUENCE_KEY, -1)
+                            
+                            # Add all history items
+                            for sequence in range(min_sequence, max_sequence + 1):
+                                source_history_path = self._build_history_path(source_base_path, version, sequence)
+                                dest_history_path = self._build_history_path(destination_base_path, version, sequence)
+                                move_pairs.append((source_history_path, dest_history_path))
+                    
+                    # Perform batch move/copy operation
+                    operation_name = "move" if move else "copy"
+                    logger.info(f"Starting batch {operation_name} of {len(move_pairs)} objects for versioned document from '{source_base_path}' to '{destination_base_path}'")
+                    
+                    result_ids = await self.client.batch_move_objects(
+                        move_pairs, 
+                        allowed_prefixes=allowed_prefixes,
+                        overwrite_destination=overwrite_destination,
+                        move=move
+                    )
+                    
+                    # Check if all operations succeeded
+                    successful_operations = sum(1 for result_id in result_ids if result_id is not None)
+                    
+                    if successful_operations == len(move_pairs):
+                        logger.info(f"Successfully {operation_name}d versioned document from '{source_base_path}' to '{destination_base_path}'")
+                        return True
+                    else:
+                        logger.warning(f"Partial {operation_name} completed: {successful_operations}/{len(move_pairs)} operations succeeded")
+                        return False
+                        
+                except Exception as e:
+                    operation_name = "moving" if move else "copying"
+                    logger.error(f"Error {operation_name} versioned document from '{source_base_path}' to '{destination_base_path}': {e}")
+                    raise
     
     async def batch_move_documents(
         self,
@@ -1584,15 +1649,16 @@ class AsyncMongoVersionedClient:
         Returns:
             True if the schema was updated successfully
         """
-        metadata = await self._get_document_metadata(base_path, allowed_prefixes)
-        if not metadata:
-            logger.warning(f"No metadata found for document at path {base_path}, cannot update schema")
-            return False
-        
-        # Update schema
-        metadata["schema"] = schema
-        metadata[AsyncMongoVersionedClient.UPDATED_AT_KEY] = datetime_now_utc()
-        
-        logger.info(f"Updating schema for document at path {base_path}")
-        await self._create_or_update_metadata(base_path, metadata, allowed_prefixes)
-        return True
+        async with self._with_document_lock(base_path, "update_schema"):
+            metadata = await self._get_document_metadata(base_path, allowed_prefixes)
+            if not metadata:
+                logger.warning(f"No metadata found for document at path {base_path}, cannot update schema")
+                return False
+            
+            # Update schema
+            metadata["schema"] = schema
+            metadata[AsyncMongoVersionedClient.UPDATED_AT_KEY] = datetime_now_utc()
+            
+            logger.info(f"Updating schema for document at path {base_path}")
+            await self._create_or_update_metadata(base_path, metadata, allowed_prefixes)
+            return True

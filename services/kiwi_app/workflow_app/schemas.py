@@ -622,6 +622,7 @@ class CustomerDocumentMetadata(BaseModel):
     instead of organization-specific paths. The is_shared flag indicates whether the document
     is shared within the organization or specific to a user.
     """
+    versionless_path: Optional[str] = None
     id: Optional[str] = None
     org_id: Optional[uuid.UUID] = None
     # scope: str # e.g., 'shared', 'user' - Replaced by user_id + is_shared logic
@@ -632,6 +633,7 @@ class CustomerDocumentMetadata(BaseModel):
     is_shared: bool = Field(..., description="Indicates if this is a shared document path accessible by all users in the organization.")
     is_system_entity: bool = Field(False, description="Whether this is a system entity. When True, document is stored in system paths instead of organization-specific paths. The is_shared flag still determines if it's shared within the organization or user-specific.")
     version: Optional[str] = Field(None, description="The version of the document if it is versioned and this document is not just versioning metadata.")
+    is_active_version: Optional[bool] = Field(None, description="Indicates if this is the active version of the document.")
     # active_version: Optional[str] = Field(None, description="The active version name of the document if it is versioned. Only available if this document is the versioning metadata and not the actual document data.")
     # Add other relevant metadata like updated_at if available from the base client document
     # updated_at: Optional[datetime] = None
