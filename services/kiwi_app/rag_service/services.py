@@ -34,6 +34,7 @@ from kiwi_app.rag_service.schemas import (
     SearchType
 )
 from kiwi_app.rag_service.exceptions import RAGPermissionException
+from global_config.logger import get_prefect_or_regular_python_logger
 
 # Get logger for RAG operations
 rag_logger = get_kiwi_logger(name="kiwi_app.rag_service")
@@ -71,11 +72,12 @@ class RAGService:
             customer_data_service: CustomerDataService for document access
             ingestion_pipeline: Optional DocumentIngestionPipeline instance
         """
+        self.logger = get_prefect_or_regular_python_logger(name="kiwi_app.rag_service", return_non_prefect_logger=False) or rag_logger
         self.weaviate_client = weaviate_client
         self.customer_data_service = customer_data_service
         self.ingestion_pipeline = ingestion_pipeline
         
-        rag_logger.info("RAG service initialized successfully")
+        self.logger.info("RAG service initialized successfully")
     
     def _validate_user_permissions(
         self,
@@ -345,7 +347,7 @@ class RAGService:
                 execution_time_ms=execution_time_ms
             )
             
-            rag_logger.info(
+            self.logger.info(
                 f"User {user.id} performed {search_request.search_type.value} search: "
                 f"'{search_request.query}' -> {len(results)} results"
             )
@@ -353,7 +355,7 @@ class RAGService:
             return response
             
         except Exception as e:
-            rag_logger.error(f"Error in document search: {e}", exc_info=True)
+            self.logger.error(f"Error in document search: {e}", exc_info=True)
             raise
     
     async def delete_documents(
@@ -424,7 +426,7 @@ class RAGService:
                 errors=errors
             )
             
-            rag_logger.info(
+            self.logger.info(
                 f"User {user.id} deleted documents: {len(deleted_doc_ids)} successful, "
                 f"{len(failed_doc_ids)} failed, {total_chunks_deleted} chunks deleted"
             )
@@ -432,7 +434,7 @@ class RAGService:
             return response
             
         except Exception as e:
-            rag_logger.error(f"Error in document deletion: {e}", exc_info=True)
+            self.logger.error(f"Error in document deletion: {e}", exc_info=True)
             raise
     
     async def ingest_documents(
@@ -544,7 +546,7 @@ class RAGService:
                 except Exception as e:
                     error_msg = f"Error in batch ingestion: {str(e)}"
                     errors.append(error_msg)
-                    rag_logger.error(f"Batch ingestion failed: {e}", exc_info=True)
+                    self.logger.error(f"Batch ingestion failed: {e}", exc_info=True)
                     
                     # Mark all valid documents as failed
                     for doc_id in doc_id_to_document.keys():
@@ -569,7 +571,7 @@ class RAGService:
                 errors=errors
             )
             
-            rag_logger.info(
+            self.logger.info(
                 f"User {user.id} ingested documents: {len(successful_results)}/{len(ingest_request.doc_ids)} successful, "
                 f"{total_chunks_created} chunks created"
             )
@@ -577,7 +579,7 @@ class RAGService:
             return response
             
         except Exception as e:
-            rag_logger.error(f"Error in document ingestion: {e}", exc_info=True)
+            self.logger.error(f"Error in document ingestion: {e}", exc_info=True)
             raise
     
     async def get_status(self) -> RAGStatusResponse:
@@ -616,7 +618,7 @@ class RAGService:
                     }
                     
                 except Exception as e:
-                    rag_logger.warning(f"Error getting collection statistics: {e}")
+                    self.logger.warning(f"Error getting collection statistics: {e}")
                     collection_info = {"error": str(e)}
             
             response = RAGStatusResponse(
@@ -627,11 +629,11 @@ class RAGService:
                 last_updated=datetime.now(timezone.utc)
             )
             
-            rag_logger.info("RAG service status retrieved successfully")
+            self.logger.info("RAG service status retrieved successfully")
             return response
             
         except Exception as e:
-            rag_logger.error(f"Error getting RAG service status: {e}", exc_info=True)
+            self.logger.error(f"Error getting RAG service status: {e}", exc_info=True)
             raise
     
     async def _validate_document_access(
@@ -686,7 +688,7 @@ class RAGService:
             return doc_user_id == user.id
             
         except Exception as e:
-            rag_logger.error(f"Error validating document access for {doc_id}: {e}")
+            self.logger.error(f"Error validating document access for {doc_id}: {e}")
             return False
     
     async def _fetch_document_by_id(
@@ -788,7 +790,7 @@ class RAGService:
             return None
             
         except Exception as e:
-            rag_logger.error(f"Error fetching document {doc_id}: {e}", exc_info=True)
+            self.logger.error(f"Error fetching document {doc_id}: {e}", exc_info=True)
             return None
     
     async def list_documents(
@@ -869,5 +871,5 @@ class RAGService:
             return response
             
         except Exception as e:
-            rag_logger.error(f"Error listing documents: {e}", exc_info=True)
+            self.logger.error(f"Error listing documents: {e}", exc_info=True)
             raise

@@ -109,7 +109,7 @@ services:
     image: prefecthq/prefect:3-latest     # Use the latest Prefect 3 image
     container_name: prefect-server-dev    # Specific container name for dev
     restart: on-failure
-    entrypoint: ["prefect", "server", "start", "--host", "0.0.0.0", "--port", "4200"] # Ensure it listens on all interfaces inside container
+    entrypoint: ["prefect", "server", "start", "--host", "0.0.0.0", "--port", "4201"] # Ensure it listens on all interfaces inside container
     environment:
       # Database connection URL using other service names (requires postgres service)
       # Format: postgresql+driver://user:password@host:port/database
@@ -117,9 +117,10 @@ services:
       # Note: this is in ~/.prefect/storage directory by default! https://docs.prefect.io/v3/develop/results
       PREFECT_TASKS_DEFAULT_PERSIST_RESULT: ${PREFECT_TASKS_DEFAULT_PERSIST_RESULT}
       # Optional: Set UI API URL if needed explicitly
-      # PREFECT_UI_API_URL: "http://prefect-server-dev:4200/api" # Example using container name
+      PREFECT_API_URL: "http://localhost:4201/api"
+      # PREFECT_UI_API_URL: "http://prefect-server-dev:4201/api" # Example using container name
     ports:
-      - "4200:4200"                       # Map Prefect Server UI/API port
+      - "4201:4201"                       # Map Prefect Server UI/API port
     volumes:
       # Optional: Persist Prefect server data (SQLite DB if not using Postgres, logs, etc.)
       - prefect_data:/root/.prefect       # Default Prefect home directory in container
@@ -153,7 +154,7 @@ services:
       RABBITMQ_URL: "amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672/"
       REDIS_URL: "redis://default:${REDIS_PASSWORD}@redis:6379/0" # Use 'default' user for Redis 6+
       WEAVIATE_HOST: "weaviate"
-      PREFECT_API_URL: "http://prefect-server:4200/api"
+      PREFECT_API_URL: "http://prefect-server:4201/api"
       # Set PYTHONPATH if your app structure requires it
       # PYTHONPATH: /app:/app/services # Example
     volumes:
@@ -184,7 +185,7 @@ services:
       - redis
     environment:
       # Point agent to the server API URL (using service name)
-      PREFECT_API_URL: "http://prefect-server:4200/api"
+      PREFECT_API_URL: "http://prefect-server:4201/api"
       PREFECT_LOGGING_LEVEL: INFO
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}

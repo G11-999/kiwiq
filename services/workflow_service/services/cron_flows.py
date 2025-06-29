@@ -980,6 +980,18 @@ async def process_documents_in_batches(
                 max_text_char_limit=700,
                 preserve_temporal_fields=True
             )
+
+            # Update data job with progress
+            async with get_async_db_as_manager() as db:
+                status_update = data_job_schemas.DataJobStatusUpdate(
+                    status=DataJobStatus.STARTED
+                )
+                await external_context.data_job_service.data_job_dao.update_job_status(
+                    db=db,
+                    job_id=data_job_id,
+                    status_update=status_update,
+                    commit=True
+                )
             
             # Process batches using the builder
             while True:
@@ -993,18 +1005,6 @@ async def process_documents_in_batches(
                 logger.info(f"Processing batch {batch_builder.total_batches_built} with {len(batch_documents)} documents")
                 
                 try:
-                    # Update data job with progress
-                    async with get_async_db_as_manager() as db:
-                        status_update = data_job_schemas.DataJobStatusUpdate(
-                            status=DataJobStatus.STARTED
-                        )
-                        await external_context.data_job_service.data_job_dao.update_job_status(
-                            db=db,
-                            job_id=data_job_id,
-                            status_update=status_update,
-                            commit=True
-                        )
-                    
                     # Ingest documents using the pipeline
                     logger.info(f"Starting ingestion of {len(batch_documents)} documents...")
                     ingestion_results = await ingestion_pipeline.ingest_documents(

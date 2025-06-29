@@ -17,6 +17,7 @@ from kiwi_app.workflow_app.constants import SchemaType
 from mongo_client import AsyncMongoDBClient, AsyncMongoVersionedClient
 from kiwi_app.settings import settings
 from kiwi_app.utils import get_kiwi_logger
+from global_config.logger import get_prefect_or_regular_python_logger
 
 customer_data_logger = get_kiwi_logger(name="kiwi_app.service_customer_data")
 
@@ -57,7 +58,8 @@ class CustomerDataService:
         self.mongo_client = mongo_client
         self.versioned_mongo_client = versioned_mongo_client
         self.schema_template_dao = schema_template_dao
-        
+        self.logger = get_prefect_or_regular_python_logger(name="kiwi_app.service_customer_data", return_non_prefect_logger=False) or customer_data_logger
+
         # Verify segment names match expectations
         expected_segments = ["org_id", "user_id", "namespace", "docname"]
         if not settings.MONGO_CUSTOMER_SEGMENTS == expected_segments:
@@ -219,7 +221,7 @@ class CustomerDataService:
         
         templates = list(results)
 
-        # customer_data_logger.info(f" CUSTOMER DATA SERVICE: Found {len(templates)} templates")
+        # self.logger.info(f" CUSTOMER DATA SERVICE: Found {len(templates)} templates")
         if not templates:
             return None
             
@@ -562,7 +564,7 @@ class CustomerDataService:
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Document '{namespace}/{docname}' not found",
                 )
-            # customer_data_logger.warning(f"-------Retrieved document at path {base_path}, version {version}\n\n\n\n{json.dumps(document, indent=4)}\n\n\n\n")
+            # self.logger.warning(f"-------Retrieved document at path {base_path}, version {version}\n\n\n\n{json.dumps(document, indent=4)}\n\n\n\n")
             return document
         except Exception as e:
             # Check if this is a 404 we already raised
@@ -1337,18 +1339,18 @@ class CustomerDataService:
         """
         # Ensure versioned client is configured
         if not self.versioned_mongo_client:
-            customer_data_logger.error("Upsert failed: Versioned MongoDB client is not configured.")
+            self.logger.error("Upsert failed: Versioned MongoDB client is not configured.")
             raise ValueError("Versioned MongoDB client is required for upsert_versioned_document")
 
         # --- Permission Checks ---
         if on_behalf_of_user_id and not user.is_superuser:
-            customer_data_logger.warning(f"Permission denied for user {user.id} trying to upsert on behalf of {on_behalf_of_user_id}")
+            self.logger.warning(f"Permission denied for user {user.id} trying to upsert on behalf of {on_behalf_of_user_id}")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only superusers can act on behalf of other users"
             )
         if is_system_entity and not user.is_superuser:
-            customer_data_logger.warning(f"Permission denied for non-superuser {user.id} trying to upsert a system entity")
+            self.logger.warning(f"Permission denied for non-superuser {user.id} trying to upsert a system entity")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only superusers can modify system entities"
@@ -1377,15 +1379,15 @@ class CustomerDataService:
         schema: Optional[Dict[str, Any]] = None
         if schema_definition:
             schema = schema_definition
-            customer_data_logger.debug(f"Using provided schema definition for upsert of '{'/'.join(base_path)}'.")
+            self.logger.debug(f"Using provided schema definition for upsert of '{'/'.join(base_path)}'.")
         elif schema_template_name:
-            customer_data_logger.debug(f"Fetching schema from template '{schema_template_name}' (version: {schema_template_version}) for upsert.")
+            self.logger.debug(f"Fetching schema from template '{schema_template_name}' (version: {schema_template_version}) for upsert.")
             try:
                 schema = await self._get_schema_from_template(
                     db, schema_template_name, schema_template_version, org_id, user
                 )
                 if not schema:
-                    customer_data_logger.warning(f"Schema template '{schema_template_name}' not found for org {org_id}.")
+                    self.logger.warning(f"Schema template '{schema_template_name}' not found for org {org_id}.")
                     raise HTTPException(
                         status_code=status.HTTP_404_NOT_FOUND,
                         detail=f"Schema template '{schema_template_name}' not found",
@@ -1394,7 +1396,7 @@ class CustomerDataService:
                 # Propagate HTTP exceptions from schema fetching
                 raise e
             except Exception as e:
-                customer_data_logger.error(f"Unexpected error fetching schema template '{schema_template_name}': {e}", exc_info=True)
+                self.logger.error(f"Unexpected error fetching schema template '{schema_template_name}': {e}", exc_info=True)
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail=f"Failed to fetch schema template: {str(e)}"
@@ -1404,7 +1406,7 @@ class CustomerDataService:
         doc_exists = False
         target_metadata: Optional[schemas.CustomerDocumentMetadata] = None
         try:
-            customer_data_logger.debug(f"Checking metadata for document path: {base_path}")
+            self.logger.debug(f"Checking metadata for document path: {base_path}")
             target_metadata = await self.get_document_metadata(
                 org_id=org_id,
                 namespace=namespace,
@@ -1417,25 +1419,25 @@ class CustomerDataService:
             if target_metadata:
                 doc_exists = True
                 if not target_metadata.is_versioned:
-                    customer_data_logger.error(f"Upsert failed: Document '{'/'.join(base_path)}' exists but is not versioned.")
+                    self.logger.error(f"Upsert failed: Document '{'/'.join(base_path)}' exists but is not versioned.")
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=f"Document '{namespace}/{docname}' exists but is not versioned. Cannot perform versioned upsert."
                     )
-                customer_data_logger.info(f"Document '{'/'.join(base_path)}' exists and is versioned. Proceeding with update logic.")
+                self.logger.info(f"Document '{'/'.join(base_path)}' exists and is versioned. Proceeding with update logic.")
             # If metadata is None, doc_exists remains False
 
         except HTTPException as e:
             # Log only if it's not a 404 (Not Found) or 403 (Forbidden)
             if e.status_code not in [status.HTTP_404_NOT_FOUND, status.HTTP_403_FORBIDDEN]:
-                customer_data_logger.warning(f"Error checking metadata for '{'/'.join(base_path)}' during upsert: {e.detail}", exc_info=True)
+                self.logger.warning(f"Error checking metadata for '{'/'.join(base_path)}' during upsert: {e.detail}", exc_info=True)
             else:
-                 customer_data_logger.info(f"Metadata check for '{'/'.join(base_path)}' resulted in {e.status_code}. Assuming document does not exist or is inaccessible.")
+                 self.logger.info(f"Metadata check for '{'/'.join(base_path)}' resulted in {e.status_code}. Assuming document does not exist or is inaccessible.")
             # Continue, assuming document might not exist or is inaccessible initially
             pass # doc_exists remains False
         except Exception as e:
             # Catch unexpected errors during metadata check
-            customer_data_logger.error(f"Unexpected error during metadata check for '{'/'.join(base_path)}': {e}", exc_info=True)
+            self.logger.error(f"Unexpected error during metadata check for '{'/'.join(base_path)}': {e}", exc_info=True)
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to check document metadata: {str(e)}"
@@ -1467,7 +1469,7 @@ class CustomerDataService:
 
         if doc_exists:
             # --- Document Exists - Attempt Update ---
-            customer_data_logger.info(f"Attempting upsert (update phase) for versioned doc '{'/'.join(base_path)}' (target version: {version or 'active'}).")
+            self.logger.info(f"Attempting upsert (update phase) for versioned doc '{'/'.join(base_path)}' (target version: {version or 'active'}).")
             try:
                 # Attempt to update the target version (or active if version is None)
                 await self.update_versioned_document(
@@ -1483,14 +1485,14 @@ class CustomerDataService:
                 # If version was None, we updated the active one. We might not know *which* one that is without another query.
                 # For the path, we'll return the requested target ('active' if None)
                 final_version = version  # Represent active symbolically if None was passed
-                customer_data_logger.info(f"Upsert (update phase) successful for '{'/'.join(base_path)}' (version: {final_version}).")
+                self.logger.info(f"Upsert (update phase) successful for '{'/'.join(base_path)}' (version: {final_version}).")
 
             except HTTPException as update_exc:
                 # Check if the update failed specifically because the version wasn't found (difficult to be certain from generic exception)
                 # A common reason for update failure is the specific version not existing.
                 # We'll infer this possibility if a specific version was targeted.
                 if version is not None and update_exc.status_code == status.HTTP_404_NOT_FOUND:
-                    customer_data_logger.warning(f"Upsert update failed for specific version '{version}' of '{'/'.join(base_path)}', likely because version does not exist. Attempting to create version.", exc_info=True)
+                    self.logger.warning(f"Upsert update failed for specific version '{version}' of '{'/'.join(base_path)}', likely because version does not exist. Attempting to create version.", exc_info=True)
 
                     # --- Attempt to Create the Missing Version ---
                     try:
@@ -1500,7 +1502,7 @@ class CustomerDataService:
                             is_system_entity=is_system_entity,
                             on_behalf_of_user_id=on_behalf_of_user_id
                         )
-                        customer_data_logger.info(f"Successfully created missing version '{version}' for '{'/'.join(base_path)}'. Retrying update.")
+                        self.logger.info(f"Successfully created missing version '{version}' for '{'/'.join(base_path)}'. Retrying update.")
 
                         # --- Retry Update on Newly Created Version ---
                         try:
@@ -1514,9 +1516,9 @@ class CustomerDataService:
                             )
                             operation_performed = f"created_and_updated_version_{version}"
                             final_version = version
-                            customer_data_logger.info(f"Upsert (retry update phase) successful for '{'/'.join(base_path)}' (version: {version}).")
+                            self.logger.info(f"Upsert (retry update phase) successful for '{'/'.join(base_path)}' (version: {version}).")
                         except Exception as retry_update_err:
-                            customer_data_logger.error(f"Upsert failed: Created version '{version}' for '{'/'.join(base_path)}', but failed the subsequent update: {retry_update_err}", exc_info=True)
+                            self.logger.error(f"Upsert failed: Created version '{version}' for '{'/'.join(base_path)}', but failed the subsequent update: {retry_update_err}", exc_info=True)
                             # This is a problematic state, raise an error
                             raise HTTPException(
                                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1524,7 +1526,7 @@ class CustomerDataService:
                             ) from retry_update_err
 
                     except Exception as create_err:
-                        customer_data_logger.error(f"Upsert failed: Update for version '{version}' failed, and subsequent attempt to create version also failed: {create_err}", exc_info=True)
+                        self.logger.error(f"Upsert failed: Update for version '{version}' failed, and subsequent attempt to create version also failed: {create_err}", exc_info=True)
                         raise HTTPException(
                             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                             detail=f"Failed to create target version '{version}' after initial update failed: {str(create_err)}"
@@ -1532,12 +1534,12 @@ class CustomerDataService:
                 else:
                     # Update failed for a reason other than the specific version not existing,
                     # or it failed when targeting the active version. This is likely a permission issue or other internal error.
-                    customer_data_logger.error(f"Upsert failed: Update phase failed for '{'/'.join(base_path)}' (target version: {version or 'active'}): {update_exc.detail}", exc_info=True)
+                    self.logger.error(f"Upsert failed: Update phase failed for '{'/'.join(base_path)}' (target version: {version or 'active'}): {update_exc.detail}", exc_info=True)
                     # Re-raise the original exception from update_versioned_document
                     raise update_exc
             except Exception as update_err:
                  # Catch unexpected errors during the update phase
-                customer_data_logger.error(f"Upsert failed: Unexpected error during update phase for '{'/'.join(base_path)}' (target version: {version or 'active'}): {update_err}", exc_info=True)
+                self.logger.error(f"Upsert failed: Unexpected error during update phase for '{'/'.join(base_path)}' (target version: {version or 'active'}): {update_err}", exc_info=True)
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail=f"Unexpected error updating document: {str(update_err)}"
@@ -1546,7 +1548,7 @@ class CustomerDataService:
         else:
             # --- Document Does Not Exist (or metadata failed) - Attempt Initialize ---
             init_version = version or "default" # Use specified version or default for init
-            customer_data_logger.info(f"Upsert: Document '{'/'.join(base_path)}' not found or metadata check failed. Attempting initialization with version '{init_version}'.")
+            self.logger.info(f"Upsert: Document '{'/'.join(base_path)}' not found or metadata check failed. Attempting initialization with version '{init_version}'.")
 
             try:
                 initialize_success = await self.initialize_versioned_document(
@@ -1558,21 +1560,21 @@ class CustomerDataService:
                 if initialize_success:
                     operation_performed = f"initialized_version_{init_version}"
                     final_version = init_version
-                    customer_data_logger.info(f"Upsert (initialize phase) successful for '{'/'.join(base_path)}' with version '{init_version}'.")
+                    self.logger.info(f"Upsert (initialize phase) successful for '{'/'.join(base_path)}' with version '{init_version}'.")
                     is_active_version = True
                 else:
                     # Should ideally be caught by exception, but defensive check
-                    customer_data_logger.error(f"Upsert failed: Initialization returned False for '{'/'.join(base_path)}' with version '{init_version}'.")
+                    self.logger.error(f"Upsert failed: Initialization returned False for '{'/'.join(base_path)}' with version '{init_version}'.")
                     raise HTTPException(
                         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                         detail=f"Document initialization failed unexpectedly for version '{init_version}."
                     )
             except HTTPException as init_http_exc:
                  # Re-raise HTTP exceptions from initialization (e.g., 409 Conflict if it somehow exists now)
-                 customer_data_logger.error(f"Upsert failed: Initialization phase for '{'/'.join(base_path)}' (version: '{init_version}') failed with HTTP error {init_http_exc.status_code}: {init_http_exc.detail}", exc_info=True)
+                 self.logger.error(f"Upsert failed: Initialization phase for '{'/'.join(base_path)}' (version: '{init_version}') failed with HTTP error {init_http_exc.status_code}: {init_http_exc.detail}", exc_info=True)
                  raise init_http_exc
             except Exception as init_err:
-                customer_data_logger.error(f"Upsert failed: Initialization phase encountered an error for '{'/'.join(base_path)}' (version: '{init_version}'): {init_err}", exc_info=True)
+                self.logger.error(f"Upsert failed: Initialization phase encountered an error for '{'/'.join(base_path)}' (version: '{init_version}'): {init_err}", exc_info=True)
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail=f"Failed to initialize document with version '{init_version}': {str(init_err)}"
@@ -1612,9 +1614,9 @@ class CustomerDataService:
                     user=user, version=final_version, on_behalf_of_user_id=on_behalf_of_user_id, is_system_entity=is_system_entity
                 )
             except Exception as set_active_err:
-                customer_data_logger.error(f"Failed to set active version during upsert for '{'/'.join(base_path)}': {set_active_err} - DOC IDENTIFIER: {json.dumps(document_identifier, indent=2)}", exc_info=True)
+                self.logger.error(f"Failed to set active version during upsert for '{'/'.join(base_path)}': {set_active_err} - DOC IDENTIFIER: {json.dumps(document_identifier, indent=2)}", exc_info=True)
 
-        customer_data_logger.info(f"Upsert completed for path '{'/'.join(base_path)}'. Operation: {operation_performed}, Final Path: {document_path_str}")
+        self.logger.info(f"Upsert completed for path '{'/'.join(base_path)}'. Operation: {operation_performed}, Final Path: {document_path_str}")
         return operation_performed, document_identifier
 
     # --- Unversioned Document Methods --- #
@@ -1992,7 +1994,7 @@ class CustomerDataService:
             
             # Determine if document is versioned
             is_versioned = document.get(self.mongo_client.DOC_TYPE_KEY) == self.mongo_client.DOC_TYPE_VERSIONED
-            # customer_data_logger.warning(f"-------Document at path {base_path} is versioned: {is_versioned} ---> **** DOC_TYPE_KEY *** : {document.get(self.mongo_client.DOC_TYPE_KEY)}")
+            # self.logger.warning(f"-------Document at path {base_path} is versioned: {is_versioned} ---> **** DOC_TYPE_KEY *** : {document.get(self.mongo_client.DOC_TYPE_KEY)}")
             
             # Extract path components
             org_id_str = str(org_id) if not is_system_entity else CustomerDataService.SYSTEM_DOC_PLACEHOLDER
@@ -2015,7 +2017,7 @@ class CustomerDataService:
             # Re-raise HTTP exceptions
             raise
         except Exception as e:
-            customer_data_logger.error(f"Error fetching document at path {base_path}: {str(e)}", exc_info=True)
+            self.logger.error(f"Error fetching document at path {base_path}: {str(e)}", exc_info=True)
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to retrieve document: {str(e)}"
@@ -2060,25 +2062,25 @@ class CustomerDataService:
             List of document metadata
         """
         if not include_shared and not include_user_specific and not include_system_entities:
-            customer_data_logger.info("No document types included, returning empty list")
+            self.logger.info("No document types included, returning empty list")
             return []
          
         # Permission checks for acting on behalf of another user or system entities
         if on_behalf_of_user_id and not user.is_superuser:
-            customer_data_logger.warning(f"Permission denied: Non-superuser {user.id} attempted to act on behalf of {on_behalf_of_user_id}")
+            self.logger.warning(f"Permission denied: Non-superuser {user.id} attempted to act on behalf of {on_behalf_of_user_id}")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only superusers can act on behalf of other users"
             )
             
         if include_system_entities and not user.is_superuser:
-            customer_data_logger.warning(f"Permission denied: Non-superuser {user.id} attempted to list system entities")
+            self.logger.warning(f"Permission denied: Non-superuser {user.id} attempted to list system entities")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only superusers can list all system entities"
             )
         
-        customer_data_logger.debug(f"Getting allowed prefixes for org_id={org_id}, user={user.id}, on_behalf_of_user_id={on_behalf_of_user_id}")
+        self.logger.debug(f"Getting allowed prefixes for org_id={org_id}, user={user.id}, on_behalf_of_user_id={on_behalf_of_user_id}")
         # Get allowed prefixes from our helper method
         allowed_prefixes = self._get_allowed_prefixes(
             org_id=org_id,
@@ -2088,37 +2090,37 @@ class CustomerDataService:
             is_system_entity=False,  # Basic prefixes, specific system patterns added below
             is_called_from_workflow=is_called_from_workflow,
         )
-        customer_data_logger.debug(f"Allowed prefixes: {allowed_prefixes}")
+        self.logger.debug(f"Allowed prefixes: {allowed_prefixes}")
         
         # Build patterns to search for
         patterns = []
         
         # Organization patterns
         namespace_filter_pattern = namespace_filter if namespace_filter else "*"
-        customer_data_logger.debug(f"Namespace filter pattern: {namespace_filter_pattern}")
+        self.logger.debug(f"Namespace filter pattern: {namespace_filter_pattern}")
         
         if include_shared or include_user_specific:
             if include_user_specific:
                 user_id = str(on_behalf_of_user_id) if on_behalf_of_user_id and user.is_superuser else str(user.id)
-                customer_data_logger.debug(f"Including user-specific documents for user_id={user_id}")
+                self.logger.debug(f"Including user-specific documents for user_id={user_id}")
                 patterns.append([str(org_id), user_id, namespace_filter_pattern, "*"])
             if include_shared:
-                customer_data_logger.debug(f"Including shared documents for org_id={org_id}")
+                self.logger.debug(f"Including shared documents for org_id={org_id}")
                 patterns.append([str(org_id), self.SHARED_DOC_PLACEHOLDER, namespace_filter_pattern, "*"])
         
         # System patterns
         if include_system_entities and user.is_superuser:  # Regular users can still see shared system docs
-            # customer_data_logger.debug("Including shared system documents")
+            # self.logger.debug("Including shared system documents")
             patterns.append([CustomerDataService.SYSTEM_DOC_PLACEHOLDER, self.SHARED_DOC_PLACEHOLDER, namespace_filter_pattern, "*"])
             # Only superusers can access private system docs
-            # customer_data_logger.debug("Including private system documents (superuser only)")
+            # self.logger.debug("Including private system documents (superuser only)")
             patterns.append([CustomerDataService.SYSTEM_DOC_PLACEHOLDER, self.PRIVATE_DOC_PLACEHOLDER, namespace_filter_pattern, "*"])
         
         try:
-            customer_data_logger.debug(f"Beginning document search with {len(patterns)} patterns")
+            self.logger.debug(f"Beginning document search with {len(patterns)} patterns")
             # Process each pattern and combine results
             all_docs = {}
-            customer_data_logger.debug(f"Patterns: {patterns}")
+            self.logger.debug(f"Patterns: {patterns}")
             
             # Define sort options based on provided parameters
             sort_direction = 1 if sort_order == schemas.SortOrder.ASC else -1
@@ -2131,7 +2133,7 @@ class CustomerDataService:
                     value_sort_by = [("updated_at", sort_direction)]
             
             # for pattern in patterns:
-            #     customer_data_logger.debug(f"Processing pattern: {pattern}")
+            #     self.logger.debug(f"Processing pattern: {pattern}")
             
             key_patterns = []
             # for pattern in patterns:
@@ -2139,7 +2141,7 @@ class CustomerDataService:
             #     key_patterns.append(key_pattern)
             
             for pattern in patterns:
-                customer_data_logger.debug(f"Processing pattern: {pattern}")
+                self.logger.debug(f"Processing pattern: {pattern}")
                 key_pattern = pattern + [None] * len(self.versioned_mongo_client.VERSION_SEGMENT_NAMES)
                 # if text_search_query or value_filter:
                 #     #     ALSO enable searches in versioned docs data in the version segment!
@@ -2155,12 +2157,12 @@ class CustomerDataService:
                 limit=limit,
                 value_sort_by=value_sort_by
             )
-            customer_data_logger.debug(f"Found {len(docs)} documents for pattern: {pattern}")
+            self.logger.debug(f"Found {len(docs)} documents for pattern: {pattern}")
             all_docs.update(
                 {tuple(self.versioned_mongo_client.client._segments_to_path(doc)): doc for doc in docs}
             )
             
-            customer_data_logger.debug(f"Total unique documents found: {len(all_docs)}")
+            self.logger.debug(f"Total unique documents found: {len(all_docs)}")
             
             # Process results into metadata objects
             active_versions_by_paths = {}
@@ -2168,7 +2170,7 @@ class CustomerDataService:
             for doc_path, _doc_metadata in all_docs.items():
                 # Skip if not a list (should not happen)
                 if not isinstance(doc_path, (list, tuple)) or len(doc_path) < 4:
-                    customer_data_logger.warning(f"Skipping invalid doc_path: {doc_path}")
+                    self.logger.warning(f"Skipping invalid doc_path: {doc_path}")
                     continue
                     
                 # Extract path components
@@ -2180,7 +2182,7 @@ class CustomerDataService:
                 
                 # Skip system entities if not requested
                 if is_system and not include_system_entities and not is_shared:
-                    customer_data_logger.debug(f"Skipping system entity not requested: {doc_path}")
+                    self.logger.debug(f"Skipping system entity not requested: {doc_path}")
                     continue
                 
                 is_versioned = _doc_metadata.get(self.mongo_client.DOC_TYPE_KEY) == self.mongo_client.DOC_TYPE_VERSIONED
@@ -2217,7 +2219,7 @@ class CustomerDataService:
                 
                 result.append(metadata)
             
-            customer_data_logger.debug(f"Raw result count: {len(result)}")
+            self.logger.debug(f"Raw result count: {len(result)}")
             
             # Remove duplicates (in case the same document matched multiple patterns)
             unique_result = []
@@ -2235,9 +2237,9 @@ class CustomerDataService:
                     seen_paths.add(path_key)
                     unique_result.append(metadata)
                 else:
-                    customer_data_logger.debug(f"Skipping duplicate: {path_key}")
+                    self.logger.debug(f"Skipping duplicate: {path_key}")
             
-            customer_data_logger.debug(f"Unique result count: {len(unique_result)}")
+            self.logger.debug(f"Unique result count: {len(unique_result)}")
             
             # Return unique result (sorting and pagination is now done by the search_objects function)
             return unique_result
@@ -2290,25 +2292,25 @@ class CustomerDataService:
             Search of document search results
         """
         if not include_shared and not include_user_specific and not include_system_entities:
-            customer_data_logger.info("No document types included, returning empty Search")
+            self.logger.info("No document types included, returning empty Search")
             return []
          
         # Permission checks for acting on behalf of another user or system entities
         if on_behalf_of_user_id and not user.is_superuser:
-            customer_data_logger.warning(f"Permission denied: Non-superuser {user.id} attempted to act on behalf of {on_behalf_of_user_id}")
+            self.logger.warning(f"Permission denied: Non-superuser {user.id} attempted to act on behalf of {on_behalf_of_user_id}")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only superusers can act on behalf of other users"
             )
             
         if include_system_entities and not user.is_superuser:
-            customer_data_logger.warning(f"Permission denied: Non-superuser {user.id} attempted to Search system entities")
+            self.logger.warning(f"Permission denied: Non-superuser {user.id} attempted to Search system entities")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only superusers can Search all system entities"
             )
         
-        customer_data_logger.debug(f"Getting allowed prefixes for org_id={org_id}, user={user.id}, on_behalf_of_user_id={on_behalf_of_user_id}")
+        self.logger.debug(f"Getting allowed prefixes for org_id={org_id}, user={user.id}, on_behalf_of_user_id={on_behalf_of_user_id}")
         # Get allowed prefixes from our helper method
         allowed_prefixes = self._get_allowed_prefixes(
             org_id=org_id,
@@ -2318,37 +2320,37 @@ class CustomerDataService:
             is_system_entity=False,  # Basic prefixes, specific system patterns added below
             is_called_from_workflow=is_called_from_workflow,
         )
-        customer_data_logger.debug(f"Allowed prefixes: {allowed_prefixes}")
+        self.logger.debug(f"Allowed prefixes: {allowed_prefixes}")
         
         # Build patterns to search for
         patterns = []
         
         # Organization patterns
         namespace_filter_pattern = namespace_filter if namespace_filter else "*"
-        customer_data_logger.debug(f"Namespace filter pattern: {namespace_filter_pattern}")
+        self.logger.debug(f"Namespace filter pattern: {namespace_filter_pattern}")
         
         if include_shared or include_user_specific:
             if include_user_specific:
                 user_id = str(on_behalf_of_user_id) if on_behalf_of_user_id and user.is_superuser else str(user.id)
-                customer_data_logger.debug(f"Including user-specific documents for user_id={user_id}")
+                self.logger.debug(f"Including user-specific documents for user_id={user_id}")
                 patterns.append([str(org_id), user_id, namespace_filter_pattern, "*"])
             if include_shared:
-                customer_data_logger.debug(f"Including shared documents for org_id={org_id}")
+                self.logger.debug(f"Including shared documents for org_id={org_id}")
                 patterns.append([str(org_id), self.SHARED_DOC_PLACEHOLDER, namespace_filter_pattern, "*"])
         
         # System patterns
         if include_system_entities and user.is_superuser:  # Regular users can still see shared system docs
-            # customer_data_logger.debug("Including shared system documents")
+            # self.logger.debug("Including shared system documents")
             patterns.append([CustomerDataService.SYSTEM_DOC_PLACEHOLDER, self.SHARED_DOC_PLACEHOLDER, namespace_filter_pattern, "*"])
             # Only superusers can access private system docs
-            # customer_data_logger.debug("Including private system documents (superuser only)")
+            # self.logger.debug("Including private system documents (superuser only)")
             patterns.append([CustomerDataService.SYSTEM_DOC_PLACEHOLDER, self.PRIVATE_DOC_PLACEHOLDER, namespace_filter_pattern, "*"])
         
         try:
-            customer_data_logger.debug(f"Beginning document search with {len(patterns)} patterns")
+            self.logger.debug(f"Beginning document search with {len(patterns)} patterns")
             # Process each pattern and combine results
             all_docs = {}
-            customer_data_logger.debug(f"Patterns: {patterns}")
+            self.logger.debug(f"Patterns: {patterns}")
             
             # Define sort options based on provided parameters
             sort_direction = 1 if sort_order == schemas.SortOrder.ASC else -1
@@ -2362,7 +2364,7 @@ class CustomerDataService:
             
             key_patterns = []
             for pattern in patterns:
-                customer_data_logger.debug(f"Processing pattern: {pattern}")
+                self.logger.debug(f"Processing pattern: {pattern}")
                 key_pattern = pattern + [None] * len(self.versioned_mongo_client.VERSION_SEGMENT_NAMES)
                 # if text_search_query or value_filter:
                 #     #     ALSO enable searches in versioned docs data in the version segment!
@@ -2370,7 +2372,7 @@ class CustomerDataService:
                 key_patterns.append(key_pattern)
                 
             # # Log search query details for debugging purposes
-            # customer_data_logger.warning(
+            # self.logger.warning(
             #     f"\n\nSearch Query Details:"
             #     f"\n  Pattern: {pattern}"
             #     f"\n  Key Pattern: {key_pattern}"
@@ -2395,11 +2397,11 @@ class CustomerDataService:
                 limit=limit,
                 value_sort_by=value_sort_by
             )
-            # customer_data_logger.warning(f"\n\n\n\n***** _doc_metadata: {json.dumps(_doc_metadata, indent=4)}\n\n\n\n")
-            customer_data_logger.debug(f"Found {len(docs)} documents for pattern(s): {key_patterns}")
+            # self.logger.warning(f"\n\n\n\n***** _doc_metadata: {json.dumps(_doc_metadata, indent=4)}\n\n\n\n")
+            self.logger.debug(f"Found {len(docs)} documents for pattern(s): {key_patterns}")
             all_docs = {tuple(self.versioned_mongo_client.client._segments_to_path(doc)): doc for doc in docs}
 
-            customer_data_logger.debug(f"Total unique documents found: {len(all_docs)}")
+            self.logger.debug(f"Total unique documents found: {len(all_docs)}")
             
             # Process results into metadata objects
             active_versions_by_paths = {}
@@ -2407,7 +2409,7 @@ class CustomerDataService:
             for doc_path, _doc_metadata in all_docs.items():
                 # Skip if not a list (should not happen)
                 if not isinstance(doc_path, (list, tuple)) or len(doc_path) < 4:
-                    customer_data_logger.warning(f"Skipping invalid doc_path: {doc_path}")
+                    self.logger.warning(f"Skipping invalid doc_path: {doc_path}")
                     continue
                     
                 # Extract path components
@@ -2419,9 +2421,9 @@ class CustomerDataService:
                     is_versioning_metadata = False
                 # from langchain_core.load import dumps
                 # if is_versioning_metadata:
-                #     customer_data_logger.warning(f"\n\n\n\n***** _doc_metadata is_versioning_metadata: {is_versioning_metadata}: {dumps(_doc_metadata, pretty=True)}\n\n\n\n")
+                #     self.logger.warning(f"\n\n\n\n***** _doc_metadata is_versioning_metadata: {is_versioning_metadata}: {dumps(_doc_metadata, pretty=True)}\n\n\n\n")
                 # else:
-                #     customer_data_logger.warning(f"\n\n\n\n***** _doc_metadata is_versioning_metadata: {is_versioning_metadata}: {dumps(_doc_metadata, pretty=True)}\n\n\n\n")
+                #     self.logger.warning(f"\n\n\n\n***** _doc_metadata is_versioning_metadata: {is_versioning_metadata}: {dumps(_doc_metadata, pretty=True)}\n\n\n\n")
                 org_id_str, user_id_str, namespace, docname = doc_path[:4]
                 
                 # Determine if shared and system
@@ -2430,11 +2432,11 @@ class CustomerDataService:
                 
                 # Skip system entities if not requested
                 if is_system and not include_system_entities and not is_shared:
-                    customer_data_logger.debug(f"Skipping system entity not requested: {doc_path}")
+                    self.logger.debug(f"Skipping system entity not requested: {doc_path}")
                     continue
                 
                 
-                # customer_data_logger.warning(f"\n\n\n\n***** _doc_metadata: {json.dumps(_doc_metadata, indent=4)}\n\n\n\n")
+                # self.logger.warning(f"\n\n\n\n***** _doc_metadata: {json.dumps(_doc_metadata, indent=4)}\n\n\n\n")
                 
                 data_dict = _doc_metadata.get("data", {}) or {}
                 if isinstance(data_dict, dict):
@@ -2444,7 +2446,7 @@ class CustomerDataService:
                 else:
                     data = data_dict
 
-                # customer_data_logger.warning(f"\n\n\n\n***** data: {json.dumps(data, indent=4)}\n\n\n\n")
+                # self.logger.warning(f"\n\n\n\n***** data: {json.dumps(data, indent=4)}\n\n\n\n")
                 
                 # Create metadata object
                 metadata = schemas.CustomerDocumentSearchResultMetadata(
@@ -2472,7 +2474,7 @@ class CustomerDataService:
                 
                 result.append(search_result)
             
-            customer_data_logger.debug(f"Raw result count: {len(result)}")
+            self.logger.debug(f"Raw result count: {len(result)}")
             
             # Remove duplicates (in case the same document matched multiple patterns)
             unique_result = []
@@ -2491,14 +2493,14 @@ class CustomerDataService:
                     seen_paths.add(path_key)
                     unique_result.append(search_result)
                 else:
-                    customer_data_logger.debug(f"Skipping duplicate: {path_key}")
+                    self.logger.debug(f"Skipping duplicate: {path_key}")
             
-            customer_data_logger.debug(f"Unique result count: {len(unique_result)}")
+            self.logger.debug(f"Unique result count: {len(unique_result)}")
             
             # Return unique result (sorting and pagination is now done by the search_objects function)
             return unique_result
         except Exception as e:
-            customer_data_logger.error(f"Error searching documents: {str(e)}", exc_info=True)
+            self.logger.error(f"Error searching documents: {str(e)}", exc_info=True)
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to list documents: {str(e)}",
@@ -2535,7 +2537,7 @@ class CustomerDataService:
         Returns:
             List of document search results without permission filtering
         """
-        customer_data_logger.info(
+        self.logger.info(
             f"System search initiated - namespace: {namespace_pattern}, "
             f"docname: {docname_pattern}, value_filter: {value_filter}"
         )
@@ -2568,7 +2570,7 @@ class CustomerDataService:
                 key_pattern = pattern + ["*"] + [None] * (len(self.versioned_mongo_client.VERSION_SEGMENT_NAMES) - 1)
                 key_patterns.append(key_pattern)
             
-            customer_data_logger.debug(f"System search patterns: {key_patterns}")
+            self.logger.debug(f"System search patterns: {key_patterns}")
             
             # Execute search without permission prefixes (system has access to all)
             docs = await self.versioned_mongo_client.client.search_objects(
@@ -2581,7 +2583,7 @@ class CustomerDataService:
                 value_sort_by=value_sort_by
             )
             
-            customer_data_logger.info(f"System search found {len(docs)} documents")
+            self.logger.info(f"System search found {len(docs)} documents")
 
             active_versions_by_paths = {}
             
@@ -2591,7 +2593,7 @@ class CustomerDataService:
                 doc_path = self.versioned_mongo_client.client._segments_to_path(doc)
                 
                 if not isinstance(doc_path, (list, tuple)) or len(doc_path) < 4:
-                    customer_data_logger.warning(f"Skipping invalid doc_path in system search: {doc_path}")
+                    self.logger.warning(f"Skipping invalid doc_path in system search: {doc_path}")
                     continue
                 
                 # Extract path components
@@ -2617,11 +2619,17 @@ class CustomerDataService:
                 else:
                     data = data_dict
                 
+                try:
+                    org_id = uuid.UUID(org_id_str) if not is_system and org_id_str != "*" else None
+                except Exception as e:
+                    self.logger.error(f"Error parsing org_id: {org_id_str} is_system: {is_system} for doc: {json.dumps(doc, indent=4, default=str)}", exc_info=True)
+                    continue
+                
                 # Create metadata object
                 metadata = schemas.CustomerDocumentSearchResultMetadata(
                     id=doc.get("_id"),
                     versionless_path=self.versioned_mongo_client.client._path_to_id(doc_path[:4]),
-                    org_id=uuid.UUID(org_id_str) if not is_system and org_id_str != "*" else None,
+                    org_id=org_id,
                     user_id_or_shared_placeholder=user_id_str,
                     namespace=namespace,
                     docname=docname,
@@ -2647,11 +2655,11 @@ class CustomerDataService:
                     active_version = active_versions_by_paths[search_result.metadata.versionless_path]
                     search_result.metadata.is_active_version = search_result.metadata.version == active_version
             
-            customer_data_logger.info(f"System search returning {len(result)} results")
+            self.logger.info(f"System search returning {len(result)} results")
             return result
             
         except Exception as e:
-            customer_data_logger.error(f"Error in system document search: {str(e)}", exc_info=True)
+            self.logger.error(f"Error in system document search: {str(e)}", exc_info=True)
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to perform system document search: {str(e)}"
@@ -2730,7 +2738,7 @@ class CustomerDataService:
                     pattern=pattern,
                     allowed_prefixes=allowed_prefixes
                 )
-                customer_data_logger.info(f"Dry run: Found {count} objects matching pattern {pattern}")
+                self.logger.info(f"Dry run: Found {count} objects matching pattern {pattern}")
                 return count
             
             # Perform the deletion
@@ -2739,10 +2747,10 @@ class CustomerDataService:
                 allowed_prefixes=allowed_prefixes
             )
             
-            customer_data_logger.info(f"Deleted {deleted_count} objects matching pattern {pattern}")
+            self.logger.info(f"Deleted {deleted_count} objects matching pattern {pattern}")
             return deleted_count
         except Exception as e:
-            customer_data_logger.error(f"Error deleting objects with pattern {pattern}: {e}")
+            self.logger.error(f"Error deleting objects with pattern {pattern}: {e}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to delete objects: {str(e)}"
@@ -2874,7 +2882,7 @@ class CustomerDataService:
                     detail=f"Source document '{source_namespace}/{source_docname}' not found"
                 )
             
-            customer_data_logger.info(
+            self.logger.info(
                 f"{operation_name.capitalize()}ing document from '{'/'.join(source_base_path)}' to '{'/'.join(destination_base_path)}' "
                 f"(versioned: {source_metadata.is_versioned})"
             )
@@ -2904,11 +2912,11 @@ class CustomerDataService:
                 )
                 
             if result:
-                customer_data_logger.info(
+                self.logger.info(
                     f"Successfully {operation_name}d document from '{'/'.join(source_base_path)}' to '{'/'.join(destination_base_path)}'"
                 )
             else:
-                customer_data_logger.warning(
+                self.logger.warning(
                     f"Failed to {operation_name} document from '{'/'.join(source_base_path)}' to '{'/'.join(destination_base_path)}'"
                 )
                 
@@ -2918,7 +2926,7 @@ class CustomerDataService:
             # Re-raise HTTP exceptions
             raise
         except Exception as e:
-            customer_data_logger.error(f"Error {operation_name}ing document: {str(e)}", exc_info=True)
+            self.logger.error(f"Error {operation_name}ing document: {str(e)}", exc_info=True)
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to {operation_name} document: {str(e)}"
@@ -3086,7 +3094,7 @@ class CustomerDataService:
         move_operations = [op for op in operations if op.operation_type == schemas.DocumentOperationType.MOVE]
         copy_operations = [op for op in operations if op.operation_type == schemas.DocumentOperationType.COPY]
         
-        customer_data_logger.info(f"Starting batch operations: {len(move_operations)} moves, {len(copy_operations)} copies")
+        self.logger.info(f"Starting batch operations: {len(move_operations)} moves, {len(copy_operations)} copies")
         
         all_results: List[schemas.DocumentOperationResult] = []
         
@@ -3096,7 +3104,7 @@ class CustomerDataService:
                 continue
                 
             operation_name = "move" if is_move else "copy"
-            customer_data_logger.debug(f"Processing {len(ops_list)} {operation_name} operations")
+            self.logger.debug(f"Processing {len(ops_list)} {operation_name} operations")
             
             # Process this batch of operations
             batch_results = await self._process_move_or_copy_operation_batch(
@@ -3123,7 +3131,7 @@ class CustomerDataService:
         # ))
         
         total_successful = sum(1 for result in all_results if result.success)
-        customer_data_logger.info(f"Batch operations completed: {total_successful}/{len(operations)} operations successful")
+        self.logger.info(f"Batch operations completed: {total_successful}/{len(operations)} operations successful")
         
         return all_results
     
@@ -3245,7 +3253,7 @@ class CustomerDataService:
                 ))
                 
             except Exception as e:
-                customer_data_logger.error(f"Error processing {operation_name} operation {i}: {str(e)}", exc_info=True)
+                self.logger.error(f"Error processing {operation_name} operation {i}: {str(e)}", exc_info=True)
                 results.append(schemas.DocumentOperationResult(
                     operation_type=operation_type,
                     source_org_id=operation.source_org_id,
@@ -3302,7 +3310,7 @@ class CustomerDataService:
                         results[original_index].error_message = f"Versioned {operation_name} operation failed"
                         
             except Exception as e:
-                customer_data_logger.error(f"Error in batch versioned {operation_name}: {str(e)}", exc_info=True)
+                self.logger.error(f"Error in batch versioned {operation_name}: {str(e)}", exc_info=True)
                 for original_index, _, _ in versioned_operations:
                     results[original_index].success = False
                     results[original_index].error_message = f"Versioned {operation_name} failed: {str(e)}"
@@ -3326,13 +3334,13 @@ class CustomerDataService:
                         results[original_index].error_message = f"Unversioned {operation_name} operation failed"
                         
             except Exception as e:
-                customer_data_logger.error(f"Error in batch unversioned {operation_name}: {str(e)}", exc_info=True)
+                self.logger.error(f"Error in batch unversioned {operation_name}: {str(e)}", exc_info=True)
                 for original_index, _, _ in unversioned_operations:
                     results[original_index].success = False
                     results[original_index].error_message = f"Unversioned {operation_name} failed: {str(e)}"
         
         successful_count = sum(1 for result in results if result.success)
-        customer_data_logger.debug(f"Batch {operation_name} completed: {successful_count}/{len(operations)} operations successful")
+        self.logger.debug(f"Batch {operation_name} completed: {successful_count}/{len(operations)} operations successful")
         
         return results
     
