@@ -304,6 +304,7 @@ class RAGService:
                 weaviate_results = await self.weaviate_client.vector_search(
                     query_text=search_request.query,
                     limit=search_request.limit,
+                    offset=search_request.offset,
                     where_filter=weaviate_filter,
                     include_vector=search_request.include_vector
                 )
@@ -311,12 +312,14 @@ class RAGService:
                 weaviate_results = await self.weaviate_client.keyword_search(
                     query=search_request.query,
                     limit=search_request.limit,
+                    offset=search_request.offset,
                     where_filter=weaviate_filter
                 )
             else:  # HYBRID
                 weaviate_results = await self.weaviate_client.hybrid_search(
                     query=search_request.query,
                     limit=search_request.limit,
+                    offset=search_request.offset,
                     alpha=search_request.alpha,
                     where_filter=weaviate_filter
                 )
@@ -336,6 +339,7 @@ class RAGService:
                 "query": search_request.query,
                 "search_type": search_request.search_type.value,
                 "limit": search_request.limit,
+                "offset": search_request.offset,
                 "alpha": search_request.alpha,
                 "filters_applied": bool(weaviate_filter)
             }
@@ -830,6 +834,7 @@ class RAGService:
             search_results = await self.weaviate_client.vector_search(
                 query_text="*",  # Wildcard search
                 limit=list_request.limit + list_request.skip,
+                offset=0,  # Apply offset at the aggregation level instead
                 where_filter=weaviate_filter
             )
             

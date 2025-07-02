@@ -99,7 +99,7 @@ def setup_logging(
         # However, typically filtering is done at the logger level.
         # console_handler.setLevel(log_level) # Optional: filter at handler level
         handlers.append(console_handler)
-        print("Console logging enabled.") # Use print, logger not fully setup yet
+        # print("Console logging enabled.") # Use print, logger not fully setup yet
 
     if log_to_file:
         try:
@@ -118,10 +118,10 @@ def setup_logging(
             file_handler.setFormatter(file_formatter)
             # file_handler.setLevel(log_level) # Optional: filter at handler level
             handlers.append(file_handler)
-            print(f"File logging enabled: {log_path}")
+            # print(f"File logging enabled: {log_path}")
         except OSError as e:
             # Use print because logging might fail if directory creation failed
-            print(f"Error setting up file logging in directory '{log_dir}': {e}")
+            # print(f"Error setting up file logging in directory '{log_dir}': {e}")
             # Decide whether to raise, log a warning, or continue without file logging
             # For now, let's print the error and continue without file logging
             # raise # Uncomment to make directory creation failure fatal
@@ -131,7 +131,7 @@ def setup_logging(
         # Avoid setting up queue logging if no actual handlers are configured
         # This can happen if both log_to_console and log_to_file are False,
         # or if file logging setup failed.
-        print("Warning: No logging handlers configured (console or file). Logging setup skipped.")
+        # print("Warning: No logging handlers configured (console or file). Logging setup skipped.")
         return
 
     # --- Configure Queue Handling ---
@@ -166,7 +166,7 @@ def setup_logging(
     # respect_handler_level=True means the listener will check handler levels too.
     listener = logging.handlers.QueueListener(log_queue, *handlers, respect_handler_level=True)
     listener.start()
-    print("Logging listener thread started.")
+    # print("Logging listener thread started.")
 
     # --- Register Shutdown Hook ---
     # Ensure the listener is stopped gracefully on normal Python exit.
@@ -175,7 +175,7 @@ def setup_logging(
 
     # Use the newly configured logger to indicate completion
     # Note: This message goes through the queue now.
-    logging.getLogger(__name__).info("Asynchronous logging setup complete.")
+    # logging.getLogger(__name__).info("Asynchronous logging setup complete.")
 
 logging_is_setup = False
 
@@ -229,15 +229,16 @@ def stop_listener() -> None:
         try:
             current_thread_name = threading.current_thread().name
             # Use print here as logging might be shutting down or stopped
-            print(f"Attempting to stop logging listener from thread: {current_thread_name}...")
+            # print(f"Attempting to stop logging listener from thread: {current_thread_name}...")
             listener.stop() # This signals the listener thread to stop and waits
             listener = None
-            print("Logging listener stopped successfully.")
+            # print("Logging listener stopped successfully.")
         except Exception as e:
             # If stopping fails, print the error.
-            print(f"Error stopping logging listener: {e}")
+            # print(f"Error stopping logging listener: {e}")
             # Optionally, log this error if logging is still partially functional
             # logging.getLogger(__name__).error("Error stopping logging listener", exc_info=True)
+            pass
 
 
 # --- Example Usage (Illustrative) ---

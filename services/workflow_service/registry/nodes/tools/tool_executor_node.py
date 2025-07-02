@@ -107,6 +107,10 @@ class ToolExecutorNodeOutputSchema(BaseNodeConfig):
     failed_calls: int = Field(
         description="Number of failed tool calls"
     )
+    state_changes: Optional[Dict[str, Any]] = Field(
+        None,
+        description="State changes made by the tool executions"
+    )
 
 
 ###########################
@@ -327,13 +331,19 @@ class ToolExecutorNode(BaseDynamicNode):  # BaseNode[ToolExecutorNodeInputSchema
         failed_calls = len(tool_metadata) - successful_calls
         
         self.info(f"Executed {len(input_data.tool_calls)} tool calls: {successful_calls} successful, {failed_calls} failed")
+
+        state_changes = {}
+        for tool_output in tool_outputs:
+            if tool_output.state_changes:
+                state_changes.update(tool_output.state_changes)
         
         return ToolExecutorNodeOutputSchema(
             tool_outputs=tool_outputs,
             tool_call_metadata=tool_metadata,
             total_execution_time=total_execution_time,
             successful_calls=successful_calls,
-            failed_calls=failed_calls
+            failed_calls=failed_calls,
+            state_changes=state_changes,
         )
     
     async def _execute_tools_sequentially(
@@ -652,19 +662,48 @@ class ToolExecutorNode(BaseDynamicNode):  # BaseNode[ToolExecutorNodeInputSchema
             execution_time = time.time() - start_time
             
             # Convert result to string format for tool output
+            state_changes = None
             if isinstance(result, BaseModel):
-                content = result.model_dump_json(indent=2)
+                exclude_keys = None
+                if hasattr(result, "state_changes"):
+                    state_changes = result.state_changes
+                    exclude_keys = {"state_changes"}
+                content = result.model_dump_json(indent=2, exclude=exclude_keys)
             elif isinstance(result, dict):
                 content = json.dumps(result, indent=2, default=str)
             else:
                 content = str(result)
-            
+
+            ######  Handle Tool Runtime Errors ######
+            success = getattr(result, "success", True)
+            if not success:
+                error_msg = getattr(result, "message", "Tool execution failed")
+                self.warning(f"Tool '{tool_call.tool_name}' failed: {error_msg}")
+
+                if stream_writer:
+                    stream_writer({"event_type": "tool_call", "tool_call_id": tool_call_id, "tool_name": tool_call.tool_name, "status": "error", "error_message": error_msg, "node_id": self.node_id})
+                
+                tool_output, tool_metadata = self._create_error_output_and_metadata(
+                    tool_call_id,
+                    tool_call.tool_name,
+                    error_msg,
+                    execution_time,
+                    "ToolExecutionError"
+                )
+
+                tool_output.state_changes = state_changes
+
+                return tool_output, tool_metadata
+
+            ###### ###### ###### ###### ###### ######
+
             # Create successful output and metadata
             tool_output = ToolOutput(
                 tool_call_id=tool_call_id,
                 content=content,
                 name=tool_call.tool_name,
-                status="success"
+                status="success",
+                state_changes=state_changes,
             )
 
             if stream_writer:

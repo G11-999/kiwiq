@@ -111,7 +111,7 @@ class FieldValidationResult:
 _CORE_PRIMITIVE_TYPES: Tuple[type, ...] = (str, int, float, bool, bytes, datetime, date)
 # NOTE since AnyMessage is Annotated type with annotations, also add its base type without surface annotation (which is the Union of messages)
 # Due to some hidden bug, sometimes when defining AnyMessage fields, only the base type makes it pass!
-_PRIMITIVE_TYPES_EXTENDED: Tuple[type, ...] = tuple(list(_CORE_PRIMITIVE_TYPES) + [AnyMessage, get_args(AnyMessage)[0], Any])
+_PRIMITIVE_TYPES_EXTENDED: Tuple[type, ...] = tuple(list(_CORE_PRIMITIVE_TYPES) + [AnyMessage, get_args(AnyMessage)[0], Any, BaseModel])
 # # UNION allows any primitive type to be set and all are JSON serializable, 
 # #     allowing multi type dicts / lists eg: [int, str, ...] or Dict[str, ]
 # _PRIMITIVE_TYPES_UNION = Annotated[
@@ -193,6 +193,7 @@ class BaseSchema(BaseModel, ABC):
     # USER_EDITABLE_FIELD_KEY: ClassVar[str] = "_user_editable"  # default value True if not mentioned in Field
     EXTRA_FIELD_KEYS_WITH_DEFAULTS: ClassVar[Dict[str, Any]] = {
         DEPRECATED_FIELD_KEY: False,
+        FOR_LLM_TOOL_CALL_FIELD_KEY: True,
         # USER_EDITABLE_FIELD_KEY: True,
     }
     _CACHE: ClassVar[Optional[Dict[str, Any]]] = None  # TODO: cache class processing so recursively, each class is not called too frequently!
@@ -265,14 +266,14 @@ class BaseSchema(BaseModel, ABC):
                     f"{result.error_message}"
                 )
 
-            # Validate Optional fields have default value or are not required
-            if result.is_optional:
-                if field.is_required():
-                    raise TypeError(
-                        f"Field '{field_name}' is marked as Optional but has no default value "
-                        f"and is required. Optional fields must either have a default value "
-                        f"or be marked as not required."
-                    )
+            # # Validate Optional fields have default value or are not required
+            # if result.is_optional:
+            #     if field.is_required():
+            #         raise TypeError(
+            #             f"Field '{field_name}' is marked as Optional but has no default value "
+            #             f"and is required. Optional fields must either have a default value "
+            #             f"or be marked as not required."
+            #         )
 
             # Cache validation result
             if cls._CACHE_FIELD_VALIDATION_RESULTS_KEY not in cls._CACHE:
@@ -365,7 +366,7 @@ class BaseSchema(BaseModel, ABC):
         
         # Check if it's BaseSchema or it's subclass | or Enum
         if inspect.isclass(type_annotation):
-            if issubclass(type_annotation, BaseSchema) or issubclass(type_annotation, Enum):
+            if issubclass(type_annotation, BaseSchema) or issubclass(type_annotation, Enum) or issubclass(type_annotation, BaseModel):
                 return FieldValidationResult(True, core_type_annotation=type_annotation, core_type_class=type_annotation, core_type_object_iterator=create_iterator(path))
         
         # Get origin and args for generic types

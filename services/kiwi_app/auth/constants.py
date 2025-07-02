@@ -83,7 +83,7 @@ DEFAULT_ROLE_PERMISSIONS = {
     ],
 }
 
-print(DEFAULT_ROLE_PERMISSIONS[DefaultRoles.ADMIN])
+# print(DEFAULT_ROLE_PERMISSIONS[DefaultRoles.ADMIN])
 
 # --- Default Org / User Info ---
 DEFAULT_ORG_NAME = "KiwiQ AI"

@@ -40,6 +40,7 @@ class RAGSearchRequest(RAGBaseRequest):
     query: str = Field(..., description="Search query text", min_length=1, max_length=1000)
     search_type: SearchType = Field(SearchType.HYBRID, description="Type of search to perform")
     limit: int = Field(10, ge=1, le=100, description="Maximum number of results to return")
+    offset: int = Field(0, ge=0, description="Number of results to skip for pagination")
     
     # Vector search specific
     alpha: Optional[float] = Field(None, ge=0.0, le=1.0, description="Hybrid search balance (1.0=vector, 0.0=keyword)")

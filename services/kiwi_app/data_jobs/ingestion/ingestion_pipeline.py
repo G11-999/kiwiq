@@ -19,6 +19,7 @@ Key Features:
 import json
 import logging
 from datetime import datetime, timezone
+from datetime import datetime, date
 from typing import List, Dict, Any, Optional, Union, Tuple
 from uuid import UUID, uuid4
 
@@ -413,6 +414,20 @@ class DocumentIngestionPipeline:
             f"preserve_temporal={preserve_temporal_fields}"
         )
     
+    def _convert_datetimes_to_str(self, obj: Any) -> Any:
+        """Recursively convert datetime objects to ISO format strings."""
+        
+        if isinstance(obj, (datetime, date)):
+            return obj.isoformat()
+        elif isinstance(obj, dict):
+            return {k: self._convert_datetimes_to_str(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [self._convert_datetimes_to_str(item) for item in obj]
+        elif isinstance(obj, tuple):
+            return tuple(self._convert_datetimes_to_str(item) for item in obj)
+        else:
+            return obj
+
     def _prepare_document_data(self, doc_data: Any) -> Tuple[Dict[str, Any], bool]:
         """
         Convert document data to appropriate format for processing and determine if it's JSON-like.
@@ -427,33 +442,37 @@ class DocumentIngestionPipeline:
         """
         # First, try to normalize to dict/JSON format
         if isinstance(doc_data, dict):
-            return doc_data, True
+            ret_value = doc_data, True
         elif hasattr(doc_data, 'model_dump'):
-            return doc_data.model_dump(), True
+            ret_value = doc_data.model_dump(), True
         elif hasattr(doc_data, 'dict'):
-            return doc_data.dict(), True
+            ret_value = doc_data.dict(), True
         elif hasattr(doc_data, '__dict__'):
-            return doc_data.__dict__, True
+            ret_value = doc_data.__dict__, True
         elif isinstance(doc_data, str):
             # Try to parse as JSON
             try:
                 parsed = json.loads(doc_data)
                 if isinstance(parsed, dict):
-                    return parsed, True
+                    ret_value = parsed, True
                 else:
                     # JSON but not a dict (e.g., list, primitive) - treat as text
-                    return {"content": doc_data}, False
+                    ret_value = {"content": doc_data}, False
             except json.JSONDecodeError:
                 # Not valid JSON - treat as text
-                return {"content": doc_data}, False
+                ret_value = {"content": doc_data}, False
         elif isinstance(doc_data, (list, tuple)):
             # Collections that aren't dicts - treat as text
             text_content = str(doc_data)
-            return {"content": text_content}, False
+            ret_value = {"content": text_content}, False
         else:
             # Any other type - convert to text
             text_content = str(doc_data)
-            return {"content": text_content}, False
+            ret_value = {"content": text_content}, False
+
+        if ret_value[1]:
+            ret_value = self._convert_datetimes_to_str(ret_value[0]), ret_value[1]
+        return ret_value
     
     def _generate_doc_id(self, metadata: CustomerDocumentSearchResultMetadata) -> str:
         """

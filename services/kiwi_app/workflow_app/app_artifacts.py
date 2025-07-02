@@ -11,7 +11,6 @@ from pydantic import BaseModel, Field, model_validator, field_validator, Validat
 
 # Assuming these dependencies exist based on app_state.py
 from kiwi_app.auth.dependencies import get_current_active_verified_user, get_current_active_superuser # Make sure get_current_superuser exists
-from kiwi_app.auth.models import User
 from kiwi_app.utils import get_kiwi_logger # If a logger is needed
 
 # logger = get_kiwi_logger(name="kiwi_app.app_artifacts")

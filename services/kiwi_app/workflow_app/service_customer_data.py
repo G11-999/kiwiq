@@ -2060,6 +2060,8 @@ class CustomerDataService:
             
         Returns:
             List of document metadata
+        
+        # NOTE: since versioned metadata is being skipped, skip and limit won't work as expected!
         """
         if not include_shared and not include_user_specific and not include_system_entities:
             self.logger.info("No document types included, returning empty list")

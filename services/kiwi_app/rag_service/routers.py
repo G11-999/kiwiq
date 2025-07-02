@@ -67,9 +67,11 @@ async def search_documents(
     - Chunk-level content and metadata filtering
     - Relevance scoring and ranking
     - Optional vector embeddings in results
+    - Pagination support with limit and offset parameters
     
     **Performance Notes:**
     - Results are limited to 100 documents maximum per request
+    - Use offset parameter for pagination through large result sets
     - Execution time is tracked and returned in response
     - Filters are optimized for Weaviate performance
     

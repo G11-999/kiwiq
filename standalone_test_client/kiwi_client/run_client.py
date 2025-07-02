@@ -78,7 +78,8 @@ class WorkflowRunTestClient:
                          inputs: Dict[str, Any] = EXAMPLE_BASIC_LLM_RUN_INPUTS,
                          resume_run_id: Optional[Union[str, uuid.UUID]] = None,
                          force_resume_experimental_option: Optional[bool] = False,
-                         on_behalf_of_user_id: Optional[Union[str, uuid.UUID]] = None) -> Optional[wf_schemas.WorkflowRunRead]:
+                         on_behalf_of_user_id: Optional[Union[str, uuid.UUID]] = None,
+                         thread_id: Optional[Union[str, uuid.UUID]] = None) -> Optional[wf_schemas.WorkflowRunRead]:
         """
         Tests submitting a new workflow run via POST /runs/.
 
@@ -94,6 +95,7 @@ class WorkflowRunTestClient:
             resume_run_id (Optional[Union[str, uuid.UUID]]): The ID of a previous run to resume.
             force_resume_experimental_option (Optional[bool]): Whether to force resume a run even if not in WAITING_HITL state.
             on_behalf_of_user_id (Optional[Union[str, uuid.UUID]]): User ID to act on behalf of (requires superuser privileges).
+            thread_id (Optional[Union[str, uuid.UUID]]): Thread ID to resume from existing thread to retain message history.
 
         Returns:
             Optional[wf_schemas.WorkflowRunRead]: The parsed and validated response body of the submitted run
@@ -125,6 +127,11 @@ class WorkflowRunTestClient:
         if on_behalf_of_user_id:
             payload["on_behalf_of_user_id"] = str(on_behalf_of_user_id)  # Ensure string for JSON
             logger.info(f"Run will be submitted on behalf of user ID: {on_behalf_of_user_id}")
+
+        # Add thread_id to payload if provided
+        if thread_id:
+            payload["thread_id"] = str(thread_id)  # Ensure string for JSON
+            logger.info(f"Run will be submitted with thread ID: {thread_id}")
 
         try:
             # Endpoint returns 202 Accepted, body contains WorkflowRunRead schema
@@ -333,6 +340,8 @@ class WorkflowRunTestClient:
                         validated_event = event_schemas.WorkflowRunStatusUpdateEvent.model_validate(event_data)
                     elif base_event.event_type == event_schemas.WorkflowEvent.HITL_REQUEST:
                         validated_event = event_schemas.HITLRequestEvent.model_validate(event_data)
+                    elif base_event.event_type == event_schemas.WorkflowEvent.TOOL_CALL:
+                        validated_event = event_schemas.ToolCallEvent.model_validate(event_data)
                     else:
                         # Fallback to base event if type is unknown
                         validated_event = base_event

@@ -190,7 +190,7 @@ class WorkflowRunState(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 # Define a type for the detailed_results (list of events from MongoDB)
-WorkflowRunEventDetail = Union[event_schemas.WorkflowRunNodeOutputEvent, event_schemas.WorkflowRunStatusUpdateEvent, event_schemas.MessageStreamChunk, event_schemas.HITLRequestEvent, Dict[str, Any]]
+WorkflowRunEventDetail = Union[event_schemas.WorkflowRunNodeOutputEvent, event_schemas.WorkflowRunStatusUpdateEvent, event_schemas.MessageStreamChunk, event_schemas.HITLRequestEvent, event_schemas.ToolCallEvent, Dict[str, Any]]
 
 class WorkflowRunDetailRead(WorkflowRunRead):
     """Schema for reading detailed WorkflowRun results (combines SQL + NoSQL data)."""
@@ -626,7 +626,7 @@ class CustomerDocumentMetadata(BaseModel):
     id: Optional[str] = None
     org_id: Optional[uuid.UUID] = None
     # scope: str # e.g., 'shared', 'user' - Replaced by user_id + is_shared logic
-    user_id_or_shared_placeholder: str = Field(..., description="The user ID or '_shared_' placeholder.")
+    user_id_or_shared_placeholder: Optional[str] = Field(None, description="The user ID or '_shared_' placeholder.")
     namespace: str
     docname: str
     is_versioned: bool = Field(..., description="Indicates if this corresponds to a versioned document entry")

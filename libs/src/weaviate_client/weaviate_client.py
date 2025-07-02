@@ -654,6 +654,7 @@ class WeaviateChunkClient:
         query_vector: Optional[List[float]] = None,
         query_text: Optional[str] = None,
         limit: int = 10,
+        offset: int = 0,
         where_filter: Optional[Filter] = None,
         return_properties: Optional[List[str]] = None,
         include_vector: bool = False,
@@ -667,6 +668,7 @@ class WeaviateChunkClient:
             query_vector: Query vector (if None, query_text must be provided)
             query_text: Query text for vectorization
             limit: Maximum results to return
+            offset: Number of results to skip before applying the limit
             where_filter: Optional prefilter
             return_properties: Properties to return (None = all)
             include_vector: Whether to include vectors in results
@@ -690,6 +692,7 @@ class WeaviateChunkClient:
         # Build query kwargs
         base_kwargs = {
             "limit": limit,
+            "offset": offset,
         }
         if where_filter:
             base_kwargs["filters"] = where_filter
@@ -712,7 +715,7 @@ class WeaviateChunkClient:
                 )
             else:
                 # Log the search query for debugging
-                logger.debug(f"Performing vector search with text: '{query_text}', limit: {limit}")
+                logger.debug(f"Performing vector search with text: '{query_text}', limit: {limit}, offset: {offset}")
                 result = await collection.query.near_text(
                     query=query_text,
                     return_metadata=MetadataQuery.full() if return_metadata else None,
@@ -733,6 +736,7 @@ class WeaviateChunkClient:
         self,
         query: str,
         limit: int = 10,
+        offset: int = 0,
         where_filter: Optional[Filter] = None,
         return_properties: Optional[List[str]] = None,
         bm25_properties: Optional[List[str]] = None,
@@ -744,6 +748,7 @@ class WeaviateChunkClient:
         Args:
             query: Search query
             limit: Maximum results to return
+            offset: Number of results to skip before applying the limit
             where_filter: Optional prefilter
             return_properties: Properties to return
             bm25_properties: Properties to search (default: searchable properties)
@@ -768,6 +773,7 @@ class WeaviateChunkClient:
         kwargs = {
             "query": query,
             "limit": limit,
+            "offset": offset,
         }
         if where_filter:
             kwargs["filters"] = where_filter
@@ -790,6 +796,7 @@ class WeaviateChunkClient:
         self,
         query: str,
         limit: int = 10,
+        offset: int = 0,
         alpha: Optional[float] = None,
         where_filter: Optional[Filter] = None,
         return_properties: Optional[List[str]] = None,
@@ -802,6 +809,7 @@ class WeaviateChunkClient:
         Args:
             query: Search query
             limit: Maximum results to return
+            offset: Number of results to skip before applying the limit
             alpha: Balance between vector (1.0) and keyword (0.0) search
             where_filter: Optional prefilter
             return_properties: Properties to return
@@ -824,6 +832,7 @@ class WeaviateChunkClient:
         kwargs = {
             "query": query,
             "limit": limit,
+            "offset": offset,
         }
         if alpha is not None:
             kwargs["alpha"] = alpha
@@ -851,6 +860,7 @@ class WeaviateChunkClient:
         user_timezone: str = "UTC",
         additional_filters: Optional[Filter] = None,
         limit: int = 100,
+        offset: int = 0,
     ) -> List[Dict[str, Any]]:
         """
         Search for chunks within a date range.
@@ -862,6 +872,7 @@ class WeaviateChunkClient:
             user_timezone: User's timezone for conversion
             additional_filters: Additional filters to apply
             limit: Maximum results
+            offset: Number of results to skip before applying the limit
             
         Returns:
             List[Dict[str, Any]]: Chunks within date range
@@ -918,6 +929,7 @@ class WeaviateChunkClient:
         
         kwargs = {
             "limit": limit,
+            "offset": offset,
         }
         if where_filter:
             kwargs["filters"] = where_filter
@@ -1138,6 +1150,7 @@ class WeaviateChunkClient:
             kwargs = {
                 "filters": combined_filter,
                 "limit": 10000,  # Adjust based on expected chunks per doc
+                # NOTE: can use offset in below method!
             }
             if return_properties:
                 kwargs["return_properties"] = return_properties
@@ -1224,13 +1237,23 @@ async def example_usage():
         results = await client.vector_search(
             query_text="technical documentation overview",
             limit=5,
+            offset=0,
         )
         print(f"Vector search found {len(results)} results")
+        
+        # Vector search with offset for pagination
+        results = await client.vector_search(
+            query_text="technical documentation overview",
+            limit=3,
+            offset=2,
+        )
+        print(f"Vector search with offset found {len(results)} results")
         
         # Vector search with different query
         results = await client.vector_search(
             query_text="title content",
             limit=5,
+            offset=0,
         )
         print(f"Vector search found {len(results)} results")
         
@@ -1238,6 +1261,7 @@ async def example_usage():
         results = await client.keyword_search(
             query="specifications",
             limit=5,
+            offset=0,
         )
         print(f"Keyword search found {len(results)} results")
         
@@ -1246,6 +1270,7 @@ async def example_usage():
             query="technical documentation",
             alpha=0.7,  # More weight on vector search
             limit=5,
+            offset=0,
         )
         print(f"Hybrid search found {len(results)} results")
         
@@ -1255,6 +1280,8 @@ async def example_usage():
             end_date=datetime(2024, 2, 1, tzinfo=timezone.utc),
             date_field=ChunkSchema.SCHEDULED_DATE,
             user_timezone="UTC",
+            limit=100,
+            offset=0,
         )
         print(f"Date range search found {len(results)} results")
         

@@ -33,7 +33,10 @@ from prefect import get_client as prefect_get_client
 from workflow_service.services.events import WorkflowBaseEvent # Assuming path for event schemas
 
 from kiwi_app.workflow_app.service_customer_data import CustomerDataService
+from weaviate_client.weaviate_client import WeaviateChunkClient
 from linkedin_integration.models import *
+from kiwi_app.rag_service.services import RAGService
+from kiwi_app.data_jobs.ingestion.ingestion_pipeline import DocumentIngestionPipeline
 
 # Global clients storage
 _mongo_clients: Dict[str, AsyncMongoDBClient] = {}
@@ -171,12 +174,14 @@ class ExternalContextManager(BaseModel):
     redis: RedisContext = Field(...)
     mongo: MongoContext = Field(...)
     rabbit: RabbitMQContext = Field(...)
+    weaviate_client: WeaviateChunkClient = Field(...)
     prefect_client: Optional[Any] = Field(default=None)
     daos: DAOContext = Field(...)
     db_registry: DBRegistry = Field(...)
     customer_data_service: CustomerDataService = Field(...)  #  CustomerDataService
     billing_service: billing_services.BillingService = Field(...)
     data_job_service: data_jobs_services.DataJobService = Field(...)
+    rag_service: RAGService = Field(...)  # RAG service (optional as it requires Weaviate)
 
     class Config:
         arbitrary_types_allowed = True # Allow non-pydantic types like clients
@@ -244,6 +249,14 @@ class ExternalContextManager(BaseModel):
             await self.customer_data_service.mongo_client.close()
             await self.customer_data_service.versioned_mongo_client.client.close()
             logger.debug("Closed CustomerDataService mongo_client connection")
+        
+        # Close RAG service if available
+        if self.rag_service:
+            try:
+                await self.rag_service.weaviate_client.close()
+                logger.debug("Closed RAG service Weaviate client connection")
+            except Exception as e:
+                logger.error(f"Error closing RAG service: {e}", exc_info=True)
         
         # Note: BillingService doesn't require explicit cleanup as it only contains DAOs
         # which don't maintain persistent connections
@@ -459,6 +472,49 @@ async def get_redis_client(decode_responses: bool = True) -> AsyncRedisClient:
     return client
 
 
+async def get_rag_service_no_dependency(
+    customer_data_service: CustomerDataService,
+    weaviate_client: Optional[WeaviateChunkClient] = None,
+) -> RAGService:
+    """
+    Create RAGService instance without FastAPI dependencies.
+    
+    This function is designed for use in contexts where FastAPI dependency injection
+    is not available, such as in workflow nodes, background tasks, or testing scenarios.
+    All required dependencies must be provided explicitly as parameters.
+    
+    Args:
+        weaviate_client: Pre-configured Weaviate client for vector operations
+        customer_data_service: Pre-configured customer data service for MongoDB access
+    
+    Returns:
+        RAGService: Fully configured RAG service instance
+        
+    Raises:
+        RAGConfigurationException: If service instantiation fails
+        
+    Note:
+        This function does not manage the lifecycle of the provided dependencies.
+        The caller is responsible for proper initialization and cleanup of all
+        provided clients and services.
+    """
+    
+    if weaviate_client is None:
+        weaviate_client = WeaviateChunkClient()
+        await weaviate_client.connect()
+    ingestion_pipeline = DocumentIngestionPipeline(weaviate_client=weaviate_client)
+    
+    # Create RAG service with provided dependencies
+    rag_service = RAGService(
+        weaviate_client=weaviate_client,
+        customer_data_service=customer_data_service,
+        ingestion_pipeline=ingestion_pipeline
+    )
+    
+    return rag_service
+
+
+
 # Setup function to initialize all clients
 async def get_external_context_manager_with_clients() -> ExternalContextManager:
     """
@@ -549,6 +605,14 @@ async def get_external_context_manager_with_clients() -> ExternalContextManager:
     # Initialize data job service using the centralized dependency function
     data_job_service = get_data_jobs_service_no_dependencies()
     
+    # Initialize RAG service if Weaviate is available
+    # from kiwi_app.rag_service.dependencies import get_rag_service_no_dependency
+    rag_service = await get_rag_service_no_dependency(
+        customer_data_service=customer_data_service,
+    )
+    # Try to initialize Weaviate client
+    weaviate_client = rag_service.weaviate_client
+    
     # Create and return the ExternalContextManager
     external_context = ExternalContextManager(
         redis=RedisContext(
@@ -564,12 +628,14 @@ async def get_external_context_manager_with_clients() -> ExternalContextManager:
             notifications_queue=workflow_notifications_queue,
             stream=workflow_stream
         ),
+        weaviate_client=weaviate_client,
         prefect_client=clients["prefect"],
         daos=dao_context,
         db_registry=db_registry,
         customer_data_service=customer_data_service,
         billing_service=billing_service,
-        data_job_service=data_job_service
+        data_job_service=data_job_service,
+        rag_service=rag_service,
     )
     
     return external_context
@@ -621,6 +687,9 @@ async def main():
         elif base_event.event_type == event_schemas.WorkflowEvent.HITL_REQUEST.value:
             typed_event = event_schemas.HITLRequestEvent.model_validate(event_dict)
             # stream_events.append(typed_event)
+        elif base_event.event_type == event_schemas.WorkflowEvent.TOOL_CALL.value:
+            typed_event = event_schemas.ToolCallEvent.model_validate(event_dict)
+            # stream_events.append(typed_event)
         # else:
         #     # For unknown event types, use the base event
         #     logger.info(f"Unknown event type {base_event.event_type} for run {run.id}, using base event model")
@@ -628,6 +697,8 @@ async def main():
     
     for event in stream_events:
         print("\n\n\n\n", event, "\n\n\n\n")
+    
+    await external_context.close()
 
 if __name__ == "__main__":
     asyncio.run(main())

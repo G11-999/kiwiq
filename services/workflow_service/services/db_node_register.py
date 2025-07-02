@@ -30,6 +30,13 @@ from workflow_service.registry.nodes.core.router_node import RouterNode
 from workflow_service.registry.nodes.scraping.linkedin_scraping import LinkedInScrapingNode
 from workflow_service.registry.nodes.tools.tool_executor_node import ToolExecutorNode
 
+from services.workflow_service.registry.nodes.tools.documents.document_crud_tools import (
+    DocumentViewerTool,
+    EditDocumentTool,
+    DocumentSearchTool,
+    ListDocumentsTool,
+)
+
 async def register_node_templates(db_registry: DBRegistry):
     node_classes = [
         # Core Nodes
@@ -58,6 +65,11 @@ async def register_node_templates(db_registry: DBRegistry):
         ToolExecutorNode,
         # Scraping
         LinkedInScrapingNode,
+        # Document CRUD Tools
+        DocumentViewerTool,
+        EditDocumentTool,
+        DocumentSearchTool,
+        ListDocumentsTool,
     ]
     # assert None of the classes have duplicate node_names i.e. node types!
     assert len(set(node.node_name for node in node_classes)) == len(node_classes)

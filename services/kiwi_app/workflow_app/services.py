@@ -641,6 +641,9 @@ class WorkflowService:
                     elif base_event.event_type == event_schemas.WorkflowEvent.HITL_REQUEST.value:
                         base_event = event_schemas.HITLRequestEvent.model_validate(event_dict)
                         # detailed_events.append(hitl_request)
+                    elif base_event.event_type == event_schemas.WorkflowEvent.TOOL_CALL.value:
+                        base_event = event_schemas.ToolCallEvent.model_validate(event_dict)
+                        # detailed_events.append(tool_call)
                     # TODO: Could try validating against specific types based on 'event_type'
                     # for more detailed structure, but base is often sufficient for listing.
                     detailed_events.append(base_event)
@@ -730,6 +733,9 @@ class WorkflowService:
                         # stream_events.append(typed_event)
                     elif base_event.event_type == event_schemas.WorkflowEvent.HITL_REQUEST.value:
                         typed_event = event_schemas.HITLRequestEvent.model_validate(event_dict)
+                        # stream_events.append(typed_event)
+                    elif base_event.event_type == event_schemas.WorkflowEvent.TOOL_CALL.value:
+                        typed_event = event_schemas.ToolCallEvent.model_validate(event_dict)
                         # stream_events.append(typed_event)
                     else:
                         # For unknown event types, use the base event

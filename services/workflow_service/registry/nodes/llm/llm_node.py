@@ -5,13 +5,13 @@ This module provides a LangChain-based LLM node implementation that supports mul
 model providers (OpenAI, Anthropic, Gemini) with structured output and tool calling.
 """
 import asyncio
-from copy import copy
+from copy import copy, deepcopy
 import json
 import os
 from enum import Enum
 import re
 import time
-from typing import Any, ClassVar, Dict, List, Optional, Type, Union, Literal, cast
+from typing import Any, ClassVar, Dict, List, Optional, Type, Union, Literal, cast, get_origin, get_args
 from functools import partial
 from operator import itemgetter
 from uuid import uuid4
@@ -53,7 +53,7 @@ from pydantic.v1 import BaseModel as BaseModelV1
 # ######## ######## ######## ######## ######## ######## ########
 
 # from anthropic import Anthropic
-# from openai import OpenAI
+from openai import OpenAI
 import anthropic
 
 from langchain_core.messages import (
@@ -132,6 +132,7 @@ class ToolOutput(BaseSchema):
     name: str = Field(description="Name of the tool that was executed")
     status: str = Field(description="Status of the execution ('success' or 'error')")
     error_message: Optional[str] = Field(None, description="Error message if execution failed")
+    state_changes: Optional[Dict[str, Any]] = Field(None, description="State changes made by the tool execution")
 
 
 class LLMNodeInputSchema(BaseSchema):
@@ -176,6 +177,7 @@ class LLMMetadata(BaseSchema):
     latency: Optional[float] = Field(None, description="Latency in seconds")
     cached: Optional[bool] = Field(default=False, description="Whether the response was cached")
     iteration_count: Optional[int] = Field(default=0, description="Number of LLM Generation iterations")
+    tool_call_count: Optional[int] = Field(default=0, description="Number of tool calls made")
 
 
 class ToolCall(BaseSchema):
@@ -381,10 +383,19 @@ class LLMStructuredOutputSchema(BaseNodeConfig):
         if isinstance(schema, dict):
             # Check if 'required' is a key at the current level or if the schema is empty,
             # in which case additionalProperties still needs to be specified.
-            if "required" in schema or (
-                "properties" in schema and not schema["properties"]
-            ):
+            
+            
+            ### DEBUG HACKS for any Of ###
+            if "additionalProperties" in schema:
                 schema["additionalProperties"] = False
+            if "anyOf" in schema:
+                if isinstance(schema["anyOf"], list):
+                    schema["anyOf"] = [
+                        LLMStructuredOutputSchema._recursive_set_json_schema_to_openai_format(a) for a in schema["anyOf"]
+                    ]
+                else:
+                    schema["anyOf"] = LLMStructuredOutputSchema._recursive_set_json_schema_to_openai_format(schema["anyOf"])
+            ### DEBUG HACKS for any Of ###
 
             # Recursively check 'properties' and 'items' if they exist
             if "properties" in schema:
@@ -404,6 +415,11 @@ class LLMStructuredOutputSchema(BaseNodeConfig):
                     LLMStructuredOutputSchema._recursive_set_json_schema_to_openai_format(value)
             if "items" in schema:
                 LLMStructuredOutputSchema._recursive_set_json_schema_to_openai_format(schema["items"])
+            
+            if "required" in schema or (
+                "properties" in schema and not schema["properties"]
+            ):
+                schema["additionalProperties"] = False
 
         return schema
 
@@ -1002,6 +1018,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                 bind_kwargs["tools"] = [
                     convert_to_openai_tool(t, strict=strict) for t in tools
                 ]
+                bind_kwargs["parallel_tool_calls"] = True
             bind_kwargs.update(kwargs)
             llm = chat_model.bind(**bind_kwargs)
             if is_pydantic_schema:
@@ -1088,6 +1105,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
         
         if provider == LLMModelProvider.OPENAI:
            model_kwargs["stream_usage"] = True
+           model_kwargs["use_responses_api"] = True
            # model_kwargs["stream_options"] = {"include_usage": True}
 
         assert model_kwargs.get("max_tokens") <= model_metadata.output_token_limit, f"Max tokens ({model_kwargs['max_tokens']}) exceeds the model's {provider.value} -> `{model_name}` output token limit ({model_metadata.output_token_limit})"
@@ -1134,10 +1152,31 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
         messages = []
         current_messages = []
 
-        assert input_data.tool_outputs or (input_data.system_prompt or self.config.default_system_prompt) or input_data.user_prompt, "At least one of tool_outputs, system_prompt, or user_prompt must be provided to call the LLM!"
+        ####
+        def _extract_tool_call_ids(message: Any) -> List[str]:
+            """Extract all unique tool call IDs from a message, handling both objects and dicts."""
+            tool_ids = {}
+            
+            # Try accessing tool_calls directly (object attribute or dict key)
+            for attr_name in ['tool_calls', 'additional_kwargs']:
+                attr_val = getattr(message, attr_name, None) or (message.get(attr_name) if isinstance(message, dict) else None)
+                tool_calls = attr_val
+                if attr_val and attr_name == 'additional_kwargs':
+                    tool_calls = attr_val.get('tool_calls', [])
+                if tool_calls:
+                    for call in tool_calls:
+                        name = call.get('name', None)
+                        if not name:
+                            name = call.get('function', {}).get('name', None)
+                        if name:
+                            tool_ids[call.get('id')] = name
+            
+            return tool_ids
+        ####
+
+        last_tool_call_ids = {}
         
         added_images = set()
-        
         if input_data.messages_history:
             # messages.extend(self._convert_messages(input_data.messages_history))
             # TODO: FIXME: probably don't need to convert past message histories to langchain types??
@@ -1147,58 +1186,69 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                     for content in message.content:
                         if content.get("type") == "image_url":
                             added_images.add(content.get("image_url", {}).get("url"))
+        
+            # Extract tool call IDs from the last message for potential tool response handling
+            
+            if messages:
+                last_tool_call_ids = _extract_tool_call_ids(messages[-1])
+                if last_tool_call_ids:
+                    self.debug(f"Extracted tool call IDs from last message: {last_tool_call_ids}")
 
         elif input_data.system_prompt or self.config.default_system_prompt:
             # Don't add system prompt if messages_history is available
             messages.append(SystemMessage(content=input_data.system_prompt or self.config.default_system_prompt, id=str(uuid4())))
             current_messages.append(messages[-1])
         
-        if input_data.user_prompt or input_data.image_input_url_or_base64:
-            # Prepare content for HumanMessage - handle both text and images
-            content_parts = []
-            
-            # Add text content
-            if input_data.user_prompt:
-                content_parts.append({
-                    "type": "text",
-                    "text": input_data.user_prompt,
-                })
-            images = input_data.image_input_url_or_base64
-            if images:
-                if not isinstance(images, list):
-                    images = [images]
-                # Add images if available and not already added
-                if images:
-                    for image_url in images:
-                        if image_url not in added_images:
-                            content_parts.append({
-                                "type": "image_url",
-                                "image_url": {"url": image_url},
-                            })
-                            added_images.add(image_url)
-            
-            # Create HumanMessage with appropriate content format
-            if len(content_parts) == 1 and content_parts[0]["type"] == "text":
-                # If only text, use string content for simplicity
-                messages.append(HumanMessage(content=input_data.user_prompt, id=str(uuid4())))
-            else:
-                # If multiple parts or images, use list format
-                messages.append(HumanMessage(content=content_parts, id=str(uuid4())))
-            current_messages.append(messages[-1])
-        # TODO: log warning if neither of user prompt or tool output provided!
-        
         # print(added_images)
         # import ipdb; ipdb.set_trace()
+
+        ###### # TOOL USE # ######
+
+        last_tool_response_ids = set()
+        missing_tool_responses = set()
+
+        tool_outputs_to_add = []
+
+        # Find out all valid tool response ids following a tool call in last message and handle any missing tool responses by assuming user skipped the tool call
         
         if input_data.tool_outputs:
+            for i, tool_output in enumerate(input_data.tool_outputs):
+                if isinstance(tool_output, BaseModel):
+                    tool_output = tool_output.model_dump()
+                tool_call_id = tool_output.get("tool_call_id", f"tool_output_{i}")
+                if tool_call_id not in last_tool_call_ids:
+                    self.debug(f"Skipping tool output {i} since it's not in last tool call ids: {tool_call_id} not in {last_tool_call_ids}")
+                    continue
+                last_tool_response_ids.add(tool_call_id)
+                tool_outputs_to_add.append(tool_output)
+        
+        missing_tool_responses = {k:v for k, v in last_tool_call_ids.items() if k not in last_tool_response_ids}
+        for tool_call_id, tool_call_name in missing_tool_responses.items():
+            self.warning(f"Missing tool response ids: {missing_tool_responses}, assuming user skipped tool use")
+            tool_outputs_to_add.append(
+                ToolOutput(
+                    tool_call_id=tool_call_id,
+                    content="User skipped this tool use, please proceed accordingly.",
+                    name=tool_call_name,
+                    status="error",
+                )
+            )
+        
+        assert tool_outputs_to_add or (input_data.system_prompt or self.config.default_system_prompt) or input_data.user_prompt, "At least one of tool_outputs, system_prompt, or user_prompt must be provided to call the LLM!"
+        
+        if tool_outputs_to_add:
             assert model_metadata.tool_use, f"Model {model_metadata.provider.value} -> `{model_metadata.model_name}` does not support tool use!"
             tool_messages = []
-            for i, tool_output in enumerate(input_data.tool_outputs):
+            for i, tool_output in enumerate(tool_outputs_to_add):
                 if isinstance(tool_output, BaseModel):
                     tool_output = tool_output.model_dump()
                 if "content" not in tool_output:
                     raise ValueError(f"Tool output {i} must have a 'content' key! {tool_output}")
                 tool_call_id = tool_output.get("tool_call_id", f"tool_output_{i}")
+                if tool_call_id not in last_tool_call_ids:
+                    self.debug(f"Skipping tool output {i} since it's not in last tool call ids: {tool_call_id} not in {last_tool_call_ids}")
+                    continue
+                last_tool_response_ids.add(tool_call_id)
 
                 content = tool_output.get("content")
                 error_message = tool_output.get("error_message")
@@ -1272,10 +1322,46 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                     "type": "human",
                     "id": str(uuid4()),
                     "content": tool_messages
-                }]
+                }] if tool_messages else []
             # import ipdb; ipdb.set_trace()
             messages.extend(tool_messages)
             current_messages.extend(tool_messages)
+        
+        # Add user prompt if available after tool responses are added
+        if input_data.user_prompt:  #  or input_data.image_input_url_or_base64  ?? Can images be added without a user prompt??  NOTE: this behaviour was removed since this value is not being set NULL by tool calls!
+            # Prepare content for HumanMessage - handle both text and images
+            content_parts = []
+            
+            # Add text content
+            if input_data.user_prompt:
+                content_parts.append({
+                    "type": "text",
+                    "text": input_data.user_prompt,
+                })
+            images = input_data.image_input_url_or_base64
+            if images:
+                if not isinstance(images, list):
+                    images = [images]
+                # Add images if available and not already added
+                if images:
+                    for image_url in images:
+                        if image_url not in added_images:
+                            content_parts.append({
+                                "type": "image_url",
+                                "image_url": {"url": image_url},
+                            })
+                            added_images.add(image_url)
+            
+            # Create HumanMessage with appropriate content format
+            if len(content_parts) == 1 and content_parts[0]["type"] == "text":
+                # If only text, use string content for simplicity
+                messages.append(HumanMessage(content=input_data.user_prompt, id=str(uuid4())))
+            else:
+                # If multiple parts or images, use list format
+                messages.append(HumanMessage(content=content_parts, id=str(uuid4())))
+            current_messages.append(messages[-1])
+        # TODO: log warning if neither of user prompt or tool output provided!
+        
         # import ipdb; ipdb.set_trace()
         # Use node config for thinking message handling
         messages = self._filter_thinking_messages(messages, keep=self.config.thinking_tokens_in_prompt)
@@ -1366,17 +1452,22 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                             # modified_field.default = PydanticUndefined  # Remove any default value
                             # modified_field.default_factory = PydanticUndefined  # Mark as required for LLM tool calls
 
-                            modified_field = FieldInfo(
-                                # Don't pass any default value - this makes the field required
-                                annotation=v.annotation,
-                                description=v.description,
-                                title=v.title,
-                                examples=v.examples,
-                                json_schema_extra=v.json_schema_extra,
-                                metadata=v.metadata,
-                                # Explicitly exclude default and default_factory to make field required
-                                # All other field properties are preserved
-                            )
+                            annotation = v.annotation
+                            # origin = get_origin(v.annotation)
+                            # if origin is Union and any(arg is None for arg in get_args(v.annotation)):
+                            #     annotation = [arg for arg in get_args(v.annotation) if arg is not None][0]
+                            
+                            # modified_field = FieldInfo(
+                            #     # Don't pass any default value - this makes the field required
+                            #     annotation=annotation,
+                            #     description=v.description,
+                            #     title=v.title,
+                            #     examples=v.examples,
+                            #     json_schema_extra=v.json_schema_extra,
+                            #     metadata=v.metadata,
+                            #     # Explicitly exclude default and default_factory to make field required
+                            #     # All other field properties are preserved
+                            # )
                         
 
                         field_definitions[k] = (v.annotation, modified_field)
@@ -1389,7 +1480,59 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                     # Only bind user editable fields, hide other fields!
                     **field_definitions
                 )
-                # tool_for_binding = input_schema
+                if model_metadata.provider == LLMModelProvider.OPENAI:
+                    def convert_to_openai_tool_internal(schema: Dict[str, Any]) -> Dict[str, Any]:
+                        if "name" not in schema:
+                            name = schema.get("title", None)
+                        else:
+                            name = schema.get("name", None)
+                        
+                        schema["additionalProperties"] = False
+                        {
+                            "name": name,
+                            "parameters": schema,
+                            "strict": True,
+                            "type": "function",
+                            "description": schema.get("description", None),
+                        }
+                        return schema
+                        
+                        # openai_tool = {"type": "function"}
+                        # function = {}
+                        # if "name" not in schema:
+                        #     name = schema.pop("title", None)
+                        # else:
+                        #     name = schema.pop("name", None)
+                        # function["description"] = schema.pop("description", None)
+                        # function["strict"] = True
+
+                        # schema["additionalProperties"] = False
+                        # # openai_tool["additionalProperties"] = False
+                        # function["parameters"] = schema
+
+                        # function_format = {"type": "function", "function": function}
+
+                        # tool_format = {**openai_tool, **function}
+
+                        # # tool_format["function"] = {"strict": True, "name": function["name"], 
+                        # #                         #    "description": function["description"], "parameters": function["parameters"]
+                        # #                            }
+
+                        # # tool_format_with_function = deepcopy(tool_format)
+                        # # tool_format_with_function["function"] = function
+                        # # function = deepcopy(function)
+                        # return tool_format
+
+                        # # return tool_format
+                    
+                    json_schema = LLMStructuredOutputSchema._recursive_set_json_schema_to_openai_format(tool_for_binding.model_json_schema())
+                    if "title" in json_schema:
+                        json_schema["title"] = tool_config.tool_name
+                    if "name" in json_schema:
+                        json_schema["name"] = tool_config.tool_name
+                    tool_for_binding = convert_to_openai_tool_internal(json_schema)
+                    
+                ##### tool_for_binding = input_schema
             
             tools.append(tool_for_binding)
         
@@ -1834,6 +1977,9 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                     self.info(f"Consumed estimated web search credits: allocated=${estimated_credits:.6f}")
             except Exception as e:
                 self.warning(f"Error adjusting allocated web search credits: {str(e)}")
+
+        tool_call_count = len(tool_calls) if tool_calls else 0
+        metadata.tool_call_count = tool_call_count
 
         return LLMNodeOutputSchema(
             current_messages=current_messages,
@@ -2355,7 +2501,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                         kwargs = {
                             "system": system_message[1]
                         }
-                self.info(f"messages: {json.dumps(prompt_messages, indent=2)}, kwargs_system: {kwargs.get('system', None)}")
+                # self.info(f"messages: {json.dumps(prompt_messages, indent=2)}, kwargs_system: {kwargs.get('system', None)}")
                 input_tokens = anthropic.Anthropic().beta.messages.count_tokens(
                         model=model_name,
                         messages=prompt_messages,

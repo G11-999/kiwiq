@@ -262,6 +262,8 @@ class InteractiveWorkflowRunClient:
                 prompt_str = str(event.user_prompt) if hasattr(event, 'user_prompt') else '(no prompt)'
                 schema_str = str(event.request_data_schema) if hasattr(event, 'request_data_schema') else '(no schema)'
                 print(f"  HITL Request: User Prompt: {prompt_str}, Schema: {schema_str}")
+            elif isinstance(event, event_schemas.ToolCallEvent):
+                print(f"  Tool Call: {event.tool_name} (ID: {event.tool_call_id}) -- status: {event.status}")
             # Add more specific event type printing if needed
             # else: # Optional: print generic payload if not handled above
             #     if hasattr(event, 'payload') and event.payload:
@@ -359,7 +361,8 @@ class InteractiveWorkflowRunClient:
         poll_interval_sec: int = 3,
         timeout_sec: int = 300,
         stream_intermediate_results: bool = False,
-        on_behalf_of_user_id: Optional[uuid.UUID] = None
+        on_behalf_of_user_id: Optional[uuid.UUID] = None,
+        thread_id: Optional[uuid.UUID] = None
     ) -> Tuple[Optional[wf_schemas.WorkflowRunRead], Optional[Dict[str, Any]]]:
         """
         Submits a workflow run and monitors its execution until completion,
@@ -392,6 +395,7 @@ class InteractiveWorkflowRunClient:
             on_behalf_of_user_id: Optional user ID to act on behalf of. This is typically
                                  used by superusers/admins to perform operations as if they
                                  were another user.
+            thread_id: Optional thread ID to resume from existing thread to retain message history.
 
         Returns:
             A tuple containing:
@@ -467,7 +471,8 @@ class InteractiveWorkflowRunClient:
             submitted_run = await self._run_client.submit_run(
                 workflow_id=workflow_id_to_run, 
                 inputs=inputs,
-                on_behalf_of_user_id=on_behalf_of_user_id
+                on_behalf_of_user_id=on_behalf_of_user_id,
+                thread_id=thread_id
             )
             if not submitted_run:
                 logger.error(f"Failed to submit initial workflow run for workflow {workflow_id_to_run}.")
@@ -663,7 +668,8 @@ async def run_workflow_test(
     dump_artifacts: bool = True,
     poll_interval_sec: int = 3,
     timeout_sec: int = 600,
-    on_behalf_of_user_id: Optional[uuid.UUID] = None
+    on_behalf_of_user_id: Optional[uuid.UUID] = None,
+    thread_id: Optional[uuid.UUID] = None
 ) -> Tuple[Optional[wf_schemas.WorkflowRunRead], Optional[Dict[str, Any]]]:
     """
     Runs a complete workflow test, including setup, execution, validation, and cleanup.
@@ -720,6 +726,7 @@ async def run_workflow_test(
         on_behalf_of_user_id: Optional user ID to act on behalf of. This is typically
                              used by superusers/admins to perform operations as if they
                              were another user.
+        thread_id: Optional thread ID to resume from existing thread to retain message history.
 
     Returns:
         A tuple containing:
@@ -900,7 +907,7 @@ async def run_workflow_test(
                             # Document already exists
                             logger.info(f"[{test_name}] Document {doc_id_str} already exists, skipping creation.")
                             print(f"     ✓ Already exists.")
-                            continue
+                            # continue
                             
                         # Document doesn't exist, proceed with creation
                         if is_versioned:
@@ -1124,6 +1131,8 @@ async def run_workflow_test(
             print(f"   Streaming Intermediate Results: {'ENABLED' if stream_intermediate_results else 'DISABLED'}")
             print(f"   Polling Interval: {poll_interval_sec}s, Timeout: {timeout_sec}s")
 
+            # import ipdb; ipdb.set_trace()
+
             # Execute the workflow and wait for completion
             final_run_status_obj, final_run_outputs = await interactive_client.submit_and_monitor_run(
                 workflow_id=resolved_workflow_id if resolved_workflow_id else None,
@@ -1133,7 +1142,8 @@ async def run_workflow_test(
                 poll_interval_sec=poll_interval_sec,
                 timeout_sec=timeout_sec,
                 stream_intermediate_results=stream_intermediate_results,
-                on_behalf_of_user_id=on_behalf_of_user_id
+                on_behalf_of_user_id=on_behalf_of_user_id,
+                thread_id=thread_id
             )
 
             # --- 3. Validation Phase --- #

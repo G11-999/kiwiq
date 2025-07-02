@@ -70,6 +70,7 @@ aiosmtplib = "^4.0.1"
 anthropic = "^0.54.0"
 langchain-text-splitters = "^0.3.8"
 spacy = "^3.8.7"
+openai = "^1.93.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^25.1.0"

@@ -418,6 +418,9 @@ async def run_graph(
                                         **base_event_data,
                                         node_id=data.get("node_id", ""),
                                         payload={k:v for k,v in data.items() if k not in ["node_id", *ToolCallEvent.model_fields.keys()]},
+                                        tool_call_id=data.get("tool_call_id", ""),
+                                        tool_name=data.get("tool_name", ""),
+                                        status=data.get("status", ""),
                                     )
                                     tool_call_event_dump = tool_call_event.model_dump(mode='json', exclude_defaults=False)
                                     if mongo_path:

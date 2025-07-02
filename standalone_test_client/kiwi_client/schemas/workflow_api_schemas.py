@@ -184,7 +184,7 @@ class WorkflowRunState(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 # Define a type for the detailed_results (list of events from MongoDB)
-WorkflowRunEventDetail = Union[event_schemas.WorkflowRunNodeOutputEvent, event_schemas.WorkflowRunStatusUpdateEvent, event_schemas.MessageStreamChunk, event_schemas.HITLRequestEvent, Dict[str, Any]]
+WorkflowRunEventDetail = Union[event_schemas.WorkflowRunNodeOutputEvent, event_schemas.WorkflowRunStatusUpdateEvent, event_schemas.MessageStreamChunk, event_schemas.HITLRequestEvent, event_schemas.ToolCallEvent, Dict[str, Any]]
 
 class WorkflowRunDetailRead(WorkflowRunRead):
     """Schema for reading detailed WorkflowRun results (combines SQL + NoSQL data)."""

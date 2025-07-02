@@ -259,4 +259,4 @@ class Settings(GlobalSettings):
     
 
 settings = Settings()
-print(settings.MONGO_WORKFLOW_STREAM_SEGMENTS)
+# print(settings.MONGO_WORKFLOW_STREAM_SEGMENTS)

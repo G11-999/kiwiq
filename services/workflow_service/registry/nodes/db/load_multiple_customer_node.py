@@ -99,6 +99,11 @@ class LoadMultipleCustomerDataConfig(BaseNodeConfig):
         default=None, # <<< Change this back to None
         description="Default version configuration to apply when loading versioned documents. If None, loads the active version."
     )
+    global_load_active_version_only: bool = Field(
+        True,
+        description="If True, only loads the active version of each document. If False, loads all versions."
+    )
+
     global_schema_options: Optional[SchemaOptions] = Field(
         default_factory=SchemaOptions,
         description="Default schema handling options to apply when loading documents."
@@ -355,6 +360,7 @@ class LoadMultipleCustomerDataNode(BaseDynamicNode):
         listed_docs_metadata: List[CustomerDocumentMetadata] = []
         try:
             logger.info(f"Listing documents with config: {effective_config.model_dump(exclude_none=True)}")
+            effective_limit = effective_config.limit or 100
             listed_docs_metadata = await customer_data_service.list_documents(
                 org_id=org_id,
                 user=user,
@@ -362,12 +368,34 @@ class LoadMultipleCustomerDataNode(BaseDynamicNode):
                 include_shared=effective_config.include_shared,
                 include_user_specific=effective_config.include_user_specific,
                 skip=effective_config.skip or 0,
-                limit=effective_config.limit or 100,
+                limit=effective_limit,
                 on_behalf_of_user_id=on_behalf_of_user_id_uuid,
                 include_system_entities=effective_config.include_system_entities,
                 sort_by=effective_config.sort_by,
                 sort_order=effective_config.sort_order,
             )
+            if effective_config.global_load_active_version_only:
+                listed_docs_metadata = [doc for doc in listed_docs_metadata if doc.is_active_version is None or doc.is_active_version == True]
+            # if len(listed_docs_metadata) < effective_limit:
+            #     listed_docs_metadata2 = await customer_data_service.list_documents(
+            #         org_id=org_id,
+            #         user=user,
+            #         namespace_filter=effective_namespace_filter,
+            #         include_shared=effective_config.include_shared,
+            #         include_user_specific=effective_config.include_user_specific,
+            #         skip=len(listed_docs_metadata),
+            #         limit=effective_limit,
+            #         on_behalf_of_user_id=on_behalf_of_user_id_uuid,
+            #         include_system_entities=effective_config.include_system_entities,
+            #         sort_by=effective_config.sort_by,
+            #         sort_order=effective_config.sort_order,
+            #     )
+            #     if effective_config.global_load_active_version_only:
+            #         listed_docs_metadata2 = [doc for doc in listed_docs_metadata2 if doc.is_active_version is None or doc.is_active_version == True]
+            #     previous_paths = {doc.id for doc in listed_docs_metadata}
+            #     listed_docs_metadata.extend([doc for doc in listed_docs_metadata2 if doc.id not in previous_paths])
+            #     listed_docs_metadata = listed_docs_metadata[:effective_limit]
+
             logger.info(f"Found {len(listed_docs_metadata)} document(s) matching criteria.")
 
         except Exception as list_err:
@@ -463,6 +491,8 @@ class LoadMultipleCustomerDataNode(BaseDynamicNode):
                         if loaded_schema:
                              # Decide how to store/return schema info. Maybe in metadata?
                              schemas_loaded[doc_identifier] = loaded_schema # Store per doc for now
+                        if len(loaded_documents_list) >= effective_config.limit:
+                            break
                     else:
                         # This case might happen if doc deleted between list and get, or permission issue surfaced during get
                         logger.warning(f"Document '{doc_identifier}' found in list but could not be loaded (None returned). Skipping.")
@@ -473,9 +503,9 @@ class LoadMultipleCustomerDataNode(BaseDynamicNode):
                     load_errors.append(f"Error loading '{doc_identifier}': {load_err}")
 
         # --- 5. Prepare and Return Output ---
-        print("\n\n\n\neffective_namespace_filter\n\n\n\n")
-        print(effective_namespace_filter, effective_config.namespace_pattern)
-        print("\n\n\n\n")
+        # print("\n\n\n\neffective_namespace_filter\n\n\n\n")
+        # print(effective_namespace_filter, effective_config.namespace_pattern)
+        # print("\n\n\n\n")
         output_metadata = {
             "documents_listed": len(listed_docs_metadata),
             "documents_loaded": len(loaded_documents_list),
