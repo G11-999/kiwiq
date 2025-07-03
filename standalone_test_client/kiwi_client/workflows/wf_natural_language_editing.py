@@ -58,7 +58,7 @@ LLM_MODEL = "o4-mini"  # o4-mini   gpt-4.1    claude-sonnet-4-20250514
 TEMPERATURE = 0.7
 MAX_TOKENS = 2000
 MAX_TOOL_CALLS = 25  # Maximum total tool calls allowed
-MAX_LLM_ITERATIONS = 20  # Maximum LLM loop iterations
+MAX_LLM_ITERATIONS = 30  # Maximum LLM loop iterations
 
 # View context prompt template for showing current document view to LLM
 VIEW_CONTEXT_PROMPT_TEMPLATE = """
