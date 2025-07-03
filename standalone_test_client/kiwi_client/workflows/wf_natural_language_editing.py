@@ -53,8 +53,8 @@ from kiwi_client.workflows.llm_inputs.natural_language_editing_all_schemas impor
 )
 
 # Configuration constants
-LLM_PROVIDER = "anthropic"  # anthropic    openai
-LLM_MODEL = "claude-sonnet-4-20250514"  # o4-mini   gpt-4.1    claude-sonnet-4-20250514
+LLM_PROVIDER = "openai"  # anthropic    openai
+LLM_MODEL = "o4-mini"  # o4-mini   gpt-4.1    claude-sonnet-4-20250514
 TEMPERATURE = 0.7
 MAX_TOKENS = 2000
 MAX_TOOL_CALLS = 25  # Maximum total tool calls allowed
@@ -1028,29 +1028,36 @@ async def main_test_natural_language_editing():
     # Test scenarios with pre-defined HITL inputs using actual document types
     test_scenarios = [
         {
-            "name": "View and Edit Strategy Documents",
+            "name": "Change posting schedule",
             "initial_inputs": {
                 "entity_username": test_entity_username,
-                "user_request": "Show me my content strategy and user DNA documents, then update my content strategy to add a new content pillar for 'Customer Success Stories'"
+                "user_request": "Change my posting schedule to 2 per week Monday and Sunday."
             },
-            # "hitl_inputs": [
-            #     # First HITL: Approve viewing documents
-            #     {
-            #         "user_action": "approve_tools",
-            #         "user_feedback": ""
-            #     },
-            #     # Second HITL: Approve document edit
-            #     {
-            #         "user_action": "approve_tools",
-            #         "user_feedback": "Yes, please add the Customer Success Stories pillar with focus on case studies and client wins"
-            #     },
-            #     # Third HITL: Approve final workflow completion
-            #     {
-            #         "user_action": "stop_workflow",
-            #         "user_feedback": "Changes look good, thank you"
-            #     }
-            # ]
         },
+        # {
+        #     "name": "View and Edit Strategy Documents",
+        #     "initial_inputs": {
+        #         "entity_username": test_entity_username,
+        #         "user_request": "Show me my content strategy and user DNA documents, then update my content strategy to add a new content pillar for 'Customer Success Stories'"
+        #     },
+        #     # "hitl_inputs": [
+        #     #     # First HITL: Approve viewing documents
+        #     #     {
+        #     #         "user_action": "approve_tools",
+        #     #         "user_feedback": ""
+        #     #     },
+        #     #     # Second HITL: Approve document edit
+        #     #     {
+        #     #         "user_action": "approve_tools",
+        #     #         "user_feedback": "Yes, please add the Customer Success Stories pillar with focus on case studies and client wins"
+        #     #     },
+        #     #     # Third HITL: Approve final workflow completion
+        #     #     {
+        #     #         "user_action": "stop_workflow",
+        #     #         "user_feedback": "Changes look good, thank you"
+        #     #     }
+        #     # ]
+        # },
         # {
         #     "name": "View and Edit Strategy Documents",
         #     "initial_inputs": {

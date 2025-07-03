@@ -384,6 +384,7 @@ class CustomerDataService:
         is_called_from_workflow: bool = False,
         create_only_fields: List[str] = [],
         keep_create_fields_if_missing: bool = False,
+        lock: bool = True,
     ) -> bool:
         """
         Update a versioned document.
@@ -406,6 +407,7 @@ class CustomerDataService:
             is_called_from_workflow: Whether this operation is called from a workflow
             create_only_fields: List of fields in data which should be removed from data since this operation is an update
             keep_create_fields_if_missing: If True, keep create_only_fields in data if they don't exist in `existing object`
+            lock: Whether to lock the document during the operation to avoid race conditions
 
         Returns:
             True if document was updated successfully
@@ -468,15 +470,27 @@ class CustomerDataService:
         
         # Update document
         try:
-            success = await self.versioned_mongo_client.update_document(
-                base_path=base_path,
-                data=data,
-                version=version,
-                is_complete=is_complete,
-                allowed_prefixes=allowed_prefixes,
-                create_only_fields=create_only_fields,
-                keep_create_fields_if_missing=keep_create_fields_if_missing,
-            )
+            if lock:
+                success = await self.versioned_mongo_client.update_document(
+                    base_path=base_path,
+                    data=data,
+                    version=version,
+                    is_complete=is_complete,
+                    allowed_prefixes=allowed_prefixes,
+                    create_only_fields=create_only_fields,
+                    keep_create_fields_if_missing=keep_create_fields_if_missing,
+                )
+            else:
+                success = await self.versioned_mongo_client._update_document_no_lock(
+                    base_path=base_path,
+                    data=data,
+                    version=version,
+                    is_complete=is_complete,
+                    allowed_prefixes=allowed_prefixes,
+                    create_only_fields=create_only_fields,
+                    keep_create_fields_if_missing=keep_create_fields_if_missing,
+                )
+
             if not success:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
@@ -586,6 +600,7 @@ class CustomerDataService:
         on_behalf_of_user_id: Optional[uuid.UUID] = None,
         is_system_entity: bool = False,
         is_called_from_workflow: bool = False,
+        lock=True,
     ) -> bool:
         """
         Delete a versioned document.
@@ -599,7 +614,8 @@ class CustomerDataService:
             on_behalf_of_user_id: Optional user ID to act on behalf of (superusers only)
             is_system_entity: Whether this is a system entity (superusers only)
             is_called_from_workflow: Whether this operation is called from a workflow
-            
+            lock: Whether to lock the document during the operation to avoid race conditions
+
         Returns:
             True if document was deleted successfully
         """
@@ -639,10 +655,16 @@ class CustomerDataService:
         )
         
         try:
-            result = await self.versioned_mongo_client.delete_document(
-                base_path=base_path,
-                allowed_prefixes=allowed_prefixes,
-            )
+            if lock:
+                result = await self.versioned_mongo_client.delete_document(
+                    base_path=base_path,
+                    allowed_prefixes=allowed_prefixes,
+                )
+            else:
+                result = await self.versioned_mongo_client._delete_document_no_lock(
+                    base_path=base_path,
+                    allowed_prefixes=allowed_prefixes,
+                )
             
             if not result:
                 raise HTTPException(
@@ -1620,6 +1642,102 @@ class CustomerDataService:
         return operation_performed, document_identifier
 
     # --- Unversioned Document Methods --- #
+
+    async def _create_or_update_unversioned_document_no_lock(
+        self,
+        db: AsyncSession,
+        org_id: uuid.UUID,
+        namespace: str,
+        docname: str,
+        is_shared: bool,
+        user: User,
+        data: Any,
+        schema_template_name: Optional[str] = None,
+        schema_template_version: Optional[str] = None,
+        schema_definition: Optional[Dict[str, Any]] = None,
+        on_behalf_of_user_id: Optional[uuid.UUID] = None,
+        is_system_entity: bool = False,
+        is_called_from_workflow: bool = False,
+        create_only_fields: List[str] = [],
+        keep_create_fields_if_missing: bool = False,
+    ) -> bool:
+        # Permission checks for acting on behalf of another user or system entities
+        if on_behalf_of_user_id and not user.is_superuser:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only superusers can act on behalf of other users"
+            )
+            
+        if is_system_entity and not user.is_superuser:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only superusers can create or update system entities"
+            )
+        
+        base_path = self._build_base_path(
+            org_id=org_id, 
+            namespace=namespace, 
+            docname=docname, 
+            is_shared=is_shared, 
+            user=user,
+            on_behalf_of_user_id=on_behalf_of_user_id,
+            is_system_entity=is_system_entity
+        )
+
+        
+        
+        allowed_prefixes = self._get_allowed_prefixes(
+            org_id=org_id, 
+            user=user, 
+            on_behalf_of_user_id=on_behalf_of_user_id,
+            is_mutation=True,
+            is_system_entity=is_system_entity,
+            is_called_from_workflow=is_called_from_workflow,
+        )
+        
+        schema = None
+        # Validate against schema if provided
+        if schema_template_name:
+            schema = await self._get_schema_from_template(
+                db, schema_template_name, schema_template_version, org_id, user
+            )
+            if not schema:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Schema template '{schema_template_name}' not found",
+                )
+        elif schema_definition:
+            schema = schema_definition
+        if schema:
+            # TODO: Implement schema validation for unversioned documents
+            # This requires custom validation since unversioned client doesn't have built-in schema validation
+            # For now, we'll skip this and just store the data
+            try:
+                jsonschema.validate(instance=data, schema=schema, format_checker=Draft202012Validator.FORMAT_CHECKER)
+            except ValidationError as e:
+                error_path = "/".join(str(part) for part in e.path)
+                error_msg = f"{error_path}: {e.message}" if error_path else e.message
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"HITL input validation failed: {error_msg}"
+                )
+            
+        try:
+            result = await self.mongo_client.create_or_update_object(
+                path=base_path,
+                data=data,
+                allowed_prefixes=allowed_prefixes,
+                update_subfields=True,
+                create_only_fields=create_only_fields,
+                keep_create_fields_if_missing=keep_create_fields_if_missing,
+            )
+            
+            return result
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to create or update document: {str(e)}",
+            )
     
     async def create_or_update_unversioned_document(
         self,
@@ -1684,59 +1802,26 @@ class CustomerDataService:
             on_behalf_of_user_id=on_behalf_of_user_id,
             is_system_entity=is_system_entity
         )
-        
-        allowed_prefixes = self._get_allowed_prefixes(
-            org_id=org_id, 
-            user=user, 
-            on_behalf_of_user_id=on_behalf_of_user_id,
-            is_mutation=True,
-            is_system_entity=is_system_entity,
-            is_called_from_workflow=is_called_from_workflow,
-        )
-        
-        schema = None
-        # Validate against schema if provided
-        if schema_template_name:
-            schema = await self._get_schema_from_template(
-                db, schema_template_name, schema_template_version, org_id, user
-            )
-            if not schema:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Schema template '{schema_template_name}' not found",
-                )
-        elif schema_definition:
-            schema = schema_definition
-        if schema:
-            # TODO: Implement schema validation for unversioned documents
-            # This requires custom validation since unversioned client doesn't have built-in schema validation
-            # For now, we'll skip this and just store the data
-            try:
-                jsonschema.validate(instance=data, schema=schema, format_checker=Draft202012Validator.FORMAT_CHECKER)
-            except ValidationError as e:
-                error_path = "/".join(str(part) for part in e.path)
-                error_msg = f"{error_path}: {e.message}" if error_path else e.message
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"HITL input validation failed: {error_msg}"
-                )
-            
-        try:
-            result = await self.mongo_client.create_or_update_object(
-                path=base_path,
+
+        async with self.versioned_mongo_client._with_document_lock(base_path, "create_or_update_unversioned_document"):
+            return await self._create_or_update_unversioned_document_no_lock(
+                db=db,
+                org_id=org_id,
+                namespace=namespace,
+                docname=docname,
+                is_shared=is_shared,
+                user=user,
                 data=data,
-                allowed_prefixes=allowed_prefixes,
-                update_subfields=True,
+                schema_template_name=schema_template_name,
+                schema_template_version=schema_template_version,
+                schema_definition=schema_definition,
+                on_behalf_of_user_id=on_behalf_of_user_id,
+                is_system_entity=is_system_entity,
+                is_called_from_workflow=is_called_from_workflow,
                 create_only_fields=create_only_fields,
                 keep_create_fields_if_missing=keep_create_fields_if_missing,
             )
-            
-            return result
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to create or update document: {str(e)}",
-            )
+
     
     async def get_unversioned_document(
         self,

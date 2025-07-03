@@ -576,7 +576,7 @@ class EditDocumentTool(BaseNode[EditDocumentInputSchema, EditDocumentOutputSchem
         
         user = app_context.get("user")
         run_job = app_context.get("workflow_run_job")
-        customer_data_service = ext_context.customer_data_service
+        customer_data_service: CustomerDataService = ext_context.customer_data_service
         
         if not user or not run_job or not customer_data_service:
             self.error("Missing user, workflow run job, or customer data service in context")
@@ -619,68 +619,80 @@ class EditDocumentTool(BaseNode[EditDocumentInputSchema, EditDocumentOutputSchem
         all_success = True
         
         try:
-            # Fetch initial document content
-            current_content = await self._fetch_document(
-                document_info, org_id, user, customer_data_service
+
+            base_path = customer_data_service._build_base_path(
+                org_id=org_id, 
+                namespace=document_info.namespace, 
+                docname=document_info.docname, 
+                is_shared=document_info.is_shared, 
+                user=user,
+                # on_behalf_of_user_id=on_behalf_of_user_id,
+                is_system_entity=document_info.is_system_entity,
             )
-            
-            ops_errors = None
-            # Apply each operation
-            for i, operation in enumerate(input_data.operations):
-                try:
-                    if operation.operation_type == EditOperationType.DELETE_DOCUMENT:
-                        # Handle delete specially
-                        result = await self._handle_delete_operation(
-                            document_info, org_id, user, customer_data_service
-                        )
-                        operation_results.append({
-                            "operation_index": i,
-                            "operation_type": operation.operation_type.value,
-                            "success": result["success"],
-                            "message": result.get("message", "")
-                        })
-                        if result["success"]:
-                            current_content = None
-                        else:
-                            all_success = False
-                        break  # No operations after delete
-                    else:
-                        # Apply edit operation
-                        updated_content = await self._apply_edit_operation(
-                            operation, current_content
-                        )
-                        current_content = updated_content
-                        operation_results.append({
-                            "operation_index": i,
-                            "operation_type": operation.operation_type.value,
-                            "success": True,
-                            "message": "Operation applied successfully"
-                        })
-                except Exception as e:
-                    operation_results.append({
-                        "operation_index": i,
-                        "operation_type": operation.operation_type.value,
-                        "success": False,
-                        "message": f"Error: {str(e)}"
-                    })
-                    all_success = False
-                    self.error(f"Error in edit document operation: {e}", exc_info=True)
-                    ops_errors = str(e)
-                    break  # Stop on first error
-            
-            # Save the final content if not deleted
-            if all_success and current_content is not None:
-                save_success = await self._save_document(
-                    document_info, current_content, org_id, user, customer_data_service
+
+            async with customer_data_service.versioned_mongo_client._with_document_lock(base_path, "update_document"):
+                # Fetch initial document content
+                current_content = await self._fetch_document(
+                    document_info, org_id, user, customer_data_service
                 )
-                if not save_success:
-                    all_success = False
-                    operation_results.append({
-                        "operation_index": -1,
-                        "operation_type": "save",
-                        "success": False,
-                        "message": "Failed to save document after edits"
-                    })
+                
+                ops_errors = None
+                # Apply each operation
+                for i, operation in enumerate(input_data.operations):
+                    try:
+                        if operation.operation_type == EditOperationType.DELETE_DOCUMENT:
+                            # Handle delete specially
+                            result = await self._handle_delete_operation(
+                                document_info, org_id, user, customer_data_service
+                            )
+                            operation_results.append({
+                                "operation_index": i,
+                                "operation_type": operation.operation_type.value,
+                                "success": result["success"],
+                                "message": result.get("message", "")
+                            })
+                            if result["success"]:
+                                current_content = None
+                            else:
+                                all_success = False
+                            break  # No operations after delete
+                        else:
+                            # Apply edit operation
+                            updated_content = await self._apply_edit_operation(
+                                operation, current_content
+                            )
+                            current_content = updated_content
+                            operation_results.append({
+                                "operation_index": i,
+                                "operation_type": operation.operation_type.value,
+                                "success": True,
+                                "message": "Operation applied successfully"
+                            })
+                    except Exception as e:
+                        operation_results.append({
+                            "operation_index": i,
+                            "operation_type": operation.operation_type.value,
+                            "success": False,
+                            "message": f"Error: {str(e)}"
+                        })
+                        all_success = False
+                        self.error(f"Error in edit document operation: {e}", exc_info=True)
+                        ops_errors = str(e)
+                        break  # Stop on first error
+                
+                # Save the final content if not deleted
+                if all_success and current_content is not None:
+                    save_success = await self._save_document(
+                        document_info, current_content, org_id, user, customer_data_service
+                    )
+                    if not save_success:
+                        all_success = False
+                        operation_results.append({
+                            "operation_index": -1,
+                            "operation_type": "save",
+                            "success": False,
+                            "message": "Failed to save document after edits"
+                        })
             
             if all_success:
                 self.info(f"Successfully completed {len(operation_results)} edit operations on document {document_info.namespace}/{document_info.docname}")
@@ -883,10 +895,11 @@ class EditDocumentTool(BaseNode[EditDocumentInputSchema, EditDocumentOutputSchem
                         data=content,
                         version=document_info.version,
                         is_system_entity=document_info.is_system_entity,
-                        is_called_from_workflow=True
+                        is_called_from_workflow=True,
+                        lock=False,
                     )
                 else:
-                    _, created = await customer_data_service.create_or_update_unversioned_document(
+                    _, created = await customer_data_service._create_or_update_unversioned_document_no_lock(
                         db=db,
                         org_id=org_id,
                         namespace=document_info.namespace,
@@ -933,7 +946,8 @@ class EditDocumentTool(BaseNode[EditDocumentInputSchema, EditDocumentOutputSchem
                     is_shared=document_info.is_shared,
                     user=user,
                     is_system_entity=document_info.is_system_entity,
-                    is_called_from_workflow=True
+                    is_called_from_workflow=True,
+                    lock=False,
                 )
             else:
                 # Delete unversioned document
@@ -944,7 +958,7 @@ class EditDocumentTool(BaseNode[EditDocumentInputSchema, EditDocumentOutputSchem
                     is_shared=document_info.is_shared,
                     user=user,
                     is_system_entity=document_info.is_system_entity,
-                    is_called_from_workflow=True
+                    is_called_from_workflow=True,
                 )
             
             if success:
@@ -2192,7 +2206,7 @@ class ListDocumentsTool(BaseNode[ListDocumentsInputSchema, ListDocumentsOutputSc
         
         user = app_context.get("user")
         run_job = app_context.get("workflow_run_job")
-        customer_data_service = ext_context.customer_data_service
+        customer_data_service: CustomerDataService = ext_context.customer_data_service
         
         if not user or not run_job or not customer_data_service:
             self.error("Missing user, workflow run job, or customer data service in context")
