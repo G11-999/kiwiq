@@ -9,6 +9,7 @@ from typing import Optional, Dict, Any, List
 from pathlib import Path
 from global_config.settings import Settings as GlobalSettings
 
+
 class RapidAPISettings(GlobalSettings):
     """
     Settings for the RapidAPI LinkedIn scraper client.
