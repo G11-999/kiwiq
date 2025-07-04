@@ -417,7 +417,8 @@ class WorkflowService:
                 thread_id=workflow_run.thread_id, # Pass thread_id
                 graph_schema=GraphSchema.model_validate(graph_schema_dict), # Pass the graph schema
                 resume_after_hitl=run_submit.resume_after_hitl, # This is a new submission
-                prefect_run_ids=workflow_run.prefect_run_ids # Pass the prefect run_id if provided
+                prefect_run_ids=workflow_run.prefect_run_ids, # Pass the prefect run_id if provided
+                streaming_mode=run_submit.streaming_mode,
             )
             workflow_run = await self.workflow_run_dao.update(
                 db,

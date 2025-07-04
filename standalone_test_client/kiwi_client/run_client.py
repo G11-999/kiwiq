@@ -79,7 +79,9 @@ class WorkflowRunTestClient:
                          resume_run_id: Optional[Union[str, uuid.UUID]] = None,
                          force_resume_experimental_option: Optional[bool] = False,
                          on_behalf_of_user_id: Optional[Union[str, uuid.UUID]] = None,
-                         thread_id: Optional[Union[str, uuid.UUID]] = None) -> Optional[wf_schemas.WorkflowRunRead]:
+                         thread_id: Optional[Union[str, uuid.UUID]] = None,
+                         streaming_mode: Optional[bool] = True,
+                         ) -> Optional[wf_schemas.WorkflowRunRead]:
         """
         Tests submitting a new workflow run via POST /runs/.
 
@@ -96,6 +98,7 @@ class WorkflowRunTestClient:
             force_resume_experimental_option (Optional[bool]): Whether to force resume a run even if not in WAITING_HITL state.
             on_behalf_of_user_id (Optional[Union[str, uuid.UUID]]): User ID to act on behalf of (requires superuser privileges).
             thread_id (Optional[Union[str, uuid.UUID]]): Thread ID to resume from existing thread to retain message history.
+            streaming_mode (Optional[bool]): Whether to stream the LLM tokens.
 
         Returns:
             Optional[wf_schemas.WorkflowRunRead]: The parsed and validated response body of the submitted run
@@ -119,6 +122,7 @@ class WorkflowRunTestClient:
             # Convert GraphSchema to dict for JSON serialization
             payload["graph_schema"] = graph_schema.model_dump() if hasattr(graph_schema, 'model_dump') else graph_schema
             payload["inputs"] = inputs
+            payload["streaming_mode"] = streaming_mode
         else:
             logger.error("Submission error: Provide exactly one of workflow_id or graph_schema, or provide resume_run_id.")
             return None

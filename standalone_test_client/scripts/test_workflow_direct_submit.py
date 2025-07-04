@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 workflow_key = "content_calendar_entry_workflow"
 
-entity_username = "sytalal"
+entity_username = "mahak-vedi"
 workflow_inputs =  {
     "entity_username": entity_username,
     "weeks_to_generate": 1,
@@ -84,7 +84,7 @@ async def search_workflow_by_name(name: str, workflow_tester: WorkflowTestClient
     return search_results[0]
 
 
-async def test(workflow_name, inputs, workflow_version=None, parallel_submit_limit=50):
+async def test(workflow_name, inputs, workflow_version=None, parallel_submit_limit=5):
     # final_run_status_obj, final_run_outputs = await run_workflow_test(
     #     test_name=test_name,
     #     workflow_key=workflow_key,
@@ -119,9 +119,10 @@ async def test(workflow_name, inputs, workflow_version=None, parallel_submit_lim
             submitted_run = await run_client.submit_run(
                 workflow_id=resolved_workflow_id, 
                 inputs=inputs,
+                # streaming_mode=False,
                 # on_behalf_of_user_id=on_behalf_of_user_id,
                 # thread_id=thread_id
             )
 
 if __name__ == "__main__":
-    asyncio.run(test(workflow_name=workflow_key, inputs=workflow_inputs, parallel_submit_limit=50))
+    asyncio.run(test(workflow_name=workflow_key, inputs=workflow_inputs, parallel_submit_limit=12))

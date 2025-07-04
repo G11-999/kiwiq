@@ -123,6 +123,7 @@ class WorkflowRunCreate(BaseModel):
     # Override configs
     include_active_overrides: Optional[bool] = Field(default=True, description="Whether to include active overrides")
     include_override_tags: Optional[List[str]] = Field(default=None, description="List of override tags to include")
+    streaming_mode: Optional[bool] = Field(default=True, description="Whether to stream the LLM tokens")
 
 
 class WorkflowRunJobCreate(WorkflowRunCreate):

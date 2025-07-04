@@ -381,7 +381,7 @@ async def run_graph(
                     # logger.info(f"MongoDB path constructed successfully: {mongo_path}")
 
                     # --- Handle Different Stream Modes ---
-                    if stream_mode == "messages":
+                    if stream_mode == "messages" and workflow_run_job.streaming_mode:
                         # Process message chunks (e.g., from LLMs)
                         # Data is often AIMessageChunk or similar
                         if isinstance(data, (tuple, list)) and len(data) == 2:  #  and isinstance(data[0], AIMessageChunk):
@@ -765,6 +765,7 @@ async def trigger_workflow_run(
     graph_schema: Optional[GraphSchema] = None,
     resume_after_hitl: Optional[bool] = False,
     prefect_run_ids: Optional[str] = None,
+    streaming_mode: Optional[bool] = True,
 ) -> FlowRun:
     """
     Helper function to trigger a workflow run via the Prefect deployment.
@@ -779,6 +780,7 @@ async def trigger_workflow_run(
         graph_schema: Optional graph schema for resuming runs
         resume_after_hitl: Optional flag to resume after HITL
         prefect_run_ids: Optional Prefect flow run ID for resuming runs
+        streaming_mode: Optional flag to enable/disable streaming mode
     Returns:
         uuid.UUID: The run ID of the triggered flow
     """
@@ -801,6 +803,7 @@ async def trigger_workflow_run(
         thread_id=thread_id, # Pass thread_id
         graph_schema=graph_schema,
         resume_after_hitl=resume_after_hitl,
+        streaming_mode=streaming_mode,
     )
     
     # # Trigger the workflow as a deployment
@@ -909,7 +912,7 @@ if __name__ == "__main__":
             # pause_on_shutdown=global_settings.APP_ENV != "PROD",
             # interval=60,
             # cron="* * * * *",
-            concurrency_limit=20,
+            concurrency_limit=12,
             description=f"Production deployment for KiwiQ LangGraph workflows ({global_settings.APP_ENV})",
             version="workflow-service/deployments",
         ),
