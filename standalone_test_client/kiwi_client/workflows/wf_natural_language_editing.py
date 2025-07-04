@@ -53,8 +53,8 @@ from kiwi_client.workflows.llm_inputs.natural_language_editing_all_schemas impor
 )
 
 # Configuration constants
-LLM_PROVIDER = "openai"  # anthropic    openai
-LLM_MODEL = "gpt-4.1"  # o4-mini   gpt-4.1    claude-sonnet-4-20250514
+LLM_PROVIDER = "anthropic"  # anthropic    openai
+LLM_MODEL = "claude-sonnet-4-20250514"  # o4-mini   gpt-4.1    claude-sonnet-4-20250514
 TEMPERATURE = 0.7
 MAX_TOKENS = 2000
 MAX_TOOL_CALLS = 25  # Maximum total tool calls allowed
@@ -898,36 +898,36 @@ async def main_test_natural_language_editing():
     # Setup actual system documents with proper configurations
     setup_docs: List[SetupDocInfo] = [
         # User DNA document
-        {
-            'namespace': f"user_strategy_{test_entity_username}",
-            'docname': "user_dna_doc",
-            'initial_data': user_dna_data,
-            'is_shared': False,
-            'is_versioned': True,
-            'initial_version': "default",
-            'is_system_entity': False
-        },
-        # Content Strategy document
-        {
-            'namespace': f"user_strategy_{test_entity_username}",
-            'docname': "content_strategy_doc",
-            'initial_data': content_strategy_data,
-            'is_shared': False,
-            'is_versioned': True,
-            'initial_version': "default",
-            'is_system_entity': False
-        },
-        # Core Beliefs document
-        {
-            'namespace': f"user_inputs_{test_entity_username}",
-            'docname': "core_beliefs_perspectives_doc",
-            'initial_data': core_beliefs_data,
-            'is_shared': False,
-            'is_versioned': True,
-            'initial_version': "default",
-            'is_system_entity': False
-        },
-        # Content Pillars document
+        # {
+        #     'namespace': f"user_strategy_{test_entity_username}",
+        #     'docname': "user_dna_doc",
+        #     'initial_data': user_dna_data,
+        #     'is_shared': False,
+        #     'is_versioned': True,
+        #     'initial_version': "default",
+        #     'is_system_entity': False
+        # },
+        # # Content Strategy document
+        # {
+        #     'namespace': f"user_strategy_{test_entity_username}",
+        #     'docname': "content_strategy_doc",
+        #     'initial_data': content_strategy_data,
+        #     'is_shared': False,
+        #     'is_versioned': True,
+        #     'initial_version': "default",
+        #     'is_system_entity': False
+        # },
+        # # Core Beliefs document
+        # {
+        #     'namespace': f"user_inputs_{test_entity_username}",
+        #     'docname': "core_beliefs_perspectives_doc",
+        #     'initial_data': core_beliefs_data,
+        #     'is_shared': False,
+        #     'is_versioned': True,
+        #     'initial_version': "default",
+        #     'is_system_entity': False
+        # },
+        # # Content Pillars document
         {
             'namespace': f"user_inputs_{test_entity_username}",
             'docname': "content_pillars_doc",
@@ -937,53 +937,53 @@ async def main_test_natural_language_editing():
             'initial_version': "default",
             'is_system_entity': False
         },
-        # User Preferences document
-        {
-            'namespace': f"user_inputs_{test_entity_username}",
-            'docname': "user_preferences_doc",
-            'initial_data': {
-                "data": {
-                    "created_at": "2025-01-15T10:00:00Z",
-                    "updated_at": "2025-01-15T10:00:00Z",
-                    "goals_answers": [
-                        {
-                            "question": "What's your primary content goal?",
-                            "answer": "Build thought leadership in product management"
-                        }
-                    ],
-                    "user_preferences": {
-                        "audience": {
-                            "segments": [
-                                {
-                                    "audience_type": "Product Professionals",
-                                    "description": "Product managers, product owners, and product leaders"
-                                },
-                                {
-                                    "audience_type": "Tech Executives",
-                                    "description": "CTOs, VPs of Product, startup founders"
-                                }
-                            ]
-                        },
-                        "posting_schedule": {
-                            "posts_per_week": 3,
-                            "posting_days": ["Monday", "Wednesday", "Friday"],
-                            "exclude_weekends": True
-                        }
-                    },
-                    "timezone": {
-                        "iana_identifier": "America/New_York",
-                        "display_name": "Eastern Time",
-                        "utc_offset": "-05:00",
-                        "supports_dst": True,
-                        "current_offset": "-05:00"
-                    }
-                }
-            },
-            'is_shared': False,
-            'is_versioned': True,
-            'initial_version': "default",
-            'is_system_entity': False
-        }
+        # # User Preferences document
+        # {
+        #     'namespace': f"user_inputs_{test_entity_username}",
+        #     'docname': "user_preferences_doc",
+        #     'initial_data': {
+        #         "data": {
+        #             "created_at": "2025-01-15T10:00:00Z",
+        #             "updated_at": "2025-01-15T10:00:00Z",
+        #             "goals_answers": [
+        #                 {
+        #                     "question": "What's your primary content goal?",
+        #                     "answer": "Build thought leadership in product management"
+        #                 }
+        #             ],
+        #             "user_preferences": {
+        #                 "audience": {
+        #                     "segments": [
+        #                         {
+        #                             "audience_type": "Product Professionals",
+        #                             "description": "Product managers, product owners, and product leaders"
+        #                         },
+        #                         {
+        #                             "audience_type": "Tech Executives",
+        #                             "description": "CTOs, VPs of Product, startup founders"
+        #                         }
+        #                     ]
+        #                 },
+        #                 "posting_schedule": {
+        #                     "posts_per_week": 3,
+        #                     "posting_days": ["Monday", "Wednesday", "Friday"],
+        #                     "exclude_weekends": True
+        #                 }
+        #             },
+        #             "timezone": {
+        #                 "iana_identifier": "America/New_York",
+        #                 "display_name": "Eastern Time",
+        #                 "utc_offset": "-05:00",
+        #                 "supports_dst": True,
+        #                 "current_offset": "-05:00"
+        #             }
+        #         }
+        #     },
+        #     'is_shared': False,
+        #     'is_versioned': True,
+        #     'initial_version': "default",
+        #     'is_system_entity': False
+        # }
     ]
     
     # Cleanup configuration for actual documents
@@ -1037,12 +1037,20 @@ async def main_test_natural_language_editing():
         # },
 
         {
-            "name": "Change posting schedule",
+            "name": "Summarize future scheduled posts",
             "initial_inputs": {
                 "entity_username": test_entity_username,
-                "user_request": "Summarize a few of my future scheduled posts related to marketing and sales in the next 30 days, only check actual scheduled posts."
+                "user_request": "Summarize my current content strategy, futgure planned posts, and recommended posts and identify 3 gaps based on my goal to improve my b2b saas sales per ticket size from 1000 - 5000 in next 2 months."
             },
         },
+
+        # {
+        #     "name": "Edit strategy doc",
+        #     "initial_inputs": {
+        #         "entity_username": test_entity_username,
+        #         "user_request": "I'm gonna be attending a lot of events next month, I would like to include some post events reflections in my future posts."
+        #     },
+        # },
 
         # {
         #     "name": "Change posting schedule",
@@ -1171,7 +1179,10 @@ async def main_test_natural_language_editing():
     # {"user_action": "provide_clarification", "user_feedback": "Acutally, reapply and rewrite the content pillars so that its converted to JSON, currently its serialized."}
     # {"user_action": "stop_workflow"}
     # {"user_action": "provide_clarification", "user_feedback": "today is 2025-07-03 7 pm in IST timeZONE, please incorporate that in finding my answer"}
+    # {"user_action": "provide_clarification", "user_feedback": "I would like to update my content strategy based on your suggestions, please make appropriate assumptions. These are gonna be in-person conferences."}
     
+    {"user_action": "provide_clarification", "user_feedback": "Actually, can you get rid of Networking Insight from high impact format, its too redudant with Conference Reflection"}
+
     # Run test scenarios
     for scenario in test_scenarios:
         print(f"\n--- Running Scenario: {scenario['name']} ---")
