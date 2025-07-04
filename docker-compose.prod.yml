@@ -526,7 +526,7 @@ services:
       PREFECT_API_DATABASE_CONNECTION_URL: "postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT:-5432}/${PREFECT_DB}"
       # If using external DB, ensure PREFECT_API_DATABASE_CONNECTION_URL is set correctly in .env.prod
       # if prefect server is hosted locally as UI, use localhost instead of inaccessible docker network hostname!
-      PREFECT_API_URL: "${PREFECT_API_URL}"
+      PREFECT_API_URL: "http://localhost:4200"  # "http://localhost:4200"   "${PREFECT_API_URL}"
       # Result Persistence (consider S3 or other external storage for production)
       PREFECT_TASKS_DEFAULT_PERSIST_RESULT: ${PREFECT_TASKS_DEFAULT_PERSIST_RESULT:-false}
       # PREFECT_RESULTS_DEFAULT_STORAGE_BLOCK: s3/your-prod-bucket # Example
