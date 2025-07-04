@@ -122,7 +122,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 6.25G   # ⬆️ from 6G (+256MB)
+          memory: 5.25G   # ⬆️ from 6G (+256MB)
           cpus: '2.0'     # unchanged
         reservations:
           memory: 4.25G   # ⬆️ from 4G
@@ -188,8 +188,8 @@ services:
     deploy:
       resources:
         limits:
-          memory: 3G
-          cpus: '1.5'
+          memory: 2.5G
+          cpus: '1.25'
         reservations:
           memory: 2G
           cpus: '1.0'
@@ -250,7 +250,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 4.5G
+          memory: 4G
           cpus: '2'
         reservations:
           memory: 3.5G
@@ -615,11 +615,11 @@ services:
     deploy:
       resources:
         limits:
-          memory: 4.25G   # ⬆️ from 4G (+256MB)
-          cpus: '1.75'    # ⬆️ from 1.5 (+0.25)
+          memory: 8G   # ⬆️ from 4G (+256MB)
+          cpus: '3.0'    # ⬆️ from 1.5 (+0.25)
         reservations:
-          memory: 2.25G   # ⬆️ from 2G
-          cpus: '1.0'     # unchanged
+          memory: 6G   # ⬆️ from 2G
+          cpus: '2.0'     # unchanged
     # Logging
     logging:
       driver: "json-file"
