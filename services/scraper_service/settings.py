@@ -21,7 +21,7 @@ class RapidAPISettings(GlobalSettings):
     
     # API Settings
     RAPID_API_KEY: Optional[str] = os.getenv("RAPID_API_KEY")
-    RAPID_API_HOST: str = os.getenv("RAPID_API_HOST", "linkedin-data-api.p.rapidapi.com")
+    RAPID_API_HOST: str = os.getenv("RAPID_API_HOST", "real-time-people-company-data.p.rapidapi.com")  # real-time-people-company-data.p.rapidapi.com    linkedin-data-api.p.rapidapi.com
         
     # Retry configuration
     SCRAPER_SERVICE_MAX_RETRIES: int = int(os.getenv("SCRAPER_SERVICE_MAX_RETRIES", 3))

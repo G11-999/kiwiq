@@ -206,6 +206,7 @@ async def run_test(config_data: Dict[str, Any], test_name: str):
         # import ipdb; ipdb.set_trace()
         logger.info(f"Executing job '{validated_config.job_type}' for '{test_name}'...")
         result = await execute_scraper_job(validated_config)
+        # import ipdb; ipdb.set_trace()
         logger.info(f"Job execution completed for '{test_name}'.")
         print(f"--- Job Result ({test_name}) ---")
         if "error" in result:
@@ -353,12 +354,12 @@ if __name__ == "__main__":
         # (test_config_person_posts, "Person Posts"),
         # (test_config_search_keyword, "Keyword Search"),
         # (test_config_activity_likes, "User Activity (Likes)"),
-        # (test_config_profile_info, "User Profile Info"),
+        (test_config_profile_info, "User Profile Info"),
         # (test_config_profile_info_url, "User Profile Info (URL)"),
         # (test_config_company_info, "Company Profile Info"),
         # (test_config_search_hashtag, "Hashtag Search"),
         # (test_config_activity_comments, "User Activity (Comments)"),
-        (test_config_post_details, "Post Details with Enrichment"),
+        # (test_config_post_details, "Post Details with Enrichment"),
     ]
 
     # Run all defined tests asynchronously

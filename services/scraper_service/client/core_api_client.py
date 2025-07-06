@@ -103,6 +103,7 @@ class RapidAPIClient(Generic[T]):
             response.raise_for_status() 
             # Attempt to parse JSON
             json_response = await response.json()
+            # import ipdb; ipdb.set_trace()
             # Basic check if the API itself indicates failure (common pattern)
             if isinstance(json_response, dict) and not json_response.get("success", True):
                  error_msg = json_response.get("message", "API indicated failure without specific message.")
