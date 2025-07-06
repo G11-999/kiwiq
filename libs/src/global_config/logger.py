@@ -184,7 +184,7 @@ def get_logger(
         log_level: str = global_settings.LOG_LEVEL, 
         log_filename: str = global_settings.LOG_FILE_NAME,
         log_dir: str = LOG_ROOT,
-        log_to_console: bool = global_settings.APP_ENV == "DEV",
+        log_to_console: bool = True,
         log_to_file: bool = True,
     ) -> logging.Logger:
     """
