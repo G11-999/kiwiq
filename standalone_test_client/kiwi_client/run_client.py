@@ -611,7 +611,7 @@ class WorkflowRunTestClient:
             logger.error(f"Request error getting logs for run {run_id_str}: {e}")
         except Exception as e:
             logger.exception(f"Unexpected error getting logs for run {run_id_str}.")
-        return None
+        return None, None
 
     async def get_run_state(self, 
                            run_id: Union[str, uuid.UUID],
@@ -721,7 +721,7 @@ class WorkflowRunTestClient:
             logger.error(f"Request error getting state for run {run_id_str}: {e}")
         except Exception as e:
             logger.exception(f"Unexpected error getting state for run {run_id_str}.")
-        return None
+        return None, None
 
     async def wait_for_run_completion(self, run_id: Union[str, uuid.UUID], timeout_sec: int = 60, poll_interval_sec: int = 3) -> Optional[wf_schemas.WorkflowRunRead]:
         """
