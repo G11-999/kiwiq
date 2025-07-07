@@ -20,6 +20,7 @@ from kiwi_app.auth.models import Organization, User
 from kiwi_app.auth.utils import datetime_now_utc
 from kiwi_app.settings import settings
 from kiwi_app.utils import get_kiwi_logger
+from global_config.logger import get_prefect_or_regular_python_logger
 
 from kiwi_app.billing import crud, models, schemas
 from kiwi_app.billing.models import CreditType, SubscriptionStatus, CreditSourceType, PaymentStatus
@@ -42,8 +43,6 @@ from kiwi_app.billing.exceptions import (
     BillingException
 )
 
-# Get logger for billing operations
-billing_logger = get_kiwi_logger(name="kiwi_app.billing")
 
 # Configure Stripe
 stripe.api_key = settings.STRIPE_SECRET_KEY
@@ -77,6 +76,7 @@ class BillingService:
         self.promotion_code_usage_dao = promotion_code_usage_dao
         self.stripe_event_dao = stripe_event_dao
         self.org_dao = org_dao
+        self.logger = get_prefect_or_regular_python_logger(name="kiwi_app.billing", return_non_prefect_logger=False) or get_kiwi_logger(name="kiwi_app.billing")
     
     # --- Credit Management --- #
     
@@ -132,7 +132,7 @@ class BillingService:
             return balances
             
         except Exception as e:
-            billing_logger.error(f"Error getting credit balances for org {org_id}: {e}", exc_info=True)
+            self.logger.error(f"Error getting credit balances for org {org_id}: {e}", exc_info=True)
             raise
     
     async def get_organization_credits_by_type(
@@ -211,7 +211,7 @@ class BillingService:
             # Sort by credit type and then by creation date for consistent ordering
             credit_list.sort(key=lambda x: (x.credit_type.value, x.created_at))
             
-            billing_logger.info(
+            self.logger.info(
                 f"Retrieved {len(credit_list)} credit records for org {org_id}, "
                 f"type {credit_type.value if credit_type else 'all'}, include_expired={include_expired}"
             )
@@ -219,7 +219,7 @@ class BillingService:
             return credit_list
             
         except Exception as e:
-            billing_logger.error(
+            self.logger.error(
                 f"Error getting organization credits for org {org_id}, "
                 f"type {credit_type.value if credit_type else 'all'}: {e}", exc_info=True
             )
@@ -320,7 +320,7 @@ class BillingService:
             )
             
             # Log consumption for monitoring
-            billing_logger.debug(
+            self.logger.debug(
                 f"Consumed {original_credits_requested} {original_credit_type.value} "
                 f"credits for org {org_id} (event: {consumption_request.event_type}, "
                 f"overage: {consumption_result.is_overage}, dollar_fallback: {dollar_fallback_occurred})"
@@ -333,7 +333,7 @@ class BillingService:
             raise
         except Exception as e:
             # Safely attempt rollback
-            billing_logger.error(f"--> Error consuming credits: {e}", exc_info=True)
+            self.logger.error(f"--> Error consuming credits: {e}", exc_info=True)
             await self._safe_rollback(db, "credit consumption")
             
             raise BillingException(
@@ -414,7 +414,7 @@ class BillingService:
             # Commit the transaction
             await db.commit()
             
-            billing_logger.debug(
+            self.logger.debug(
                 f"Allocated {estimated_credits} {credit_type.value} credits for operation {operation_id} "
                 f"(org: {org_id}, overage: {allocation_result.is_overage})"
             )
@@ -427,7 +427,7 @@ class BillingService:
             raise
         except Exception as e:
             # Safely attempt rollback
-            billing_logger.error(f"--> Error allocating credits for operation {operation_id}: {e}", exc_info=True)
+            self.logger.error(f"--> Error allocating credits for operation {operation_id}: {e}", exc_info=True)
             await self._safe_rollback(db, f"credit allocation for operation {operation_id}")
             raise BillingException(
                 status_code=500,
@@ -513,7 +513,7 @@ class BillingService:
             
         except Exception as e:
             # Safely attempt rollback
-            billing_logger.error(f"--> Error adjusting allocated credits: {e}", exc_info=True)
+            self.logger.error(f"--> Error adjusting allocated credits: {e}", exc_info=True)
             await self._safe_rollback(db, f"credit adjustment for operation {operation_id}")
             
             raise BillingException(
@@ -580,7 +580,7 @@ class BillingService:
             # Commit the transaction
             await db.commit()
             
-            billing_logger.info(
+            self.logger.info(
                 f"Added {credits_to_add} {credit_type.value} credits to org {org_id} "
                 f"from {source_type.value}"
             )
@@ -589,7 +589,7 @@ class BillingService:
             
         except Exception as e:
             # Safely attempt rollback
-            billing_logger.error(f"--> Error adding credits to organization: {e}", exc_info=True)
+            self.logger.error(f"--> Error adding credits to organization: {e}", exc_info=True)
             await self._safe_rollback(db, "adding credits to organization")
             
             raise BillingException(
@@ -634,7 +634,7 @@ class BillingService:
             }
             
         except Exception as e:
-            billing_logger.warning(f"Error getting overage settings, using defaults: {e}")
+            self.logger.warning(f"Error getting overage settings, using defaults: {e}")
             return {
                 "allow_overage": True,
                 "overage_percentage": 10,
@@ -721,7 +721,7 @@ class BillingService:
             # Commit the transaction
             await db.commit()
             
-            billing_logger.info(f"Applied promotion code {code_application.code} to org {org_id}")
+            self.logger.info(f"Applied promotion code {code_application.code} to org {org_id}")
             
             return schemas.PromotionCodeApplyResult(
                 success=True,
@@ -737,7 +737,7 @@ class BillingService:
             raise
         except Exception as e:
             # Safely attempt rollback
-            billing_logger.error(f"--> Error applying promotion code: {e}", exc_info=True)
+            self.logger.error(f"--> Error applying promotion code: {e}", exc_info=True)
             await self._safe_rollback(db, f"applying promotion code {code_application.code}")
             
             raise BillingException(
@@ -779,7 +779,7 @@ class BillingService:
             # Create the promotion code
             promotion_code = await self.promotion_code_dao.create(db, obj_in=promo_code_data)
             
-            billing_logger.info(
+            self.logger.info(
                 f"Created promotion code '{promotion_code.code}': "
                 f"{promotion_code.credits_amount} {promotion_code.credit_type.value} credits"
             )
@@ -791,7 +791,7 @@ class BillingService:
             # Re-raise billing exceptions
             raise
         except Exception as e:
-            billing_logger.error(f"Error creating promotion code: {e}", exc_info=True)
+            self.logger.error(f"Error creating promotion code: {e}", exc_info=True)
             raise BillingException(
                 status_code=500,
                 detail=f"Failed to create promotion code: {str(e)}"
@@ -844,7 +844,7 @@ class BillingService:
             # Execute query through DAO
             result = await self.promotion_code_dao.query_promotion_codes(db, query_params)
             
-            billing_logger.info(
+            self.logger.info(
                 f"Retrieved {len(result.items)} promotion codes "
                 f"(page {result.page} of {result.pages}) with filters: {result.filters_applied}"
             )
@@ -855,7 +855,7 @@ class BillingService:
             # Re-raise billing exceptions
             raise
         except Exception as e:
-            billing_logger.error(f"Error getting promotion codes: {e}", exc_info=True)
+            self.logger.error(f"Error getting promotion codes: {e}", exc_info=True)
             raise BillingException(
                 status_code=500,
                 detail=f"Failed to get promotion codes: {str(e)}"
@@ -905,7 +905,7 @@ class BillingService:
             )
             
             if deleted:
-                billing_logger.info(f"Successfully deleted promotion code: {code_name} (ID: {promo_code_id})")
+                self.logger.info(f"Successfully deleted promotion code: {code_name} (ID: {promo_code_id})")
                 return schemas.PromotionCodeDeleteResult(
                     success=True,
                     message=f"Promotion code '{code_name}' deleted successfully",
@@ -920,13 +920,13 @@ class BillingService:
             raise
         except ValueError as e:
             # This catches the case where deletion is prevented due to usage records
-            billing_logger.warning(f"Cannot delete promotion code {promo_code_id}: {e}")
+            self.logger.warning(f"Cannot delete promotion code {promo_code_id}: {e}")
             raise BillingException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=str(e)
             ) from e
         except Exception as e:
-            billing_logger.error(f"Error deleting promotion code {promo_code_id}: {e}", exc_info=True)
+            self.logger.error(f"Error deleting promotion code {promo_code_id}: {e}", exc_info=True)
             raise BillingException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to delete promotion code"
@@ -985,7 +985,7 @@ class BillingService:
                 commit=True
             )
             
-            billing_logger.info(
+            self.logger.info(
                 f"Successfully deactivated {result.deactivated_count} promotion codes "
                 f"with filters: {result.filters_applied}"
             )
@@ -995,13 +995,13 @@ class BillingService:
         except BillingException:
             raise
         except ValueError as e:
-            billing_logger.warning(f"Cannot deactivate promotion codes: {e}")
+            self.logger.warning(f"Cannot deactivate promotion codes: {e}")
             raise BillingException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=str(e)
             ) from e
         except Exception as e:
-            billing_logger.error(f"Error deactivating promotion codes: {e}", exc_info=True)
+            self.logger.error(f"Error deactivating promotion codes: {e}", exc_info=True)
             raise BillingException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to deactivate promotion codes"
@@ -1064,7 +1064,7 @@ class BillingService:
                 commit=True
             )
             
-            billing_logger.warning(
+            self.logger.warning(
                 f"Bulk deleted {result.deleted_count} promotion codes, skipped {result.skipped_count} codes "
                 f"with usage records. Filters: {result.filters_applied}"
             )
@@ -1074,13 +1074,13 @@ class BillingService:
         except BillingException:
             raise
         except ValueError as e:
-            billing_logger.warning(f"Cannot bulk delete promotion codes: {e}")
+            self.logger.warning(f"Cannot bulk delete promotion codes: {e}")
             raise BillingException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=str(e)
             ) from e
         except Exception as e:
-            billing_logger.error(f"Error bulk deleting promotion codes: {e}", exc_info=True)
+            self.logger.error(f"Error bulk deleting promotion codes: {e}", exc_info=True)
             raise BillingException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to bulk delete promotion codes"
@@ -1117,7 +1117,7 @@ class BillingService:
             if not organization:
                 raise ValueError(f"Organization {reset_request.org_id} not found")
             
-            billing_logger.info(
+            self.logger.info(
                 f"Admin {admin_user_id} initiating credit reset for org {reset_request.org_id} "
                 f"with reason: {reset_request.reason}"
             )
@@ -1155,7 +1155,7 @@ class BillingService:
                 failed_resets=failed_resets
             )
             
-            billing_logger.info(
+            self.logger.info(
                 f"Credit reset completed for org {reset_request.org_id}: "
                 f"{successful_resets}/{total_credit_types_processed} successful resets"
             )
@@ -1163,7 +1163,7 @@ class BillingService:
             return response
             
         except Exception as e:
-            billing_logger.error(
+            self.logger.error(
                 f"Error resetting organization credits for org {reset_request.org_id}: {e}", 
                 exc_info=True
             )
@@ -1242,7 +1242,7 @@ class BillingService:
             # Execute query through DAO
             result = await self.usage_event_dao.query_usage_events(db, query_params)
             
-            billing_logger.info(
+            self.logger.info(
                 f"Retrieved {len(result.items)} usage events "
                 f"(page {result.page} of {result.pages}) with filters: {result.filters_applied}"
             )
@@ -1253,7 +1253,7 @@ class BillingService:
             # Re-raise billing exceptions
             raise
         except Exception as e:
-            billing_logger.error(f"Error getting usage events: {e}", exc_info=True)
+            self.logger.error(f"Error getting usage events: {e}", exc_info=True)
             raise BillingException(
                 status_code=500,
                 detail=f"Failed to get usage events: {str(e)}"
@@ -1422,7 +1422,7 @@ class BillingService:
                 "cutoff_datetime": cutoff_datetime
             }
             
-            billing_logger.info(
+            self.logger.info(
                 f"Expired credits for {len(total_organizations)} organizations: "
                 f"{total_expired} total credits expired"
             )
@@ -1431,7 +1431,7 @@ class BillingService:
             
         except Exception as e:
             # Safely attempt rollback
-            billing_logger.error(f"--> Error expiring organization credits: {e}", exc_info=True)
+            self.logger.error(f"--> Error expiring organization credits: {e}", exc_info=True)
             await self._safe_rollback(db, "expiring organization credits")
             
             raise BillingException(
@@ -1558,12 +1558,12 @@ class BillingService:
             #             }
             #         )
             #     except stripe.StripeError as e:
-            #         billing_logger.warning(f"Failed to update payment intent metadata: {e}")
+            #         self.logger.warning(f"Failed to update payment intent metadata: {e}")
             
             await db.commit()
             await db.refresh(purchase)
             
-            billing_logger.info(
+            self.logger.info(
                 f"Created flexible dollar credit checkout session {session.id} for org {org_id}: "
                 f"${dollar_amount} for {credits_amount:.2f} credits (purchase ID: {purchase.id})"
             )
@@ -1583,7 +1583,7 @@ class BillingService:
                 db.add(purchase)
                 await db.commit()
             
-            billing_logger.error(f"Stripe error creating flexible dollar credit checkout session: {e}")
+            self.logger.error(f"Stripe error creating flexible dollar credit checkout session: {e}")
             raise StripeIntegrationException(
                 detail="Failed to create checkout session",
                 stripe_error_code=e.code,
@@ -1597,7 +1597,7 @@ class BillingService:
                 db.add(purchase)
                 await db.commit()
             
-            billing_logger.error(f"Error creating flexible dollar credit checkout session: {e}")
+            self.logger.error(f"Error creating flexible dollar credit checkout session: {e}")
             raise BillingException(
                 status_code=500,
                 detail=f"Failed to create checkout session: {str(e)}"
@@ -1624,7 +1624,7 @@ class BillingService:
         event_timestamp = None
         
         try:
-            billing_logger.info(f"Processing Stripe webhook: {event_type} (ID: {webhook_event.id})")
+            self.logger.info(f"Processing Stripe webhook: {event_type} (ID: {webhook_event.id})")
             
             # Extract contextual information for audit logging
             context = await self.stripe_event_dao.extract_context_from_event(event_data)
@@ -1642,7 +1642,7 @@ class BillingService:
                     await self._handle_payment_session_succeeded(db, event_data)
                 elif mode == "subscription":
                     # Subscription checkout - subscription will be created via customer.subscription.created
-                    billing_logger.info(f"Subscription checkout completed: {session['id']}")
+                    self.logger.info(f"Subscription checkout completed: {session['id']}")
                     
             elif event_type in ["checkout.session.async_payment_failed", "checkout.session.expired"]:
                 await self._handle_payment_session_failed(db, event_data)
@@ -1683,7 +1683,7 @@ class BillingService:
             #     await self._handle_subscription_updated(db, event_data)
                 
             else:
-                billing_logger.info(f"Unhandled webhook event type: {event_type}")
+                self.logger.info(f"Unhandled webhook event type: {event_type}")
                 
             
             return True
@@ -1692,7 +1692,7 @@ class BillingService:
             processing_successful = False
             if processing_error is None:
                 processing_error = str(e)
-            billing_logger.error(f"Error processing webhook {webhook_event.id}: {e}", exc_info=True)
+            self.logger.error(f"Error processing webhook {webhook_event.id}: {e}", exc_info=True)
             return False
             
         finally:
@@ -1713,10 +1713,10 @@ class BillingService:
                     processing_error=processing_error,
                     commit=True
                 )
-                billing_logger.debug(f"Logged Stripe event {webhook_event.id} to audit table")
+                self.logger.debug(f"Logged Stripe event {webhook_event.id} to audit table")
             except Exception as audit_error:
                 # Don't fail the webhook processing if audit logging fails
-                billing_logger.error(f"Failed to log Stripe event {webhook_event.id} to audit table: {audit_error}", exc_info=True)
+                self.logger.error(f"Failed to log Stripe event {webhook_event.id} to audit table: {audit_error}", exc_info=True)
     
     # --- Webhook Event Handlers --- #
     
@@ -1742,14 +1742,14 @@ class BillingService:
             purchase_id = metadata.get("kiwiq_purchase_id")
             
             if not purchase_id:
-                billing_logger.error(f"Missing purchase_id in metadata for flexible dollar credit purchase: {checkout_session_object['id']}")
+                self.logger.error(f"Missing purchase_id in metadata for flexible dollar credit purchase: {checkout_session_object['id']}")
                 return
             
             # Get existing purchase record
             try:
                 purchase = await self.credit_purchase_dao.get(db, uuid.UUID(purchase_id))
                 if not purchase:
-                    billing_logger.error(f"Purchase record not found for ID {purchase_id} (checkout session: {checkout_session_object['id']})")
+                    self.logger.error(f"Purchase record not found for ID {purchase_id} (checkout session: {checkout_session_object['id']})")
                     return
                 
                 # Update status to succeeded
@@ -1760,13 +1760,13 @@ class BillingService:
                 # Allocate credits
                 await self._allocate_purchased_credits(db, purchase)
                 
-                billing_logger.info(
+                self.logger.info(
                     f"Processed flexible dollar credit purchase: ${purchase.amount_paid} for {purchase.credits_amount} credits "
                     f"(org: {purchase.org_id}, purchase ID: {purchase.id}, checkout_session: {checkout_session_object['id']})"
                 )
                 
             except Exception as e:
-                billing_logger.error(f"Error processing flexible dollar credit purchase success: {e}", exc_info=True)
+                self.logger.error(f"Error processing flexible dollar credit purchase success: {e}", exc_info=True)
                 return
         else:
             # Handle regular credit purchase (existing logic)
@@ -1794,14 +1794,14 @@ class BillingService:
             purchase_id = metadata.get("kiwiq_purchase_id")
             
             if not purchase_id:
-                billing_logger.error(f"Missing purchase_id in metadata for failed flexible dollar credit purchase: {checkout_session_object['id']}")
+                self.logger.error(f"Missing purchase_id in metadata for failed flexible dollar credit purchase: {checkout_session_object['id']}")
                 return
             
             # Get existing purchase record
             try:
                 purchase = await self.credit_purchase_dao.get(db, uuid.UUID(purchase_id))
                 if not purchase:
-                    billing_logger.error(f"Purchase record not found for ID {purchase_id} (failed checkout session: {checkout_session_object['id']})")
+                    self.logger.error(f"Purchase record not found for ID {purchase_id} (failed checkout session: {checkout_session_object['id']})")
                     return
                 
                 # Update status to failed
@@ -1809,13 +1809,13 @@ class BillingService:
                     db, purchase, PaymentStatus.FAILED
                 )
                 
-                billing_logger.info(
+                self.logger.info(
                     f"Marked flexible dollar credit purchase as failed: ${purchase.amount_paid} for {purchase.credits_amount} credits "
                     f"(org: {purchase.org_id}, purchase ID: {purchase.id}, checkout_session: {checkout_session_object['id']})"
                 )
                 
             except Exception as e:
-                billing_logger.error(f"Error processing flexible dollar credit purchase failure: {e}", exc_info=True)
+                self.logger.error(f"Error processing flexible dollar credit purchase failure: {e}", exc_info=True)
                 return
         else:
             # Handle regular credit purchase failure (existing logic)
@@ -1828,7 +1828,7 @@ class BillingService:
                     db, purchase, PaymentStatus.FAILED
                 )
                 
-                billing_logger.info(f"Marked credit purchase as failed (checkout session: {checkout_session_object['id']})")
+                self.logger.info(f"Marked credit purchase as failed (checkout session: {checkout_session_object['id']})")
     
     # async def _handle_charge_succeeded(self, db: AsyncSession, event_data: Dict[str, Any]) -> None:
     #     """Handle charge succeeded webhook to update receipt URL for credit purchases."""
@@ -1841,7 +1841,7 @@ class BillingService:
     #         receipt_url = charge_object.get("receipt_url")
             
     #         if not receipt_url:
-    #             billing_logger.warning(f"No receipt URL found in charge.succeeded event")
+    #             self.logger.warning(f"No receipt URL found in charge.succeeded event")
     #             return
             
     #         # Get payment intent to find the checkout session
@@ -1858,27 +1858,27 @@ class BillingService:
     #                             receipt_url=receipt_url
     #                         )
                             
-    #                         billing_logger.info(
+    #                         self.logger.info(
     #                             f"Updated receipt URL for purchase {purchase.id} "
     #                             f"from charge {charge_object['id']}"
     #                         )
     #                     else:
-    #                         billing_logger.warning(
+    #                         self.logger.warning(
     #                             f"No purchase found for purchase ID {kiwiq_purchase_id} "
     #                             f"from charge {charge_object['id']}"
     #                         )
     #                 else:
-    #                     billing_logger.warning(
+    #                     self.logger.warning(
     #                         f"No purchase ID found for charge {charge_object['id']}"
     #                     )
                         
     #             except stripe.StripeError as e:
-    #                 billing_logger.error(f"Error retrieving purchase {kiwiq_purchase_id}: {e}")
+    #                 self.logger.error(f"Error retrieving purchase {kiwiq_purchase_id}: {e}")
     #         else:
-    #             billing_logger.warning(f"No purchase ID found in charge.succeeded event")
+    #             self.logger.warning(f"No purchase ID found in charge.succeeded event")
                 
     #     except Exception as e:
-    #         billing_logger.error(f"Error handling charge.succeeded event: {e}", exc_info=True)
+    #         self.logger.error(f"Error handling charge.succeeded event: {e}", exc_info=True)
     
     async def _create_usage_event(
         self,
@@ -1921,24 +1921,24 @@ class BillingService:
             # Only attempt rollback if the session is in a valid state
             if db.in_transaction():
                 await db.rollback()
-                billing_logger.info(f"Rolled back transaction for {operation_context}")
+                self.logger.info(f"Rolled back transaction for {operation_context}")
             else:
-                billing_logger.warning(f"No active transaction to rollback for {operation_context}")
+                self.logger.warning(f"No active transaction to rollback for {operation_context}")
             # if hasattr(db, '_transaction') and db._transaction is not None:
             #     # Check if we can safely rollback
             #     if not db._transaction.is_closed and not db._transaction._prepared:
             #         await db.rollback()
-            #         billing_logger.info(f"Rolled back transaction for {operation_context}")
+            #         self.logger.info(f"Rolled back transaction for {operation_context}")
             #     else:
-            #         billing_logger.warning(
+            #         self.logger.warning(
             #             f"Cannot rollback transaction for {operation_context}: "
             #             f"transaction is in state that doesn't allow rollback"
             #         )
             # else:
-            #     billing_logger.warning(f"No active transaction to rollback for {operation_context}")
+            #     self.logger.warning(f"No active transaction to rollback for {operation_context}")
         except Exception as rollback_error:
             # Log rollback error but don't let it mask the original error
-            billing_logger.error(
+            self.logger.error(
                 f"Error during rollback for {operation_context}: {rollback_error}",
                 exc_info=True
             )
@@ -1968,7 +1968,7 @@ class BillingService:
                 #     customer.modify(**modify_kwargs)
                 return customer
             except stripe.StripeError as e:
-                billing_logger.warning(f"Failed to retrieve Stripe customer {organization.external_billing_id}: {e}")
+                self.logger.warning(f"Failed to retrieve Stripe customer {organization.external_billing_id}: {e}")
                 # Continue to create new customer if retrieval fails
         
         # Create new customer
@@ -1986,7 +1986,7 @@ class BillingService:
         db.add(organization)
         await db.commit()
         
-        billing_logger.info(f"Created and linked Stripe customer {customer.id} for org {org_id}")
+        self.logger.info(f"Created and linked Stripe customer {customer.id} for org {org_id}")
         
         return customer
     
@@ -2026,7 +2026,7 @@ class BillingService:
             
         except Exception as e:
             # Safely attempt rollback
-            billing_logger.error(f"--> Error allocating purchased credits: {e}", exc_info=True)
+            self.logger.error(f"--> Error allocating purchased credits: {e}", exc_info=True)
             await self._safe_rollback(db, "allocating purchased credits")
             
             raise
@@ -2173,7 +2173,7 @@ class BillingService:
                 "new_expires_at": new_expires_at
             }
             
-            billing_logger.info(
+            self.logger.info(
                 f"Rotated subscription credits for org {subscription.org_id}: "
                 f"expired {total_expired}, added {total_added}"
             )
@@ -2182,11 +2182,11 @@ class BillingService:
             
         except Exception as e:
             # Rollback transaction on error
-            billing_logger.error(f"--> Error rotating subscription credits: {e}", exc_info=True)
+            self.logger.error(f"--> Error rotating subscription credits: {e}", exc_info=True)
             try:
                 await db.rollback()
             except Exception as rollback_error:
-                billing_logger.error(f"--> Error during rollback: {rollback_error}", exc_info=True)
+                self.logger.error(f"--> Error during rollback: {rollback_error}", exc_info=True)
             raise BillingException(
                 status_code=500,
                 detail=f"Failed to rotate subscription credits: {str(e)}"
@@ -2202,13 +2202,13 @@ class BillingService:
         if mode == "subscription":
             # Subscription checkout completed - the subscription will be created by Stripe
             # and we'll handle it in the customer.subscription.created webhook
-            billing_logger.info(f"Subscription checkout completed: {session['id']}")
+            self.logger.info(f"Subscription checkout completed: {session['id']}")
         elif mode == "payment":
             # One-time payment checkout completed
             payment_intent_id = session.get("payment_intent")
             if payment_intent_id:
                 # The payment will be handled by payment_intent.succeeded webhook
-                billing_logger.info(f"Payment checkout completed: {session['id']}")
+                self.logger.info(f"Payment checkout completed: {session['id']}")
 
     # async def _handle_subscription_created(self, db: AsyncSession, event_data: Dict[str, Any]) -> None:
     #     """Handle subscription created webhook from checkout.session.completed with mode=subscription.
@@ -2222,7 +2222,7 @@ class BillingService:
     #     plan_id = stripe_subscription["metadata"].get("kiwiq_plan_id")
         
     #     if not org_id or not plan_id:
-    #         billing_logger.error(f"Missing metadata in subscription: {stripe_subscription['id']}")
+    #         self.logger.error(f"Missing metadata in subscription: {stripe_subscription['id']}")
     #         return
         
     #     # Check if subscription already exists
@@ -2231,13 +2231,13 @@ class BillingService:
     #     )
         
     #     if existing_subscription:
-    #         billing_logger.info(f"Subscription already exists: {stripe_subscription['id']}")
+    #         self.logger.info(f"Subscription already exists: {stripe_subscription['id']}")
     #         return
         
     #     # Get the plan
     #     plan = await self.subscription_plan_dao.get(db, uuid.UUID(plan_id))
     #     if not plan:
-    #         billing_logger.error(f"Plan not found: {plan_id}")
+    #         self.logger.error(f"Plan not found: {plan_id}")
     #         return
         
     #     # Ensure organization has the correct external_billing_id
@@ -2245,7 +2245,7 @@ class BillingService:
     #     if organization and not organization.external_billing_id:
     #         organization.external_billing_id = stripe_subscription["customer"]
     #         db.add(organization)
-    #         billing_logger.info(f"Updated organization {org_id} with Stripe customer ID {stripe_subscription['customer']}")
+    #         self.logger.info(f"Updated organization {org_id} with Stripe customer ID {stripe_subscription['customer']}")
         
     #     # Create subscription record
     #     now = datetime_now_utc()
@@ -2309,7 +2309,7 @@ class BillingService:
     #     # Allocate initial credits (trial or regular)
     #     await self._allocate_subscription_credits(db, subscription, plan)
         
-    #     billing_logger.info(
+    #     self.logger.info(
     #         f"Created subscription from webhook: {subscription.id} "
     #         f"(status: {status.value}, trial: {is_trial_active}, seats: {seats_count})"
     #     )
@@ -2383,7 +2383,7 @@ class BillingService:
     #         if was_trial_active:
     #             subscription.is_trial_active = False
     #             subscription.status = SubscriptionStatus.ACTIVE
-    #             billing_logger.info(f"Trial ended for subscription {subscription.id}, transitioning to paid")
+    #             self.logger.info(f"Trial ended for subscription {subscription.id}, transitioning to paid")
             
     #         subscription.updated_at = datetime_now_utc()
     #         await self.org_subscription_dao.update(db, db_obj=subscription, obj_in=schemas.SubscriptionUpdate())
@@ -2401,7 +2401,7 @@ class BillingService:
     #         }
             
     #     except Exception as e:
-    #         billing_logger.error(f"Error processing subscription renewal: {e}", exc_info=True)
+    #         self.logger.error(f"Error processing subscription renewal: {e}", exc_info=True)
     #         raise BillingException(
     #             status_code=500,
     #             detail=f"Failed to process subscription renewal: {str(e)}"
@@ -2447,7 +2447,7 @@ class BillingService:
     #             new_expires_at=expires_at
     #         )
             
-    #         billing_logger.info(
+    #         self.logger.info(
     #             f"Rotated subscription credits for subscription {subscription.id}: "
     #             f"expired {rotation_result['total_expired_credits']}, "
     #             f"added {rotation_result['total_added_credits']} credits "
@@ -2498,7 +2498,7 @@ class BillingService:
     #                     commit=False,
     #                 )
                     
-    #                 billing_logger.info(
+    #                 self.logger.info(
     #                     f"Allocated {total_amount} {credit_type.value} credits to org {subscription.org_id} "
     #                     f"from subscription {subscription.id} (base: {base_amount} x {subscription.seats_count} seats, "
     #                     f"expires: {expires_at})"
@@ -2508,7 +2508,7 @@ class BillingService:
 
     #         except Exception as e:
     #             await db.rollback()
-    #             billing_logger.error(f"Error allocating subscription credits: {e}", exc_info=True)
+    #             self.logger.error(f"Error allocating subscription credits: {e}", exc_info=True)
     #             raise
     
     # --- Subscription Plan Management --- #
@@ -2566,11 +2566,11 @@ class BillingService:
             )
             plan = await self.subscription_plan_dao.update(db, db_obj=plan, obj_in=plan_update)
             
-            billing_logger.info(f"Created subscription plan: {plan.name} (ID: {plan.id})")
+            self.logger.info(f"Created subscription plan: {plan.name} (ID: {plan.id})")
             return plan
             
         except stripe.StripeError as e:
-            billing_logger.error(f"Stripe error creating plan: {e}")
+            self.logger.error(f"Stripe error creating plan: {e}")
             raise StripeIntegrationException(
                 detail="Failed to create subscription plan",
                 stripe_error_code=e.code,
@@ -2608,7 +2608,7 @@ class BillingService:
     #         if was_trial_active:
     #             subscription.is_trial_active = False
     #             subscription.status = SubscriptionStatus.ACTIVE
-    #             billing_logger.info(f"Trial ended for subscription {subscription.id}, transitioning to paid")
+    #             self.logger.info(f"Trial ended for subscription {subscription.id}, transitioning to paid")
             
     #         subscription.updated_at = datetime_now_utc()
     #         await self.org_subscription_dao.update(db, db_obj=subscription, obj_in=schemas.SubscriptionUpdate())
@@ -2626,7 +2626,7 @@ class BillingService:
     #         }
             
     #     except Exception as e:
-    #         billing_logger.error(f"Error processing subscription renewal: {e}", exc_info=True)
+    #         self.logger.error(f"Error processing subscription renewal: {e}", exc_info=True)
     #         raise BillingException(
     #             status_code=500,
     #             detail=f"Failed to process subscription renewal: {str(e)}"
@@ -2732,11 +2732,11 @@ class BillingService:
     #         # Allocate initial credits
     #         await self._allocate_subscription_credits(db, subscription, plan)
             
-    #         billing_logger.info(f"Created subscription for org {org_id}: {subscription.id}")
+    #         self.logger.info(f"Created subscription for org {org_id}: {subscription.id}")
     #         return subscription
             
     #     except stripe.StripeError as e:
-    #         billing_logger.error(f"Stripe error creating subscription: {e}")
+    #         self.logger.error(f"Stripe error creating subscription: {e}")
     #         raise StripeIntegrationException(
     #             detail="Failed to create subscription",
     #             stripe_error_code=e.code,
@@ -2833,7 +2833,7 @@ class BillingService:
     #                     proration_behavior="always_invoice"
     #                 )
                     
-    #                 billing_logger.info(
+    #                 self.logger.info(
     #                     f"Increased seats for subscription {subscription.id} from "
     #                     f"{subscription.seats_count} to {subscription_update.seats_count} (immediate)"
     #                 )
@@ -2854,7 +2854,7 @@ class BillingService:
     #                     proration_behavior="none"  # No proration for decreases
     #                 )
                     
-    #                 billing_logger.info(
+    #                 self.logger.info(
     #                     f"Scheduled seat decrease for subscription {subscription.id} from "
     #                     f"{subscription.seats_count} to {subscription_update.seats_count} "
     #                     f"(effective at period end: {subscription.current_period_end})"
@@ -2871,7 +2871,7 @@ class BillingService:
     #                     cancel_at_period_end=True
     #                 )
     #                 subscription.cancel_at_period_end = True
-    #                 billing_logger.info(f"Scheduled subscription {subscription.id} for cancellation at period end")
+    #                 self.logger.info(f"Scheduled subscription {subscription.id} for cancellation at period end")
     #             else:
     #                 # Reactivate subscription if it was scheduled for cancellation
     #                 stripe.Subscription.modify(
@@ -2879,16 +2879,16 @@ class BillingService:
     #                     cancel_at_period_end=False
     #                 )
     #                 subscription.cancel_at_period_end = False
-    #                 billing_logger.info(f"Removed cancellation for subscription {subscription.id}")
+    #                 self.logger.info(f"Removed cancellation for subscription {subscription.id}")
             
     #         subscription.updated_at = datetime_now_utc()
     #         subscription = await self.org_subscription_dao.update(db, db_obj=subscription, obj_in=subscription_update)
             
-    #         billing_logger.info(f"Updated subscription for org {org_id}: {subscription.id}")
+    #         self.logger.info(f"Updated subscription for org {org_id}: {subscription.id}")
     #         return subscription
             
     #     except stripe.StripeError as e:
-    #         billing_logger.error(f"Stripe error updating subscription: {e}")
+    #         self.logger.error(f"Stripe error updating subscription: {e}")
     #         raise StripeIntegrationException(
     #             detail="Failed to update subscription",
     #             stripe_error_code=e.code,
@@ -2959,7 +2959,7 @@ class BillingService:
                 
                 # Validate that we have a valid Stripe price ID
                 if not stripe_price_id:
-                    billing_logger.error(
+                    self.logger.error(
                         f"No Stripe price ID found for plan {plan.name} (ID: {plan_id}), "
                         f"is_annual={is_annual}, price_id_annual={plan.stripe_price_id_annual}, "
                         f"price_id_monthly={plan.stripe_price_id_monthly}"
@@ -2987,7 +2987,7 @@ class BillingService:
                 if plan.is_trial_eligible and plan.trial_days > 0:
                     checkout_params["subscription_data"]["trial_period_days"] = plan.trial_days
                 
-                billing_logger.info(
+                self.logger.info(
                     f"Creating subscription checkout for plan {plan.name} with {seats_count} seats"
                 )
                 
@@ -3013,7 +3013,7 @@ class BillingService:
             # Create checkout session
             session = stripe.checkout.Session.create(**checkout_params)
             
-            billing_logger.info(f"Created checkout session {session.id} for org {org_id}")
+            self.logger.info(f"Created checkout session {session.id} for org {org_id}")
             
             return {
                 "checkout_url": session.url,
@@ -3022,7 +3022,7 @@ class BillingService:
             }
             
         except stripe.StripeError as e:
-            billing_logger.error(f"Stripe error creating checkout session: {e}")
+            self.logger.error(f"Stripe error creating checkout session: {e}")
             raise StripeIntegrationException(
                 detail="Failed to create checkout session",
                 stripe_error_code=e.code,
@@ -3113,7 +3113,7 @@ class BillingService:
     #                 db, purchase, PaymentStatus.SUCCEEDED
     #             )
             
-    #         billing_logger.info(
+    #         self.logger.info(
     #             f"Created credit purchase for org {org_id}: "
     #             f"{purchase_request.credits_amount} {purchase_request.credit_type.value} credits"
     #         )
@@ -3121,7 +3121,7 @@ class BillingService:
     #         return purchase
             
     #     except stripe.StripeError as e:
-    #         billing_logger.error(f"Stripe error purchasing credits: {e}")
+    #         self.logger.error(f"Stripe error purchasing credits: {e}")
     #         raise StripeIntegrationException(
     #             detail="Failed to process credit purchase",
     #             stripe_error_code=e.code,
@@ -3168,16 +3168,16 @@ class BillingService:
                 for config in configurations.auto_paging_iter():
                     if config.metadata.get("kiwiq_managed") == "true" and config.active:
                         kiwiq_config_id = config.id
-                        billing_logger.debug(f"Found KiwiQ portal configuration: {kiwiq_config_id}")
+                        self.logger.debug(f"Found KiwiQ portal configuration: {kiwiq_config_id}")
                         break
                 
                 if not kiwiq_config_id:
-                    billing_logger.warning(
+                    self.logger.warning(
                         "No active KiwiQ-managed portal configuration found, "
                         "using Stripe default configuration"
                     )
             except stripe.StripeError as e:
-                billing_logger.warning(f"Error finding portal configuration: {e}, using default")
+                self.logger.warning(f"Error finding portal configuration: {e}, using default")
             
             # Create portal session with configuration if found
             session_params = {
@@ -3190,7 +3190,7 @@ class BillingService:
             
             session = stripe.billing_portal.Session.create(**session_params)
             
-            billing_logger.info(
+            self.logger.info(
                 f"Created customer portal session for org {org_id} "
                 f"(config: {'KiwiQ-managed' if kiwiq_config_id else 'default'})"
             )
@@ -3200,7 +3200,7 @@ class BillingService:
             }
             
         except stripe.StripeError as e:
-            billing_logger.error(f"Stripe error creating portal session: {e}")
+            self.logger.error(f"Stripe error creating portal session: {e}")
             raise StripeIntegrationException(
                 detail="Failed to create customer portal session",
                 stripe_error_code=e.code,
@@ -3258,7 +3258,7 @@ class BillingService:
         )
         
         if subscription:
-            billing_logger.info(
+            self.logger.info(
                 f"Trial ending soon for subscription {subscription.id} "
                 f"(trial ends: {subscription.trial_end})"
             )
@@ -3278,12 +3278,12 @@ class BillingService:
         
     #     if not subscription_id:
     #         # Not a subscription invoice
-    #         billing_logger.debug(f"Non-subscription invoice paid: {invoice['id']}")
+    #         self.logger.debug(f"Non-subscription invoice paid: {invoice['id']}")
     #         return
         
     #     subscription = await self.org_subscription_dao.get_by_stripe_subscription_id(db, subscription_id)
     #     if not subscription:
-    #         billing_logger.error(f"Subscription not found for invoice: {subscription_id}")
+    #         self.logger.error(f"Subscription not found for invoice: {subscription_id}")
     #         return
         
     #     # Check if this is a renewal (invoice for a new billing period)
@@ -3291,7 +3291,7 @@ class BillingService:
         
     #     if billing_reason == "subscription_cycle":
     #         # This is a regular subscription renewal
-    #         billing_logger.info(
+    #         self.logger.info(
     #             f"Subscription renewal payment succeeded for {subscription.id} "
     #             f"(invoice: {invoice['id']}, amount: ${invoice['amount_paid']/100:.2f})"
     #         )
@@ -3300,7 +3300,7 @@ class BillingService:
             
     #     elif billing_reason in ["subscription_update", "subscription_create"]:
     #         # This is from a subscription change or initial creation
-    #         billing_logger.info(
+    #         self.logger.info(
     #             f"Subscription update payment succeeded for {subscription.id} "
     #             f"(invoice: {invoice['id']}, reason: {billing_reason})"
     #         )
@@ -3310,7 +3310,7 @@ class BillingService:
     #         subscription.status = SubscriptionStatus.ACTIVE
     #         subscription.updated_at = datetime_now_utc()
     #         await self.org_subscription_dao.update(db, db_obj=subscription, obj_in=schemas.SubscriptionUpdate())
-    #         billing_logger.info(f"Subscription {subscription.id} recovered from past_due status")
+    #         self.logger.info(f"Subscription {subscription.id} recovered from past_due status")
     
     # async def _handle_invoice_payment_failed(self, db: AsyncSession, event_data: Dict[str, Any]) -> None:
     #     """
@@ -3323,7 +3323,7 @@ class BillingService:
     #     subscription_id = invoice.get("subscription")
         
     #     if not subscription_id:
-    #         billing_logger.debug(f"Non-subscription invoice payment failed: {invoice['id']}")
+    #         self.logger.debug(f"Non-subscription invoice payment failed: {invoice['id']}")
     #         return
         
     #     subscription = await self.org_subscription_dao.get_by_stripe_subscription_id(db, subscription_id)
@@ -3333,7 +3333,7 @@ class BillingService:
             
     #         await self.org_subscription_dao.update(db, db_obj=subscription, obj_in=schemas.SubscriptionUpdate())
             
-    #         billing_logger.warning(
+    #         self.logger.warning(
     #             f"Invoice payment failed for subscription {subscription.id} "
     #             f"(invoice: {invoice['id']}, amount: ${invoice['amount_due']/100:.2f})"
     #         )
@@ -3464,7 +3464,7 @@ class BillingService:
                 changes["seats_count"] = seats_count
                 changes["is_annual"] = new_is_annual
                 
-                billing_logger.info(
+                self.logger.info(
                     f"Created subscription {subscription.id} from Stripe {stripe_sub_id}"
                 )
                 
@@ -3560,7 +3560,7 @@ class BillingService:
                 )
                 
                 if changes:
-                    billing_logger.info(
+                    self.logger.info(
                         f"Updated subscription {subscription.id} with changes: {changes}"
                     )
             
@@ -3569,7 +3569,7 @@ class BillingService:
         except (SubscriptionNotFoundException, SubscriptionPlanNotFoundException, BillingException):
             raise
         except Exception as e:
-            billing_logger.error(f"Error syncing subscription from Stripe: {e}", exc_info=True)
+            self.logger.error(f"Error syncing subscription from Stripe: {e}", exc_info=True)
             raise BillingException(
                 status_code=500,
                 detail=f"Failed to sync subscription: {str(e)}"
@@ -3813,11 +3813,11 @@ class BillingService:
                 }
                 
         except Exception as e:
-            billing_logger.error(f"--> Error applying subscription credits: {e}", exc_info=True)
+            self.logger.error(f"--> Error applying subscription credits: {e}", exc_info=True)
             try:
                 await db.rollback()
             except Exception as rollback_error:
-                billing_logger.error(f"--> Error during rollback: {rollback_error}", exc_info=True)
+                self.logger.error(f"--> Error during rollback: {rollback_error}", exc_info=True)
             
             raise BillingException(
                 status_code=500,
@@ -3878,7 +3878,7 @@ class BillingService:
                 )
                 result["status_updated"] = "past_due_to_active"
             
-            billing_logger.info(
+            self.logger.info(
                 f"Processed subscription payment for {subscription.id}: "
                 f"type={result['allocation_type']}, credits={result['credits_allocated']}"
             )
@@ -3886,7 +3886,7 @@ class BillingService:
             return result
             
         except Exception as e:
-            billing_logger.error(f"Error processing subscription payment: {e}", exc_info=True)
+            self.logger.error(f"Error processing subscription payment: {e}", exc_info=True)
             raise BillingException(
                 status_code=500,
                 detail=f"Failed to process subscription payment: {str(e)}"
@@ -3959,7 +3959,7 @@ class BillingService:
                 new_end = period_change["new_end"]
                 
                 # Log the period change analysis
-                billing_logger.info(
+                self.logger.info(
                     f"Period change detected for subscription {new_subscription_state.id}: "
                     f"old_end={old_end}, new_start={new_start}, new_end={new_end}, "
                     f"is_billing_renewal={is_billing_renewal}"
@@ -3978,7 +3978,7 @@ class BillingService:
             # Handle true billing renewals with credit rotation
             if is_billing_renewal:
                 # For true renewals, we need to rotate credits
-                billing_logger.info(
+                self.logger.info(
                     f"Processing billing renewal for subscription {new_subscription_state.id}"
                 )
                 
@@ -4003,7 +4003,7 @@ class BillingService:
                 #     return result
                 # else:
                 #     # Continue processing other changes after renewal
-                #     billing_logger.info(
+                #     self.logger.info(
                 #         f"Processing additional changes after renewal: {other_changes}"
                 #     )
             
@@ -4021,7 +4021,7 @@ class BillingService:
                 # if is_billing_renewal:
                 #     # After renewal, they have the new period's base credits
                 #     # We only need to adjust for changes like seat count differences
-                #     billing_logger.info(
+                #     self.logger.info(
                 #         f"Calculating post-renewal adjustments for subscription {new_subscription_state.id}"
                 #     )
                     
@@ -4129,7 +4129,7 @@ class BillingService:
                     positive_adjustments = {ct: amt for ct, amt in credits_to_add.items() if amt > 0}
                     
                     if positive_adjustments:
-                        billing_logger.info(
+                        self.logger.info(
                             f"Applying credit adjustments for subscription {new_subscription_state.id}: "
                             f"{positive_adjustments}"
                         )
@@ -4178,7 +4178,7 @@ class BillingService:
             
             # Handle trial ending
             if changes.get("trial_ended"):
-                billing_logger.info(
+                self.logger.info(
                     f"Trial ended for subscription {new_subscription_state.id}, "
                     f"transitioning to paid status"
                 )
@@ -4197,7 +4197,7 @@ class BillingService:
             return result
             
         except Exception as e:
-            billing_logger.error(f"Error processing subscription update: {e}", exc_info=True)
+            self.logger.error(f"Error processing subscription update: {e}", exc_info=True)
             raise BillingException(
                 status_code=500,
                 detail=f"Failed to process subscription update: {str(e)}"
@@ -4227,7 +4227,7 @@ class BillingService:
                 # Get the plan for initial credit allocation
                 plan = subscription.plan or await self.subscription_plan_dao.get(db, subscription.plan_id)
                 if not plan:
-                    billing_logger.error(f"Plan not found for new subscription {subscription.id}")
+                    self.logger.error(f"Plan not found for new subscription {subscription.id}")
                     return
                 
                 # Note: Don't allocate credits immediately for non-trial subscriptions
@@ -4242,18 +4242,18 @@ class BillingService:
                     is_proration=False
                 )
                     
-                billing_logger.info(
+                self.logger.info(
                     f"Allocated trial credits for new subscription {subscription.id}: "
                     f"{allocation_result['credits_allocated']}"
                 )
                 # else:
-                #     billing_logger.info(
+                #     self.logger.info(
                 #         f"Created subscription {subscription.id} - waiting for payment confirmation "
                 #         f"before allocating credits"
                 #     )
             
         except Exception as e:
-            billing_logger.error(f"Error handling subscription created webhook: {e}", exc_info=True)
+            self.logger.error(f"Error handling subscription created webhook: {e}", exc_info=True)
     
     async def _handle_subscription_updated(self, db: AsyncSession, event_data: Dict[str, Any]) -> None:
         """
@@ -4289,12 +4289,12 @@ class BillingService:
                     changes=changes
                 )
                 
-                billing_logger.info(
+                self.logger.info(
                     f"Processed subscription update for {subscription.id}: {update_result}"
                 )
             
         except Exception as e:
-            billing_logger.error(f"Error handling subscription updated webhook: {e}", exc_info=True)
+            self.logger.error(f"Error handling subscription updated webhook: {e}", exc_info=True)
     
     # async def _handle_subscription_deleted(self, db: AsyncSession, event_data: Dict[str, Any]) -> None:
     #     """
@@ -4318,12 +4318,12 @@ class BillingService:
     #                 db, db_obj=subscription, obj_in=schemas.SubscriptionUpdate()
     #             )
                 
-    #             billing_logger.info(f"Marked subscription {subscription.id} as canceled")
+    #             self.logger.info(f"Marked subscription {subscription.id} as canceled")
                 
     #             # Note: We don't expire credits immediately - they remain valid until their natural expiration
                 
     #     except Exception as e:
-    #         billing_logger.error(f"Error handling subscription deleted webhook: {e}", exc_info=True)
+    #         self.logger.error(f"Error handling subscription deleted webhook: {e}", exc_info=True)
     
     # async def _handle_invoice_payment_succeeded(self, db: AsyncSession, event_data: Dict[str, Any]) -> None:
     #     """
@@ -4336,7 +4336,7 @@ class BillingService:
         
     #     if not subscription_id:
     #         # Not a subscription invoice
-    #         billing_logger.debug(f"Non-subscription invoice paid: {invoice['id']}")
+    #         self.logger.debug(f"Non-subscription invoice paid: {invoice['id']}")
     #         return
         
     #     try:
@@ -4344,7 +4344,7 @@ class BillingService:
     #             db, subscription_id
     #         )
     #         if not subscription:
-    #             billing_logger.error(f"Subscription not found for invoice: {subscription_id}")
+    #             self.logger.error(f"Subscription not found for invoice: {subscription_id}")
     #             return
             
     #         # Process the payment confirmation and allocate credits
@@ -4355,13 +4355,13 @@ class BillingService:
     #             is_first_payment=invoice.get("billing_reason") == "subscription_create"
     #         )
             
-    #         billing_logger.info(
+    #         self.logger.info(
     #             f"Processed invoice payment for subscription {subscription.id}: "
     #             f"{result}"
     #         )
             
     #     except Exception as e:
-    #         billing_logger.error(f"Error handling invoice payment succeeded webhook: {e}", exc_info=True)
+    #         self.logger.error(f"Error handling invoice payment succeeded webhook: {e}", exc_info=True)
     
     # async def _handle_charge_succeeded(self, db: AsyncSession, event_data: Dict[str, Any]) -> None:
     #     """
@@ -4393,7 +4393,7 @@ class BillingService:
     #                         is_first_payment=True
     #                     )
                         
-    #                     billing_logger.info(
+    #                     self.logger.info(
     #                         f"Processed initial subscription payment via charge.succeeded: {result}"
     #                     )
             
@@ -4401,7 +4401,7 @@ class BillingService:
     #         await self._handle_credit_purchase_charge(db, charge_object)
             
     #     except Exception as e:
-    #         billing_logger.error(f"Error handling charge.succeeded event: {e}", exc_info=True)
+    #         self.logger.error(f"Error handling charge.succeeded event: {e}", exc_info=True)
     
     async def _handle_credit_purchase_charge(self, db: AsyncSession, charge_object: Dict[str, Any]) -> None:
         """
@@ -4413,7 +4413,7 @@ class BillingService:
         receipt_url = charge_object.get("receipt_url")
         
         if not receipt_url:
-            billing_logger.warning(f"No receipt URL found in charge.succeeded event")
+            self.logger.warning(f"No receipt URL found in charge.succeeded event")
             return
         
         # Get payment intent to find the checkout session
@@ -4430,21 +4430,21 @@ class BillingService:
                             receipt_url=receipt_url
                         )
                         
-                        billing_logger.info(
+                        self.logger.info(
                             f"Updated receipt URL for purchase {purchase.id} "
                             f"from charge {charge_object['id']}"
                         )
                     else:
-                        billing_logger.warning(
+                        self.logger.warning(
                             f"No purchase found for purchase ID {kiwiq_purchase_id} "
                             f"from charge {charge_object['id']}"
                         )
                 else:
-                    billing_logger.warning(
+                    self.logger.warning(
                         f"No purchase ID found for charge {charge_object['id']}"
                     )
                     
             except stripe.StripeError as e:
-                billing_logger.error(f"Error retrieving purchase {kiwiq_purchase_id}: {e}")
+                self.logger.error(f"Error retrieving purchase {kiwiq_purchase_id}: {e}")
         else:
-            billing_logger.warning(f"No purchase ID found in charge.succeeded event")
+            self.logger.warning(f"No purchase ID found in charge.succeeded event")
