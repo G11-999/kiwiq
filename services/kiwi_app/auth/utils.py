@@ -11,7 +11,7 @@ from kiwi_app.utils import get_kiwi_logger  # get_kiwi_logger as auth_logger
 
 auth_logger = get_logger(
     name="kiwi_app.auth",
-    log_filename=global_settings.LOG_FILE_NAME,  #  + f".{datetime_now_utc()}.{random.randint(0, 100)}",
+    # log_filename=global_settings.LOG_FILE_NAME,  #  + f".{datetime_now_utc()}.{random.randint(0, 100)}",
     # log_level=global_settings.LOG_LEVEL,
     # log_filename=global_settings.LOG_FILE_NAME + f".{datetime_now_utc()}.{random.randint(0, 100)}",
     # log_to_file=True,

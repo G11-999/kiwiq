@@ -25,6 +25,8 @@ from linkedin_integration import routers as linkedin_integration_routers
 from kiwi_app.data_jobs import routers as data_jobs_routers
 from kiwi_app.rag_service import routers as rag_service_routers
 
+from workflow_service.services.external_context_manager import get_customer_mongo_client, get_customer_versioned_mongo_client, get_workflow_mongo_client, get_redis_client
+
 # Get a logger instance for the main application
 
 tags_metadata = [
@@ -66,6 +68,17 @@ async def lifespan(app: FastAPI):
     await weaviate_client.connect()
     app.state.weaviate = weaviate_client
 
+    customer_mongo_client = await get_customer_mongo_client()
+    redis_client = await get_redis_client(decode_responses=True)
+    versioned_mongo_client = await get_customer_versioned_mongo_client(redis_client=redis_client)
+    workflow_mongo_client = await get_workflow_mongo_client()
+    
+
+    app.state.customer_mongo_client = customer_mongo_client
+    app.state.versioned_mongo_client = versioned_mongo_client
+    app.state.workflow_mongo_client = workflow_mongo_client
+    app.state.redis_client = redis_client
+
     try:
         # === Startup: Directly call start_event_consumer ===
         kiwi_logger.info("Attempting to start event consumer...")
@@ -97,6 +110,16 @@ async def lifespan(app: FastAPI):
             kiwi_logger.info("Weaviate client closed successfully.")
         else:
             kiwi_logger.info("Weaviate client was not initialized, skipping close.")
+        
+        # Close all clients
+        try:
+            await app.state.customer_mongo_client.close()
+            await app.state.versioned_mongo_client.close()
+            await app.state.workflow_mongo_client.close()
+            await app.state.redis_client.close()
+        except Exception as e:
+            kiwi_logger.error(f"Error closing clients: {e}", exc_info=True)
+            pass
 
     # asyncio.create_task(event_consumer.main())
     # yield

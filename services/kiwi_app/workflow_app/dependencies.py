@@ -6,7 +6,7 @@
 import uuid
 from typing import Optional, List, AsyncGenerator
 
-from fastapi import Depends, HTTPException, status, Path, Query
+from fastapi import Depends, HTTPException, status, Path, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -34,6 +34,10 @@ from workflow_service.registry import registry
 from workflow_service.services.db_node_register import register_node_templates
 from workflow_service.services.external_context_manager import get_workflow_mongo_client, get_customer_mongo_client, get_customer_versioned_mongo_client
 from kiwi_app.billing import services as billing_services, dependencies as billing_dependencies
+
+from global_config.logger import get_logger
+
+logger = get_logger(__name__)
 
 # --- DAO Dependency Factories --- #
 
@@ -85,6 +89,7 @@ async def get_node_template_registry() -> registry.DBRegistry:
 
 # TODO: FIXME: for fastapi dependencies, lifecycle is managed by yield, so do graceful shutdown!
 async def get_workflow_service_dependency(
+    request: Request,
     node_template_dao: crud.NodeTemplateDAO = Depends(get_node_template_dao),
     workflow_dao: crud.WorkflowDAO = Depends(get_workflow_dao),
     workflow_run_dao: crud.WorkflowRunDAO = Depends(get_workflow_run_dao),
@@ -93,27 +98,38 @@ async def get_workflow_service_dependency(
     user_notification_dao: crud.UserNotificationDAO = Depends(get_user_notification_dao),
     hitl_job_dao: crud.HITLJobDAO = Depends(get_hitl_job_dao),
     workflow_config_override_dao: crud.WorkflowConfigOverrideDAO = Depends(get_workflow_config_override_dao),
-    mongo_client: AsyncMongoDBClient = Depends(get_workflow_mongo_client),
+    # mongo_client: AsyncMongoDBClient = Depends(get_workflow_mongo_client),
     db_registry: registry.DBRegistry = Depends(get_node_template_registry),
     billing_service: billing_services.BillingService = Depends(billing_dependencies.get_billing_service_no_dependencies),
 ) -> AsyncGenerator[services.WorkflowService, None]:
     """Dependency function to instantiate WorkflowService with its DAO dependencies."""
-    workflow_service = services.WorkflowService(
-        node_template_dao=node_template_dao,
-        workflow_dao=workflow_dao,
-        workflow_run_dao=workflow_run_dao,
-        prompt_template_dao=prompt_template_dao,
-        schema_template_dao=schema_template_dao,
-        user_notification_dao=user_notification_dao,
-        hitl_job_dao=hitl_job_dao,
-        workflow_config_override_dao=workflow_config_override_dao,
-        mongo_client=mongo_client,
-        db_registry=db_registry,
-        billing_service=billing_service,
-        # Pass NoSQL client here
-    )
-    yield workflow_service
-    await workflow_service.mongo_client.close()
+    workflow_service = None
+    try:
+        mongo_client = request.app.state.workflow_mongo_client
+        workflow_service = services.WorkflowService(
+            node_template_dao=node_template_dao,
+            workflow_dao=workflow_dao,
+            workflow_run_dao=workflow_run_dao,
+            prompt_template_dao=prompt_template_dao,
+            schema_template_dao=schema_template_dao,
+            user_notification_dao=user_notification_dao,
+            hitl_job_dao=hitl_job_dao,
+            workflow_config_override_dao=workflow_config_override_dao,
+            mongo_client=mongo_client,
+            db_registry=db_registry,
+            billing_service=billing_service,
+            # Pass NoSQL client here
+        )
+        yield workflow_service
+    except Exception as e:
+        logger.error(f"Error creating workflow service: {e}", exc_info=True)
+        raise
+    # finally:
+    #     if workflow_service is not None:
+    #         try:
+    #             await workflow_service.mongo_client.close()
+    #         except Exception as e:
+    #             logger.error(f"Error closing workflow mongo client: {e}", exc_info=True)
 
 async def get_workflow_service() -> services.WorkflowService:
     """
@@ -198,22 +214,40 @@ async def get_workflow_service() -> services.WorkflowService:
 
 # TODO: FIXME: REFACTOR TO MOVE this to external dependencies and refactor customer data service to use an underlying DAO so as not to raise HTTP exceptions and potentially use it in prefect worker too!
 async def get_customer_data_service_dependency(
-    customer_mongo_client: AsyncMongoDBClient = Depends(get_customer_mongo_client),
-    versioned_mongo_client: AsyncMongoVersionedClient = Depends(get_customer_versioned_mongo_client),
+    request: Request,
+    # customer_mongo_client: AsyncMongoDBClient = Depends(get_customer_mongo_client),
+    # versioned_mongo_client: AsyncMongoVersionedClient = Depends(get_customer_versioned_mongo_client),
     schema_template_dao: crud.SchemaTemplateDAO = Depends(get_schema_template_dao),
     # workflow_service: services.WorkflowService = Depends(get_workflow_service_dependency),
 ) -> AsyncGenerator[CustomerDataService, None]:
     """Dependency function to instantiate CustomerDataService."""
-    customer_data_service = CustomerDataService(
-        mongo_client=customer_mongo_client,
-        versioned_mongo_client=versioned_mongo_client,
-        schema_template_dao=schema_template_dao,
-    )
-    yield customer_data_service
-    await customer_data_service.mongo_client.close()
-    await customer_data_service.versioned_mongo_client._redis_client.close()
-    await customer_data_service.versioned_mongo_client.client.close()
-    
+    customer_data_service = None
+    try:
+        customer_mongo_client = request.app.state.customer_mongo_client
+        versioned_mongo_client = request.app.state.versioned_mongo_client
+        customer_data_service = CustomerDataService(
+            mongo_client=customer_mongo_client,
+            versioned_mongo_client=versioned_mongo_client,
+            schema_template_dao=schema_template_dao,
+        )
+        yield customer_data_service
+    except Exception as e:
+        logger.error(f"Error creating customer data service: {e}", exc_info=True)
+        raise
+    # finally:
+    #     if customer_data_service is not None:
+    #         try:
+    #             await customer_data_service.mongo_client.close()
+    #         except Exception as e:
+    #             logger.error(f"Error closing customer mongo client: {e}", exc_info=True)
+    #         try:
+    #             await customer_data_service.versioned_mongo_client._redis_client.close()
+    #         except Exception as e:
+    #             logger.error(f"Error closing customer versioned mongo redis client: {e}", exc_info=True)
+    #         try:
+    #             await customer_data_service.versioned_mongo_client.client.close()
+    #         except Exception as e:
+    #             logger.error(f"Error closing customer versioned mongo client: {e}", exc_info=True)
 
 
 # --- Permission Checkers (using Auth checkers) --- #

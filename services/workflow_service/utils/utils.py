@@ -18,9 +18,9 @@ def init_prefect_logger():
         # prefect_logger = 
         return get_logger(
             name="workflow_service",
-            log_level=global_settings.LOG_LEVEL,
-            log_filename=global_settings.LOG_PREFECT_FILE_NAME,  #  + f".{datetime_now_utc()}.{random.randint(0, 100)}",
-            log_to_file=True,
+            # log_level=global_settings.LOG_LEVEL,
+            # log_filename=global_settings.LOG_PREFECT_FILE_NAME,  #  + f".{datetime_now_utc()}.{random.randint(0, 100)}",
+            # log_to_file=True,
         )
     return prefect_logger
 

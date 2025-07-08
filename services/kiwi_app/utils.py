@@ -13,9 +13,9 @@ def init_logger(name=None):
         # kiwi_logger = 
         return get_logger(
             name=name or "kiwi_app",
-            log_level=global_settings.LOG_LEVEL,
-            log_filename=global_settings.LOG_FILE_NAME,  #  + f".{datetime_now_utc()}.{random.randint(0, 100)}",
-            log_to_file=True,
+            # log_level=global_settings.LOG_LEVEL,
+            # log_filename=global_settings.LOG_FILE_NAME,  #  + f".{datetime_now_utc()}.{random.randint(0, 100)}",
+            # log_to_file=True,
         )
     return kiwi_logger
 

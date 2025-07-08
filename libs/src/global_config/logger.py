@@ -20,16 +20,24 @@ listener: Optional[logging.handlers.QueueListener] = None
 # Sensible defaults for common use cases. Can be overridden via setup_logging.
 DEFAULT_LOG_LEVEL: int = logging.INFO
 DEFAULT_CONSOLE_FORMAT: str = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-DEFAULT_FILE_FORMAT: str = '%(asctime)s - %(name)s - %(levelname)s - [%(pathname)s:%(lineno)d] - %(message)s'
-DEFAULT_LOG_DIR: str = './logs' # Relative to current working directory
-DEFAULT_LOG_FILENAME: str = 'app.log'
-DEFAULT_MAX_BYTES: int = 10 * 1024 * 1024  # 10 MB
-DEFAULT_BACKUP_COUNT: int = 5
 
 
 def get_prefect_or_regular_python_logger(name: str, log_level: int = global_settings.LOG_LEVEL, return_non_prefect_logger: bool = True) -> logging.Logger:
     """
     Returns the appropriate logger based on the environment.
+    
+    In Prefect flow context, returns the Prefect run logger.
+    Otherwise, returns a regular Python logger configured with async queue handling.
+    
+    Args:
+        name (str): Logger name (used only for regular Python logger)
+        log_level (int): Logging level (e.g., logging.INFO, logging.DEBUG)
+        return_non_prefect_logger (bool): If True, returns regular logger when not in Prefect context.
+                                         If False, returns None when not in Prefect context.
+    
+    Returns:
+        logging.Logger: The appropriate logger instance, or None if return_non_prefect_logger is False
+                       and not in Prefect context.
     """
     from prefect.logging import get_run_logger
     try:
@@ -43,20 +51,16 @@ def get_prefect_or_regular_python_logger(name: str, log_level: int = global_sett
 def setup_logging(
     log_level: int = DEFAULT_LOG_LEVEL,
     console_format: str = DEFAULT_CONSOLE_FORMAT,
-    file_format: str = DEFAULT_FILE_FORMAT,
-    log_to_console: bool = True,
-    log_to_file: bool = True,
-    log_dir: str = DEFAULT_LOG_DIR,
-    log_filename: str = DEFAULT_LOG_FILENAME,
-    max_bytes: int = DEFAULT_MAX_BYTES,
-    backup_count: int = DEFAULT_BACKUP_COUNT,
 ) -> None:
     """
-    Configures asynchronous, non-blocking logging for the application.
+    Configures asynchronous, non-blocking console logging for the application.
 
     Uses a QueueHandler to send log records to a background QueueListener
-    thread, which then dispatches them to configured handlers (console, file).
+    thread, which then dispatches them to the console handler.
     This prevents logging I/O from blocking the main application threads.
+
+    This setup is optimized for containerized environments (Docker/Kubernetes)
+    where console output is captured by the container runtime.
 
     It's recommended to call this function once at application startup.
     Subsequent calls will stop the existing listener and reconfigure.
@@ -66,74 +70,23 @@ def setup_logging(
                          (e.g., logging.DEBUG, logging.INFO).
                          Defaults to logging.INFO.
         console_format (str): The format string for console log messages.
-        file_format (str): The format string for file log messages.
-        log_to_console (bool): If True, enables logging to standard output (stderr).
-                               Defaults to True.
-        log_to_file (bool): If True, enables logging to a rotating file.
-                            Defaults to True.
-        log_dir (str): The directory where log files will be stored.
-                       It will be created if it doesn't exist.
-                       Defaults to './logs'.
-        log_filename (str): The name of the log file. Defaults to 'app.log'.
-        max_bytes (int): The maximum size (in bytes) a log file can reach
-                         before rotating. Defaults to 10MB.
-        backup_count (int): The number of old log files to keep. Defaults to 5.
-
-    Raises:
-        OSError: If the log directory cannot be created.
+    
+    Note:
+        File logging has been removed to prevent file permission issues
+        in containerized environments. All logs are sent to stdout/stderr
+        for collection by container logging drivers.
     """
     global listener
     global log_queue # Ensure we are using the global queue
 
-    # --- Create Target Handlers ---
-    handlers: List[logging.Handler] = []
+    # --- Create Console Handler ---
     console_formatter = logging.Formatter(console_format)
-    file_formatter = logging.Formatter(file_format)
-
-    if log_to_console:
-        # Logs to stderr by default
-        console_handler = logging.StreamHandler()
-        console_handler.setFormatter(console_formatter)
-        # Set level on the handler itself to potentially filter
-        # messages even if the root logger level is lower.
-        # However, typically filtering is done at the logger level.
-        # console_handler.setLevel(log_level) # Optional: filter at handler level
-        handlers.append(console_handler)
-        # print("Console logging enabled.") # Use print, logger not fully setup yet
-
-    if log_to_file:
-        try:
-            # Ensure the log directory exists; create if not.
-            os.makedirs(log_dir, exist_ok=True)
-            log_path = os.path.join(log_dir, log_filename)
-
-            # Use RotatingFileHandler for size-based rotation.
-            # Consider TimedRotatingFileHandler for time-based rotation.
-            file_handler = logging.handlers.RotatingFileHandler(
-                filename=log_path,
-                maxBytes=max_bytes,
-                backupCount=backup_count,
-                encoding='utf-8' # Explicitly set encoding
-            )
-            file_handler.setFormatter(file_formatter)
-            # file_handler.setLevel(log_level) # Optional: filter at handler level
-            handlers.append(file_handler)
-            # print(f"File logging enabled: {log_path}")
-        except OSError as e:
-            # Use print because logging might fail if directory creation failed
-            # print(f"Error setting up file logging in directory '{log_dir}': {e}")
-            # Decide whether to raise, log a warning, or continue without file logging
-            # For now, let's print the error and continue without file logging
-            # raise # Uncomment to make directory creation failure fatal
-            log_to_file = False # Disable if setup failed
-
-    if not handlers:
-        # Avoid setting up queue logging if no actual handlers are configured
-        # This can happen if both log_to_console and log_to_file are False,
-        # or if file logging setup failed.
-        # print("Warning: No logging handlers configured (console or file). Logging setup skipped.")
-        return
-
+    
+    # Logs to stderr by default (standard for containerized apps)
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(console_formatter)
+    console_handler.setLevel(log_level)
+    
     # --- Configure Queue Handling ---
     # The QueueHandler takes log records and puts them onto the global queue.
     queue_handler = logging.handlers.QueueHandler(log_queue)
@@ -162,30 +115,22 @@ def setup_logging(
     stop_listener() # Ensure any previous listener is stopped
 
     # The QueueListener pulls records from log_queue and passes them to
-    # the actual handlers (console, file) in its own thread.
+    # the console handler in its own thread.
     # respect_handler_level=True means the listener will check handler levels too.
-    listener = logging.handlers.QueueListener(log_queue, *handlers, respect_handler_level=True)
+    listener = logging.handlers.QueueListener(log_queue, console_handler, respect_handler_level=True)
     listener.start()
-    # print("Logging listener thread started.")
 
     # --- Register Shutdown Hook ---
     # Ensure the listener is stopped gracefully on normal Python exit.
     # This allows the queue to be flushed.
     atexit.register(stop_listener)
 
-    # Use the newly configured logger to indicate completion
-    # Note: This message goes through the queue now.
-    # logging.getLogger(__name__).info("Asynchronous logging setup complete.")
 
 logging_is_setup = False
 
 def get_logger(
         name: str, 
-        log_level: str = global_settings.LOG_LEVEL, 
-        log_filename: str = global_settings.LOG_FILE_NAME,
-        log_dir: str = LOG_ROOT,
-        log_to_console: bool = True,
-        log_to_file: bool = True,
+        log_level: str = global_settings.LOG_LEVEL,
     ) -> logging.Logger:
     """
     Retrieves a logger instance with the specified name.
@@ -195,23 +140,21 @@ def get_logger(
     via this function will automatically inherit the asynchronous setup
     (i.e., their records will go through the QueueHandler).
 
+    All logs are sent to console only, which is ideal for containerized
+    environments where logs are collected by Docker/Kubernetes.
+
     Args:
         name (str): The name for the logger. Typically, use __name__ for
                     the calling module to leverage the logging hierarchy.
+        log_level (str): The logging level. Defaults to the global setting.
 
     Returns:
-        logging.Logger: The logger instance.
+        logging.Logger: The logger instance configured for async console output.
     """
     global logging_is_setup
     if not logging_is_setup:
-        setup_logging(
-            log_level=log_level,
-            log_to_console=log_to_console,
-            log_to_file=log_to_file,
-            log_dir=log_dir,
-            log_filename=log_filename
-        )
-        # logging_is_setup = True
+        setup_logging(log_level=log_level)
+        logging_is_setup = True
     # Simply return the logger. Configuration is handled at the root level.
     return logging.getLogger(name)
 
@@ -223,21 +166,16 @@ def stop_listener() -> None:
     This function is registered with atexit to be called on normal exit,
     but can also be called manually if needed (e.g., during specific
     application shutdown phases before atexit runs).
+    
+    This ensures all queued log messages are flushed before shutdown.
     """
     global listener
     if listener:
         try:
-            current_thread_name = threading.current_thread().name
-            # Use print here as logging might be shutting down or stopped
-            # print(f"Attempting to stop logging listener from thread: {current_thread_name}...")
             listener.stop() # This signals the listener thread to stop and waits
             listener = None
-            # print("Logging listener stopped successfully.")
-        except Exception as e:
-            # If stopping fails, print the error.
-            # print(f"Error stopping logging listener: {e}")
-            # Optionally, log this error if logging is still partially functional
-            # logging.getLogger(__name__).error("Error stopping logging listener", exc_info=True)
+        except Exception:
+            # Silently ignore errors during shutdown
             pass
 
 
@@ -248,14 +186,8 @@ def stop_listener() -> None:
 if __name__ == "__main__":
     print("Running logging example...")
 
-    # Configure logging: DEBUG level, log to console and file
-    setup_logging(
-        log_level=logging.DEBUG,
-        log_to_console=True,
-        log_to_file=True,
-        log_dir='./temp_logs', # Example: use a different directory
-        log_filename='example_app.log'
-    )
+    # Configure logging: DEBUG level, console output only
+    setup_logging(log_level=logging.DEBUG)
 
     # Get loggers for different parts of a hypothetical application
     main_logger = get_logger('main_app')
@@ -274,6 +206,4 @@ if __name__ == "__main__":
     module_logger.info("Module finished its task.")
     main_logger.info("Application shutting down...")
 
-    # No need to explicitly call stop_listener() here because
-    # atexit handles it on normal script completion.
-    print("Example finished. Check console output and ./temp_logs/example_app.log")
+    print("Example finished. Check console output for all logs.")

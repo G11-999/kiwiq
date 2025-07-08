@@ -60,5 +60,6 @@ ENTRYPOINT ["/app/docker/setup.sh"]
 # Use the actual port number directly in CMD to avoid substitution issues with ENTRYPOINT/exec
 # Add --reload flag and --reload-dir for development live reloading
 # , "--workers", "4"
-CMD ["uvicorn", "services.kiwi_app.main:app", "--proxy-headers", "--host", "0.0.0.0", "--port", "8000"]
+# CMD ["uvicorn", "services.kiwi_app.main:app", "--proxy-headers", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["gunicorn", "services.kiwi_app.main:app", "-c", "gunicorn.conf.py"]
 # PYTHONPATH=$(pwd):$(pwd)/services  poetry run uvicorn services.kiwi_app.main:app --host 0.0.0.0 --port 8000

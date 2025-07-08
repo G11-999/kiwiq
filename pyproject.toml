@@ -71,6 +71,7 @@ anthropic = "^0.54.0"
 langchain-text-splitters = "^0.3.8"
 spacy = "^3.8.7"
 openai = "1.81.0"
+gunicorn = "^23.0.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^25.1.0"
