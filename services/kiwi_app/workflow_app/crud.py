@@ -57,7 +57,7 @@ class BaseDAO(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             The model instance if found, otherwise None.
         """
         stmt = select(self.model).where(self.model.id == id)
-        result = await db.execute(stmt)
+        result = await db.exec(stmt)
         return result.scalars().first()
 
     async def search_by_name_version(
@@ -130,7 +130,7 @@ class BaseDAO(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         stmt = stmt.where(or_(*or_conditions))
         
         # Execute query
-        result = await db.execute(stmt)
+        result = await db.exec(stmt)
         response = result.scalars().all()
 
         if sort_by == schemas.SearchSortBy.SELF_OWNED_FIRST:
@@ -156,7 +156,7 @@ class BaseDAO(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             A sequence of model instances.
         """
         stmt = select(self.model).offset(skip).limit(limit).order_by(self.model.id)
-        result = await db.execute(stmt)
+        result = await db.exec(stmt)
         return result.scalars().all()
 
     async def create(self, db: AsyncSession, *, obj_in: CreateSchemaType) -> ModelType:
@@ -251,7 +251,7 @@ class NodeTemplateDAO(BaseDAO[models.NodeTemplate, schemas.NodeTemplateCreate, s
     async def get_by_name_version(self, db: AsyncSession, *, name: str, version: str) -> Optional[models.NodeTemplate]:
         """Get a node template by name and version."""
         stmt = select(self.model).where(self.model.name == name, self.model.version == version)
-        result = await db.execute(stmt)
+        result = await db.exec(stmt)
         return result.scalars().first()
 
     async def get_latest_prod_version(self, db: AsyncSession, *, name: str) -> Optional[models.NodeTemplate]:
@@ -260,7 +260,7 @@ class NodeTemplateDAO(BaseDAO[models.NodeTemplate, schemas.NodeTemplateCreate, s
             self.model.name == name,
             self.model.launch_status == LaunchStatus.PRODUCTION
         ).order_by(self.model.created_at.desc())
-        result = await db.execute(stmt)
+        result = await db.exec(stmt)
         return result.scalars().first()
 
     async def get_multi(
@@ -293,7 +293,7 @@ class NodeTemplateDAO(BaseDAO[models.NodeTemplate, schemas.NodeTemplateCreate, s
             stmt = stmt.where(self.model.launch_status != LaunchStatus.EXPERIMENTAL)
 
         stmt = stmt.order_by(self.model.name, self.model.version).offset(skip).limit(limit)
-        result = await db.execute(stmt)
+        result = await db.exec(stmt)
         return result.scalars().all()
 
 # --- Workflow DAO --- #
@@ -306,7 +306,7 @@ class WorkflowDAO(BaseDAO[models.Workflow, schemas.WorkflowCreate, schemas.Workf
     async def get_by_name(self, db: AsyncSession, *, name: str, owner_org_id: uuid.UUID) -> Optional[models.Workflow]:
         """Get a workflow by name within a specific organization."""
         stmt = select(self.model).where(self.model.name == name, self.model.owner_org_id == owner_org_id)
-        result = await db.execute(stmt)
+        result = await db.exec(stmt)
         return result.scalars().first()
     
     async def get_by_id_and_org_or_public(self, db: AsyncSession, *, user: User, workflow_id: uuid.UUID, org_id: uuid.UUID, include_system_entities: bool = False) -> Optional[models.Workflow]:
@@ -324,7 +324,7 @@ class WorkflowDAO(BaseDAO[models.Workflow, schemas.WorkflowCreate, schemas.Workf
             self.model.id == workflow_id,
             or_clause
         )
-        result = await db.execute(stmt)
+        result = await db.exec(stmt)
         return result.scalars().first()
 
     async def get_by_id_and_org(self, db: AsyncSession, *, workflow_id: uuid.UUID, org_id: uuid.UUID) -> Optional[models.Workflow]:
@@ -332,7 +332,7 @@ class WorkflowDAO(BaseDAO[models.Workflow, schemas.WorkflowCreate, schemas.Workf
         stmt = select(self.model).where(
             self.model.id == workflow_id, self.model.owner_org_id == org_id
         )
-        result = await db.execute(stmt)
+        result = await db.exec(stmt)
         return result.scalars().first()
 
     async def get_multi_by_org(
@@ -355,7 +355,7 @@ class WorkflowDAO(BaseDAO[models.Workflow, schemas.WorkflowCreate, schemas.Workf
         stmt = stmt.where(clause)
         
         stmt = stmt.order_by(self.model.updated_at.desc()).offset(skip).limit(limit)
-        result = await db.execute(stmt)
+        result = await db.exec(stmt)
         return result.scalars().all()
 
     async def create(
@@ -440,7 +440,7 @@ class WorkflowRunDAO(BaseDAO[models.WorkflowRun, schemas.WorkflowRunCreate, sche
             self.model.id == run_id,
             self.model.owner_org_id == org_id
         )
-        result = await db.execute(stmt)
+        result = await db.exec(stmt)
         return result.scalars().first()
 
     async def create(
@@ -521,7 +521,7 @@ class WorkflowRunDAO(BaseDAO[models.WorkflowRun, schemas.WorkflowRunCreate, sche
             .values(**values_to_update)
             .execution_options(synchronize_session="fetch")
         )
-        result = await db.execute(stmt)
+        result = await db.exec(stmt)
         await db.commit()
         return result.rowcount > 0
 
@@ -555,7 +555,7 @@ class WorkflowRunDAO(BaseDAO[models.WorkflowRun, schemas.WorkflowRunCreate, sche
             .values(**values_to_update)
             .execution_options(synchronize_session="fetch")
         )
-        result = await db.execute(stmt)
+        result = await db.exec(stmt)
         await db.commit()
         return result.rowcount > 0
 
@@ -622,7 +622,7 @@ class WorkflowRunDAO(BaseDAO[models.WorkflowRun, schemas.WorkflowRunCreate, sche
 
         stmt = stmt.offset(skip).limit(limit)
 
-        result = await db.execute(stmt)
+        result = await db.exec(stmt)
         return result.scalars().all()
 
     async def get_multi_by_workflow(
@@ -674,7 +674,7 @@ class BaseTemplateDAO(BaseDAO[TemplateModelType, TemplateCreateSchemaType, Templ
                 self.model.owner_org_id == owner_org_id,
                 self.model.is_system_entity == False
             )
-            result_org = await db.execute(stmt_org)
+            result_org = await db.exec(stmt_org)
             template = result_org.scalars().first()
             if template:
                 return template
@@ -684,7 +684,7 @@ class BaseTemplateDAO(BaseDAO[TemplateModelType, TemplateCreateSchemaType, Templ
             self.model.version == version,
             self.model.is_system_entity == True
         )
-        result_sys = await db.execute(stmt_sys)
+        result_sys = await db.exec(stmt_sys)
         return result_sys.scalars().first()
 
     async def get_multi_by_org(
@@ -695,7 +695,7 @@ class BaseTemplateDAO(BaseDAO[TemplateModelType, TemplateCreateSchemaType, Templ
             self.model.owner_org_id == owner_org_id,
             self.model.is_system_entity == False
         ).order_by(self.model.name, self.model.version).offset(skip).limit(limit)
-        result = await db.execute(stmt)
+        result = await db.exec(stmt)
         return result.scalars().all()
 
     async def get_multi_system(
@@ -705,7 +705,7 @@ class BaseTemplateDAO(BaseDAO[TemplateModelType, TemplateCreateSchemaType, Templ
         stmt = select(self.model).where(
             self.model.is_system_entity == True
         ).order_by(self.model.name, self.model.version).offset(skip).limit(limit)
-        result = await db.execute(stmt)
+        result = await db.exec(stmt)
         return result.scalars().all()
 
     async def create(
@@ -739,7 +739,7 @@ class BaseTemplateDAO(BaseDAO[TemplateModelType, TemplateCreateSchemaType, Templ
             self.model.owner_org_id == owner_org_id,
             self.model.is_system_entity == False
         )
-        result = await db.execute(stmt)
+        result = await db.exec(stmt)
         db_obj = result.scalars().first()
 
         if db_obj:
@@ -850,7 +850,7 @@ class UserNotificationDAO(BaseDAO[models.UserNotification, schemas.UserNotificat
             .returning(self.model)
             .execution_options(synchronize_session="fetch")
         )
-        result = await db.execute(stmt)
+        result = await db.exec(stmt)
         await db.commit()
         updated_obj = result.scalars().first()
         return updated_obj
@@ -879,7 +879,7 @@ class UserNotificationDAO(BaseDAO[models.UserNotification, schemas.UserNotificat
             .values(is_read=True, read_at=current_time)
             .execution_options(synchronize_session=False)
         )
-        result = await db.execute(stmt)
+        result = await db.exec(stmt)
         await db.commit()
         return result.rowcount
 
@@ -931,7 +931,7 @@ class UserNotificationDAO(BaseDAO[models.UserNotification, schemas.UserNotificat
 
         stmt = stmt.offset(skip).limit(limit)
 
-        result = await db.execute(stmt)
+        result = await db.exec(stmt)
         return result.scalars().all()
 
     async def get_by_run_and_user(self, db: AsyncSession, *, related_run_id: uuid.UUID, user_id: uuid.UUID) -> Sequence[models.UserNotification]:
@@ -940,7 +940,7 @@ class UserNotificationDAO(BaseDAO[models.UserNotification, schemas.UserNotificat
             self.model.related_run_id == related_run_id,
             self.model.user_id == user_id
         ).order_by(self.model.created_at.desc())
-        result = await db.execute(stmt)
+        result = await db.exec(stmt)
         return result.scalars().all()
 
     async def count_unread_by_user(self, db: AsyncSession, *, user_id: uuid.UUID, org_id: uuid.UUID) -> int:
@@ -950,7 +950,7 @@ class UserNotificationDAO(BaseDAO[models.UserNotification, schemas.UserNotificat
             self.model.org_id == org_id,
             self.model.is_read == False
         )
-        result = await db.execute(stmt)
+        result = await db.exec(stmt)
         count = result.scalar_one()
         return count if count is not None else 0
 
@@ -1027,7 +1027,7 @@ class HITLJobDAO(BaseDAO[models.HITLJob, schemas.HITLJobCreate, PydanticBaseMode
             .returning(self.model)
             .execution_options(synchronize_session="fetch")
         )
-        result = await db.execute(stmt)
+        result = await db.exec(stmt)
         await db.commit()
         updated_obj = result.scalars().first()
         return updated_obj
@@ -1060,7 +1060,7 @@ class HITLJobDAO(BaseDAO[models.HITLJob, schemas.HITLJobCreate, PydanticBaseMode
             .returning(self.model)
             .execution_options(synchronize_session="fetch")
         )
-        result = await db.execute(stmt)
+        result = await db.exec(stmt)
         await db.commit()
         updated_obj = result.scalars().first()
         return updated_obj
@@ -1137,7 +1137,7 @@ class HITLJobDAO(BaseDAO[models.HITLJob, schemas.HITLJobCreate, PydanticBaseMode
 
         stmt = stmt.offset(skip).limit(limit)
 
-        result = await db.execute(stmt)
+        result = await db.exec(stmt)
         return result.scalars().all()
 
     async def get_pending_by_user(
@@ -1212,7 +1212,7 @@ class ChatThreadDAO(BaseDAO[models.ChatThread, schemas.ChatThreadCreate, schemas
                 self.model.user_id == user_id
             )
         )
-        result = await db.execute(query)
+        result = await db.exec(query)
         return result.scalars().first()
     
     async def get_by_workflow(
@@ -1239,7 +1239,7 @@ class ChatThreadDAO(BaseDAO[models.ChatThread, schemas.ChatThreadCreate, schemas
             query = query.where(self.model.tag == tag)
             
         query = query.offset(skip).limit(limit).order_by(desc(self.model.updated_at))
-        result = await db.execute(query)
+        result = await db.exec(query)
         return result.scalars().all()
     
     async def get_multi_filtered(
@@ -1286,7 +1286,7 @@ class ChatThreadDAO(BaseDAO[models.ChatThread, schemas.ChatThreadCreate, schemas
         # Apply pagination and ordering
         query = query.offset(skip).limit(limit).order_by(desc(self.model.updated_at))
         
-        result = await db.execute(query)
+        result = await db.exec(query)
         return result.scalars().all()
     
     async def get_by_owner(
@@ -1300,7 +1300,7 @@ class ChatThreadDAO(BaseDAO[models.ChatThread, schemas.ChatThreadCreate, schemas
         """Get all chat threads for a specific owner."""
         query = select(self.model).where(self.model.user_id == user_id)
         query = query.offset(skip).limit(limit).order_by(desc(self.model.updated_at))
-        result = await db.execute(query)
+        result = await db.exec(query)
         return result.scalars().all()
     
     async def create_thread(
@@ -1634,7 +1634,7 @@ class WorkflowConfigOverrideDAO(BaseDAO[models.WorkflowConfigOverride, PydanticB
         stmt = select(self.model).where(and_(*conditions))
         
         # Execute and return results
-        result = await db.execute(stmt)
+        result = await db.exec(stmt)
         overrides = result.scalars().all()
         
         # Sort by priority: system < org < user < user+org < with tag
@@ -1698,7 +1698,7 @@ class WorkflowConfigOverrideDAO(BaseDAO[models.WorkflowConfigOverride, PydanticB
             conditions.append(self.model.is_active == is_active)
         
         stmt = select(self.model).where(and_(*conditions)).order_by(self.model.updated_at.desc())
-        result = await db.execute(stmt)
+        result = await db.exec(stmt)
         return result.scalars().all()
 
     async def get_org_overrides(
@@ -1728,7 +1728,7 @@ class WorkflowConfigOverrideDAO(BaseDAO[models.WorkflowConfigOverride, PydanticB
             conditions.append(self.model.is_active == is_active)
         
         stmt = select(self.model).where(and_(*conditions)).order_by(self.model.updated_at.desc())
-        result = await db.execute(stmt)
+        result = await db.exec(stmt)
         return result.scalars().all()
 
     async def get_system_overrides(
@@ -1753,7 +1753,7 @@ class WorkflowConfigOverrideDAO(BaseDAO[models.WorkflowConfigOverride, PydanticB
             conditions.append(self.model.is_active == is_active)
         
         stmt = select(self.model).where(and_(*conditions)).order_by(self.model.updated_at.desc())
-        result = await db.execute(stmt)
+        result = await db.exec(stmt)
         return result.scalars().all()
 
     async def deactivate_override(
@@ -1804,7 +1804,7 @@ class WorkflowConfigOverrideDAO(BaseDAO[models.WorkflowConfigOverride, PydanticB
         conditions.append(or_(*user_or_org_conditions))
             
         stmt = select(self.model).where(and_(*conditions))
-        result = await db.execute(stmt)
+        result = await db.exec(stmt)
         return result.scalars().first()
 
     async def get_overrides_by_tag(
@@ -1849,7 +1849,7 @@ class WorkflowConfigOverrideDAO(BaseDAO[models.WorkflowConfigOverride, PydanticB
             conditions.append(self.model.is_system_entity == False)
         
         stmt = select(self.model).where(and_(*conditions)).order_by(self.model.updated_at.desc())
-        result = await db.execute(stmt)
+        result = await db.exec(stmt)
         return result.scalars().all()
 
     async def get_overrides_by_ids(
@@ -1876,5 +1876,5 @@ class WorkflowConfigOverrideDAO(BaseDAO[models.WorkflowConfigOverride, PydanticB
             self.model.id.in_(override_ids)
         ).order_by(self.model.updated_at.desc())
         
-        result = await db.execute(stmt)
+        result = await db.exec(stmt)
         return result.scalars().all()

@@ -546,9 +546,13 @@ async def main():
     # Define multiple workflow configurations
     workflow_configs = [
         # First workflow - content creation workflow
+        # {
+        #     "workflow_key": "concept_brainstorm_workflow",
+        #     "module_path": "kiwi_client.workflows.wf_concept_brainstorm_from_scratch",
+        # },
         {
-            "workflow_key": "concept_brainstorm_workflow",
-            "module_path": "kiwi_client.workflows.wf_concept_brainstorm_from_scratch",
+            "workflow_key": "content_calendar_entry_workflow",
+            "module_path": "kiwi_client.workflows.wf_content_calendar_entry",
         },
         # {
         #     "workflow_key": "content_creation_workflow",

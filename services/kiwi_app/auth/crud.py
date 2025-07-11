@@ -678,7 +678,7 @@ class UserDAO(BaseDAO[models.User, schemas.UserCreate, schemas.UserAdminUpdate])
             .where(models.UserOrganizationRole.user_id == user_id)\
             .where(models.UserOrganizationRole.organization_id == org_id)
         # Keep execute for delete where we need rowcount
-        result = await db.execute(statement)
+        result = await db.exec(statement)
         await db.commit()
         return result.rowcount > 0 # Return True if a row was deleted
 
@@ -749,7 +749,7 @@ class RefreshTokenDAO(BaseDAO[models.RefreshToken, SQLModel, SQLModel]): # No sp
             .values(revoked_at=now)
             .execution_options(synchronize_session=False) # Important for bulk updates
         )
-        result = await db.execute(statement)
+        result = await db.exec(statement)
         await db.commit()
         return result.rowcount
 

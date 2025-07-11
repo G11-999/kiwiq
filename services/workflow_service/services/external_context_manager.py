@@ -41,7 +41,7 @@ from kiwi_app.rag_service.services import RAGService
 from kiwi_app.data_jobs.ingestion.ingestion_pipeline import DocumentIngestionPipeline
 
 # Add Pydantic models for context management
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class DAOContext(BaseModel):
@@ -57,8 +57,7 @@ class DAOContext(BaseModel):
     user: auth_crud.UserDAO = Field(...)
     data_job: data_jobs_crud.DataJobDAO = Field(...)
 
-    class Config:
-        arbitrary_types_allowed = True # Allow non-pydantic types like clients
+    model_config = ConfigDict(arbitrary_types_allowed=True) # Allow non-pydantic types like clients
 
 
 class MongoContext(BaseModel):
@@ -66,8 +65,7 @@ class MongoContext(BaseModel):
     customer: Optional[AsyncMongoDBClient] = Field(default=None)
     workflow: Optional[AsyncMongoDBClient] = Field(default=None)
 
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 class RedisContext(BaseModel):
@@ -75,8 +73,7 @@ class RedisContext(BaseModel):
     text_client: Optional[AsyncRedisClient] = Field(default=None)
     binary_client: Optional[AsyncRedisClient] = Field(default=None)
 
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 class RabbitMQContext(BaseModel):
@@ -86,10 +83,9 @@ class RabbitMQContext(BaseModel):
     stream: Optional[RabbitQueue] = Field(default=None) # Type hint for stream might need adjustment
     logger: Any = Field(default_factory=lambda: logging.getLogger(__name__)) # Added logger
 
-    class Config:
-        arbitrary_types_allowed = True
-        # Exclude logger from Pydantic validation/serialization if necessary
-        # fields = {'logger': {'exclude': True}} # Example if logger causes issues
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    # Exclude logger from Pydantic validation/serialization if necessary
+    # fields = {'logger': {'exclude': True}} # Example if logger causes issues
 
     async def publish_workflow_event(self, event: WorkflowBaseEvent):
         """
@@ -183,8 +179,7 @@ class ExternalContextManager(BaseModel):
     data_job_service: data_jobs_services.DataJobService = Field(...)
     rag_service: RAGService = Field(...)  # RAG service (optional as it requires Weaviate)
 
-    class Config:
-        arbitrary_types_allowed = True # Allow non-pydantic types like clients
+    model_config = ConfigDict(arbitrary_types_allowed=True) # Allow non-pydantic types like clients
     
     async def close(self) -> None:
         """

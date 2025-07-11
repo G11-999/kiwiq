@@ -164,7 +164,7 @@ class DocumentIdentifier(BaseModel):
     document_serial_number: Optional[str] = Field(None, description="Serial number from tool outputs view context (generated string identifier)")
     
     # Optional fields
-    version: Optional[str] = Field(None, description="Document version (for versioned docs)", **{BaseSchema.FOR_LLM_TOOL_CALL_FIELD_KEY: False})
+    version: Optional[str] = Field(None, description="Document version (for versioned docs)", json_schema_extra={BaseSchema.FOR_LLM_TOOL_CALL_FIELD_KEY: False})
     # view_context: Optional[Dict[int, Dict[str, str]]] = Field(
     #     None, 
     #     description="View context mapping S.No. to document info: {1: {'docname': 'doc1', 'version': 'draft'}, ...}"

@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from kiwi_app.data_jobs.models import DataJobStatus, DataJobType
 
@@ -70,8 +70,7 @@ class DataJobRead(DataJobBase):
     created_at: datetime
     updated_at: datetime
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # --- Job Completion Schemas --- #
 

@@ -312,7 +312,7 @@ class OrganizationCreditsDAO(BaseDAO[models.OrganizationCredits, SQLModel, SQLMo
             conditions.append(self.model.org_id == org_id)
         
         statement = select(self.model).where(and_(*conditions))
-        result = await db.execute(statement)
+        result = await db.exec(statement)
         return result.scalars().all()
     
     async def mark_credits_expired_by_cutoff(
@@ -358,7 +358,7 @@ class OrganizationCreditsDAO(BaseDAO[models.OrganizationCredits, SQLModel, SQLMo
             )
         )
         
-        result = await db.execute(update_query)
+        result = await db.exec(update_query)
         return result.rowcount
     
     async def get_subscription_credits_by_subscription_id(
@@ -390,7 +390,7 @@ class OrganizationCreditsDAO(BaseDAO[models.OrganizationCredits, SQLModel, SQLMo
             conditions.append(self.model.is_expired == False)
         
         statement = select(self.model).where(and_(*conditions))
-        result = await db.execute(statement)
+        result = await db.exec(statement)
         return result.scalars().all()
     
     async def mark_subscription_credits_expired(
@@ -426,7 +426,7 @@ class OrganizationCreditsDAO(BaseDAO[models.OrganizationCredits, SQLModel, SQLMo
             )
         )
         
-        result = await db.execute(update_query)
+        result = await db.exec(update_query)
         return result.rowcount
     
     async def allocate_credits(
@@ -524,7 +524,7 @@ class OrganizationNetCreditsDAO(BaseDAO[models.OrganizationNetCredits, SQLModel,
                 )
                 .order_by(models.OrganizationNetCredits.updated_at.desc())
             )
-            result = await db.execute(query)
+            result = await db.exec(query)
             records = result.scalars().all()
             
             if not records:
@@ -546,7 +546,7 @@ class OrganizationNetCreditsDAO(BaseDAO[models.OrganizationNetCredits, SQLModel,
                 delete_stmt = delete(models.OrganizationNetCredits).where(
                     models.OrganizationNetCredits.id.in_(duplicate_ids)
                 )
-                await db.execute(delete_stmt)
+                await db.exec(delete_stmt)
                 await db.commit()
                 
                 billing_logger.info(
@@ -680,7 +680,7 @@ class OrganizationNetCreditsDAO(BaseDAO[models.OrganizationNetCredits, SQLModel,
                 )
             )
             
-            result = await db.execute(update_stmt)
+            result = await db.exec(update_stmt)
             
             # Get the returned row from the update
             updated_row = result.fetchone()
@@ -794,7 +794,7 @@ class OrganizationNetCreditsDAO(BaseDAO[models.OrganizationNetCredits, SQLModel,
                 index_elements=['org_id', 'credit_type']
             )
             
-            await db.execute(upsert_stmt)
+            await db.exec(upsert_stmt)
             await db.commit()
             
         except Exception as e:
@@ -956,7 +956,7 @@ class OrganizationNetCreditsDAO(BaseDAO[models.OrganizationNetCredits, SQLModel,
                 )
             )
             
-            await db.execute(update_stmt)
+            await db.exec(update_stmt)
             if commit:
                 await db.commit()
             
@@ -1029,7 +1029,7 @@ class OrganizationNetCreditsDAO(BaseDAO[models.OrganizationNetCredits, SQLModel,
                 )
             )
             
-            result = await db.execute(update_stmt)
+            result = await db.exec(update_stmt)
             
             # Get the returned row from the update
             updated_row = result.fetchone()
@@ -1185,7 +1185,7 @@ class OrganizationNetCreditsDAO(BaseDAO[models.OrganizationNetCredits, SQLModel,
         """
         try:
             query = select(models.OrganizationNetCredits.org_id).distinct()
-            result = await db.execute(query)
+            result = await db.exec(query)
             return [row.org_id for row in result]
         except Exception as e:
             billing_logger.error(f"Error getting organizations with credits: {e}", exc_info=True)
@@ -1341,7 +1341,7 @@ class OrganizationNetCreditsDAO(BaseDAO[models.OrganizationNetCredits, SQLModel,
                     )
                 )
                 
-                result = await db.execute(update_stmt)
+                result = await db.exec(update_stmt)
                 updated_row = result.fetchone()
                 
                 if updated_row is None:
@@ -1566,7 +1566,7 @@ class UsageEventDAO(BaseDAO[models.UsageEvent, SQLModel, SQLModel]):
         
         # Get total count for pagination
         count_query = select(func.count()).select_from(query.subquery())
-        total_result = await db.execute(count_query)
+        total_result = await db.exec(count_query)
         total = total_result.scalar() or 0
         
         # Apply sorting
@@ -1584,7 +1584,7 @@ class UsageEventDAO(BaseDAO[models.UsageEvent, SQLModel, SQLModel]):
         query = query.offset(query_params.skip).limit(query_params.limit)
         
         # Execute query
-        result = await db.execute(query)
+        result = await db.exec(query)
         usage_events = result.scalars().all()
         
         # Calculate pagination info
@@ -1844,7 +1844,7 @@ class PromotionCodeDAO(BaseDAO[models.PromotionCode, schemas.PromotionCodeCreate
         
         # Get total count for pagination
         count_query = select(func.count()).select_from(query.subquery())
-        total_result = await db.execute(count_query)
+        total_result = await db.exec(count_query)
         total = total_result.scalar() or 0
         
         # Apply sorting
@@ -1858,7 +1858,7 @@ class PromotionCodeDAO(BaseDAO[models.PromotionCode, schemas.PromotionCodeCreate
         query = query.offset(query_params.skip).limit(query_params.limit)
         
         # Execute query
-        result = await db.execute(query)
+        result = await db.exec(query)
         promotion_codes = result.scalars().all()
         
         # Calculate pagination info
@@ -2005,7 +2005,7 @@ class PromotionCodeDAO(BaseDAO[models.PromotionCode, schemas.PromotionCodeCreate
         if filters:
             query = query.where(and_(*filters))
         
-        result = await db.execute(query)
+        result = await db.exec(query)
         promotion_codes = result.scalars().all()
         
         # Deactivate the codes
@@ -2112,7 +2112,7 @@ class PromotionCodeDAO(BaseDAO[models.PromotionCode, schemas.PromotionCodeCreate
         if filters:
             query = query.where(and_(*filters))
         
-        result = await db.execute(query)
+        result = await db.exec(query)
         promotion_codes = result.scalars().all()
         
         # Process deletion with usage record checking
@@ -2288,7 +2288,7 @@ class StripeEventDAO(BaseDAO[models.StripeEvent, schemas.StripeEventCreate, SQLM
         """Get Stripe event by Stripe event ID."""
         try:
             statement = select(self.model).where(self.model.stripe_event_id == stripe_event_id)
-            result = await db.execute(statement)
+            result = await db.exec(statement)
             return result.scalars().first()
         except Exception as e:
             billing_logger.error(f"Error getting Stripe event by ID: {e}", exc_info=True)
@@ -2383,7 +2383,7 @@ class StripeEventDAO(BaseDAO[models.StripeEvent, schemas.StripeEventCreate, SQLM
                 count_query = count_query.where(filter_condition)
             
             # Get total count
-            count_result = await db.execute(count_query)
+            count_result = await db.exec(count_query)
             total = count_result.scalar() or 0
             
             # Apply sorting
@@ -2397,7 +2397,7 @@ class StripeEventDAO(BaseDAO[models.StripeEvent, schemas.StripeEventCreate, SQLM
             query = query.offset(query_params.skip).limit(query_params.limit)
             
             # Execute query
-            result = await db.execute(query)
+            result = await db.exec(query)
             events = result.scalars().all()
             
             # Calculate pagination info
@@ -2459,7 +2459,7 @@ class StripeEventDAO(BaseDAO[models.StripeEvent, schemas.StripeEventCreate, SQLM
             
             # Total events
             total_query = select(func.count(self.model.id)).where(base_condition)
-            total_result = await db.execute(total_query)
+            total_result = await db.exec(total_query)
             total_events = total_result.scalar() or 0
             
             # Events by type
@@ -2469,7 +2469,7 @@ class StripeEventDAO(BaseDAO[models.StripeEvent, schemas.StripeEventCreate, SQLM
                 .group_by(self.model.event_type)
                 .order_by(desc('count'))
             )
-            type_result = await db.execute(type_query)
+            type_result = await db.exec(type_query)
             events_by_type = {row.event_type: row.count for row in type_result}
             
             # Events by date (daily aggregation)
@@ -2482,7 +2482,7 @@ class StripeEventDAO(BaseDAO[models.StripeEvent, schemas.StripeEventCreate, SQLM
                 .group_by(func.date(self.model.created_at))
                 .order_by('event_date')
             )
-            date_result = await db.execute(date_query)
+            date_result = await db.exec(date_query)
             events_by_date = {str(row.event_date): row.count for row in date_result}
             
             # Processing success rate
@@ -2493,7 +2493,7 @@ class StripeEventDAO(BaseDAO[models.StripeEvent, schemas.StripeEventCreate, SQLM
                 )
                 .where(base_condition)
             )
-            success_result = await db.execute(success_query)
+            success_result = await db.exec(success_query)
             success_row = success_result.first()
             processing_success_rate = (
                 (success_row.successful / success_row.total * 100) 
@@ -2508,7 +2508,7 @@ class StripeEventDAO(BaseDAO[models.StripeEvent, schemas.StripeEventCreate, SQLM
                 )
                 .where(base_condition)
             )
-            mode_result = await db.execute(mode_query)
+            mode_result = await db.exec(mode_query)
             mode_row = mode_result.first()
             livemode_events = mode_row.livemode or 0
             test_mode_events = mode_row.testmode or 0
@@ -2518,14 +2518,14 @@ class StripeEventDAO(BaseDAO[models.StripeEvent, schemas.StripeEventCreate, SQLM
                 select(func.count(func.distinct(self.model.org_id)))
                 .where(and_(base_condition, self.model.org_id.is_not(None)))
             )
-            org_result = await db.execute(org_query)
+            org_result = await db.exec(org_query)
             unique_organizations = org_result.scalar() or 0
             
             user_query = (
                 select(func.count(func.distinct(self.model.user_id)))
                 .where(and_(base_condition, self.model.user_id.is_not(None)))
             )
-            user_result = await db.execute(user_query)
+            user_result = await db.exec(user_query)
             unique_users = user_result.scalar() or 0
             
             # Time range
@@ -2536,7 +2536,7 @@ class StripeEventDAO(BaseDAO[models.StripeEvent, schemas.StripeEventCreate, SQLM
                 )
                 .where(base_condition)
             )
-            time_result = await db.execute(time_range_query)
+            time_result = await db.exec(time_range_query)
             time_row = time_result.first()
             time_range = {
                 "earliest": time_row.earliest,
@@ -2594,7 +2594,7 @@ class StripeEventDAO(BaseDAO[models.StripeEvent, schemas.StripeEventCreate, SQLM
                 .limit(limit)
             )
             
-            result = await db.execute(query)
+            result = await db.exec(query)
             return result.scalars().all()
             
         except Exception as e:
@@ -2633,7 +2633,7 @@ class StripeEventDAO(BaseDAO[models.StripeEvent, schemas.StripeEventCreate, SQLM
                 .limit(limit)
             )
             
-            result = await db.execute(query)
+            result = await db.exec(query)
             return result.scalars().all()
             
         except Exception as e:
@@ -2795,7 +2795,7 @@ class StripeEventDAO(BaseDAO[models.StripeEvent, schemas.StripeEventCreate, SQLM
                 delete_query = delete_query.where(filter_condition)
             
             # Execute deletion
-            result = await db.execute(delete_query)
+            result = await db.exec(delete_query)
             deleted_count = result.rowcount
             
             if commit:
@@ -2879,7 +2879,7 @@ class StripeEventDAO(BaseDAO[models.StripeEvent, schemas.StripeEventCreate, SQLM
             delete_query = delete_query.where(filter_condition)
             
             # Execute deletion
-            result = await db.execute(delete_query)
+            result = await db.exec(delete_query)
             deleted_count = result.rowcount
             
             if commit:

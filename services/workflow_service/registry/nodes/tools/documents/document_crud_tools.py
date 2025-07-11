@@ -150,12 +150,12 @@ class BaseDocumentInputSchema(BaseSchema):
     entity_username: str = Field(
         ..., 
         description="Entity username for namespace resolution", 
-        **{BaseSchema.FOR_LLM_TOOL_CALL_FIELD_KEY: False}
+        json_schema_extra={BaseSchema.FOR_LLM_TOOL_CALL_FIELD_KEY: False}
     )
     view_context: Optional[Dict[str, Dict[str, str]]] = Field(
         None,
         description="View context mapping serial number to document info: {'brief_23_1': {'docname': 'doc1', 'version': 'draft'}, ...}",
-        **{BaseSchema.FOR_LLM_TOOL_CALL_FIELD_KEY: False}
+        json_schema_extra={BaseSchema.FOR_LLM_TOOL_CALL_FIELD_KEY: False}
     )
 
 
@@ -462,7 +462,7 @@ class EditDocumentInputSchema(BaseDocumentInputSchema):
     # List of operations to apply
     operations: List[EditOperation] = Field(
         ...,
-        min_items=1,
+        min_length=1,
         description=(
             "List of edit operations to apply to the document in sequence. "
             "Each operation must specify its type and provide the required fields for that type. "

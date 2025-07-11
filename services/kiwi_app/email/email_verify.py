@@ -173,7 +173,7 @@ async def verify_email_token(db: AsyncSession, token: str) -> Optional[models.Us
         auth_logger.debug(f"Successfully decoded verification token for user ID: {user_id}")
 
         # Find the user in the database by the ID from the token
-        result = await db.execute(
+        result = await db.exec(
             select(models.User).where(models.User.id == user_id)
         )
         user = result.scalars().first()

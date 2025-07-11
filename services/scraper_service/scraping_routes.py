@@ -28,7 +28,7 @@ scraping_router = APIRouter(
     prefix="/scraping",
     tags=["scraping"],
 )
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, HttpUrl, ConfigDict
 from typing import Optional
 
 # Schema for LinkedIn URL parsing
@@ -36,13 +36,13 @@ class LinkedInURLSchema(BaseModel):
     """Schema for LinkedIn URL parsing request."""
     url: HttpUrl
     
-    class Config:
-        """Pydantic model configuration."""
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "url": "https://www.linkedin.com/in/username/"
             }
         }
+    )
 
 # Schema for LinkedIn URL parsing
 class LinkedInUsernameParseResponse(BaseModel):
@@ -50,14 +50,14 @@ class LinkedInUsernameParseResponse(BaseModel):
     username: str
     entity_type: str
     
-    class Config:
-        """Pydantic model configuration."""
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "username": "username",
                 "entity_type": "person"
             }
         }
+    )
 
 @scraping_router.post(
     "/parse-linkedin-url",

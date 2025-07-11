@@ -299,7 +299,7 @@ class TestBillingSystem(unittest.IsolatedAsyncioTestCase):
             for user_id in user_ids:
                 try:
                     delete_stmt = sql_delete(billing_models.UsageEvent).where(billing_models.UsageEvent.user_id == user_id)
-                    result = await db.execute(delete_stmt)
+                    result = await db.exec(delete_stmt)
                     if result.rowcount > 0:
                         print(f"Deleted {result.rowcount} usage events for user {user_id}")
                 except Exception as e:
@@ -308,7 +308,7 @@ class TestBillingSystem(unittest.IsolatedAsyncioTestCase):
             for org_id in org_ids:
                 try:
                     delete_stmt = sql_delete(billing_models.UsageEvent).where(billing_models.UsageEvent.org_id == org_id)
-                    result = await db.execute(delete_stmt)
+                    result = await db.exec(delete_stmt)
                     if result.rowcount > 0:
                         print(f"Deleted {result.rowcount} usage events for org {org_id}")
                 except Exception as e:
@@ -318,7 +318,7 @@ class TestBillingSystem(unittest.IsolatedAsyncioTestCase):
             for user_id in user_ids:
                 try:
                     delete_stmt = sql_delete(billing_models.PromotionCodeUsage).where(billing_models.PromotionCodeUsage.user_id == user_id)
-                    result = await db.execute(delete_stmt)
+                    result = await db.exec(delete_stmt)
                     if result.rowcount > 0:
                         print(f"Deleted {result.rowcount} promotion code usages for user {user_id}")
                 except Exception as e:
@@ -327,7 +327,7 @@ class TestBillingSystem(unittest.IsolatedAsyncioTestCase):
             for org_id in org_ids:
                 try:
                     delete_stmt = sql_delete(billing_models.PromotionCodeUsage).where(billing_models.PromotionCodeUsage.org_id == org_id)
-                    result = await db.execute(delete_stmt)
+                    result = await db.exec(delete_stmt)
                     if result.rowcount > 0:
                         print(f"Deleted {result.rowcount} promotion code usages for org {org_id}")
                 except Exception as e:
@@ -337,7 +337,7 @@ class TestBillingSystem(unittest.IsolatedAsyncioTestCase):
             for user_id in user_ids:
                 try:
                     delete_stmt = sql_delete(billing_models.CreditPurchase).where(billing_models.CreditPurchase.user_id == user_id)
-                    result = await db.execute(delete_stmt)
+                    result = await db.exec(delete_stmt)
                     if result.rowcount > 0:
                         print(f"Deleted {result.rowcount} credit purchases for user {user_id}")
                 except Exception as e:
@@ -346,7 +346,7 @@ class TestBillingSystem(unittest.IsolatedAsyncioTestCase):
             for org_id in org_ids:
                 try:
                     delete_stmt = sql_delete(billing_models.CreditPurchase).where(billing_models.CreditPurchase.org_id == org_id)
-                    result = await db.execute(delete_stmt)
+                    result = await db.exec(delete_stmt)
                     if result.rowcount > 0:
                         print(f"Deleted {result.rowcount} credit purchases for org {org_id}")
                 except Exception as e:
@@ -356,7 +356,7 @@ class TestBillingSystem(unittest.IsolatedAsyncioTestCase):
             for org_id in org_ids:
                 try:
                     delete_stmt = sql_delete(billing_models.OrganizationNetCredits).where(billing_models.OrganizationNetCredits.org_id == org_id)
-                    result = await db.execute(delete_stmt)
+                    result = await db.exec(delete_stmt)
                     if result.rowcount > 0:
                         print(f"Deleted {result.rowcount} org net credits for org {org_id}")
                 except Exception as e:
@@ -366,7 +366,7 @@ class TestBillingSystem(unittest.IsolatedAsyncioTestCase):
             for org_id in org_ids:
                 try:
                     delete_stmt = sql_delete(billing_models.OrganizationCredits).where(billing_models.OrganizationCredits.org_id == org_id)
-                    result = await db.execute(delete_stmt)
+                    result = await db.exec(delete_stmt)
                     if result.rowcount > 0:
                         print(f"Deleted {result.rowcount} org credits for org {org_id}")
                 except Exception as e:
@@ -376,7 +376,7 @@ class TestBillingSystem(unittest.IsolatedAsyncioTestCase):
             for org_id in org_ids:
                 try:
                     delete_stmt = sql_delete(billing_models.OrganizationSubscription).where(billing_models.OrganizationSubscription.org_id == org_id)
-                    result = await db.execute(delete_stmt)
+                    result = await db.exec(delete_stmt)
                     if result.rowcount > 0:
                         print(f"Deleted {result.rowcount} org subscriptions for org {org_id}")
                 except Exception as e:
@@ -428,7 +428,7 @@ class TestBillingSystem(unittest.IsolatedAsyncioTestCase):
             from sqlalchemy import text
             for pattern in self.TEST_PLAN_PATTERNS:
                 delete_stmt = text("DELETE FROM kiwiq_billing_subscription_plan WHERE name LIKE :pattern")
-                result = await db.execute(delete_stmt, {"pattern": pattern})
+                result = await db.exec(delete_stmt, {"pattern": pattern})
                 if result.rowcount > 0:
                     print(f"Deleted {result.rowcount} subscription plans matching pattern '{pattern}'")
         except Exception as e:

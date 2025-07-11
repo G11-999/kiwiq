@@ -65,8 +65,7 @@ class APIRequest(BaseModel):
     # NOTE: This is used to Annotate, validation never fails!
     response_model: Optional[Type[ResponseBaseModel]] = None
 
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def get_query_params(self):
         kwargs = {}

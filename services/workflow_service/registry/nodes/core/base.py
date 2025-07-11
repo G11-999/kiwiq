@@ -25,7 +25,7 @@ OutputSchemaT = TypeVar('OutputSchemaT', bound=BaseSchema)
 ConfigSchemaT = TypeVar('ConfigSchemaT', bound=BaseSchema)
 StateT = TypeVar('StateT')  # For langgraph state type
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from workflow_service.utils.utils import get_node_output_state_key
 # from workflow_service.config.constants import GRAPH_STATE_SPECIAL_NODE_NAME, STATE_KEY_DELIMITER
@@ -107,8 +107,7 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
     private_output_mode: bool = False
     output_private_output_to_central_state: bool = False
 
-    class Config:
-        arbitrary_types_allowed = True # Allow non-pydantic types like clients, etc!
+    model_config = ConfigDict(arbitrary_types_allowed=True)  # Allow non-pydantic types like clients, etc!
 
     @classmethod
     def __pydantic_init_subclass__(cls, *args, **kwargs):

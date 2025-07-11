@@ -114,7 +114,7 @@ async def lifespan(app: FastAPI):
         # Close all clients
         try:
             await app.state.customer_mongo_client.close()
-            await app.state.versioned_mongo_client.close()
+            await app.state.versioned_mongo_client.client.close()
             await app.state.workflow_mongo_client.close()
             await app.state.redis_client.close()
         except Exception as e:

@@ -96,7 +96,8 @@ class TransformMappingSchema(BaseNodeConfig):
     source_path: str = Field(..., description="Dot-notation path to the source field in the input data.")
     destination_path: str = Field(..., description="Dot-notation path for the field in the output data.")
 
-    @validator('source_path', 'destination_path')
+    @field_validator('source_path', 'destination_path')
+    @classmethod
     def path_must_not_be_empty(cls, v: str) -> str:
         """Ensures paths are not empty strings."""
         if not v or not v.strip():
@@ -292,7 +293,8 @@ class MapperJoinConfigSchema(BaseNodeConfig):
     output_nesting_field: str = Field(..., description="Dot-notation field name in primary items to nest joined data.")
     join_type: JoinType = Field(default=JoinType.ONE_TO_MANY, description="Type of join (one-to-one or one-to-many).")
 
-    @validator('primary_list_path', 'secondary_list_path', 'primary_join_key', 'secondary_join_key', 'output_nesting_field')
+    @field_validator('primary_list_path', 'secondary_list_path', 'primary_join_key', 'secondary_join_key', 'output_nesting_field')
+    @classmethod
     def field_must_not_be_empty(cls, v: str) -> str:
         """Ensures required string fields are not empty."""
         if not v or not v.strip():
@@ -542,3 +544,7 @@ class DataJoinNode(BaseDynamicNode):
              self.error(f"Error processing MapperNode: {e}")
              traceback.print_exc()
              return MapperOutputSchema(mapped_data=None) # Return None on general error
+
+if __name__ == "__main__":
+    print(TransformMappingSchema(source_path="a", destination_path="a"))
+    # print(TransformMappingSchema(source_path="", destination_path=""))

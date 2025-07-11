@@ -859,7 +859,7 @@ async def create_organization_endpoint(
 
 @router.get("/organizations/{org_id}/users", response_model=List[schemas.UserOrganizationRoleReadWithUser], tags=["organizations"])
 async def get_organization_users_endpoint(
-    org_id: uuid.UUID,
+    org_id: uuid.UUID = Path(..., description="The ID of the organization to get users for"),
     db: AsyncSession = Depends(get_async_db_dependency),
     # Check permission using the SpecificOrgPermissionChecker for the org_id in path
     current_user: models.User = Depends(dependencies.SpecificOrgPermissionChecker([Permissions.ORG_VIEW_MEMBERS])),
@@ -932,8 +932,8 @@ async def delete_organization_endpoint(
 
 @router.post("/organizations/{org_id}/users", response_model=schemas.UserOrganizationRoleReadWithUser, status_code=status.HTTP_201_CREATED, tags=["organizations"])
 async def add_user_to_organization_endpoint(
-    org_id: uuid.UUID,
     assignment: schemas.UserAssignRole,
+    org_id: uuid.UUID = Path(..., description="The ID of the organization to add the user to"),
     db: AsyncSession = Depends(get_async_db_dependency),
     # Check permission using the SpecificOrgPermissionChecker for the org_id in path
     current_user: models.User = Depends(dependencies.SpecificOrgPermissionChecker([Permissions.ORG_MANAGE_MEMBERS])),
@@ -957,8 +957,8 @@ async def add_user_to_organization_endpoint(
 
 @router.delete("/organizations/{org_id}/users", status_code=status.HTTP_204_NO_CONTENT, tags=["organizations"])
 async def remove_user_from_organization_endpoint(
-    org_id: uuid.UUID,
     removal: schemas.UserRemoveRole,
+    org_id: uuid.UUID = Path(..., description="The ID of the organization to remove the user from"),
     db: AsyncSession = Depends(get_async_db_dependency),
     # Require org-specific permission to remove users, checked against org_id in path
     current_user: models.User = Depends(dependencies.SpecificOrgPermissionChecker([Permissions.ORG_MANAGE_MEMBERS])),
@@ -968,10 +968,8 @@ async def remove_user_from_organization_endpoint(
     Remove a user from an organization.
     Requires 'org:manage_members' permission for the organization specified in the path.
     """
-    if org_id != removal.organization_id:
-         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Organization ID in path and body mismatch.")
     try:
-        await auth_service.remove_user_from_organization(db=db, removal=removal, current_user=current_user)
+        await auth_service.remove_user_from_organization(db=db, removal=removal, organization_id=org_id, current_user=current_user)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     except (UserNotFoundException, OrganizationNotFoundException, PermissionDeniedException) as e:
         raise e

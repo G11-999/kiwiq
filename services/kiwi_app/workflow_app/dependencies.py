@@ -329,7 +329,7 @@ async def get_notification_for_user(
     """
     Dependency to fetch a notification by ID, ensuring it belongs to the current user.
     """
-    result = await db.execute(
+    result = await db.exec(
         select(models.UserNotification).where(
             models.UserNotification.id == notification_id,
             models.UserNotification.user_id == current_user.id
@@ -356,7 +356,7 @@ async def get_hitl_job_for_org(
     if active_org_id is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="X-Active-Org header is required.")
 
-    result = await db.execute(
+    result = await db.exec(
         select(models.HITLJob).where(
             models.HITLJob.id == job_id,
             models.HITLJob.org_id == active_org_id

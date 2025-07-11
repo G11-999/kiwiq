@@ -50,7 +50,7 @@ class LinkedinOauthDAO(BaseDAO[models.LinkedinUserOauth, None, None]):
         """
         try:
             statement = select(self.model).where(self.model.user_id == user_id)
-            result = await db.execute(statement)
+            result = await db.exec(statement)
             return result.scalars().first()
         except Exception as e:
             logger.error(f"Error getting LinkedIn OAuth by user ID {user_id}: {e}")
@@ -257,7 +257,7 @@ class LinkedinOauthDAO(BaseDAO[models.LinkedinUserOauth, None, None]):
                 )
             )
             
-            result = await db.execute(statement)
+            result = await db.exec(statement)
             return result.scalars().all()
         except Exception as e:
             logger.error(f"Error getting expiring tokens: {e}")
@@ -280,7 +280,7 @@ class LinkedinOauthDAO(BaseDAO[models.LinkedinUserOauth, None, None]):
         """
         try:
             statement = select(self.model).where(self.model.user_id.in_(user_ids))
-            result = await db.execute(statement)
+            result = await db.exec(statement)
             return result.scalars().all()
         except Exception as e:
             logger.error(f"Error getting LinkedIn OAuth records by user IDs: {e}")
@@ -314,7 +314,7 @@ class LinkedinOauthDAO(BaseDAO[models.LinkedinUserOauth, None, None]):
                 .where(UserOrganizationRole.organization_id == org_id)
             )
             
-            result = await db.execute(statement)
+            result = await db.exec(statement)
             return result.scalar() or 0
         except Exception as e:
             logger.error(f"Error counting LinkedIn connections by organization: {e}")
@@ -374,7 +374,7 @@ class LinkedinOauthDAO(BaseDAO[models.LinkedinUserOauth, None, None]):
         if limit:
             statement = statement.limit(limit)
         
-        result = await db.execute(statement)
+        result = await db.exec(statement)
         return result.scalars().all()
     
     async def get_pending_verifications(
@@ -392,7 +392,7 @@ class LinkedinOauthDAO(BaseDAO[models.LinkedinUserOauth, None, None]):
             )
         )
         
-        result = await db.execute(statement)
+        result = await db.exec(statement)
         return result.scalars().all()
     
     async def mark_expired_tokens(
@@ -411,7 +411,7 @@ class LinkedinOauthDAO(BaseDAO[models.LinkedinUserOauth, None, None]):
                 )
             )
             
-            result = await db.execute(statement)
+            result = await db.exec(statement)
             expired_records = result.scalars().all()
             
             count = 0
@@ -464,7 +464,7 @@ class LinkedinOauthDAO(BaseDAO[models.LinkedinUserOauth, None, None]):
                 self.model.oauth_state == models.LinkedinOauthState.ACTIVE
             )
         
-        result = await db.execute(statement)
+        result = await db.exec(statement)
         return result.scalars().all()
     
     async def admin_delete_by_linkedin_id(
@@ -590,7 +590,7 @@ class LinkedinOauthDAO(BaseDAO[models.LinkedinUserOauth, None, None]):
             
             statement = statement.offset(offset)
             
-            result = await db.execute(statement)
+            result = await db.exec(statement)
             records = result.scalars().all()
             
             logger.info(f"ADMIN: Retrieved {len(records)} LinkedIn OAuth records (limit={limit}, offset={offset})")
@@ -626,7 +626,7 @@ class LinkedinIntegrationDAO(BaseDAO[models.LinkedinIntegration, None, None]):
                     self.model.linkedin_id == linkedin_id
                 )
             )
-            result = await db.execute(statement)
+            result = await db.exec(statement)
             return result.scalars().first()
         except Exception as e:
             logger.error(f"Error getting integration for user {user_id}, linkedin {linkedin_id}: {e}")
@@ -640,7 +640,7 @@ class LinkedinIntegrationDAO(BaseDAO[models.LinkedinIntegration, None, None]):
         """Get all integrations for a user."""
         try:
             statement = select(self.model).where(self.model.user_id == user_id)
-            result = await db.execute(statement)
+            result = await db.exec(statement)
             return result.scalars().all()
         except Exception as e:
             logger.error(f"Error getting integrations for user {user_id}: {e}")
@@ -887,7 +887,7 @@ class LinkedinAccountDAO(BaseDAO[models.LinkedinAccount, None, None]):
         """Get all accounts of a specific type."""
         try:
             statement = select(self.model).where(self.model.account_type == account_type)
-            result = await db.execute(statement)
+            result = await db.exec(statement)
             return result.scalars().all()
         except Exception as e:
             logger.error(f"Error getting accounts by type {account_type}: {e}")
@@ -960,7 +960,7 @@ class OrgLinkedinAccountDAO(BaseDAO[models.OrgLinkedinAccount, None, None]):
             if shared_only:
                 statement = statement.where(self.model.is_shared == True)
             
-            result = await db.execute(statement)
+            result = await db.exec(statement)
             return result.scalars().all()
         except Exception as e:
             logger.error(f"Error getting org LinkedIn accounts: {e}")
@@ -980,7 +980,7 @@ class OrgLinkedinAccountDAO(BaseDAO[models.OrgLinkedinAccount, None, None]):
                     self.model.organization_id == organization_id
                 )
             )
-            result = await db.execute(statement)
+            result = await db.exec(statement)
             return result.scalars().all()
         except Exception as e:
             logger.error(f"Error getting user's org LinkedIn accounts: {e}")
@@ -1025,7 +1025,7 @@ class OrgLinkedinAccountDAO(BaseDAO[models.OrgLinkedinAccount, None, None]):
                 self.model.linkedin_integration_id == integration_id
             ).values(is_active=False)
             
-            result = await db.execute(statement)
+            result = await db.exec(statement)
             if commit:
                 await db.commit()
             
@@ -1048,7 +1048,7 @@ class OrgLinkedinAccountDAO(BaseDAO[models.OrgLinkedinAccount, None, None]):
             statement = select(self.model).where(
                 self.model.linkedin_integration_id == integration_id
             )
-            result = await db.execute(statement)
+            result = await db.exec(statement)
             return result.scalars().all()
         except Exception as e:
             logger.error(f"Error getting org accounts by integration: {e}")

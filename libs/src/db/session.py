@@ -103,7 +103,7 @@ def get_pool() -> Generator[ConnectionPool, None, None]:
         with get_pool() as pool:
             with pool.connection() as conn:
                 with conn.cursor() as cur:
-                    cur.execute("SELECT 1")
+                    cur.exec("SELECT 1")
     """
     pool = ConnectionPool(
         conninfo=global_settings.LANGGRAPH_DATABASE_URL, # Raw URL is fine for psycopg directly
@@ -157,7 +157,7 @@ async def get_async_pool() -> AsyncGenerator[AsyncConnectionPool, None]:
         async with get_async_pool() as pool:
             async with pool.connection() as aconn:
                 async with aconn.cursor() as acur:
-                    await acur.execute("SELECT 1")
+                    await acur.exec("SELECT 1")
     """
     pool = AsyncConnectionPool(
         conninfo=global_settings.LANGGRAPH_DATABASE_URL, # Raw URL is fine for psycopg directly

@@ -244,7 +244,7 @@ class DataJobDAO(BaseDAO[models.DataJob, schemas.DataJobCreate, schemas.DataJobU
             .offset(skip)
             .limit(limit)
         )
-        result = await db.execute(statement)
+        result = await db.exec(statement)
         return result.scalars().all()
     
     async def get_jobs_by_type(
@@ -262,7 +262,7 @@ class DataJobDAO(BaseDAO[models.DataJob, schemas.DataJobCreate, schemas.DataJobU
             .offset(skip)
             .limit(limit)
         )
-        result = await db.execute(statement)
+        result = await db.exec(statement)
         return result.scalars().all()
     
     async def get_latest_successful_job(
@@ -282,7 +282,7 @@ class DataJobDAO(BaseDAO[models.DataJob, schemas.DataJobCreate, schemas.DataJobU
             .order_by(desc(self.model.processed_timestamp_end))
             .limit(1)
         )
-        result = await db.execute(statement)
+        result = await db.exec(statement)
         return result.scalars().first()
     
     async def get_successful_jobs_in_range(
@@ -305,7 +305,7 @@ class DataJobDAO(BaseDAO[models.DataJob, schemas.DataJobCreate, schemas.DataJobU
             )
             .order_by(desc(self.model.processed_timestamp_end))
         )
-        result = await db.execute(statement)
+        result = await db.exec(statement)
         return result.scalars().all()
     
     async def get_running_jobs(self, db: AsyncSession) -> Sequence[models.DataJob]:
@@ -315,7 +315,7 @@ class DataJobDAO(BaseDAO[models.DataJob, schemas.DataJobCreate, schemas.DataJobU
             .where(self.model.status == DataJobStatus.STARTED)
             .order_by(self.model.processed_timestamp_start)
         )
-        result = await db.execute(statement)
+        result = await db.exec(statement)
         return result.scalars().all()
     
     async def get_failed_jobs(
@@ -337,7 +337,7 @@ class DataJobDAO(BaseDAO[models.DataJob, schemas.DataJobCreate, schemas.DataJobU
             .order_by(desc(self.model.created_at))
             .limit(limit)
         )
-        result = await db.execute(statement)
+        result = await db.exec(statement)
         return result.scalars().all()
     
     async def query_jobs(
@@ -442,7 +442,7 @@ class DataJobDAO(BaseDAO[models.DataJob, schemas.DataJobCreate, schemas.DataJobU
                 count_query = count_query.where(filter_condition)
             
             # Get total count
-            count_result = await db.execute(count_query)
+            count_result = await db.exec(count_query)
             total = count_result.scalar() or 0
             
             # Apply sorting
@@ -456,7 +456,7 @@ class DataJobDAO(BaseDAO[models.DataJob, schemas.DataJobCreate, schemas.DataJobU
             query = query.offset(query_params.skip).limit(query_params.limit)
             
             # Execute query
-            result = await db.execute(query)
+            result = await db.exec(query)
             jobs = result.scalars().all()
             
             # Calculate pagination info
@@ -513,7 +513,7 @@ class DataJobDAO(BaseDAO[models.DataJob, schemas.DataJobCreate, schemas.DataJobU
             
             # Total jobs
             total_query = select(func.count(self.model.id)).where(base_condition)
-            total_result = await db.execute(total_query)
+            total_result = await db.exec(total_query)
             total_jobs = total_result.scalar() or 0
             
             # Jobs by status
@@ -522,7 +522,7 @@ class DataJobDAO(BaseDAO[models.DataJob, schemas.DataJobCreate, schemas.DataJobU
                 .where(base_condition)
                 .group_by(self.model.status)
             )
-            status_result = await db.execute(status_query)
+            status_result = await db.exec(status_query)
             jobs_by_status = {row.status.value: row.count for row in status_result}
             
             # Jobs by type
@@ -532,7 +532,7 @@ class DataJobDAO(BaseDAO[models.DataJob, schemas.DataJobCreate, schemas.DataJobU
                 .group_by(self.model.job_type)
                 .order_by(desc('count'))
             )
-            type_result = await db.execute(type_query)
+            type_result = await db.exec(type_query)
             jobs_by_type = {row.job_type: row.count for row in type_result}
             
             # Jobs by date (daily aggregation)
@@ -545,7 +545,7 @@ class DataJobDAO(BaseDAO[models.DataJob, schemas.DataJobCreate, schemas.DataJobU
                 .group_by(func.date(self.model.created_at))
                 .order_by('job_date')
             )
-            date_result = await db.execute(date_query)
+            date_result = await db.exec(date_query)
             jobs_by_date = {str(row.job_date): row.count for row in date_result}
             
             # Average duration
@@ -558,7 +558,7 @@ class DataJobDAO(BaseDAO[models.DataJob, schemas.DataJobCreate, schemas.DataJobU
                     )
                 )
             )
-            duration_result = await db.execute(duration_query)
+            duration_result = await db.exec(duration_query)
             avg_duration = duration_result.scalar()
             
             # Success rate
@@ -574,7 +574,7 @@ class DataJobDAO(BaseDAO[models.DataJob, schemas.DataJobCreate, schemas.DataJobU
                     )
                 )
             )
-            success_result = await db.execute(success_query)
+            success_result = await db.exec(success_query)
             success_row = success_result.first()
             success_rate = (
                 (success_row.successful / success_row.total * 100)
@@ -589,7 +589,7 @@ class DataJobDAO(BaseDAO[models.DataJob, schemas.DataJobCreate, schemas.DataJobU
                 )
                 .where(base_condition)
             )
-            records_result = await db.execute(records_query)
+            records_result = await db.exec(records_query)
             records_row = records_result.first()
             total_records_processed = records_row.total_processed or 0
             total_records_failed = records_row.total_failed or 0
@@ -611,7 +611,7 @@ class DataJobDAO(BaseDAO[models.DataJob, schemas.DataJobCreate, schemas.DataJobU
                 .order_by(desc('count'))
                 .limit(10)
             )
-            error_result = await db.execute(error_query)
+            error_result = await db.exec(error_query)
             most_common_errors = [
                 {"error_message": row.error_message, "count": row.count}
                 for row in error_result
@@ -636,7 +636,7 @@ class DataJobDAO(BaseDAO[models.DataJob, schemas.DataJobCreate, schemas.DataJobU
                     )
                 )
             )
-            recent_result = await db.execute(recent_query)
+            recent_result = await db.exec(recent_query)
             recent_row = recent_result.first()
             
             if recent_row:
@@ -756,7 +756,7 @@ class DataJobDAO(BaseDAO[models.DataJob, schemas.DataJobCreate, schemas.DataJobU
             
             delete_query = delete(self.model).where(and_(*conditions))
             
-            result = await db.execute(delete_query)
+            result = await db.exec(delete_query)
             deleted_count = result.rowcount
             
             if commit:
@@ -795,7 +795,7 @@ class DataJobDAO(BaseDAO[models.DataJob, schemas.DataJobCreate, schemas.DataJobU
                 return False
             
             delete_query = delete(self.model).where(self.model.id == job_id)
-            result = await db.execute(delete_query)
+            result = await db.exec(delete_query)
             deleted_count = result.rowcount
             
             if commit:
@@ -862,7 +862,7 @@ class DataJobDAO(BaseDAO[models.DataJob, schemas.DataJobCreate, schemas.DataJobU
                 raise ValueError("At least one filter condition must be provided for bulk deletion")
             
             delete_query = delete(self.model).where(and_(*conditions))
-            result = await db.execute(delete_query)
+            result = await db.exec(delete_query)
             deleted_count = result.rowcount
             
             if commit:
@@ -906,7 +906,7 @@ class DataJobDAO(BaseDAO[models.DataJob, schemas.DataJobCreate, schemas.DataJobU
             else:
                 delete_query = delete(self.model)
             
-            result = await db.execute(delete_query)
+            result = await db.exec(delete_query)
             deleted_count = result.rowcount
             
             if commit:

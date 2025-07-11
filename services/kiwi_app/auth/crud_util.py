@@ -519,7 +519,7 @@ if __name__ == "__main__":
 
     # print(f"\n\n\n\n--- Running SELECTINLOAD Query for User ID: {token_data.sub} ---\n\n\n\n")
     # # Use session.execute for ORM statements returning ORM objects
-    # result = await db.execute(statement)
+    # result = await db.exec(statement)
 
     # # scalars() gets the primary ORM object (User)
     # # unique() is good practice, though less critical for selectinload than joinedload

@@ -102,7 +102,7 @@ class RAGSearchResponse(BaseModel):
 
 class RAGDocumentDeleteRequest(RAGBaseRequest):
     """Schema for deleting documents from RAG vector database."""
-    doc_ids: List[str] = Field(..., description="List of document IDs to delete", min_items=1, max_items=100)
+    doc_ids: List[str] = Field(..., description="List of document IDs to delete", min_length=1, max_length=100)
     
     @field_validator('doc_ids')
     def validate_doc_ids(cls, v):
@@ -120,7 +120,7 @@ class RAGDocumentDeleteResponse(BaseModel):
 
 class RAGDocumentIngestRequest(RAGBaseRequest):
     """Schema for reingesting documents into RAG vector database."""
-    doc_ids: List[str] = Field(..., description="List of document IDs to reingest", min_items=1, max_items=50)
+    doc_ids: List[str] = Field(..., description="List of document IDs to reingest", min_length=1, max_length=50)
     generate_vectors: bool = Field(True, description="Whether to generate new vector embeddings")
     force_reingest: bool = Field(False, description="Force reingestion even if already exists")
     

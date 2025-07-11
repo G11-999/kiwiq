@@ -2,7 +2,7 @@ import re
 import logging
 from enum import Enum
 from typing import List, Optional, Dict, Any, Union, Tuple
-from pydantic import BaseModel, model_validator, Field, HttpUrl
+from pydantic import BaseModel, model_validator, Field, HttpUrl, ConfigDict
 from datetime import datetime
 
 from scraper_service.settings import rapid_api_settings
@@ -155,10 +155,10 @@ class ScrapingRequest(BaseModel):
     post_reactions: YesNoEnum = Field(default=YesNoEnum.NO, description="Fetch reactions for scraped posts?")
     reaction_limit: Optional[int] = Field(default=rapid_api_settings.DEFAULT_REACTION_LIMIT, description="Max reactions per post.")
 
-    class Config:
-        """Pydantic model configuration."""
-        extra = 'forbid' # Forbid any extra fields not defined in the schema
-        use_enum_values = True # Use enum values in the serialized output
+    model_config = ConfigDict(
+        extra='forbid',  # Forbid any extra fields not defined in the schema
+        use_enum_values=True  # Use enum values in the serialized output
+    )
 
 
     @model_validator(mode='before')

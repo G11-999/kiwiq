@@ -56,7 +56,7 @@ async def process_notification(payload: Dict, db_session: Any):
         db_session (Any): The active database session/connection.
     """
     logger.info(f"Processing notification (placeholder): {payload.get('notification_type')}")
-    # Example: await db_session.execute(...)
+    # Example: await db_session.exec(...)
     # Example: await websocket_manager.send(...)
     await asyncio.sleep(0.1) # Simulate async work
     logger.debug("Notification processing complete (placeholder).")

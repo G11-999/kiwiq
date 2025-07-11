@@ -60,10 +60,7 @@ class BaseEmailData(BaseModel):
     user_name: str = Field(description="Recipient's name")
     footer: FooterData = Field(default_factory=FooterData, description="Footer configuration")
     
-    class Config:
-        """Pydantic configuration."""
-        # Allow arbitrary types for flexibility
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 # ==============================================================================

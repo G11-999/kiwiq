@@ -757,19 +757,19 @@ class AuthService:
             )
 
     async def remove_user_from_organization(
-        self, db: AsyncSession, *, removal: schemas.UserRemoveRole, current_user: models.User
+        self, db: AsyncSession, *, removal: schemas.UserRemoveRole, organization_id: uuid.UUID, current_user: models.User
     ) -> None:
         """
         Removes a user from an organization, checking permissions.
         """
         # 1. Check permission
-        await self._check_permission(db, user=current_user, org_id=removal.organization_id, required_permission=Permissions.ORG_MANAGE_MEMBERS)
+        await self._check_permission(db, user=current_user, org_id=organization_id, required_permission=Permissions.ORG_MANAGE_MEMBERS)
 
         # 2. Find target user and org
         target_user = await self.user_dao.get_by_email(db, email=removal.user_email)
         if not target_user:
              raise UserNotFoundException(detail=f"User with email {removal.user_email} not found.")
-        target_org = await self.org_dao.get(db, id=removal.organization_id)
+        target_org = await self.org_dao.get(db, id=organization_id)
         if not target_org:
              raise OrganizationNotFoundException()
 
