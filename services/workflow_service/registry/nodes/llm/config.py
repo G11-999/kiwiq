@@ -88,6 +88,11 @@ class ModelMetadata(BaseModel):
     search_context_size: bool = False
     user_location: bool = False
 
+    # prices
+    cached_token_price_per_M: float = 0.
+    input_token_price_per_M: float = 0.
+    output_token_price_per_M: float = 0.
+
 
 # class ModelMetadata(ModelMetadata):
 #     """Extends base model metadata with web search capabilities."""
@@ -163,6 +168,9 @@ class OpenAIModels(str, EnumWithAttr):
         "context_limit": 200000,
         "output_token_limit": 100000,
         "max_tool_calls_param_key": "max_tool_calls",
+        "cached_token_price_per_M": 0.5,
+        "input_token_price_per_M": 2.,
+        "output_token_price_per_M": 8.,
         # "web_search": True,
         # "parallel_tool_calling_configurable": False,
     }))
@@ -175,6 +183,9 @@ class OpenAIModels(str, EnumWithAttr):
         "context_limit": 200000,
         "output_token_limit": 100000,
         "max_tool_calls_param_key": "max_tool_calls",
+        "cached_token_price_per_M": 2.5,
+        "input_token_price_per_M": 10.,
+        "output_token_price_per_M": 40.,
         # "web_search": True,
         # "parallel_tool_calling_configurable": False,
     }))
@@ -433,12 +444,16 @@ DEFAULT_PERPLEXITY_SEARCH_METADATA = ModelMetadata(
 
 
 class PerplexityModels(str, EnumWithAttr):
-    """Perplexity model options."""
+    """Perplexity model options.
+    
+    NOTE: CRITICAL: FIXME: perplexity's deep research models cost calculation is incorrect and doesnt' incorporate reasoning tokens, citation tokens probably, and web search tool calls! So we undercharge the user massively for deep research models!
+    """
     SONAR_DEEP_RESEARCH = "sonar-deep-research", ModelMetadata(**(DEFAULT_PERPLEXITY_SEARCH_METADATA.model_dump() | {
         "context_limit": 128000,
         "output_token_limit": 16384,
         "reasoning": True,
-        "rate_limits": {"requests_per_minute": 5, }
+        "reasoning_effort_class": ["low", "medium", "high"],
+        "rate_limits": {"requests_per_minute": 100, }
     }))
     SONAR_REASONING_PRO = "sonar-reasoning-pro", ModelMetadata(**(DEFAULT_PERPLEXITY_SEARCH_METADATA.model_dump() | {
         "context_limit": 128000,

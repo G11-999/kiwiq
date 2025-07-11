@@ -16,7 +16,7 @@ class ThemeSchema(BaseModel):
         description="A clear, specific name for the identified theme (e.g., 'Founder Lessons')."
     )
     theme_description: str = Field(
-        description="A brief description (2–4 sentences) explaining the types of posts, topics, and tone that fall under this theme."
+        description="A structured, human-readable description with clear bullet points explaining: (1) the main topics covered, (2) the purpose or intent behind these posts, and (3) any recurring patterns or characteristics that define this theme."
     )
 
 class ExtractedThemesOutput(BaseModel):
@@ -45,8 +45,8 @@ Your task is to analyze a series of LinkedIn posts and identify exactly 5 key co
 
 Guidelines:
 - Identify **exactly 5 themes**, no more or less
-- Each theme must have a **concise, specific name** (e.g., “Startup Lessons”, not “Business”)
-- For each theme, write a **brief description (2–4 sentences)** that summarizes the types of posts it includes, the intent behind them, and any recurring topics or tones
+- Each theme must have a **concise, specific name** (e.g., "Startup Lessons", not "Business")
+- For each theme, write a **structured, human-readable description** using clear bullet points that cover: (1) main topics, (2) purpose or intent, and (3) recurring patterns or characteristics
 - Do not infer the user's goals — base your themes only on the text content provided
 - Be as concrete and precise as possible; avoid vague or generic labels
 
@@ -227,7 +227,7 @@ For the given theme:
 - Comment on **engagement trends** (what post types get more interaction)
 - End with **3–5 recommendations** to improve performance or consistency within this theme
 
-Be clear, concrete, and specific. Use examples where useful, but don’t repeat full post texts. Your goal is to make the insights easy to apply.
+Be clear, concrete, and specific. Use examples where useful, but don't repeat full post texts. Your goal is to make the insights easy to apply.
 
 Respond only with the JSON output conforming to the schema: ```json\n{schema}\n```
 """

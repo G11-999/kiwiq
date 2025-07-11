@@ -5,7 +5,7 @@ import json
 from pydantic import BaseModel, Field
 
 
-class BucketAnalysisSchema(BaseModel):
+class KnowledgeBaseAnalysisSchema(BaseModel):
     """Generic document analysis schema that adapts based on analysis focus and usage description"""
     
     # Core extracted information
@@ -26,7 +26,7 @@ class BucketAnalysisSchema(BaseModel):
 
 
 # Generate JSON schema from the Pydantic model
-KNOWLEDGE_BASE_ANALYSIS_JSON_SCHEMA = BucketAnalysisSchema.model_json_schema()
+KNOWLEDGE_BASE_ANALYSIS_JSON_SCHEMA = KnowledgeBaseAnalysisSchema.model_json_schema()
 
 
 KNOWLEDGE_BASE_ANALYSIS_SYSTEM_PROMPT = """

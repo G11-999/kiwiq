@@ -7,7 +7,6 @@ from kiwi_client.test_run_workflow_client import run_workflow_test
 # print(TEST_USER_EMAIL)
 
 workflow_key = "content_strategy_workflow"
-entity_username = "sytalal"
 workflow_inputs =  {
     "customer_context_doc_configs": [
         {
@@ -61,9 +60,8 @@ workflow_inputs =  {
             "is_system_entity": True
         }
     ],
-    "entity_username": entity_username
+    "entity_username": "test_entity"
 }
-
 predefined_hitl_inputs = []
 validate_workflow_output = None
 test_name = "test_run_1"

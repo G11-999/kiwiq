@@ -522,6 +522,13 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
         #      self.logger.warning("CustomerDataService could not be initialized in external context.")
              # Decide if this is a skip condition or just a warning
              # raise unittest.SkipTest("CustomerDataService could not be initialized.")
+    
+    async def asyncTearDown(self) -> None:
+        try:
+            if self.external_context:
+                await self.external_context.close()
+        except Exception as e:
+            print(f"Error in asyncTearDown: {e}")
 
     async def test_anthropic_claude3_7_tool_use_text_output_reasoning(self):
         """Test Anthropic Claude 3.7 Sonnet with tool use (web_search), text output, and reasoning."""

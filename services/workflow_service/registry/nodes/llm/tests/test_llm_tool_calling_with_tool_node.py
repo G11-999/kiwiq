@@ -1059,6 +1059,11 @@ class TestLLMToolIntegration(unittest.IsolatedAsyncioTestCase):
         """Tear down test-specific resources after each test."""
         if self.db_session:
             await self.db_session.close()
+        try:
+            if self.external_context:
+                await self.external_context.close()
+        except Exception as e:
+            print(f"Error in asyncTearDown: {e}")
     
     async def test_math_problem_solving_with_calculator(self):
         """Test LLM solving math problems using the calculator tool."""

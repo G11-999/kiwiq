@@ -198,6 +198,15 @@ class Citation(BaseSchema):
     metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata about the source")
 
 
+class AgentAction(BaseSchema):
+    """Represents an agent action performed during model execution."""
+    id: str = Field(description="Unique identifier for the action")
+    index: int = Field(description="Index/order of the action")
+    action: Dict[str, Any] = Field(description="The action details (e.g., query, type, url)")
+    type: str = Field(description="Type of the action (e.g., 'web_search_call')")
+    status: str = Field(description="Status of the action (e.g., 'completed', 'failed')")
+
+
 class WebSearchResult(BaseSchema):
     """Represents a web search result."""
     # query: str = Field(description="The search query used")
@@ -230,6 +239,10 @@ class LLMNodeOutputSchema(BaseSchema):
     web_search_result: Optional[WebSearchResult] = Field(
         None,
         description="Web search result (if web search was enabled)"
+    )
+    agent_actions: Optional[List[AgentAction]] = Field(
+        None,
+        description="List of agent actions performed during model execution (e.g., web searches, tool calls)"
     )
 ###########################
 
@@ -1828,7 +1841,8 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                     actual_cost = self._calculate_actual_cost(
                         token_usage=metadata.token_usage,
                         provider=self.config.llm_config.model_spec.provider,
-                        model_name=self.config.llm_config.model_spec.model
+                        model_name=self.config.llm_config.model_spec.model,
+                        model_metadata=model_metadata,
                     )
 
                     # Add a markup factor for LLM token costs
@@ -1962,6 +1976,9 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
         # import ipdb; ipdb.set_trace()
         web_search_result = LLMNode._parse_search_results(model_metadata, response) or LLMNode._parse_citations_from_response(model_metadata, response)
         
+        # Parse agent actions from additional_kwargs
+        agent_actions = LLMNode._parse_agent_actions(response)
+        
         # Web Searches billing
         # TODO: potentially estimate web searches in pre allocation credits??
         citation_count = len(web_search_result.citations) if web_search_result else 0
@@ -2000,7 +2017,8 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
             metadata=metadata,
             structured_output=structured_output,
             tool_calls=tool_calls or None,
-            web_search_result=web_search_result
+            web_search_result=web_search_result,
+            agent_actions=agent_actions,
         )
 
     @staticmethod
@@ -2147,6 +2165,49 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
         if not (web_search_result.citations or web_search_result.search_metadata):
             return None
         return web_search_result
+
+    @staticmethod
+    def _parse_agent_actions(response: Any) -> Optional[List[AgentAction]]:
+        """
+        Parse agent actions from the model response.
+        
+        Args:
+            response: The model response object
+            
+        Returns:
+            List of AgentAction objects or None if no agent actions found
+        """
+        # Get additional_kwargs from response, handling different response structures
+        additional_kwargs = None
+        if hasattr(response, 'additional_kwargs'):
+            additional_kwargs = response.additional_kwargs
+        elif isinstance(response, dict) and 'raw' in response and hasattr(response['raw'], 'additional_kwargs'):
+            additional_kwargs = response['raw'].additional_kwargs
+        
+        if not additional_kwargs:
+            return None
+            
+        # Check for tool_outputs in additional_kwargs
+        tool_outputs = additional_kwargs.get('tool_outputs', [])
+        if not tool_outputs:
+            return None
+            
+        agent_actions = []
+        for tool_output in tool_outputs:
+            try:
+                agent_action = AgentAction(
+                    id=tool_output.get('id', ''),
+                    index=tool_output.get('index', 0),
+                    action=tool_output.get('action', {}),
+                    type=tool_output.get('type', ''),
+                    status=tool_output.get('status', '')
+                )
+                agent_actions.append(agent_action)
+            except Exception as e:
+                # Skip malformed agent actions
+                continue
+        
+        return agent_actions if agent_actions else None
 
     def _convert_messages(self, message_dicts: List[Dict[str, Any]]) -> List[AnyMessage]:
         """
@@ -2474,6 +2535,19 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
             float: Estimated cost in USD
         """
         try:
+
+            # Deep research models have a higher cost for single research report!
+            deep_research_fallback_costs = {
+                LLMModelProvider.OPENAI: 1.,
+                LLMModelProvider.ANTHROPIC: 1.,
+                LLMModelProvider.GEMINI: 1.,
+                # LLMModelProvider.AWS_BEDROCK: 0.5,
+                LLMModelProvider.PERPLEXITY: 0.5,
+                # LLMModelProvider.FIREWORKS: 0.5,
+            }
+            if "deep-research" in model_name:
+                return deep_research_fallback_costs.get(provider, 0.5)
+            
             # Map model to tokencost format
             tokencost_model = self.map_model_to_tokencost_format(provider, model_name)
             
@@ -2549,13 +2623,15 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                 LLMModelProvider.PERPLEXITY: 0.001,
                 LLMModelProvider.FIREWORKS: 0.001,
             }
+            
             return fallback_costs.get(provider, 0.001)
 
     def _calculate_actual_cost(
         self,
         token_usage: Dict[str, Any],
         provider: LLMModelProvider,
-        model_name: str
+        model_name: str,
+        model_metadata: ModelMetadata,
     ) -> float:
         """
         Calculate actual cost based on token usage from the response.
@@ -2564,7 +2640,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
             token_usage: Token usage dict with input_tokens, output_tokens, etc.
             provider: Model provider
             model_name: Model name
-            
+            model_metadata: Model metadata
         Returns:
             float: Actual cost in USD
         """
@@ -2576,17 +2652,55 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
             input_tokens = token_usage.get("input_tokens", 0)
             output_tokens = token_usage.get("output_tokens", 0)
             cached_tokens = token_usage.get("cached_tokens", 0)
+
+            if provider == LLMModelProvider.PERPLEXITY and "deep-research" in model_name:
+                # https://docs.perplexity.ai/guides/pricing
+                # Perplexity doesn't report reasoning tokens, so we need to add them manually
+                reasoning_tokens = token_usage.get("reasoning_tokens", 0)
+                citation_tokens = token_usage.get("citation_tokens", 0)
+                if not citation_tokens:
+                    # rough estimation!
+                    citation_tokens = 5 * output_tokens
+                if not reasoning_tokens:
+                    # rough estimation!
+                    reasoning_tokens = 10 * output_tokens
+                input_tokens = input_tokens + reasoning_tokens * 1.5 + citation_tokens
+                # TODO: add citation tokens!
+                # TODO: add web search tool calls!
+
+            input_tokens = input_tokens - cached_tokens
             # TODO: adjust input tokens cost based on cached tokens!
             #     also add anthropic cache creation costs!
-            cached_input_tokens_cost = calculate_cost_by_tokens(cached_tokens, tokencost_model, "cached")
-            cached_input_tokens_cost = float(cached_input_tokens_cost)
+            try:
+                cached_input_tokens_cost = calculate_cost_by_tokens(cached_tokens, tokencost_model, "cached")
+                cached_input_tokens_cost = float(cached_input_tokens_cost)
+            except Exception as e:
+                if model_metadata.cached_token_price_per_M > 0.:
+                    cached_input_tokens_cost = model_metadata.cached_token_price_per_M * cached_tokens / 1000000.
+                else:
+                    raise e
             # adjusted_input_tokens = input_tokens - cached_tokens
             # adjusted_input_tokens_cost = calculate_cost_by_tokens(adjusted_input_tokens, tokencost_model, "input")
             # adjusted_actual_cost = actual_cost + adjusted_input_tokens_cost + output_tokens_cost
             
             # TODO: add cached tokens costs!
-            input_tokens_cost = calculate_cost_by_tokens(input_tokens, tokencost_model, "input")
-            output_tokens_cost = calculate_cost_by_tokens(output_tokens, tokencost_model, "output")
+            try:
+                input_tokens_cost = calculate_cost_by_tokens(input_tokens, tokencost_model, "input")
+            except Exception as e:
+                if model_metadata.input_token_price_per_M > 0.:
+                    input_tokens_cost = model_metadata.input_token_price_per_M * input_tokens / 1000000.
+                else:
+                    raise e
+
+            try:
+                output_tokens_cost = calculate_cost_by_tokens(output_tokens, tokencost_model, "output")
+                output_tokens_cost = float(output_tokens_cost)
+            except Exception as e:
+                if model_metadata.output_token_price_per_M > 0.:
+                    output_tokens_cost = model_metadata.output_token_price_per_M * output_tokens / 1000000.
+                else:
+                    raise e
+            
             actual_cost = input_tokens_cost + output_tokens_cost
 
             actual_cost = float(actual_cost)

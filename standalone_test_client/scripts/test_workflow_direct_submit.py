@@ -125,4 +125,4 @@ async def test(workflow_name, inputs, workflow_version=None, parallel_submit_lim
             )
 
 if __name__ == "__main__":
-    asyncio.run(test(workflow_name=workflow_key, inputs=workflow_inputs, parallel_submit_limit=12))
+    asyncio.run(test(workflow_name=workflow_key, inputs=workflow_inputs, parallel_submit_limit=50))

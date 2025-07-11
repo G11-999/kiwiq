@@ -18,10 +18,10 @@ from kiwi_client.schemas.workflow_constants import WorkflowRunStatus
 # --- Workflow Configuration Constants ---
 
 # LLM Configuration for Deep Research Model
-LLM_PROVIDER = "openai"
-LLM_MODEL = "o4-mini-deep-research"  # Deep research model
+LLM_PROVIDER = "perplexity"  # openai
+LLM_MODEL = "sonar-deep-research"  # Deep research model  # o4-mini-deep-research
 LLM_TEMPERATURE = 0.7
-LLM_MAX_TOKENS = 100000
+LLM_MAX_TOKENS = 16384  # 100000  # 16384
 # LLM_MAX_TOOL_CALLS = 15  # Cost control for deep research models
 
 # Default prompts
@@ -105,29 +105,29 @@ workflow_graph_schema = {
                     "enable_tool_calling": True,
                     "parallel_tool_calls": True
                 },
-                "tools": [
-                    # Web search tool (required for deep research models)
-                    {
-                        "tool_name": "web_search_preview",
-                        "is_provider_inbuilt_tool": True,
-                        # "provider_inbuilt_user_config": {
-                        #     "search_context_size": "high",
-                        #     "user_location": {
-                        #         "type": "approximate",
-                        #         "approximate": {
-                        #             "country": "US",
-                        #             "city": "San Francisco",
-                        #             "region": "CA"
-                        #         }
-                        #     }
-                        # }
-                    },
-                    # Code interpreter tool (optional but recommended)
-                    {
-                        "tool_name": "code_interpreter",
-                        "is_provider_inbuilt_tool": True,
-                    }
-                ]
+                # "tools": [
+                #     # Web search tool (required for deep research models)
+                #     {
+                #         "tool_name": "web_search_preview",
+                #         "is_provider_inbuilt_tool": True,
+                #         # "provider_inbuilt_user_config": {
+                #         #     "search_context_size": "high",
+                #         #     "user_location": {
+                #         #         "type": "approximate",
+                #         #         "approximate": {
+                #         #             "country": "US",
+                #         #             "city": "San Francisco",
+                #         #             "region": "CA"
+                #         #         }
+                #         #     }
+                #         # }
+                #     },
+                #     # Code interpreter tool (optional but recommended)
+                #     {
+                #         "tool_name": "code_interpreter",
+                #         "is_provider_inbuilt_tool": True,
+                #     }
+                # ]
             }
         },
 

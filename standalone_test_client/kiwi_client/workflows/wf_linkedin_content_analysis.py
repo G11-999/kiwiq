@@ -140,7 +140,8 @@ workflow_graph_schema = {
               "max_tokens": LLM_MAX_TOKENS_THEMES
             },
             "output_schema": {
-                "schema_definition": EXTRACTED_THEMES_SCHEMA
+                "schema_definition": EXTRACTED_THEMES_SCHEMA,
+                "convert_loaded_schema_to_pydantic": False
             }
         }
         # Input: user_prompt, system_prompt (from construct_theme_extraction_prompt)
@@ -213,7 +214,8 @@ workflow_graph_schema = {
                 "max_tokens": LLM_MAX_TOKENS_CLASSIFY
             },
             "output_schema": {
-                "schema_definition": BATCH_CLASSIFICATION_SCHEMA
+                "schema_definition": BATCH_CLASSIFICATION_SCHEMA,
+                "convert_loaded_schema_to_pydantic": False
             }
         }
         # Input (private): user_prompt, system_prompt
@@ -374,7 +376,8 @@ workflow_graph_schema = {
                 "max_tokens": LLM_MAX_TOKENS_ANALYSIS
             },
             "output_schema": {
-                "schema_definition": THEME_ANALYSIS_REPORT_SCHEMA
+                "schema_definition": THEME_ANALYSIS_REPORT_SCHEMA,
+                "convert_loaded_schema_to_pydantic": False
             }
         }
         # Input (private): user_prompt, system_prompt

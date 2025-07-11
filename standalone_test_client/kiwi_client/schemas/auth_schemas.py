@@ -1,6 +1,6 @@
 import uuid
 from typing import List, Optional, Set
-from pydantic import BaseModel, EmailStr, Field, HttpUrl, model_validator, ConfigDict # Use Field for validation
+from pydantic import BaseModel, EmailStr, Field, HttpUrl, model_validator # Use Field for validation
 from datetime import datetime
 
 # Import base models from models.py to inherit from
@@ -85,7 +85,7 @@ class UserDeleteRequest(BaseModel):
     #     description="Type 'DELETE' to confirm this destructive action"
     # )
     
-    # @field_validator('confirmation')
+    # @validator('confirmation')
     # def validate_confirmation(cls, v):
     #     """Validates that the confirmation field contains the expected value."""
     #     if v != "DELETE":
@@ -191,10 +191,9 @@ class LinkedInUser(BaseModel):
     picture: Optional[HttpUrl] = None # Profile picture URL
     provider: str = "linkedin" # Added by fastapi-sso
 
-    model_config = ConfigDict(
-        populate_by_name=True,  # Handles aliases if LinkedIn uses different field names
-        extra="ignore"
-    )
+    class Config:
+        populate_by_name = True # Handles aliases if LinkedIn uses different field names
+        extra = "ignore"
 
 # --- Email Verification Schema ---
 class RequestEmailVerification(BaseModel):
