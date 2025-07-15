@@ -582,6 +582,995 @@ class TestAsyncRedisClient(unittest.IsolatedAsyncioTestCase):
         
         logger.info(f"Context execution order: {context_execution_order}")
 
+    # === NEW TESTS FOR QUEUE MANAGEMENT METHODS ===
+
+    async def test_push_request_basic(self):
+        """Test basic push_request functionality."""
+        queue_key = f"{self.TEST_PREFIX}queue:basic"
+        
+        # Clear any existing data first
+        await self.client.clear_queue(queue_key, clear_dupefilter=True)
+        
+        # Test basic request push
+        request_data = {
+            "url": "https://example.com/page1",
+            "method": "GET",
+            "headers": {"User-Agent": "test"},
+            "meta": {"depth": 1}
+        }
+        
+        result = await self.client.push_request(queue_key, request_data, priority=5)
+        self.assertTrue(result, "Request should be successfully queued")
+        
+        # Test duplicate filtering
+        result = await self.client.push_request(queue_key, request_data, priority=5)
+        self.assertFalse(result, "Duplicate request should be filtered")
+        
+        # Test with custom dedupe key
+        request_data2 = {
+            "url": "https://example.com/page2",
+            "method": "GET",
+            "headers": {"User-Agent": "test"},
+            "meta": {"depth": 1}
+        }
+        
+        result = await self.client.push_request(queue_key, request_data2, priority=3, dedupe_key="custom_key")
+        self.assertTrue(result, "Request with custom dedupe key should be queued")
+        
+        # Test duplicate with same custom dedupe key
+        result = await self.client.push_request(queue_key, request_data2, priority=3, dedupe_key="custom_key")
+        self.assertFalse(result, "Duplicate custom dedupe key should be filtered")
+
+    async def test_push_request_safe_memory_check(self):
+        """Test push_request_safe with memory usage checking."""
+        queue_key = f"{self.TEST_PREFIX}queue:safe"
+        
+        # Clear any existing data first
+        await self.client.clear_queue(queue_key, clear_dupefilter=True)
+        
+        request_data = {
+            "url": "https://example.com/safe_test",
+            "method": "GET",
+            "meta": {"test": "memory_safe"}
+        }
+        
+        # This should work normally since memory usage is likely low
+        result = await self.client.push_request_safe(queue_key, request_data, priority=1)
+        self.assertTrue(result, "Request should be queued when memory usage is normal")
+        
+        # Verify the request was actually queued
+        queue_length = await self.client.get_queue_length(queue_key)
+        self.assertEqual(queue_length, 1, "Queue should contain 1 request")
+
+    async def test_pop_request_basic(self):
+        """Test basic pop_request functionality."""
+        queue_key = f"{self.TEST_PREFIX}queue:pop"
+        
+        # Clear any existing data first
+        await self.client.clear_queue(queue_key, clear_dupefilter=True)
+        
+        # Push requests with different priorities
+        requests = [
+            {"url": "https://example.com/low", "priority": 1},
+            {"url": "https://example.com/high", "priority": 10},
+            {"url": "https://example.com/medium", "priority": 5}
+        ]
+        
+        for req in requests:
+            await self.client.push_request(queue_key, req, priority=req["priority"])
+        
+        # Pop requests - should come out in priority order (highest first)
+        popped1 = await self.client.pop_request(queue_key)
+        self.assertIsNotNone(popped1, "Should pop a request")
+        self.assertEqual(popped1["url"], "https://example.com/high", "Should pop highest priority first")
+        
+        popped2 = await self.client.pop_request(queue_key)
+        self.assertIsNotNone(popped2, "Should pop second request")
+        self.assertEqual(popped2["url"], "https://example.com/medium", "Should pop medium priority second")
+        
+        popped3 = await self.client.pop_request(queue_key)
+        self.assertIsNotNone(popped3, "Should pop third request")
+        self.assertEqual(popped3["url"], "https://example.com/low", "Should pop lowest priority last")
+        
+        # Pop from empty queue
+        popped_empty = await self.client.pop_request(queue_key)
+        self.assertIsNone(popped_empty, "Should return None for empty queue")
+
+    async def test_push_requests_batch(self):
+        """Test batch request pushing."""
+        queue_key = f"{self.TEST_PREFIX}queue:batch"
+        
+        # Clear any existing data first to ensure test isolation
+        await self.client.clear_queue(queue_key, clear_dupefilter=True)
+        
+        # Test batch push with duplicates
+        requests = [
+            {"url": "https://example.com/batch1", "priority": 1},
+            {"url": "https://example.com/batch2", "priority": 2},
+            {"url": "https://example.com/batch1", "priority": 3},  # Duplicate
+            {"url": "https://example.com/batch3", "priority": 4}
+        ]
+        
+        # Push with duplicate checking
+        queued_count = await self.client.push_requests_batch(queue_key, requests, check_duplicates=True)
+        self.assertEqual(queued_count, 3, "Should queue 3 unique requests")
+        
+        # Verify queue length
+        queue_length = await self.client.get_queue_length(queue_key)
+        self.assertEqual(queue_length, 3, "Queue should contain 3 requests")
+        
+        # Test batch push without duplicate checking
+        more_requests = [
+            {"url": "https://example.com/batch4", "priority": 5},
+            {"url": "https://example.com/batch5", "priority": 6}
+        ]
+        
+        queued_count = await self.client.push_requests_batch(queue_key, more_requests, check_duplicates=False)
+        self.assertEqual(queued_count, 2, "Should queue 2 more requests")
+        
+        # Verify total queue length
+        queue_length = await self.client.get_queue_length(queue_key)
+        self.assertEqual(queue_length, 5, "Queue should contain 5 requests total")
+
+    async def test_get_queue_length(self):
+        """Test queue length checking."""
+        queue_key = f"{self.TEST_PREFIX}queue:length"
+        
+        # Empty queue
+        length = await self.client.get_queue_length(queue_key)
+        self.assertEqual(length, 0, "Empty queue should have length 0")
+        
+        # Add some requests
+        for i in range(5):
+            await self.client.push_request(queue_key, {"url": f"https://example.com/test{i}"}, priority=i)
+        
+        length = await self.client.get_queue_length(queue_key)
+        self.assertEqual(length, 5, "Queue should have length 5")
+
+    async def test_clear_queue(self):
+        """Test queue clearing functionality."""
+        queue_key = f"{self.TEST_PREFIX}queue:clear"
+        
+        # Ensure queue is empty to start
+        await self.client.clear_queue(queue_key, clear_dupefilter=True)
+        
+        # Add some requests
+        for i in range(3):
+            await self.client.push_request(queue_key, {"url": f"https://example.com/clear{i}"}, priority=i)
+        
+        # Verify queue has items
+        length = await self.client.get_queue_length(queue_key)
+        self.assertEqual(length, 3, "Queue should have 3 items before clearing")
+        
+        # Clear queue and dupefilter
+        queue_removed, dupefilter_removed = await self.client.clear_queue(queue_key, clear_dupefilter=True)
+        self.assertEqual(queue_removed, 3, "Should remove 3 items from queue")
+        self.assertEqual(dupefilter_removed, 3, "Should remove 3 items from dupefilter")
+        
+        # Verify queue is empty
+        length = await self.client.get_queue_length(queue_key)
+        self.assertEqual(length, 0, "Queue should be empty after clearing")
+
+    async def test_peek_queue(self):
+        """Test queue peeking functionality."""
+        queue_key = f"{self.TEST_PREFIX}queue:peek"
+        
+        # Add requests with different priorities
+        requests = [
+            {"url": "https://example.com/peek1", "priority": 1},
+            {"url": "https://example.com/peek2", "priority": 5},
+            {"url": "https://example.com/peek3", "priority": 3}
+        ]
+        
+        for req in requests:
+            await self.client.push_request(queue_key, req, priority=req["priority"])
+        
+        # Peek at queue (should be ordered by priority)
+        peeked = await self.client.peek_queue(queue_key, count=2)
+        self.assertEqual(len(peeked), 2, "Should peek at 2 requests")
+        self.assertEqual(peeked[0]["url"], "https://example.com/peek2", "First should be highest priority")
+        self.assertEqual(peeked[0]["_queue_priority"], 5, "Should include priority in peeked data")
+        self.assertEqual(peeked[1]["url"], "https://example.com/peek3", "Second should be medium priority")
+        
+        # Verify queue is unchanged
+        length = await self.client.get_queue_length(queue_key)
+        self.assertEqual(length, 3, "Queue length should be unchanged after peeking")
+
+    async def test_update_request_priority(self):
+        """Test request priority updating."""
+        queue_key = f"{self.TEST_PREFIX}queue:update"
+        
+        # Add requests
+        requests = [
+            {"url": "https://example.com/update1", "priority": 1},
+            {"url": "https://example.com/update2", "priority": 2}
+        ]
+        
+        for req in requests:
+            await self.client.push_request(queue_key, req, priority=req["priority"])
+        
+        # Update priority of first request
+        updated = await self.client.update_request_priority(queue_key, "https://example.com/update1", 10)
+        self.assertTrue(updated, "Should successfully update priority")
+        
+        # Verify new priority order
+        peeked = await self.client.peek_queue(queue_key, count=2)
+        self.assertEqual(peeked[0]["url"], "https://example.com/update1", "Updated request should be first")
+        self.assertEqual(peeked[0]["_queue_priority"], 10, "Priority should be updated")
+        
+        # Try to update non-existent request
+        updated = await self.client.update_request_priority(queue_key, "https://example.com/nonexistent", 5)
+        self.assertFalse(updated, "Should return False for non-existent request")
+
+    async def test_get_queue_stats(self):
+        """Test queue statistics retrieval."""
+        queue_key = f"{self.TEST_PREFIX}queue:stats"
+        
+        # Add requests with different priorities
+        requests = [
+            {"url": "https://example.com/stats1", "priority": 1},
+            {"url": "https://example.com/stats2", "priority": 10},
+            {"url": "https://example.com/stats3", "priority": 5}
+        ]
+        
+        for req in requests:
+            await self.client.push_request(queue_key, req, priority=req["priority"])
+        
+        # Get queue stats
+        stats = await self.client.get_queue_stats(queue_key)
+        
+        self.assertEqual(stats["queue_size"], 3, "Should report correct queue size")
+        self.assertEqual(stats["dupefilter_size"], 3, "Should report correct dupefilter size")
+        self.assertEqual(stats["highest_priority"], 10, "Should report correct highest priority")
+        self.assertEqual(stats["lowest_priority"], 1, "Should report correct lowest priority")
+        self.assertIsInstance(stats["dupefilter_ttl"], int, "Should report dupefilter TTL")
+        self.assertGreater(stats["dupefilter_ttl"], 0, "Dupefilter TTL should be positive")
+
+    # === NEW TESTS FOR MEMORY MONITORING METHODS ===
+
+    async def test_check_memory_usage(self):
+        """Test memory usage checking."""
+        usage = await self.client.check_memory_usage()
+        self.assertIsInstance(usage, float, "Memory usage should be a float")
+        self.assertGreaterEqual(usage, 0, "Memory usage should be non-negative")
+        self.assertLessEqual(usage, 100, "Memory usage should not exceed 100%")
+        
+        logger.info(f"Current Redis memory usage: {usage:.2f}%")
+
+    async def test_get_memory_info(self):
+        """Test detailed memory information retrieval."""
+        memory_info = await self.client.get_memory_info()
+        
+        self.assertIsInstance(memory_info, dict, "Memory info should be a dictionary")
+        
+        # Check required fields
+        required_fields = [
+            'used_memory', 'used_memory_human', 'maxmemory', 'maxmemory_human',
+            'maxmemory_policy', 'mem_fragmentation_ratio', 'usage_percent'
+        ]
+        
+        for field in required_fields:
+            self.assertIn(field, memory_info, f"Memory info should contain {field}")
+        
+        # Check data types
+        self.assertIsInstance(memory_info['used_memory'], int, "used_memory should be integer")
+        self.assertIsInstance(memory_info['used_memory_human'], str, "used_memory_human should be string")
+        self.assertIsInstance(memory_info['maxmemory'], int, "maxmemory should be integer")
+        self.assertIsInstance(memory_info['maxmemory_human'], str, "maxmemory_human should be string")
+        self.assertIsInstance(memory_info['maxmemory_policy'], str, "maxmemory_policy should be string")
+        self.assertIsInstance(memory_info['mem_fragmentation_ratio'], float, "mem_fragmentation_ratio should be float")
+        self.assertIsInstance(memory_info['usage_percent'], float, "usage_percent should be float")
+        
+        logger.info(f"Memory info: {memory_info}")
+
+    # === NEW TESTS FOR TEMPORARY STATE STORAGE METHODS ===
+
+    async def test_set_job_state(self):
+        """Test job state setting."""
+        job_key = f"{self.TEST_PREFIX}job:state_test"
+        
+        state_data = {
+            "status": "running",
+            "progress": 0.5,
+            "items_processed": 100,
+            "errors": [],
+            "metadata": {"start_time": "2023-01-01T00:00:00Z"}
+        }
+        
+        # Set job state
+        await self.client.set_job_state(job_key, state_data, ttl=3600)
+        
+        # Verify state was set by checking if key exists
+        client = await self.client.get_client()
+        exists = await client.exists(f"job_state:{job_key}")
+        self.assertTrue(exists, "Job state key should exist")
+        
+        # Check TTL was set
+        ttl = await client.ttl(f"job_state:{job_key}")
+        self.assertGreater(ttl, 0, "TTL should be set")
+        self.assertLessEqual(ttl, 3600, "TTL should not exceed set value")
+
+    async def test_get_job_state(self):
+        """Test job state retrieval."""
+        job_key = f"{self.TEST_PREFIX}job:get_state"
+        
+        # Set initial state
+        original_state = {
+            "status": "processing",
+            "progress": 0.75,
+            "items_processed": 150,
+            "errors": ["error1", "error2"],
+            "metadata": {"worker_id": "worker-123"}
+        }
+        
+        await self.client.set_job_state(job_key, original_state, ttl=3600)
+        
+        # Get state back
+        retrieved_state = await self.client.get_job_state(job_key)
+        
+        self.assertEqual(retrieved_state, original_state, "Retrieved state should match original")
+        
+        # Test non-existent job state
+        empty_state = await self.client.get_job_state(f"{self.TEST_PREFIX}job:nonexistent")
+        self.assertEqual(empty_state, {}, "Non-existent job state should return empty dict")
+
+    async def test_increment_job_counter(self):
+        """Test job counter incrementing."""
+        job_key = f"{self.TEST_PREFIX}job:counter"
+        
+        # Test initial increment
+        count = await self.client.increment_job_counter(job_key, "processed_items", 1)
+        self.assertEqual(count, 1, "Initial counter should be 1")
+        
+        # Test increment by different amounts
+        count = await self.client.increment_job_counter(job_key, "processed_items", 5)
+        self.assertEqual(count, 6, "Counter should be 6 after incrementing by 5")
+        
+        # Test multiple counters
+        count = await self.client.increment_job_counter(job_key, "errors", 1)
+        self.assertEqual(count, 1, "Error counter should be 1")
+        
+        count = await self.client.increment_job_counter(job_key, "warnings", 3)
+        self.assertEqual(count, 3, "Warning counter should be 3")
+        
+        # Verify all counters exist in job state
+        state = await self.client.get_job_state(job_key)
+        self.assertEqual(state["processed_items"], 6, "Processed items should be 6 (integer)")
+        self.assertEqual(state["errors"], 1, "Errors should be 1 (integer)")
+        self.assertEqual(state["warnings"], 3, "Warnings should be 3 (integer)")
+
+    async def test_job_state_mixed_operations(self):
+        """Test mixed operations on job state."""
+        job_key = f"{self.TEST_PREFIX}job:mixed"
+        
+        # Set initial state
+        initial_state = {
+            "status": "starting",
+            "worker_id": "worker-456",
+            "config": {"batch_size": 100}
+        }
+        
+        await self.client.set_job_state(job_key, initial_state, ttl=3600)
+        
+        # Increment some counters
+        await self.client.increment_job_counter(job_key, "batches_processed", 5)
+        await self.client.increment_job_counter(job_key, "items_processed", 500)
+        
+        # Get combined state
+        state = await self.client.get_job_state(job_key)
+        
+        # Verify original state is preserved
+        self.assertEqual(state["status"], "starting", "Original status should be preserved")
+        self.assertEqual(state["worker_id"], "worker-456", "Original worker_id should be preserved")
+        self.assertEqual(state["config"], {"batch_size": 100}, "Original config should be preserved")
+        
+        # Verify counters are added (as integers)
+        self.assertEqual(state["batches_processed"], 5, "Batches processed counter should be 5 (integer)")
+        self.assertEqual(state["items_processed"], 500, "Items processed counter should be 500 (integer)")
+
+    async def test_job_state_ttl_expiration(self):
+        """Test that job state expires according to TTL."""
+        job_key = f"{self.TEST_PREFIX}job:ttl_test"
+        
+        # Set job state with very short TTL
+        state_data = {"status": "temporary", "test": True}
+        await self.client.set_job_state(job_key, state_data, ttl=1)  # 1 second TTL
+        
+        # Verify state exists immediately
+        state = await self.client.get_job_state(job_key)
+        self.assertEqual(state, state_data, "State should exist immediately")
+        
+        # Wait for expiration
+        await asyncio.sleep(2)
+        
+        # Verify state has expired
+        expired_state = await self.client.get_job_state(job_key)
+        self.assertEqual(expired_state, {}, "State should be empty after TTL expiration")
+
+    async def test_queue_integration_workflow(self):
+        """Test a complete workflow integrating queue operations."""
+        queue_key = f"{self.TEST_PREFIX}queue:workflow"
+        job_key = f"{self.TEST_PREFIX}job:workflow"
+        
+        # Clear any existing data first
+        await self.client.clear_queue(queue_key, clear_dupefilter=True)
+        
+        # Initialize job state
+        await self.client.set_job_state(job_key, {
+            "status": "starting",
+            "total_urls": 0,
+            "processed_urls": 0
+        })
+        
+        # Add URLs to queue
+        urls = [
+            {"url": "https://example.com/page1", "priority": 1},
+            {"url": "https://example.com/page2", "priority": 5},
+            {"url": "https://example.com/page3", "priority": 3}
+        ]
+        
+        queued_count = await self.client.push_requests_batch(queue_key, urls)
+        self.assertEqual(queued_count, 3, "Should queue 3 URLs")
+        
+        # Update job state with total count
+        await self.client.increment_job_counter(job_key, "total_urls", queued_count)
+        
+        # Process URLs in priority order
+        processed_urls = []
+        while True:
+            request = await self.client.pop_request(queue_key)
+            if not request:
+                break
+                
+            processed_urls.append(request["url"])
+            await self.client.increment_job_counter(job_key, "processed_urls", 1)
+        
+        # Verify processing order (highest priority first)
+        expected_order = [
+            "https://example.com/page2",  # priority 5
+            "https://example.com/page3",  # priority 3
+            "https://example.com/page1"   # priority 1
+        ]
+        self.assertEqual(processed_urls, expected_order, "URLs should be processed in priority order")
+        
+        # Verify final job state (counters should be integers)
+        final_state = await self.client.get_job_state(job_key)
+        self.assertEqual(final_state["total_urls"], 3, "Total URLs should be 3 (integer)")
+        self.assertEqual(final_state["processed_urls"], 3, "Processed URLs should be 3 (integer)")
+        
+        # Verify queue is empty
+        queue_length = await self.client.get_queue_length(queue_key)
+        self.assertEqual(queue_length, 0, "Queue should be empty after processing")
+
+    # === NEW TESTS FOR PURGE_SPIDER_DATA METHOD ===
+
+    async def test_purge_spider_data_without_job_id(self):
+        """Test purging all data for a spider without job_id."""
+        spider_name = f"{self.TEST_PREFIX}spider_test"
+        
+        # Create various types of data for the spider
+        # Queue data
+        queue_key = f"queue:{spider_name}:requests"
+        await self.client.push_request(queue_key, {"url": "https://example.com/1"}, priority=1)
+        await self.client.push_request(queue_key, {"url": "https://example.com/2"}, priority=2)
+        
+        # Job state data  
+        job_state_key = f"{spider_name}:main_job"
+        await self.client.set_job_state(job_state_key, {"status": "running", "processed": 50})
+        
+        # Additional job state
+        job_state_key2 = f"{spider_name}:secondary_job"
+        await self.client.set_job_state(job_state_key2, {"status": "completed", "processed": 100})
+        
+        # Verify data exists before purging
+        queue_length = await self.client.get_queue_length(queue_key)
+        self.assertEqual(queue_length, 2, "Queue should have 2 items before purging")
+        
+        state1 = await self.client.get_job_state(job_state_key)
+        self.assertEqual(state1["status"], "running", "Job state should exist before purging")
+        
+        # Purge spider data
+        purged = await self.client.purge_spider_data(spider_name)
+        
+        # Verify purge results
+        self.assertIsInstance(purged, dict, "Purge result should be a dictionary")
+        self.assertIn('queue', purged, "Should report queue deletions")
+        self.assertIn('dupefilter', purged, "Should report dupefilter deletions")
+        self.assertIn('job_state', purged, "Should report job_state deletions")
+        self.assertIn('total_keys', purged, "Should report total deletions")
+        
+        self.assertGreater(purged['total_keys'], 0, "Should delete some keys")
+        
+        # Verify data is actually purged
+        queue_length_after = await self.client.get_queue_length(queue_key)
+        self.assertEqual(queue_length_after, 0, "Queue should be empty after purging")
+        
+        state1_after = await self.client.get_job_state(job_state_key)
+        self.assertEqual(state1_after, {}, "Job state should be empty after purging")
+        
+        state2_after = await self.client.get_job_state(job_state_key2)
+        self.assertEqual(state2_after, {}, "Secondary job state should be empty after purging")
+
+    async def test_purge_spider_data_with_job_id(self):
+        """Test purging data for a specific spider job."""
+        spider_name = f"{self.TEST_PREFIX}spider_job"
+        job_id = "job_123"
+        
+        # Create job-specific data
+        job_queue_key = f"queue:{spider_name}:requests:{job_id}"
+        await self.client.push_request(job_queue_key, {"url": "https://example.com/job1"}, priority=1)
+        
+        job_state_key = f"{spider_name}:{job_id}"
+        await self.client.set_job_state(job_state_key, {"status": "running", "job_id": job_id})
+        
+        # Create data for different job (should NOT be purged)
+        other_job_id = "job_456"
+        other_queue_key = f"queue:{spider_name}:requests:{other_job_id}"
+        await self.client.push_request(other_queue_key, {"url": "https://example.com/other"}, priority=1)
+        
+        other_job_state_key = f"{spider_name}:{other_job_id}"
+        await self.client.set_job_state(other_job_state_key, {"status": "completed", "job_id": other_job_id})
+        
+        # Verify data exists before purging
+        queue_length = await self.client.get_queue_length(job_queue_key)
+        self.assertEqual(queue_length, 1, "Target job queue should have 1 item")
+        
+        other_queue_length = await self.client.get_queue_length(other_queue_key)
+        self.assertEqual(other_queue_length, 1, "Other job queue should have 1 item")
+        
+        # Purge only specific job data
+        purged = await self.client.purge_spider_data(spider_name, job_id=job_id)
+        
+        # Verify purge results
+        self.assertGreater(purged['total_keys'], 0, "Should delete some keys")
+        
+        # Verify target job data is purged
+        queue_length_after = await self.client.get_queue_length(job_queue_key)
+        self.assertEqual(queue_length_after, 0, "Target job queue should be empty after purging")
+        
+        state_after = await self.client.get_job_state(job_state_key)
+        self.assertEqual(state_after, {}, "Target job state should be empty after purging")
+        
+        # Verify other job data is preserved
+        other_queue_length_after = await self.client.get_queue_length(other_queue_key)
+        self.assertEqual(other_queue_length_after, 1, "Other job queue should be preserved")
+        
+        other_state_after = await self.client.get_job_state(other_job_state_key)
+        self.assertEqual(other_state_after["status"], "completed", "Other job state should be preserved")
+
+    async def test_purge_spider_data_mixed_types(self):
+        """Test purging with mixed data types (queue, dupefilter, job_state)."""
+        spider_name = f"{self.TEST_PREFIX}spider_mixed"
+        
+        # Create queue and dupefilter data
+        queue_key = f"queue:{spider_name}:requests"
+        await self.client.push_request(queue_key, {"url": "https://example.com/mixed1"}, priority=1)
+        await self.client.push_request(queue_key, {"url": "https://example.com/mixed2"}, priority=2)
+        
+        # Create job state data
+        job_state_key1 = f"{spider_name}:job1"
+        await self.client.set_job_state(job_state_key1, {"status": "running", "items": 25})
+        
+        job_state_key2 = f"{spider_name}:job2"  
+        await self.client.set_job_state(job_state_key2, {"status": "completed", "items": 50})
+        
+        # Create some counters
+        await self.client.increment_job_counter(job_state_key1, "processed", 10)
+        await self.client.increment_job_counter(job_state_key2, "errors", 2)
+        
+        # Purge all spider data
+        purged = await self.client.purge_spider_data(spider_name)
+        
+        # Verify purge counts
+        self.assertGreater(purged['total_keys'], 0, "Should delete some keys")
+        
+        # Verify all data is purged
+        queue_length = await self.client.get_queue_length(queue_key)
+        self.assertEqual(queue_length, 0, "Queue should be empty")
+        
+        state1 = await self.client.get_job_state(job_state_key1)
+        self.assertEqual(state1, {}, "Job state 1 should be empty")
+        
+        state2 = await self.client.get_job_state(job_state_key2)
+        self.assertEqual(state2, {}, "Job state 2 should be empty")
+
+    async def test_purge_spider_data_no_matching_data(self):
+        """Test purging when no matching data exists."""
+        spider_name = f"{self.TEST_PREFIX}spider_empty"
+        
+        # Purge non-existent spider data
+        purged = await self.client.purge_spider_data(spider_name)
+        
+        # Should return zero counts
+        self.assertEqual(purged['queue'], 0, "Should report 0 queue deletions")
+        self.assertEqual(purged['dupefilter'], 0, "Should report 0 dupefilter deletions")
+        self.assertEqual(purged['job_state'], 0, "Should report 0 job_state deletions")
+        self.assertEqual(purged['total_keys'], 0, "Should report 0 total deletions")
+
+    async def test_purge_spider_data_selective_preservation(self):
+        """Test that purge only deletes matching spider data and preserves others."""
+        spider_name = f"{self.TEST_PREFIX}spider_selective"
+        other_spider_name = f"{self.TEST_PREFIX}spider_other"
+        
+        # Create data for target spider
+        target_queue_key = f"queue:{spider_name}:requests"
+        await self.client.push_request(target_queue_key, {"url": "https://example.com/target"}, priority=1)
+        
+        target_job_state_key = f"{spider_name}:main"
+        await self.client.set_job_state(target_job_state_key, {"status": "running"})
+        
+        # Create data for other spider (should be preserved)
+        other_queue_key = f"queue:{other_spider_name}:requests"
+        await self.client.push_request(other_queue_key, {"url": "https://example.com/other"}, priority=1)
+        
+        other_job_state_key = f"{other_spider_name}:main"
+        await self.client.set_job_state(other_job_state_key, {"status": "completed"})
+        
+        # Create some unrelated data (should be preserved)
+        unrelated_cache_key = f"{self.TEST_PREFIX}unrelated:cache"
+        await self.client.set_cache(unrelated_cache_key, {"data": "should_be_preserved"})
+        
+        # Verify all data exists before purging
+        self.assertEqual(await self.client.get_queue_length(target_queue_key), 1)
+        self.assertEqual(await self.client.get_queue_length(other_queue_key), 1)
+        self.assertEqual((await self.client.get_job_state(target_job_state_key))["status"], "running")
+        self.assertEqual((await self.client.get_job_state(other_job_state_key))["status"], "completed")
+        self.assertEqual((await self.client.get_cache(unrelated_cache_key))["data"], "should_be_preserved")
+        
+        # Purge only target spider data
+        purged = await self.client.purge_spider_data(spider_name)
+        
+        # Verify target spider data is purged
+        self.assertEqual(await self.client.get_queue_length(target_queue_key), 0)
+        self.assertEqual(await self.client.get_job_state(target_job_state_key), {})
+        
+        # Verify other data is preserved
+        self.assertEqual(await self.client.get_queue_length(other_queue_key), 1)
+        self.assertEqual((await self.client.get_job_state(other_job_state_key))["status"], "completed")
+        self.assertEqual((await self.client.get_cache(unrelated_cache_key))["data"], "should_be_preserved")
+        
+        # Verify purge reported correct counts
+        self.assertGreater(purged['total_keys'], 0, "Should have deleted some keys")
+
+    async def test_purge_spider_data_return_format(self):
+        """Test that purge_spider_data returns the expected format."""
+        spider_name = f"{self.TEST_PREFIX}spider_format"
+        
+        # Create some test data
+        queue_key = f"queue:{spider_name}:requests"
+        await self.client.push_request(queue_key, {"url": "https://example.com/format"}, priority=1)
+        
+        job_state_key = f"{spider_name}:format_job"
+        await self.client.set_job_state(job_state_key, {"status": "testing"})
+        
+        # Purge data
+        purged = await self.client.purge_spider_data(spider_name)
+        
+        # Verify return format
+        self.assertIsInstance(purged, dict, "Should return a dictionary")
+        
+        expected_keys = ['queue', 'dupefilter', 'job_state', 'total_keys']
+        for key in expected_keys:
+            self.assertIn(key, purged, f"Should contain '{key}' in result")
+            self.assertIsInstance(purged[key], int, f"'{key}' should be an integer")
+            self.assertGreaterEqual(purged[key], 0, f"'{key}' should be non-negative")
+        
+        # Total should be sum of individual types (though some might be 0)
+        self.assertGreaterEqual(purged['total_keys'], 
+                               purged['queue'] + purged['dupefilter'] + purged['job_state'],
+                               "Total should be at least the sum of individual types")
+
+    async def test_purge_spider_data_complex_job_ids(self):
+        """Test purging with complex job IDs containing special characters."""
+        spider_name = f"{self.TEST_PREFIX}spider_complex"
+        
+        # Test with various job ID formats
+        job_ids = [
+            "job_123",
+            "job-with-dashes",
+            "job.with.dots",
+            "job_123_456",
+            "2023-01-01_job"
+        ]
+        
+        # Create data for each job ID
+        for job_id in job_ids:
+            queue_key = f"queue:{spider_name}:requests:{job_id}"
+            await self.client.push_request(queue_key, {"url": f"https://example.com/{job_id}"}, priority=1)
+            
+            job_state_key = f"{spider_name}:{job_id}"
+            await self.client.set_job_state(job_state_key, {"status": "running", "job_id": job_id})
+        
+        # Purge data for one specific job
+        target_job_id = "job_123_456"
+        purged = await self.client.purge_spider_data(spider_name, job_id=target_job_id)
+        
+        # Verify only target job data is purged
+        target_queue_key = f"queue:{spider_name}:requests:{target_job_id}"
+        target_job_state_key = f"{spider_name}:{target_job_id}"
+        
+        self.assertEqual(await self.client.get_queue_length(target_queue_key), 0)
+        self.assertEqual(await self.client.get_job_state(target_job_state_key), {})
+        
+        # Verify other jobs are preserved
+        for job_id in job_ids:
+            if job_id != target_job_id:
+                queue_key = f"queue:{spider_name}:requests:{job_id}"
+                job_state_key = f"{spider_name}:{job_id}"
+                
+                self.assertEqual(await self.client.get_queue_length(queue_key), 1,
+                               f"Job {job_id} queue should be preserved")
+                state = await self.client.get_job_state(job_state_key)
+                self.assertEqual(state["job_id"], job_id,
+                               f"Job {job_id} state should be preserved")
+
+    # === NEW TESTS FOR COUNTER/LIMIT TRACKING METHODS ===
+
+    async def test_increment_counter_with_limit(self):
+        """Test counter increment with limit checking."""
+        counter_key = f"{self.TEST_PREFIX}counter:test"
+        
+        # Test basic increment
+        count, is_over = await self.client.increment_counter_with_limit(counter_key, 1)
+        self.assertEqual(count, 1, "Counter should be 1")
+        self.assertFalse(is_over, "Should not be over limit")
+        
+        # Test increment with limit
+        count, is_over = await self.client.increment_counter_with_limit(
+            counter_key, increment=2, limit=5
+        )
+        self.assertEqual(count, 3, "Counter should be 3")
+        self.assertFalse(is_over, "Should not be over limit yet")
+        
+        # Test reaching limit
+        count, is_over = await self.client.increment_counter_with_limit(
+            counter_key, increment=2, limit=5
+        )
+        self.assertEqual(count, 5, "Counter should be 5")
+        self.assertTrue(is_over, "Should be at limit")
+        
+        # Test exceeding limit
+        count, is_over = await self.client.increment_counter_with_limit(
+            counter_key, increment=1, limit=5
+        )
+        self.assertEqual(count, 6, "Counter should be 6")
+        self.assertTrue(is_over, "Should be over limit")
+        
+        # Test with TTL
+        ttl_key = f"{self.TEST_PREFIX}counter:ttl"
+        count, is_over = await self.client.increment_counter_with_limit(
+            ttl_key, increment=1, ttl=1
+        )
+        self.assertEqual(count, 1, "Counter should be 1")
+        
+        # Wait for expiration
+        await asyncio.sleep(2)
+        count = await self.client.get_counter_value(ttl_key)
+        self.assertEqual(count, 0, "Counter should be 0 after expiration")
+
+    async def test_get_counter_value(self):
+        """Test getting counter values."""
+        counter_key = f"{self.TEST_PREFIX}counter:get"
+        
+        # Test non-existent counter
+        value = await self.client.get_counter_value(counter_key)
+        self.assertEqual(value, 0, "Non-existent counter should return 0")
+        
+        # Set counter value
+        await self.client.increment_counter_with_limit(counter_key, 42)
+        
+        # Get counter value
+        value = await self.client.get_counter_value(counter_key)
+        self.assertEqual(value, 42, "Counter value should be 42")
+
+    async def test_check_counter_limit(self):
+        """Test checking counter against limit without incrementing."""
+        counter_key = f"{self.TEST_PREFIX}counter:check"
+        
+        # Test with non-existent counter
+        is_over = await self.client.check_counter_limit(counter_key, 10)
+        self.assertFalse(is_over, "Non-existent counter should not be over limit")
+        
+        # Set counter value
+        await self.client.increment_counter_with_limit(counter_key, 8)
+        
+        # Check various limits
+        is_over = await self.client.check_counter_limit(counter_key, 10)
+        self.assertFalse(is_over, "8 should not be over limit 10")
+        
+        is_over = await self.client.check_counter_limit(counter_key, 8)
+        self.assertTrue(is_over, "8 should be at limit 8")
+        
+        is_over = await self.client.check_counter_limit(counter_key, 5)
+        self.assertTrue(is_over, "8 should be over limit 5")
+
+    async def test_reset_counter(self):
+        """Test resetting a counter."""
+        counter_key = f"{self.TEST_PREFIX}counter:reset"
+        
+        # Reset non-existent counter
+        existed = await self.client.reset_counter(counter_key)
+        self.assertFalse(existed, "Non-existent counter should return False")
+        
+        # Create counter
+        await self.client.increment_counter_with_limit(counter_key, 10)
+        
+        # Reset counter
+        existed = await self.client.reset_counter(counter_key)
+        self.assertTrue(existed, "Existing counter should return True")
+        
+        # Verify counter is gone
+        value = await self.client.get_counter_value(counter_key)
+        self.assertEqual(value, 0, "Counter should be 0 after reset")
+
+    async def test_increment_hash_counter(self):
+        """Test incrementing counters within a hash."""
+        hash_key = f"{self.TEST_PREFIX}hash:counters"
+        
+        # Increment different fields
+        count1 = await self.client.increment_hash_counter(hash_key, "field1", 5)
+        self.assertEqual(count1, 5, "field1 should be 5")
+        
+        count2 = await self.client.increment_hash_counter(hash_key, "field2", 3)
+        self.assertEqual(count2, 3, "field2 should be 3")
+        
+        # Increment existing field
+        count1 = await self.client.increment_hash_counter(hash_key, "field1", 2)
+        self.assertEqual(count1, 7, "field1 should be 7")
+        
+        # Test with TTL
+        ttl_hash_key = f"{self.TEST_PREFIX}hash:ttl"
+        await self.client.increment_hash_counter(ttl_hash_key, "field", 1, ttl=1)
+        
+        # Wait for expiration
+        await asyncio.sleep(2)
+        values = await self.client.get_hash_counter_values(ttl_hash_key)
+        self.assertEqual(values, {}, "Hash should be empty after expiration")
+
+    async def test_get_hash_counter_values(self):
+        """Test getting all counter values from a hash."""
+        hash_key = f"{self.TEST_PREFIX}hash:get"
+        
+        # Test empty hash
+        values = await self.client.get_hash_counter_values(hash_key)
+        self.assertEqual(values, {}, "Empty hash should return empty dict")
+        
+        # Set multiple counters
+        await self.client.increment_hash_counter(hash_key, "counter1", 10)
+        await self.client.increment_hash_counter(hash_key, "counter2", 20)
+        await self.client.increment_hash_counter(hash_key, "counter3", 30)
+        
+        # Get all values
+        values = await self.client.get_hash_counter_values(hash_key)
+        expected = {"counter1": 10, "counter2": 20, "counter3": 30}
+        self.assertEqual(values, expected, "Should return all counter values")
+
+    async def test_delete_keys_by_pattern(self):
+        """Test deleting keys by pattern."""
+        pattern_prefix = f"{self.TEST_PREFIX}pattern"
+        
+        # Create multiple keys with pattern
+        keys = [
+            f"{pattern_prefix}:test:1",
+            f"{pattern_prefix}:test:2",
+            f"{pattern_prefix}:other:1",
+            f"{pattern_prefix}_different"
+        ]
+        
+        for key in keys:
+            await self.client.set_cache(key, "value")
+        
+        # Delete by specific pattern
+        deleted = await self.client.delete_keys_by_pattern(f"{pattern_prefix}:test:*")
+        self.assertEqual(deleted, 2, "Should delete 2 keys matching pattern")
+        
+        # Verify correct keys were deleted
+        self.assertIsNone(await self.client.get_cache(f"{pattern_prefix}:test:1"))
+        self.assertIsNone(await self.client.get_cache(f"{pattern_prefix}:test:2"))
+        self.assertIsNotNone(await self.client.get_cache(f"{pattern_prefix}:other:1"))
+        self.assertIsNotNone(await self.client.get_cache(f"{pattern_prefix}_different"))
+        
+        # Delete remaining keys
+        deleted = await self.client.delete_keys_by_pattern(f"{pattern_prefix}*")
+        self.assertEqual(deleted, 2, "Should delete remaining 2 keys")
+
+    async def test_delete_multiple_patterns(self):
+        """Test deleting keys matching multiple patterns."""
+        base_prefix = f"{self.TEST_PREFIX}multi"
+        
+        # Create keys matching different patterns
+        keys = {
+            f"{base_prefix}:queue:1": "queue",
+            f"{base_prefix}:queue:2": "queue",
+            f"{base_prefix}:cache:1": "cache",
+            f"{base_prefix}:cache:2": "cache",
+            f"{base_prefix}:state:1": "state"
+        }
+        
+        for key, value in keys.items():
+            await self.client.set_cache(key, value)
+        
+        # Delete multiple patterns
+        patterns = [
+            f"{base_prefix}:queue:*",
+            f"{base_prefix}:cache:*"
+        ]
+        
+        deleted_counts = await self.client.delete_multiple_patterns(patterns)
+        
+        # Verify deletion counts
+        self.assertEqual(deleted_counts[f"{base_prefix}:queue:*"], 2)
+        self.assertEqual(deleted_counts[f"{base_prefix}:cache:*"], 2)
+        
+        # Verify state key is preserved
+        self.assertIsNotNone(await self.client.get_cache(f"{base_prefix}:state:1"))
+
+    async def test_counter_operations_integration(self):
+        """Test integration of counter operations for domain limiting scenario."""
+        domain = "example.com"
+        domain_key = f"{self.TEST_PREFIX}domain:{domain}"
+        limit = 5
+        
+        # Simulate multiple URL requests for the same domain
+        allowed_count = 0
+        blocked_count = 0
+        
+        for i in range(10):
+            count, is_over = await self.client.increment_counter_with_limit(
+                domain_key, increment=1, limit=limit
+            )
+            
+            if is_over and count > limit:
+                # Decrement back if over limit
+                await self.client.increment_counter_with_limit(
+                    domain_key, increment=-1
+                )
+                blocked_count += 1
+            else:
+                allowed_count += 1
+        
+        # Verify results
+        self.assertEqual(allowed_count, 5, "Should allow exactly 5 URLs")
+        self.assertEqual(blocked_count, 5, "Should block 5 URLs")
+        
+        # Final count should be at limit
+        final_count = await self.client.get_counter_value(domain_key)
+        self.assertEqual(final_count, limit, "Final count should be at limit")
+
+    async def test_hash_counter_for_depth_tracking(self):
+        """Test hash counter for tracking URL counts by depth."""
+        depth_key = f"{self.TEST_PREFIX}depth:spider1"
+        
+        # Simulate crawling at different depths
+        depth_distribution = {
+            0: 10,  # 10 URLs at depth 0
+            1: 25,  # 25 URLs at depth 1
+            2: 50,  # 50 URLs at depth 2
+            3: 20,  # 20 URLs at depth 3
+        }
+        
+        # Increment counters for each depth
+        for depth, count in depth_distribution.items():
+            for _ in range(count):
+                await self.client.increment_hash_counter(
+                    depth_key, str(depth), 1
+                )
+        
+        # Get depth statistics
+        depth_stats = await self.client.get_hash_counter_values(depth_key)
+        
+        # Verify statistics
+        for depth, expected_count in depth_distribution.items():
+            self.assertEqual(
+                depth_stats.get(str(depth), 0), expected_count,
+                f"Depth {depth} should have {expected_count} URLs"
+            )
+        
+        # Total URLs crawled
+        total_urls = sum(depth_stats.values())
+        expected_total = sum(depth_distribution.values())
+        self.assertEqual(total_urls, expected_total, "Total URL count should match")
+
 
 def run_tests():
     unittest.main()

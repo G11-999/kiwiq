@@ -675,6 +675,754 @@ class AsyncRedisClient:
         finally:
             await self.release_lock(lock_name, token)
     
+    # Queue Management Methods for Scrapy Integration
+
+    async def push_request(
+        self, 
+        queue_key: str,
+        request_data: Dict[str, Any],
+        priority: int = 0,
+        dedupe_key: Optional[str] = None
+    ) -> bool:
+        """
+        Push a request to the priority queue.
+        
+        Args:
+            queue_key: Redis key for the queue (e.g., "spider:requests")
+            request_data: Serialized request data including URL, meta, etc.
+            priority: Request priority (higher = processed first)
+            dedupe_key: Optional key for deduplication (defaults to URL)
+            
+        Returns:
+            True if request was queued, False if duplicate
+        """
+        try:
+            client = await self.get_client()
+            
+            # Use URL as dedupe key if not provided
+            if dedupe_key is None:
+                dedupe_key = request_data.get('url', '')
+                
+            # Check for duplicates
+            dupefilter_key = f"{queue_key}:dupefilter"
+            is_duplicate = await client.sismember(dupefilter_key, dedupe_key)
+            
+            if is_duplicate:
+                logger.debug(f"Duplicate request filtered: {dedupe_key}")
+                return False
+                
+            # Add to queue and dupefilter atomically
+            async with client.pipeline() as pipe:
+                # Add to priority queue (sorted set)
+                await pipe.zadd(queue_key, {json.dumps(request_data): -priority})
+                # Add to dupefilter set
+                await pipe.sadd(dupefilter_key, dedupe_key)
+                # Set TTL on dupefilter (7 days)
+                await pipe.expire(dupefilter_key, 7 * 86400)
+                results = await pipe.execute()
+                
+            added_to_queue = results[0] == 1
+            logger.debug(f"Request queued: {dedupe_key}, priority: {priority}")
+            return added_to_queue
+            
+        except RedisError as e:
+            logger.error(f"Error pushing request to queue '{queue_key}': {e}")
+            raise
+
+    async def push_request_safe(
+        self,
+        queue_key: str,
+        request_data: Dict[str, Any],
+        priority: int = 0,
+        dedupe_key: Optional[str] = None
+    ) -> bool:
+        """
+        Push request with memory safety check.
+        
+        Args:
+            Same as push_request
+            
+        Returns:
+            True if request was queued, False if duplicate or memory full
+        """
+        try:
+            # Check memory usage first
+            memory_usage = await self.check_memory_usage()
+            if memory_usage > 90:  # 90% threshold
+                logger.warning(f"Redis memory usage at {memory_usage:.1f}%, skipping request")
+                # Could implement disk overflow here
+                return False
+                
+            return await self.push_request(queue_key, request_data, priority, dedupe_key)
+            
+        except RedisError as e:
+            logger.error(f"Error in push_request_safe: {e}")
+            raise
+
+    async def pop_request(self, queue_key: str) -> Optional[Dict[str, Any]]:
+        """
+        Pop highest priority request from the queue.
+        
+        Args:
+            queue_key: Redis key for the queue
+            
+        Returns:
+            Request data dict or None if queue empty
+        """
+        try:
+            client = await self.get_client()
+            
+            # Pop highest priority (lowest score) item
+            result = await client.zpopmin(queue_key, count=1)
+            
+            if not result:
+                return None
+                
+            # Result is [(member, score)]
+            request_json, score = result[0]
+            request_data = json.loads(request_json)
+            
+            logger.debug(f"Popped request: {request_data.get('url', 'unknown')}")
+            return request_data
+            
+        except RedisError as e:
+            logger.error(f"Error popping request from queue '{queue_key}': {e}")
+            raise
+
+    async def push_requests_batch(
+        self,
+        queue_key: str,
+        requests: List[Dict[str, Any]],
+        check_duplicates: bool = True
+    ) -> int:
+        """
+        Push multiple requests to queue in a single pipeline.
+        
+        Args:
+            queue_key: Redis key for the queue
+            requests: List of request data dicts with 'url' and optional 'priority'
+            check_duplicates: Whether to filter duplicates
+            
+        Returns:
+            Number of requests actually queued (excluding duplicates)
+        """
+        try:
+            client = await self.get_client()
+            dupefilter_key = f"{queue_key}:dupefilter"
+            
+            if check_duplicates:
+                # First, deduplicate within the batch itself
+                seen_urls = set()
+                deduplicated_requests = []
+                for req in requests:
+                    url = req.get('url', '')
+                    if url not in seen_urls:
+                        seen_urls.add(url)
+                        deduplicated_requests.append(req)
+                
+                # Then check against existing duplicates in Redis
+                urls = [req.get('url', '') for req in deduplicated_requests]
+                async with client.pipeline() as pipe:
+                    for url in urls:
+                        await pipe.sismember(dupefilter_key, url)
+                    duplicate_checks = await pipe.execute()
+                    
+                # Filter out requests that exist in dupefilter
+                new_requests = []
+                for req, is_dup in zip(deduplicated_requests, duplicate_checks):
+                    if not is_dup:
+                        new_requests.append(req)
+                        
+                if not new_requests:
+                    logger.debug("All requests were duplicates")
+                    return 0
+            else:
+                new_requests = requests
+                
+            # Add all new requests in a single pipeline
+            async with client.pipeline() as pipe:
+                for req in new_requests:
+                    priority = req.get('priority', 0)
+                    url = req.get('url', '')
+                    await pipe.zadd(queue_key, {json.dumps(req): -priority})
+                    if check_duplicates:
+                        await pipe.sadd(dupefilter_key, url)
+                        
+                # Set TTL on dupefilter
+                if check_duplicates:
+                    await pipe.expire(dupefilter_key, 7 * 86400)
+                    
+                await pipe.execute()
+                
+            logger.debug(f"Batch queued {len(new_requests)} requests")
+            return len(new_requests)
+            
+        except RedisError as e:
+            logger.error(f"Error batch pushing requests to queue '{queue_key}': {e}")
+            raise
+
+    async def get_queue_length(self, queue_key: str) -> int:
+        """
+        Get the current length of the request queue.
+        
+        Args:
+            queue_key: Redis key for the queue
+            
+        Returns:
+            Number of requests in queue
+        """
+        try:
+            client = await self.get_client()
+            return await client.zcard(queue_key)
+        except RedisError as e:
+            logger.error(f"Error getting queue length for '{queue_key}': {e}")
+            raise
+
+    async def clear_queue(self, queue_key: str, clear_dupefilter: bool = True) -> Tuple[int, int]:
+        """
+        Clear the request queue and optionally the dupefilter.
+        
+        Args:
+            queue_key: Redis key for the queue
+            clear_dupefilter: Whether to also clear the dupefilter set
+            
+        Returns:
+            Tuple of (queue_items_removed, dupefilter_items_removed)
+        """
+        try:
+            client = await self.get_client()
+            
+            # Get counts before deletion
+            queue_count = await client.zcard(queue_key)
+            dupefilter_key = f"{queue_key}:dupefilter"
+            dupefilter_count = await client.scard(dupefilter_key) if clear_dupefilter else 0
+            
+            async with client.pipeline() as pipe:
+                # Delete the queue
+                await pipe.delete(queue_key)
+                
+                # Optionally delete dupefilter
+                if clear_dupefilter:
+                    await pipe.delete(dupefilter_key)
+                    
+                await pipe.execute()
+                
+            logger.info(f"Cleared queue '{queue_key}': {queue_count} items, "
+                    f"dupefilter: {dupefilter_count} items")
+            
+            return queue_count, dupefilter_count
+            
+        except RedisError as e:
+            logger.error(f"Error clearing queue '{queue_key}': {e}")
+            raise
+
+    async def peek_queue(self, queue_key: str, count: int = 10) -> List[Dict[str, Any]]:
+        """
+        Peek at top requests in queue without removing them.
+        
+        Args:
+            queue_key: Redis key for the queue
+            count: Number of requests to peek at
+            
+        Returns:
+            List of request data dicts
+        """
+        try:
+            client = await self.get_client()
+            
+            # Get items with lowest scores (highest priority)
+            items = await client.zrange(queue_key, 0, count - 1, withscores=True)
+            
+            requests = []
+            for request_json, score in items:
+                request_data = json.loads(request_json)
+                request_data['_queue_priority'] = -score  # Convert back to original priority
+                requests.append(request_data)
+                
+            return requests
+            
+        except RedisError as e:
+            logger.error(f"Error peeking queue '{queue_key}': {e}")
+            raise
+
+    async def update_request_priority(
+        self,
+        queue_key: str,
+        url: str,
+        new_priority: int
+    ) -> bool:
+        """
+        Update the priority of a queued request.
+        
+        Args:
+            queue_key: Redis key for the queue
+            url: URL of the request to update
+            new_priority: New priority value
+            
+        Returns:
+            True if updated, False if not found
+        """
+        try:
+            client = await self.get_client()
+            
+            # Find the request by scanning the queue
+            items = await client.zrange(queue_key, 0, -1, withscores=True)
+            
+            for request_json, score in items:
+                request_data = json.loads(request_json)
+                if request_data.get('url') == url:
+                    # Remove old entry and add with new priority
+                    async with client.pipeline() as pipe:
+                        await pipe.zrem(queue_key, request_json)
+                        await pipe.zadd(queue_key, {request_json: -new_priority})
+                        results = await pipe.execute()
+                        
+                    if results[0] == 1:  # Successfully removed
+                        logger.debug(f"Updated priority for {url} to {new_priority}")
+                        return True
+                        
+            return False
+            
+        except RedisError as e:
+            logger.error(f"Error updating request priority in queue '{queue_key}': {e}")
+            raise
+
+    async def get_queue_stats(self, queue_key: str) -> Dict[str, Any]:
+        """
+        Get statistics about the request queue.
+        
+        Args:
+            queue_key: Redis key for the queue
+            
+        Returns:
+            Dictionary with queue statistics
+        """
+        try:
+            client = await self.get_client()
+            dupefilter_key = f"{queue_key}:dupefilter"
+            
+            async with client.pipeline() as pipe:
+                await pipe.zcard(queue_key)  # Queue size
+                await pipe.scard(dupefilter_key)  # Dupefilter size
+                await pipe.ttl(dupefilter_key)  # Dupefilter TTL
+                # Get priority range
+                await pipe.zrange(queue_key, 0, 0, withscores=True)  # Highest priority
+                await pipe.zrange(queue_key, -1, -1, withscores=True)  # Lowest priority
+                
+                results = await pipe.execute()
+                
+            stats = {
+                'queue_size': results[0],
+                'dupefilter_size': results[1],
+                'dupefilter_ttl': results[2],
+                'highest_priority': -results[3][0][1] if results[3] else None,
+                'lowest_priority': -results[4][0][1] if results[4] else None,
+            }
+            
+            return stats
+            
+        except RedisError as e:
+            logger.error(f"Error getting queue stats for '{queue_key}': {e}")
+            raise
+
+    # Memory Monitoring Methods
+
+    async def check_memory_usage(self) -> float:
+        """
+        Check Redis memory usage percentage.
+        
+        Returns:
+            Memory usage percentage (0-100)
+        """
+        try:
+            client = await self.get_client()
+            info = await client.info('memory')
+            
+            used = int(info.get('used_memory', 0))
+            max_memory = int(info.get('maxmemory', 0))
+            
+            if max_memory > 0:
+                usage_percent = (used / max_memory) * 100
+            else:
+                # No memory limit set
+                usage_percent = 0.0  # Ensure it's a float
+                
+            return float(usage_percent)  # Ensure return type is always float
+            
+        except RedisError as e:
+            logger.error(f"Error checking memory usage: {e}")
+            return 0.0  # Return float instead of int
+
+    async def get_memory_info(self) -> Dict[str, Any]:
+        """
+        Get detailed memory information.
+        
+        Returns:
+            Dictionary with memory statistics
+        """
+        try:
+            client = await self.get_client()
+            info = await client.info('memory')
+            
+            return {
+                'used_memory': info.get('used_memory', 0),
+                'used_memory_human': info.get('used_memory_human', '0B'),
+                'maxmemory': info.get('maxmemory', 0),
+                'maxmemory_human': info.get('maxmemory_human', '0B'),
+                'maxmemory_policy': info.get('maxmemory_policy', 'noeviction'),
+                'mem_fragmentation_ratio': info.get('mem_fragmentation_ratio', 1.0),
+                'usage_percent': float(await self.check_memory_usage())  # Ensure float
+            }
+            
+        except RedisError as e:
+            logger.error(f"Error getting memory info: {e}")
+            return {}
+
+    # Temporary State Storage Methods
+
+    async def set_job_state(
+        self,
+        job_key: str,
+        state_data: Dict[str, Any],
+        ttl: int = 86400  # 24 hours default
+    ) -> None:
+        """
+        Store temporary job state.
+        
+        Args:
+            job_key: Job identifier key
+            state_data: State data to store
+            ttl: Time to live in seconds
+        """
+        try:
+            client = await self.get_client()
+            await client.hset(f"job_state:{job_key}", mapping={
+                k: json.dumps(v) if not isinstance(v, str) else v
+                for k, v in state_data.items()
+            })
+            await client.expire(f"job_state:{job_key}", ttl)
+            
+        except RedisError as e:
+            logger.error(f"Error setting job state for '{job_key}': {e}")
+            raise
+
+    async def get_job_state(self, job_key: str) -> Dict[str, Any]:
+        """
+        Retrieve temporary job state.
+        
+        Args:
+            job_key: Job identifier key
+            
+        Returns:
+            State data dictionary
+        """
+        try:
+            client = await self.get_client()
+            raw_state = await client.hgetall(f"job_state:{job_key}")
+            
+            # Deserialize JSON values
+            state = {}
+            for k, v in raw_state.items():
+                # Handle both string and integer values (from hincrby)
+                if isinstance(v, int):
+                    state[k] = v
+                else:
+                    try:
+                        state[k] = json.loads(v)
+                    except json.JSONDecodeError:
+                        state[k] = v  # Keep as string if not JSON
+                    
+            return state
+            
+        except RedisError as e:
+            logger.error(f"Error getting job state for '{job_key}': {e}")
+            raise
+
+    async def increment_job_counter(
+        self,
+        job_key: str,
+        counter_name: str,
+        amount: int = 1
+    ) -> int:
+        """
+        Increment a job counter atomically.
+        
+        Args:
+            job_key: Job identifier key
+            counter_name: Name of the counter
+            amount: Amount to increment by
+            
+        Returns:
+            New counter value
+        """
+        try:
+            client = await self.get_client()
+            return await client.hincrby(f"job_state:{job_key}", counter_name, amount)
+            
+        except RedisError as e:
+            logger.error(f"Error incrementing counter '{counter_name}' for job '{job_key}': {e}")
+            raise
+    
+    async def purge_spider_data(self, spider_name: str, job_id: Optional[str] = None) -> Dict[str, int]:
+        """
+        Purge all Redis data for a spider/job.
+        
+        Args:
+            spider_name: Name of the spider
+            job_id: Optional job ID for job-specific purging
+            
+        Returns:
+            Dictionary with counts of purged items by type
+        """
+        try:
+            client = await self.get_client()
+            purged = {
+                'queue': 0,
+                'dupefilter': 0,
+                'job_state': 0,
+                'total_keys': 0
+            }
+            
+            # Build key patterns based on job_id
+            if job_id:
+                patterns = [
+                    f"queue:{spider_name}:{job_id}:*",
+                    f"queue:{spider_name}:requests:{job_id}",
+                    f"job_state:{spider_name}:{job_id}",
+                ]
+            else:
+                patterns = [
+                    f"queue:{spider_name}:*",
+                    f"job_state:{spider_name}*",
+                ]
+                
+            # Find and delete all matching keys
+            for pattern in patterns:
+                keys = await client.keys(pattern)
+                if keys:
+                    deleted = await client.delete(*keys)
+                    purged['total_keys'] += deleted
+                    
+                    # Track specific types
+                    if 'queue' in pattern and 'dupefilter' not in pattern:
+                        purged['queue'] += deleted
+                    elif 'dupefilter' in pattern:
+                        purged['dupefilter'] += deleted
+                    elif 'job_state' in pattern:
+                        purged['job_state'] += deleted
+                        
+            logger.info(f"Purged spider data: {purged}")
+            return purged
+            
+        except RedisError as e:
+            logger.error(f"Error purging spider data: {e}")
+            raise
+    
+    # Generic Counter/Limit Tracking Methods
+    
+    async def increment_counter_with_limit(
+        self,
+        key: str,
+        increment: int = 1,
+        limit: Optional[int] = None,
+        ttl: Optional[int] = None
+    ) -> Tuple[int, bool]:
+        """
+        Increment a counter and check against an optional limit.
+        
+        Args:
+            key: Redis key for the counter
+            increment: Amount to increment by (default 1)
+            limit: Optional maximum value allowed
+            ttl: Optional TTL in seconds
+            
+        Returns:
+            Tuple of (new_count, is_at_or_over_limit)
+        """
+        try:
+            client = await self.get_client()
+            
+            # Use pipeline for atomic operation
+            async with client.pipeline() as pipe:
+                await pipe.incrby(key, increment)
+                if ttl is not None:
+                    await pipe.expire(key, ttl)
+                results = await pipe.execute()
+                
+            new_count = results[0]
+            is_over_limit = False
+            
+            if limit is not None:
+                is_over_limit = new_count >= limit
+                
+            return new_count, is_over_limit
+            
+        except RedisError as e:
+            logger.error(f"Error incrementing counter for key '{key}': {e}")
+            raise
+    
+    async def get_counter_value(self, key: str) -> int:
+        """
+        Get current value of a counter.
+        
+        Args:
+            key: Redis key for the counter
+            
+        Returns:
+            Current counter value (0 if key doesn't exist)
+        """
+        try:
+            client = await self.get_client()
+            value = await client.get(key)
+            return int(value) if value else 0
+            
+        except (RedisError, ValueError) as e:
+            logger.error(f"Error getting counter value for key '{key}': {e}")
+            if isinstance(e, RedisError):
+                raise
+            return 0
+    
+    async def check_counter_limit(self, key: str, limit: int) -> bool:
+        """
+        Check if a counter has reached or exceeded a limit without incrementing.
+        
+        Args:
+            key: Redis key for the counter
+            limit: Maximum value to check against
+            
+        Returns:
+            True if at or over limit, False otherwise
+        """
+        try:
+            current_value = await self.get_counter_value(key)
+            return current_value >= limit
+            
+        except RedisError as e:
+            logger.error(f"Error checking counter limit for key '{key}': {e}")
+            raise
+    
+    async def reset_counter(self, key: str) -> bool:
+        """
+        Reset a counter to 0.
+        
+        Args:
+            key: Redis key for the counter
+            
+        Returns:
+            True if key existed and was reset, False if key didn't exist
+        """
+        try:
+            client = await self.get_client()
+            return await client.delete(key) > 0
+            
+        except RedisError as e:
+            logger.error(f"Error resetting counter for key '{key}': {e}")
+            raise
+    
+    async def increment_hash_counter(
+        self,
+        hash_key: str,
+        field: str,
+        increment: int = 1,
+        ttl: Optional[int] = None
+    ) -> int:
+        """
+        Increment a counter within a hash field.
+        
+        Args:
+            hash_key: Redis hash key
+            field: Field within the hash
+            increment: Amount to increment by
+            ttl: Optional TTL for the entire hash
+            
+        Returns:
+            New counter value
+        """
+        try:
+            client = await self.get_client()
+            
+            async with client.pipeline() as pipe:
+                await pipe.hincrby(hash_key, field, increment)
+                if ttl is not None:
+                    await pipe.expire(hash_key, ttl)
+                results = await pipe.execute()
+                
+            return results[0]
+            
+        except RedisError as e:
+            logger.error(f"Error incrementing hash counter for '{hash_key}:{field}': {e}")
+            raise
+    
+    async def get_hash_counter_values(self, hash_key: str) -> Dict[str, int]:
+        """
+        Get all counter values from a hash.
+        
+        Args:
+            hash_key: Redis hash key
+            
+        Returns:
+            Dictionary of field:value pairs (as integers)
+        """
+        try:
+            client = await self.get_client()
+            raw_values = await client.hgetall(hash_key)
+            
+            # Convert string values to integers
+            return {
+                field: int(value) if isinstance(value, (str, bytes)) and value.isdigit() else 0
+                for field, value in raw_values.items()
+            }
+            
+        except RedisError as e:
+            logger.error(f"Error getting hash counter values for '{hash_key}': {e}")
+            raise
+    
+    async def delete_keys_by_pattern(self, pattern: str) -> int:
+        """
+        Delete all keys matching a pattern.
+        
+        Args:
+            pattern: Redis key pattern (e.g., "prefix:*")
+            
+        Returns:
+            Number of keys deleted
+        """
+        try:
+            client = await self.get_client()
+            keys = await client.keys(pattern)
+            
+            if not keys:
+                return 0
+                
+            return await client.delete(*keys)
+            
+        except RedisError as e:
+            logger.error(f"Error deleting keys by pattern '{pattern}': {e}")
+            raise
+    
+    async def delete_multiple_patterns(self, patterns: List[str]) -> Dict[str, int]:
+        """
+        Delete keys matching multiple patterns.
+        
+        Args:
+            patterns: List of Redis key patterns
+            
+        Returns:
+            Dictionary mapping pattern to number of keys deleted
+        """
+        try:
+            deleted_counts = {}
+            
+            for pattern in patterns:
+                count = await self.delete_keys_by_pattern(pattern)
+                deleted_counts[pattern] = count
+                
+            return deleted_counts
+            
+        except RedisError as e:
+            logger.error(f"Error deleting multiple patterns: {e}")
+            raise
+    
     # Helper Methods
     
     async def info(self) -> Dict[str, Any]:
