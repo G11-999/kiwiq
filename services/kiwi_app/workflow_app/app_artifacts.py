@@ -279,8 +279,8 @@ USER_DOCUMENTS_CONFIG_JSON_STR = """
 ALL_WORKFLOWS_CONFIG_JSON_STR = """
 {
   "all_workflows": {
-    "linkedin_scraping_workflow": {
-      "name": "linkedin_scraping_workflow",
+    "linkedin_linkedin_scraping_workflow": {
+      "name": "linkedin_linkedin_scraping_workflow",
       "version": null,
       "inputs": {
         "entity_username": null,
@@ -291,37 +291,11 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
       "template_specific": false
     },
 
-    "automatic_concept_selection_workflow": {
-      "name": "automatic_concept_selection_workflow",
+    "linkedin_automatic_concept_selection_workflow": {
+      "name": "linkedin_automatic_concept_selection_workflow",
       "version": null,
       "inputs": {
         "initial_brief_docname": null,
-        "customer_context_doc_configs": [
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "user_strategy_{item}",
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "user_dna_doc"
-                },
-                "output_field_name": "user_dna"
-            },
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "content_briefs_{item}",
-                    "input_namespace_field": "entity_username",
-                    "input_docname_field": "initial_brief_docname"
-                },
-                "output_field_name": "initial_brief"
-            },
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "scraping_results_{item}",
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "linkedin_scraped_posts_doc"
-                },
-                "output_field_name": "scraped_posts"
-            }
-        ],
         "past_context_posts_limit": 20,
         "user_instruction": null,
         "entity_username": null
@@ -331,8 +305,8 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
       "template_specific": false
     },
 
-    "linkedin_content_analysis_workflow": {
-      "name": "linkedin_content_analysis_workflow",
+    "linkedin_linkedin_content_analysis_workflow": {
+      "name": "linkedin_linkedin_content_analysis_workflow",
       "version": null,
       "inputs": {
         "entity_username": null
@@ -341,8 +315,8 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
       },
       "template_specific": false
     },
-    "sources_extraction_workflow": {
-      "name": "sources_extraction_workflow",
+    "linkedin_sources_extraction_workflow": {
+      "name": "linkedin_sources_extraction_workflow",
       "version": null,
       "inputs": {
         "documents_to_process": [
@@ -361,8 +335,8 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
       },
       "template_specific": false
     },
-    "knowledge_base_analysis_workflow": {
-      "name": "knowledge_base_analysis_workflow",
+    "linkedin_knowledge_base_analysis_workflow": {
+      "name": "linkedin_knowledge_base_analysis_workflow",
       "version": null,
       "inputs": {
         "documents_to_process": [
@@ -382,259 +356,53 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
       },
       "template_specific": false
     },
-    "content_strategy_workflow": {
-      "name": "content_strategy_workflow",
+    "linkedin_content_strategy_workflow": {
+      "name": "linkedin_content_strategy_workflow",
       "version": null,
       "inputs": {
-        "customer_context_doc_configs": [
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "user_inputs_{item}",
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "user_preferences_doc"
-                },
-                "output_field_name": "user_preferences"
-            },
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "user_analysis_{item}",
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "user_source_analysis"
-                },
-                "output_field_name": "user_source_analysis"
-            },
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "user_inputs_{item}",
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "core_beliefs_perspectives_doc"
-                },
-                "output_field_name": "core_beliefs_perspectives"
-            },
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "user_inputs_{item}",
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "content_pillars_doc"
-                },
-                "output_field_name": "content_pillars"
-            },
-            {
-                "filename_config": {
-                    "static_namespace": "system_strategy_docs_namespace",
-                    "static_docname": "methodology_implementation_ai_copilot"
-                },
-                "output_field_name": "methodology_implementation",
-                "is_shared": true,
-                "is_system_entity": true
-            },
-            {
-                "filename_config": {
-                    "static_namespace": "system_strategy_docs_namespace",
-                    "static_docname": "building_blocks_content_methodology"
-                },
-                "output_field_name": "building_blocks",
-                "is_shared": true,
-                "is_system_entity": true
-            }
-        ],
         "entity_username": null
     },
       "user_documents_config_variables": {
       },
       "template_specific": false
     },
-    "user_dna_workflow": {
-      "name": "user_dna_workflow",
+    "linkedin_user_dna_workflow": {
+      "name": "linkedin_user_dna_workflow",
       "version": null,
       "inputs": {
-        "customer_context_doc_configs": [
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "user_inputs_{item}",
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "user_preferences_doc"
-                },
-                "output_field_name": "user_preferences"
-            },
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "user_analysis_{item}",
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "user_source_analysis"
-                },
-                "output_field_name": "user_source_analysis"
-            },
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "user_inputs_{item}",
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "core_beliefs_perspectives_doc"
-                },
-                "output_field_name": "core_beliefs_perspectives"
-            },
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "user_inputs_{item}",
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "content_pillars_doc"
-                },
-                "output_field_name": "content_pillars"
-            },
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "user_analysis_{item}",
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "content_analysis_doc"
-                },
-                "output_field_name": "content_analysis"
-            },
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "scraping_results_{item}",
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "linkedin_scraped_profile_doc"
-                },
-                "output_field_name": "linkedin_profile"
-            },
-            {
-                "filename_config": {
-                    "static_namespace": "system_strategy_docs_namespace",
-                    "static_docname": "methodology_implementation_ai_copilot"
-                },
-                "output_field_name": "methodology_implementation",
-                "is_shared": true,
-                "is_system_entity": true
-            },
-            {
-                "filename_config": {
-                    "static_namespace": "system_strategy_docs_namespace",
-                    "static_docname": "building_blocks_content_methodology"
-                },
-                "output_field_name": "building_blocks",
-                "is_shared": true,
-                "is_system_entity": true
-            }
-        ],
         "entity_username": null
     },
       "user_documents_config_variables": {
       },
       "template_specific": false
     },
-    "content_calendar_entry_workflow": {
-      "name": "content_calendar_entry_workflow",
+    "linkedin_content_calendar_entry_workflow": {
+      "name": "linkedin_content_calendar_entry_workflow",
       "version": null,
       "inputs": {
         "entity_username": null,
         "weeks_to_generate": 1,
-        "customer_context_doc_configs": [
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "user_strategy_{item}",
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "user_dna_doc"
-                },
-                "output_field_name": "user_dna"
-            },
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "user_inputs_{item}",
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "user_preferences_doc"
-                },
-                "output_field_name": "user_preferences"
-            },
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "user_strategy_{item}",
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "content_strategy_doc"
-                },
-                "output_field_name": "strategy_doc"
-            },
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "scraping_results_{item}",
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "linkedin_scraped_posts_doc"
-                },
-                "output_field_name": "scraped_posts"
-            }
-        ],
         "past_context_posts_limit": 20
     },
       "user_documents_config_variables": {},
       "template_specific": false
     },
-    "content_creation_workflow": {
-      "name": "content_creation_workflow",
+    "linkedin_content_creation_workflow": {
+      "name": "linkedin_content_creation_workflow",
       "version": null,
       "inputs": {
             "post_uuid": null,
             "brief_docname": null,
-            "customer_context_doc_configs": [
-                {
-                    "filename_config": {
-                        "input_namespace_field_pattern": "user_strategy_{item}",
-                        "input_namespace_field": "entity_username",
-                        "static_docname": "user_dna_doc"
-                    },
-                    "output_field_name": "user_dna"
-                },
-                {
-                    "filename_config": {
-                        "input_namespace_field_pattern": "content_briefs_{item}",
-                        "input_namespace_field": "entity_username",
-                        "input_docname_field": "brief_docname"
-                    },
-                    "output_field_name": "content_brief"
-                },
-                {
-                "filename_config": {
-                    "input_namespace_field_pattern": "knowledge_base_{item}", 
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "knowledge_base_analysis"
-                },
-                "output_field_name": "knowledge_base_analysis"
-            }
-            ],
             "entity_username": null
         },
       "user_documents_config_variables": {},
       "template_specific": false
     },
-    "initial_brief_to_concepts_workflow": {
-      "name": "initial_brief_to_concepts_workflow",
+    "linkedin_initial_brief_to_concepts_workflow": {
+      "name": "linkedin_initial_brief_to_concepts_workflow",
       "version": null,
       "inputs": {
         "initial_brief_docname": null,
-        "customer_context_doc_configs": [
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "user_strategy_{item}",
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "user_dna_doc"
-                },
-                "output_field_name": "user_dna"
-            },
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "content_briefs_{item}",
-                    "input_namespace_field": "entity_username",
-                    "input_docname_field": "initial_brief_docname"
-                },
-                "output_field_name": "initial_brief"
-            },
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "scraping_results_{item}",
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "linkedin_scraped_posts_doc"
-                },
-                "output_field_name": "scraped_posts"
-            }
-        ],
         "past_context_posts_limit": 20,
         "user_instruction": null,
         "entity_username": null
@@ -642,115 +410,43 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
       "user_documents_config_variables": {},
       "template_specific": false
     },
-    "idea_generation_workflow": {
-      "name": "idea_generation_workflow", 
+    "linkedin_idea_generation_workflow": {
+      "name": "linkedin_idea_generation_workflow", 
       "version": null,
       "inputs": {
         "initial_brief_docname": null,
-        "customer_context_doc_configs": [
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "user_strategy_{item}",
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "user_dna_doc"
-                },
-                "output_field_name": "user_dna"
-            },
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "content_briefs_{item}",
-                    "input_namespace_field": "entity_username",
-                    "input_docname_field": "initial_brief_docname"
-                },
-                "output_field_name": "initial_brief"
-            },
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "scraping_results_{item}",
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "linkedin_scraped_posts_doc"
-                },
-                "output_field_name": "scraped_posts"
-            }
-        ],
         "past_context_posts_limit": 20,
         "entity_username": null
       },
       "user_documents_config_variables": {},
       "template_specific": false
     },
-    "idea_brainstorm_workflow": {
-      "name": "idea_brainstorm_workflow",
+    "linkedin_idea_brainstorm_workflow": {
+      "name": "linkedin_idea_brainstorm_workflow",
       "version": null,
       "inputs": {
         "user_input": null,
-        "customer_context_doc_configs": [
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "user_strategy_{item}",
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "user_dna_doc"
-                },
-                "output_field_name": "user_dna"
-            },
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "scraping_results_{item}",
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "linkedin_scraped_posts_doc"
-                },
-                "output_field_name": "scraped_posts"
-            }
-        ],
         "past_context_posts_limit": 20,
         "entity_username": null
       },
       "user_documents_config_variables": {},
       "template_specific": false
     },
-    "concept_brainstorm_workflow": {
-      "name": "concept_brainstorm_workflow",
+    "linkedin_concept_brainstorm_workflow": {
+      "name": "linkedin_concept_brainstorm_workflow",
       "version": null,
       "inputs": {
         "user_input": null,
-        "customer_context_doc_configs": [
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "user_strategy_{item}",
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "user_dna_doc"
-                },
-                "output_field_name": "user_dna"
-            },
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "scraping_results_{item}",
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "linkedin_scraped_posts_doc"
-                },
-                "output_field_name": "scraped_posts"
-            }
-        ],
         "past_context_posts_limit": 20,
         "entity_username": null
       },
       "user_documents_config_variables": {},
       "template_specific": false
     },
-    "alternate_text_suggestion_workflow": {
-      "name": "alternate_text_suggestion_workflow",
+    "linkedin_alternate_text_suggestion_workflow": {
+      "name": "linkedin_alternate_text_suggestion_workflow",
       "version": null,
       "inputs": {
-        "customer_context_doc_configs": [
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "user_strategy_{item}",
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "user_dna_doc"
-                },
-                "output_field_name": "user_dna"
-            }
-        ],
         "entity_username": null,
         "selected_text": null,
         "complete_content_doc": null,
@@ -760,20 +456,10 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
       },
       "template_specific": false
     },
-    "post_editing_workflow": {
-      "name": "post_editing_workflow",
+    "linkedin_post_editing_workflow": {
+      "name": "linkedin_post_editing_workflow",
       "version": null,
       "inputs": {
-        "customer_context_doc_configs": [
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "user_strategy_{item}",
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "user_dna_doc"
-                },
-                "output_field_name": "user_dna"
-            }
-        ],
         "entity_username": null,
         "complete_content_doc": null,
         "user_feedback": null
@@ -782,123 +468,64 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
       },
       "template_specific": false
     },
-    "linkedin_profile_analysis_onboarding_workflow": {
-      "name": "linkedin_profile_analysis_onboarding_workflow",
+    "linkedin_linkedin_profile_analysis_onboarding_workflow": {
+      "name": "linkedin_linkedin_profile_analysis_onboarding_workflow",
       "version": null,
       "inputs": {
-        "customer_context_doc_configs": [
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "scraping_results_{item}",
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "linkedin_scraped_profile_doc"
-                },
-                "output_field_name": "linkedin_profile"
-            }
-        ],
         "entity_username": null
     },
       "user_documents_config_variables": {
       },
       "template_specific": false
     },
-    "core_beliefs_perspectives_extraction_workflow": {
-      "name": "core_beliefs_perspectives_extraction_workflow",
+    "linkedin_core_beliefs_perspectives_extraction_workflow": {
+      "name": "linkedin_core_beliefs_perspectives_extraction_workflow",
       "version": null,
       "inputs": {
-        "customer_context_doc_configs": [
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "scraping_results_{item}",
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "linkedin_scraped_profile_doc"
-                },
-                "output_field_name": "linkedin_profile"
-            },
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "user_analysis_{item}",
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "content_analysis_doc"
-                },
-                "output_field_name": "content_analysis"
-            },
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "user_inputs_{item}",
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "user_preferences_doc"
-                },
-                "output_field_name": "user_preferences"
-            }
-        ],
         "entity_username": null
     },
       "user_documents_config_variables": {
       },
       "template_specific": false
     },
-    "style_test_workflow": {
-      "name": "style_test_workflow",
+    "linkedin_style_test_workflow": {
+      "name": "linkedin_style_test_workflow",
       "version": null,
       "inputs": {
-        "entity_username": null,
-        "customer_context_doc_configs": [
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "user_strategy_{item}",
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "user_dna_doc"
-                },
-                "output_field_name": "user_dna"
-            },
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "user_strategy_{item}",
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "content_strategy_doc"
-                },
-                "output_field_name": "strategy_doc"
-            }
-        ]
+        "entity_username": null
     },
       "user_documents_config_variables": {},
       "template_specific": false
     },
-    "post_creation_from_scratch_workflow": {
-      "name": "post_creation_from_scratch_workflow", 
+    "linkedin_post_creation_from_scratch_workflow": {
+      "name": "linkedin_post_creation_from_scratch_workflow", 
       "version": null,
       "inputs": {
         "user_input": null,
         "post_uuid": null,
-        "customer_context_doc_configs": [
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "user_strategy_{item}",
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "user_dna_doc"
-                },
-                "output_field_name": "user_dna"
-            },
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "scraping_results_{item}",
-                    "input_namespace_field": "entity_username", 
-                    "static_docname": "linkedin_scraped_posts_doc"
-                },
-                "output_field_name": "scraped_posts"
-            },
-            {
-                "filename_config": {
-                    "input_namespace_field_pattern": "knowledge_base_{item}", 
-                    "input_namespace_field": "entity_username",
-                    "static_docname": "knowledge_base_analysis"
-                },
-                "output_field_name": "knowledge_base_analysis"
-            }
-        ],
         "past_context_posts_limit": 20,
         "entity_username": null
+      },
+      "user_documents_config_variables": {},
+      "template_specific": false
+    },
+    "blog_user_input_to_brief_workflow": {
+      "name": "blog_user_input_to_brief_workflow",
+      "version": null,
+      "inputs": {
+        "company_name": null,
+        "user_input": null
+      },
+      "user_documents_config_variables": {},
+      "template_specific": false
+    },
+    "blog_brief_to_blog_draft_workflow": {
+      "name": "blog_brief_to_blog_draft_workflow",
+      "version": null,
+      "inputs": {
+	      "post_uuid": null,
+        "company_name": null,
+        "brief_docname": null
       },
       "user_documents_config_variables": {},
       "template_specific": false
