@@ -7,6 +7,7 @@ This demonstrates practical configurations for:
 3. Large-scale crawling (1000+ URLs per domain)
 4. Custom processors for specific sites
 """
+import json
 from typing import Dict, Any
 from datetime import datetime
 from scrapy.http import Response
@@ -103,6 +104,10 @@ class OtterAIProcessor(BaseProcessor):
     
     def should_follow_link(self, url: str, response: Response, spider: Spider) -> bool:
         """Control which links to follow on Otter.ai."""
+        # First check robots.txt using parent method
+        if not super().should_follow_link(url, response, spider):
+            return False
+
         # Skip external links and assets
         if not any(domain in url for domain in ['otter.ai', 'blog.otter.ai']):
             return False
@@ -142,6 +147,10 @@ class OtterAIProcessor(BaseProcessor):
     
     def should_process_link(self, response: Response, data: Dict[str, Any], spider: Spider) -> bool:
         """Filter out low-quality or unwanted content."""
+        if spider.settings.getbool('DEBUG_MODE', False):
+            return True
+        # return True
+        
         # Skip error pages
         if response.status >= 400:
             return False
@@ -245,6 +254,9 @@ class GrainProcessor(BaseProcessor):
     
     def should_follow_link(self, url: str, response: Response, spider: Spider) -> bool:
         """Control which links to follow on Grain.com."""
+        if not super().should_follow_link(url, response, spider):
+            return False
+
         # Only follow grain.com links
         if 'grain.com' not in url:
             return False
@@ -322,16 +334,19 @@ def example_otter_ai_blog_crawl():
         'job_id': f'otter_blog_{datetime.now().strftime("%Y%m%d_%H%M%S")}',
         
         'start_urls': [
-            'https://otter.ai/blog',
-            'https://blog.otter.ai/',  # They might use subdomain
+            'https://otter.ai',
+            # 'https://otter.ai/blog',
+            # 'https://blog.otter.ai/',  # They might use subdomain
         ],
         
         'allowed_domains': ['otter.ai', 'blog.otter.ai'],
         'processor': 'otter.ai',
+        'debug_mode': True,
         
         # Large-scale settings
         'max_urls_per_domain': 1000,  # Crawl up to 1000 pages
-        'max_crawl_depth': 5,  # Blog pagination can be deep
+        'max_crawl_depth': 0,  # Blog pagination can be deep
+        # 'max_sitemap_depth': 0,  # Sitemap depth
         
         'custom_settings': {
             # Streaming pipeline for handling large crawls
@@ -363,6 +378,8 @@ def example_otter_ai_blog_crawl():
     print(f"\nCrawl completed!")
     print(f"Job ID: {result['job_id']}")
     print(f"Check results in: services/workflow_service/services/scraping/data/{result['job_id']}/items.jsonl")
+
+    print("\n\nStats:\n\n", json.dumps(result['stats'], indent=4, default=str))
     
     return result['job_id']
 
@@ -482,6 +499,9 @@ def example_combined_multi_site_crawl():
         
         def should_follow_link(self, url: str, response: Response, spider: Spider) -> bool:
             """Route link filtering to appropriate processor."""
+            if not super().should_follow_link(url, response, spider):
+                return False
+
             if 'otter.ai' in response.url:
                 return self.otter_processor.should_follow_link(url, response, spider)
             elif 'grain.com' in response.url:
@@ -628,93 +648,99 @@ def example_predictable_output_crawl():
     """
 
     # Create a combined processor that handles both sites
-    class MultiSiteProcessor(BaseProcessor):
-        """Processor that delegates to site-specific processors."""
+    # class MultiSiteProcessor(BaseProcessor):
+    #     """Processor that delegates to site-specific processors."""
         
-        def __init__(self, *args, allowed_domains=None, **kwargs):
-            """
-            Initialize multi-site processor with domain configuration.
+    #     def __init__(self, *args, allowed_domains=None, **kwargs):
+    #         """
+    #         Initialize multi-site processor with domain configuration.
             
-            Args:
-                allowed_domains: List of allowed domains (automatically passed from spider)
-                **kwargs: Additional parameters passed to parent
-            """
-            super().__init__(*args, **kwargs)
+    #         Args:
+    #             allowed_domains: List of allowed domains (automatically passed from spider)
+    #             **kwargs: Additional parameters passed to parent
+    #         """
+    #         super().__init__(*args, **kwargs)
             
-            # Store domain configuration
-            self.allowed_domains = allowed_domains or []
+    #         # Store domain configuration
+    #         self.allowed_domains = allowed_domains or []
             
-            # Initialize sub-processors with same configuration
-            processor_kwargs = {
-                'allowed_domains': self.allowed_domains
-            }
-            self.otter_processor = OtterAIProcessor(**processor_kwargs)
-            self.grain_processor = GrainProcessor(**processor_kwargs)
+    #         # Initialize sub-processors with same configuration
+    #         processor_kwargs = {
+    #             'allowed_domains': self.allowed_domains
+    #         }
+    #         self.otter_processor = OtterAIProcessor(**processor_kwargs)
+    #         self.grain_processor = GrainProcessor(**processor_kwargs)
         
-        def on_response(self, response: Response, spider: Spider) -> Dict[str, Any]:
-            """Route to appropriate processor based on domain."""
-            if 'otter.ai' in response.url:
-                return self.otter_processor.on_response(response, spider)
-            elif 'grain.com' in response.url:
-                return self.grain_processor.on_response(response, spider)
-            else:
-                # Fallback to base processor
-                return super().on_response(response, spider)
+    #     def on_response(self, response: Response, spider: Spider) -> Dict[str, Any]:
+    #         """Route to appropriate processor based on domain."""
+    #         if 'otter.ai' in response.url:
+    #             return self.otter_processor.on_response(response, spider)
+    #         elif 'grain.com' in response.url:
+    #             return self.grain_processor.on_response(response, spider)
+    #         else:
+    #             # Fallback to base processor
+    #             return super().on_response(response, spider)
         
-        def should_follow_link(self, url: str, response: Response, spider: Spider) -> bool:
-            """Route link filtering to appropriate processor."""
-            if 'otter.ai' in response.url:
-                return self.otter_processor.should_follow_link(url, response, spider)
-            elif 'grain.com' in response.url:
-                return self.grain_processor.should_follow_link(url, response, spider)
-            else:
-                # Default: follow if same domain
-                return urlparse(url).netloc == urlparse(response.url).netloc
+    #     def should_follow_link(self, url: str, response: Response, spider: Spider) -> bool:
+    #         """Route link filtering to appropriate processor."""
+    #         if not super().should_follow_link(url, response, spider):
+    #             return False
+
+    #         if 'otter.ai' in response.url:
+    #             return self.otter_processor.should_follow_link(url, response, spider)
+    #         elif 'grain.com' in response.url:
+    #             return self.grain_processor.should_follow_link(url, response, spider)
+    #         else:
+    #             # Default: follow if same domain
+    #             return urlparse(url).netloc == urlparse(response.url).netloc
         
-        def get_link_priority(self, url: str, depth: int, response: Response, spider: Spider) -> int:
-            """Route priority calculation to appropriate processor."""
-            if 'otter.ai' in url:
-                return self.otter_processor.get_link_priority(url, depth, response, spider)
-            elif 'grain.com' in url:
-                return self.grain_processor.get_link_priority(url, depth, response, spider)
-            else:
-                return super().get_link_priority(url, depth, response, spider)
+    #     def get_link_priority(self, url: str, depth: int, response: Response, spider: Spider) -> int:
+    #         """Route priority calculation to appropriate processor."""
+    #         if 'otter.ai' in url:
+    #             return self.otter_processor.get_link_priority(url, depth, response, spider)
+    #         elif 'grain.com' in url:
+    #             return self.grain_processor.get_link_priority(url, depth, response, spider)
+    #         else:
+    #             return super().get_link_priority(url, depth, response, spider)
         
-        def should_process_link(self, response: Response, data: Dict[str, Any], spider: Spider) -> bool:
-            """Route processing filter to appropriate processor."""
-            if response.status >= 400:
-                return False
+    #     def should_process_link(self, response: Response, data: Dict[str, Any], spider: Spider) -> bool:
+    #         """Route processing filter to appropriate processor."""
+    #         if response.status >= 400:
+    #             return False
             
-            if "blog" in response.url:
-                return True
+    #         if "blog" in response.url:
+    #             return True
             
-            return False
-            # if 'otter.ai' in response.url:
-            #     return self.otter_processor.should_process_link(response, data, spider)
-            # elif 'grain.com' in response.url:
-            #     return self.grain_processor.should_process_link(response, data, spider)
-            # else:
-            #     # Default: accept if has data
-            #     return bool(data)
+    #         return False
+    #         # if 'otter.ai' in response.url:
+    #         #     return self.otter_processor.should_process_link(response, data, spider)
+    #         # elif 'grain.com' in response.url:
+    #         #     return self.grain_processor.should_process_link(response, data, spider)
+    #         # else:
+    #         #     # Default: accept if has data
+    #         #     return bool(data)
     
-    # Register the multi-site processor
-    PROCESSOR_REGISTRY['multi_site'] = MultiSiteProcessor
+    # # Register the multi-site processor
+    # PROCESSOR_REGISTRY['multi_site'] = MultiSiteProcessor
     
     job_config = {
         'job_id': f'predictable_{datetime.now().strftime("%Y%m%d_%H%M%S")}',
         
         'start_urls': [
             'https://otter.ai/blog',
+            # 'https://crowdstrike.com',
             'https://grain.com/blog',
         ],
         
-        'allowed_domains': ['otter.ai', 'grain.com'],
-        'processor': 'multi_site',
+        'allowed_domains': ['otter.ai', 'grain.com', 
+                            # 'crowdstrike.com'
+                            ],
+        'processor': 'default',  # multi_site  default
         
         # URL limits
-        'max_urls_per_domain': 100000,  # Allow discovering many URLs
-        'max_processed_urls_per_domain': 200,  # But only process 50 per domain
-        'max_crawl_depth': 4,
+        'max_urls_per_domain': 20000,  # Allow discovering many URLs  # 20000
+        'max_processed_urls_per_domain': 200,  # But only process 50 per domain  # 200
+        'max_crawl_depth': 4,  # 4
         
         'custom_settings': {
             'ITEM_PIPELINES': {
@@ -754,6 +780,8 @@ def example_predictable_output_crawl():
     print(f"Job ID: {result['job_id']}")
     print(f"\nExpected output: exactly {job_config['max_processed_urls_per_domain']} items per domain")
     print(f"(or fewer if not enough quality content exists)")
+
+    print("\n\nStats:\n\n", json.dumps(result['stats'], indent=4, default=str))
     
     return result['job_id']
 
@@ -970,6 +998,7 @@ def example_custom_api_endpoint():
 if __name__ == '__main__':
     import sys
 
+    # example_otter_ai_blog_crawl()  # DEBUG mode enabled for single page parsing!
     example_predictable_output_crawl()
     # example_combined_multi_site_crawl()
 
@@ -1014,27 +1043,27 @@ if __name__ == '__main__':
             print(f"\nTo see results:")
             print(f"  jq -r .page_type services/workflow_service/services/scraping/data/{job_id}/items.jsonl | sort | uniq -c")
             
-        elif sys.argv[1] == 'subdomain':
-            # Run subdomain crawl example
-            job_id = example_subdomain_crawl_with_processor_config()
-            print(f"\nTo see results by subdomain:")
-            print(f"  jq -r .url services/workflow_service/services/scraping/data/{job_id}/items.jsonl | cut -d/ -f3 | sort | uniq -c")
+        # elif sys.argv[1] == 'subdomain':
+        #     # Run subdomain crawl example
+        #     job_id = example_subdomain_crawl_with_processor_config()
+        #     print(f"\nTo see results by subdomain:")
+        #     print(f"  jq -r .url services/workflow_service/services/scraping/data/{job_id}/items.jsonl | cut -d/ -f3 | sort | uniq -c")
             
-    else:
-        print("Usage:")
-        print("  python example_usage.py otter     # Run Otter.ai crawl (1000 URLs)")
-        print("  python example_usage.py grain     # Run Grain.com crawl (1000 URLs)")
-        print("  python example_usage.py parallel  # Parallel crawl example")
-        print("  python example_usage.py analyze   # Analysis examples")
-        print("  python example_usage.py api       # API endpoint example")
-        print("  python example_usage.py combined  # Combined multi-site crawl example")
-        print("  python example_usage.py predictable # Predictable output crawl example")
-        print("  python example_usage.py subdomain # Subdomain crawl with processor config")
-        print()
-        print("Examples demonstrate:")
-        print("- Real-world site crawling (Otter.ai, Grain.com)")
-        print("- Large-scale configurations (1000 URLs/domain)")
-        print("- Custom processors for specific sites")
-        print("- Streaming storage for memory efficiency")
-        print("- Parallel crawling strategies")
-        print("- Result analysis techniques") 
+    # else:
+    #     print("Usage:")
+    #     print("  python example_usage.py otter     # Run Otter.ai crawl (1000 URLs)")
+    #     print("  python example_usage.py grain     # Run Grain.com crawl (1000 URLs)")
+    #     print("  python example_usage.py parallel  # Parallel crawl example")
+    #     print("  python example_usage.py analyze   # Analysis examples")
+    #     print("  python example_usage.py api       # API endpoint example")
+    #     print("  python example_usage.py combined  # Combined multi-site crawl example")
+    #     print("  python example_usage.py predictable # Predictable output crawl example")
+    #     print("  python example_usage.py subdomain # Subdomain crawl with processor config")
+    #     print()
+    #     print("Examples demonstrate:")
+    #     print("- Real-world site crawling (Otter.ai, Grain.com)")
+    #     print("- Large-scale configurations (1000 URLs/domain)")
+    #     print("- Custom processors for specific sites")
+    #     print("- Streaming storage for memory efficiency")
+    #     print("- Parallel crawling strategies")
+    #     print("- Result analysis techniques") 

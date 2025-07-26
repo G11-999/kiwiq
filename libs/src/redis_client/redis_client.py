@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Union, Callable, TypeVar, Generic,
 from datetime import timedelta
 from contextlib import asynccontextmanager
 from urllib.parse import urlparse, urlunparse
-from redis.exceptions import ConnectionError, AuthenticationError, TimeoutError, ResponseError, RedisError
+from redis.exceptions import ConnectionError, AuthenticationError, TimeoutError, ResponseError, RedisError, WatchError
 
 # Configure logging
 from global_config.logger import get_logger
@@ -24,7 +24,7 @@ class AsyncRedisClient:
     
     Features:
     - Connection Pooling with lazy initialization
-    - Rate Limiting with sliding window
+    - Pool-based Concurrency Limiting (replaces sliding window rate limiting)
     - Key-Value Caching with TTL support
     - Distributed Locking mechanism
     - Health check functionality
@@ -178,43 +178,510 @@ class AsyncRedisClient:
             except Exception:
                 logger.exception("Error disconnecting connection pool during cleanup.")
     
-    # Rate Limiting Methods
+    # Pool-based Concurrency Limiting Methods
     
-    async def register_event(self, key: str, window_seconds: int = 60) -> Tuple[int, bool]:
+    async def acquire_from_pool(
+        self,
+        pool_key: str,
+        count: int = 1,
+        max_pool_size: int = 100,
+        ttl: int = 3600
+    ) -> Tuple[Optional[str], int, bool]:
         """
-        Register an event occurrence and return (count, is_rate_limited).
-        Uses a sliding window for accurate rate limiting.
+        Atomically acquire resources from a concurrency pool.
+        
+        This implements a pool-based rate limiter where resources are explicitly
+        acquired and released, rather than using time windows.
         
         Args:
-            key: The rate limit key
-            window_seconds: Time window in seconds
+            pool_key: The pool identifier
+            count: Number of resources to acquire (default 1)
+            max_pool_size: Maximum pool capacity
+            ttl: Time-to-live for the allocation in seconds
             
         Returns:
-            Tuple of (current count, whether rate limit would be exceeded)
+            Tuple of (allocation_id, current_usage, success) where:
+                - allocation_id: Unique ID for this allocation (None if failed)
+                - current_usage: Current total usage of the pool
+                - success: Whether the acquisition was successful
         """
         try:
             client = await self.get_client()
-            timestamp = time.time()
-            window_start = timestamp - window_seconds
+            max_retries = 10  # Increased for better race condition handling
             
-            # Use pipeline for atomic operations
-            async with client.pipeline() as pipe:
-                # Remove events outside the window
-                await pipe.zremrangebyscore(key, 0, window_start)
-                # Add the current event
-                await pipe.zadd(key, {str(uuid.uuid4()): timestamp})
-                # Set expiration on the sorted set
-                await pipe.expire(key, window_seconds * 2)
-                # Count events in the window
-                await pipe.zcount(key, window_start, "+inf")
-                results = await pipe.execute()
+            for retry in range(max_retries):
+                allocation_id = str(uuid.uuid4())
+                now = time.time()
+                expiry = now + ttl
+                
+                # Keys for pool management
+                pool_hash_key = f"pool:{pool_key}"
+                allocs_key = f"pool:{pool_key}:allocs"
+                alloc_key = f"pool:{pool_key}:alloc:{allocation_id}"
+                
+                # Start transaction with WATCH
+                async with client.pipeline() as pipe:
+                    try:
+                        # Watch both keys
+                        await pipe.watch(pool_hash_key, allocs_key)
+                        
+                        # Get current state (non-transactional reads)
+                        pool_data = await pipe.hgetall(pool_hash_key)
+                        current_usage = int(pool_data.get('current', '0'))
+                        stored_max = int(pool_data.get('max', str(max_pool_size)))
+                        
+                        # Use the stored max if it exists, otherwise use provided max
+                        effective_max = stored_max if pool_data else max_pool_size
+                        
+                        # Get expired allocations
+                        expired = await pipe.zrangebyscore(allocs_key, 0, now)
+                        
+                        # Calculate expired count if any
+                        expired_count = 0
+                        if expired:
+                            for expired_id in expired:
+                                expired_alloc_key = f"pool:{pool_key}:alloc:{expired_id}"
+                                expired_val = await pipe.get(expired_alloc_key)
+                                if expired_val:
+                                    expired_count += int(expired_val)
+                        
+                        # Calculate actual current usage after accounting for expired
+                        actual_usage = max(0, current_usage - expired_count)
+                        
+                        # Check if we can acquire
+                        if actual_usage + count > effective_max:
+                            await pipe.unwatch()
+                            return None, actual_usage, False
+                        
+                        # Start transaction
+                        pipe.multi()
+                        
+                        # Update pool state with actual usage
+                        new_usage = actual_usage + count
+                        await pipe.hset(pool_hash_key, mapping={
+                            'current': str(new_usage),
+                            'max': str(effective_max)
+                        })
+                        
+                        # Store allocation (don't set TTL on the key itself, we track expiry in the sorted set)
+                        await pipe.set(alloc_key, str(count))
+                        await pipe.zadd(allocs_key, {allocation_id: expiry})
+                        # Set a longer TTL as a safety measure (2x the allocation TTL)
+                        await pipe.expire(alloc_key, ttl * 2)
+                        
+                        # Clean up expired allocations
+                        if expired:
+                            await pipe.zrem(allocs_key, *expired)
+                            for expired_id in expired:
+                                await pipe.delete(f"pool:{pool_key}:alloc:{expired_id}")
+                        
+                        # Execute transaction
+                        await pipe.execute()
+                        logger.debug(f"Acquired {count} from pool '{pool_key}', "
+                                   f"allocation: {allocation_id}, usage: {new_usage}/{effective_max}")
+                        return allocation_id, new_usage, True
+                        
+                    except WatchError:
+                        logger.debug(f"Watch error on pool acquire attempt {retry + 1}, retrying...")
+                        await asyncio.sleep(0.01 * retry)  # Small backoff
+                        continue
             
-            count = results[3]
-            return count, False
+            # Max retries exceeded
+            current_usage = await self.get_pool_usage(pool_key)
+            return None, current_usage, False
+            
         except RedisError as e:
-            logger.error(f"Error registering event for key '{key}': {e}")
+            logger.error(f"Error acquiring from pool '{pool_key}': {e}")
             raise
+    
+    async def release_to_pool(
+        self,
+        pool_key: str,
+        allocation_id: str
+    ) -> Tuple[int, int, bool]:
+        """
+        Release resources back to a concurrency pool.
         
+        Args:
+            pool_key: The pool identifier
+            allocation_id: The allocation ID returned from acquire_from_pool
+            
+        Returns:
+            Tuple of (released_count, current_usage, success) where:
+                - released_count: Number of resources released
+                - current_usage: Current total usage after release
+                - success: Whether the release was successful
+        """
+        try:
+            client = await self.get_client()
+            max_retries = 10  # Increased for better race condition handling
+            
+            for retry in range(max_retries):
+                # Keys for pool management
+                pool_hash_key = f"pool:{pool_key}"
+                allocs_key = f"pool:{pool_key}:allocs"
+                alloc_key = f"pool:{pool_key}:alloc:{allocation_id}"
+                
+                # Start transaction with WATCH
+                async with client.pipeline() as pipe:
+                    # Watch the pool hash and allocation
+                    await pipe.watch(pool_hash_key, alloc_key)
+                    
+                    # Get allocation count
+                    alloc_count_str = await pipe.get(alloc_key)
+                    if not alloc_count_str:
+                        # Allocation doesn't exist or already released
+                        await pipe.unwatch()
+                        current_usage = await self.get_pool_usage(pool_key)
+                        logger.warning(f"Allocation {allocation_id} not found for pool '{pool_key}' during release")
+                        return 0, current_usage, False
+                    
+                    alloc_count = int(alloc_count_str)
+                    
+                    # Get current pool state
+                    pool_data = await pipe.hgetall(pool_hash_key)
+                    current_usage = int(pool_data.get('current', '0'))
+                    
+                    # Start transaction
+                    pipe.multi()
+                    
+                    # Update pool state
+                    new_usage = max(0, current_usage - alloc_count)
+                    await pipe.hset(pool_hash_key, 'current', str(new_usage))
+                    
+                    # Remove allocation
+                    await pipe.delete(alloc_key)
+                    await pipe.zrem(allocs_key, allocation_id)
+                    
+                    try:
+                        await pipe.execute()
+                        logger.debug(f"Released {alloc_count} to pool '{pool_key}', "
+                                   f"allocation: {allocation_id}, usage: {new_usage}")
+                        return alloc_count, new_usage, True
+                    except WatchError:
+                        logger.debug(f"Watch error on pool release attempt {retry + 1}, retrying...")
+                        await asyncio.sleep(0.01 * retry)  # Small exponential backoff
+                        continue
+            
+            # Max retries exceeded
+            current_usage = await self.get_pool_usage(pool_key)
+            return 0, current_usage, False
+            
+        except RedisError as e:
+            logger.error(f"Error releasing to pool '{pool_key}': {e}")
+            raise
+    
+    async def get_pool_usage(self, pool_key: str) -> int:
+        """
+        Get current usage of a concurrency pool.
+        
+        Args:
+            pool_key: The pool identifier
+            
+        Returns:
+            Current usage count
+        """
+        try:
+            client = await self.get_client()
+            pool_hash_key = f"pool:{pool_key}"
+            
+            # Clean up expired allocations first
+            await self._cleanup_pool_expired_allocations(pool_key)
+            
+            # Get the updated usage after cleanup
+            pool_data = await client.hget(pool_hash_key, 'current')
+            return int(pool_data) if pool_data else 0
+            
+        except RedisError as e:
+            logger.error(f"Error getting pool usage for '{pool_key}': {e}")
+            raise
+    
+    async def get_pool_info(self, pool_key: str) -> Dict[str, Any]:
+        """
+        Get detailed information about a concurrency pool.
+        
+        Args:
+            pool_key: The pool identifier
+            
+        Returns:
+            Dictionary with pool information
+        """
+        try:
+            client = await self.get_client()
+            pool_hash_key = f"pool:{pool_key}"
+            allocs_key = f"pool:{pool_key}:allocs"
+            
+            # Clean up expired allocations first
+            cleaned = await self._cleanup_pool_expired_allocations(pool_key)
+            
+            # Get pool data
+            pool_data = await client.hgetall(pool_hash_key)
+            current_usage = int(pool_data.get('current', '0'))
+            max_size = int(pool_data.get('max', '0'))
+            
+            # Get active allocations count
+            active_count = await client.zcard(allocs_key)
+            
+            # Get allocation details
+            now = time.time()
+            allocations = await client.zrange(allocs_key, 0, -1, withscores=True)
+            
+            allocation_details = []
+            for alloc_id, expiry in allocations:
+                alloc_key = f"pool:{pool_key}:alloc:{alloc_id}"
+                count = await client.get(alloc_key)
+                if count:
+                    allocation_details.append({
+                        'id': alloc_id,
+                        'count': int(count),
+                        'expires_in': int(expiry - now)
+                    })
+            
+            return {
+                'current_usage': current_usage,
+                'max_size': max_size,
+                'available': max_size - current_usage if max_size > 0 else 0,
+                'active_allocations': active_count,
+                'cleaned_expired': cleaned,
+                'allocations': allocation_details
+            }
+            
+        except RedisError as e:
+            logger.error(f"Error getting pool info for '{pool_key}': {e}")
+            raise
+    
+    async def _cleanup_pool_expired_allocations(self, pool_key: str) -> int:
+        """
+        Clean up expired allocations from a pool.
+        
+        Args:
+            pool_key: The pool identifier
+            
+        Returns:
+            Number of allocations cleaned up
+        """
+        try:
+            client = await self.get_client()
+            pool_hash_key = f"pool:{pool_key}"
+            allocs_key = f"pool:{pool_key}:allocs"
+            
+            now = time.time()
+            max_retries = 3
+            
+            logger.debug(f"Starting cleanup for pool '{pool_key}' at time {now}")
+            
+            for retry in range(max_retries):
+                async with client.pipeline() as pipe:
+                    # Watch the pool hash
+                    await pipe.watch(pool_hash_key)
+                    
+                    # Get expired allocations
+                    expired = await pipe.zrangebyscore(allocs_key, 0, now)
+                    if not expired:
+                        await pipe.unwatch()
+                        return 0
+                    
+                    # Get current usage
+                    current_usage = await pipe.hget(pool_hash_key, 'current')
+                    current_usage = int(current_usage) if current_usage else 0
+                    
+                    # Calculate total to release
+                    total_to_release = 0
+                    for expired_id in expired:
+                        alloc_key = f"pool:{pool_key}:alloc:{expired_id}"
+                        count = await pipe.get(alloc_key)
+                        if count:
+                            total_to_release += int(count)
+                    
+                    # Start transaction
+                    pipe.multi()
+                    
+                    # Update pool usage
+                    new_usage = max(0, current_usage - total_to_release)
+                    if total_to_release > 0:
+                        await pipe.hset(pool_hash_key, 'current', str(new_usage))
+                    
+                    # Remove expired allocations
+                    await pipe.zrem(allocs_key, *expired)
+                    for expired_id in expired:
+                        await pipe.delete(f"pool:{pool_key}:alloc:{expired_id}")
+                    
+                    try:
+                        results = await pipe.execute()
+                        if len(expired) > 0:
+                            logger.info(f"Cleaned up {len(expired)} expired allocations "
+                                       f"from pool '{pool_key}', released {total_to_release} resources, "
+                                       f"new usage: {new_usage}")
+                        return len(expired)
+                    except WatchError:
+                        logger.warning(f"Watch error on cleanup attempt {retry + 1}, retrying...")
+                        await asyncio.sleep(0.01 * retry)  # Small exponential backoff
+                        continue
+            
+            return 0
+            
+        except RedisError as e:
+            logger.error(f"Error cleaning up pool '{pool_key}': {e}")
+            raise
+    
+    async def reset_pool(self, pool_key: str) -> bool:
+        """
+        Reset a concurrency pool, clearing all allocations.
+        
+        Args:
+            pool_key: The pool identifier
+            
+        Returns:
+            True if pool was reset
+        """
+        try:
+            client = await self.get_client()
+            
+            # Keys to delete
+            keys_to_delete = [
+                f"pool:{pool_key}",
+                f"pool:{pool_key}:allocs"
+            ]
+            
+            # Get all allocation keys
+            allocs_key = f"pool:{pool_key}:allocs"
+            allocations = await client.zrange(allocs_key, 0, -1)
+            for alloc_id in allocations:
+                keys_to_delete.append(f"pool:{pool_key}:alloc:{alloc_id}")
+            
+            # Delete all keys
+            if keys_to_delete:
+                await client.delete(*keys_to_delete)
+                logger.debug(f"Reset pool '{pool_key}', deleted {len(keys_to_delete)} keys")
+                return True
+                
+            return False
+            
+        except RedisError as e:
+            logger.error(f"Error resetting pool '{pool_key}': {e}")
+            raise
+    
+    async def set_pool_max_size(self, pool_key: str, max_size: int) -> bool:
+        """
+        Update the maximum size of a concurrency pool.
+        
+        Args:
+            pool_key: The pool identifier
+            max_size: New maximum size
+            
+        Returns:
+            True if updated successfully
+        """
+        try:
+            client = await self.get_client()
+            pool_hash_key = f"pool:{pool_key}"
+            
+            await client.hset(pool_hash_key, 'max', str(max_size))
+            logger.debug(f"Updated pool '{pool_key}' max size to {max_size}")
+            return True
+            
+        except RedisError as e:
+            logger.error(f"Error setting pool max size for '{pool_key}': {e}")
+            raise
+    
+    async def is_pool_exhausted(self, pool_key: str, additional_count: int = 0) -> bool:
+        """
+        Check if a pool is exhausted (at or over capacity).
+        
+        Args:
+            pool_key: The pool identifier
+            additional_count: Additional count to check (0 = just check current)
+            
+        Returns:
+            True if pool is exhausted
+        """
+        try:
+            client = await self.get_client()
+            pool_hash_key = f"pool:{pool_key}"
+            
+            # Clean up expired allocations first
+            await self._cleanup_pool_expired_allocations(pool_key)
+            
+            pool_data = await client.hgetall(pool_hash_key)
+            current_usage = int(pool_data.get('current', '0'))
+            max_size = int(pool_data.get('max', '100'))
+            
+            return (current_usage + additional_count) >= max_size
+            
+        except RedisError as e:
+            logger.error(f"Error checking if pool '{pool_key}' is exhausted: {e}")
+            return True  # Default to exhausted on error
+    
+    # Time-window based atomic rate limiting methods (for sliding window functionality)
+    
+    async def register_event_atomic(
+        self, 
+        key: str, 
+        max_events: int,
+        window_seconds: int = 60
+    ) -> Tuple[int, bool]:
+        """
+        Atomically register an event only if it doesn't exceed the rate limit.
+        Uses sliding window for accurate rate limiting.
+        
+        Args:
+            key: The rate limit key
+            max_events: Maximum allowed events in the window
+            window_seconds: Time window in seconds
+            
+        Returns:
+            Tuple of (current count after attempt, whether event was registered)
+        """
+        try:
+            client = await self.get_client()
+            max_retries = 10  # Increased for better race condition handling
+            
+            for retry in range(max_retries):
+                timestamp = time.time()
+                window_start = timestamp - window_seconds
+                
+                # Start a transaction with WATCH
+                async with client.pipeline() as pipe:
+                    # Watch the key for changes
+                    await pipe.watch(key)
+                    
+                    # Get current state
+                    await pipe.zremrangebyscore(key, 0, window_start)
+                    current_count = await pipe.zcount(key, window_start, "+inf")
+                    
+                    # Check if adding would exceed limit
+                    if current_count >= max_events:
+                        # Don't add, just return current state
+                        await pipe.unwatch()
+                        return current_count, False
+                    
+                    # Start transaction
+                    pipe.multi()
+                    
+                    # Add the event
+                    await pipe.zadd(key, {str(uuid.uuid4()): timestamp})
+                    await pipe.expire(key, window_seconds * 2)
+                    await pipe.zcount(key, window_start, "+inf")
+                    
+                    try:
+                        results = await pipe.execute()
+                        # Transaction succeeded
+                        new_count = results[-1]  # Last operation was zcount
+                        return new_count, True
+                    except WatchError:
+                        # Key was modified, retry with backoff
+                        logger.debug(f"Watch error on attempt {retry + 1}, retrying...")
+                        await asyncio.sleep(0.01 * retry)  # Small exponential backoff
+                        continue
+            
+            # Max retries exceeded, get current count
+            current_count = await self.get_event_count(key, window_seconds)
+            return current_count, False
+            
+        except RedisError as e:
+            logger.error(f"Error in atomic event registration for key '{key}': {e}")
+            raise
+    
     async def get_event_count(self, key: str, window_seconds: int = 60) -> int:
         """
         Get current count of events in the specified window.
@@ -229,33 +696,131 @@ class AsyncRedisClient:
         try:
             client = await self.get_client()
             window_start = time.time() - window_seconds
+            # Clean up old events first
+            await client.zremrangebyscore(key, 0, window_start)
             return await client.zcount(key, window_start, "+inf")
         except RedisError as e:
             logger.error(f"Error getting event count for key '{key}': {e}")
             raise
     
-    async def is_rate_limited(self, key: str, max_events: int, window_seconds: int = 60) -> bool:
+    async def register_event_with_count_atomic(
+        self,
+        key: str,
+        count: int,
+        max_count: int,
+        window_seconds: int = 60
+    ) -> Tuple[int, bool]:
         """
-        Check if rate limit is exceeded without registering an event.
+        Atomically register an event with count only if it doesn't exceed the limit.
+        Uses sliding window with count-based limits (e.g., for token bucket).
         
         Args:
             key: The rate limit key
-            max_events: Maximum allowed events in the window
+            count: Number of units to consume (e.g., 10 tokens)
+            max_count: Maximum allowed total count in the window
             window_seconds: Time window in seconds
             
         Returns:
-            True if rate limited, False otherwise
+            Tuple of (current total usage after attempt, whether event was registered)
         """
         try:
-            count = await self.get_event_count(key, window_seconds)
-            return count >= max_events
-        except Exception as e:
-            logger.error(f"Error checking rate limit for key '{key}': {e}")
-            # In case of error, default to not rate-limited to prevent blocking legitimate traffic
-            return False
+            client = await self.get_client()
+            max_retries = 5
+            
+            for retry in range(max_retries):
+                timestamp = time.time()
+                window_start = timestamp - window_seconds
+                
+                # Start a transaction with WATCH
+                async with client.pipeline() as pipe:
+                    # Watch the key for changes
+                    await pipe.watch(key)
+                    
+                    # Get current state
+                    await pipe.zremrangebyscore(key, 0, window_start)
+                    members = await pipe.zrangebyscore(key, window_start, "+inf")
+                    
+                    # Calculate current usage
+                    current_usage = 0
+                    for member in members:
+                        parts = member.split(':')
+                        if len(parts) >= 2:
+                            try:
+                                member_count = int(parts[-1])
+                                current_usage += member_count
+                            except ValueError:
+                                pass
+                    
+                    # Check if adding would exceed limit
+                    if current_usage + count > max_count:
+                        # Don't add, just return current state
+                        await pipe.unwatch()
+                        return current_usage, False
+                    
+                    # Start transaction
+                    pipe.multi()
+                    
+                    # Add the event with count
+                    member = f"{uuid.uuid4()}:{count}"
+                    await pipe.zadd(key, {member: timestamp})
+                    await pipe.expire(key, window_seconds * 2)
+                    
+                    try:
+                        await pipe.execute()
+                        # Transaction succeeded
+                        return current_usage + count, True
+                    except WatchError:
+                        # Key was modified, retry with backoff
+                        logger.debug(f"Watch error on attempt {retry + 1}, retrying...")
+                        await asyncio.sleep(0.01 * retry)  # Small exponential backoff
+                        continue
+            
+            # Max retries exceeded, get current usage
+            current_usage = await self.get_event_count_usage(key, window_seconds)
+            return current_usage, False
+            
+        except RedisError as e:
+            logger.error(f"Error in atomic count registration for key '{key}': {e}")
+            raise
     
-    # Multi window rate limits
-
+    async def get_event_count_usage(
+        self,
+        key: str,
+        window_seconds: int = 60
+    ) -> int:
+        """
+        Get current total usage (sum of all counts) in the specified window.
+        
+        Args:
+            key: The rate limit key
+            window_seconds: Time window in seconds
+            
+        Returns:
+            Current total usage in the window
+        """
+        try:
+            client = await self.get_client()
+            window_start = time.time() - window_seconds
+            
+            # Get all members in the window
+            members = await client.zrangebyscore(key, window_start, "+inf")
+            
+            # Calculate total usage
+            total_usage = 0
+            for member in members:
+                parts = member.split(':')
+                if len(parts) >= 2:
+                    try:
+                        member_count = int(parts[-1])
+                        total_usage += member_count
+                    except ValueError:
+                        pass
+            
+            return max(0, total_usage)
+        except RedisError as e:
+            logger.error(f"Error getting event count usage for key '{key}': {e}")
+            raise
+    
     async def check_multi_window_rate_limits(
         self, 
         key_prefix: str,
@@ -309,55 +874,263 @@ class AsyncRedisClient:
             logger.error(f"Error checking multi-window rate limits for key '{key_prefix}': {e}")
             # Default to not rate-limited in case of error
             return False, {}
-
-    async def register_multi_window_event(
+    
+    async def register_multi_window_event_atomic(
         self,
         key_prefix: str,
-        windows: List[int]  # List of window sizes in seconds
-    ) -> Dict[int, int]:
+        limits: List[Tuple[int, int]]  # [(max_events, window_seconds), ...]
+    ) -> Tuple[bool, Dict[int, int]]:
         """
-        Register an event across multiple time windows in a single Redis round-trip.
+        Atomically register an event across multiple time windows only if ALL windows allow it.
         
         Args:
             key_prefix: Base key for rate limit
-            windows: List of window sizes in seconds
+            limits: List of (max_events, window_seconds) tuples
             
         Returns:
-            Dictionary mapping window_seconds to current event count
+            Tuple of (event_registered, counts_by_window) where:
+                - event_registered: True if event was registered in ALL windows
+                - counts_by_window: Dictionary mapping window_seconds to current count
+        """
+        try:
+            client = await self.get_client()
+            max_retries = 5
+            
+            for retry in range(max_retries):
+                now = time.time()
+                event_id = str(uuid.uuid4())
+                
+                # Start a transaction with WATCH on all window keys
+                async with client.pipeline() as pipe:
+                    # Watch all window keys
+                    window_keys = []
+                    for _, window_seconds in limits:
+                        window_key = f"{key_prefix}:{window_seconds}"
+                        window_keys.append(window_key)
+                    
+                    for key in window_keys:
+                        await pipe.watch(key)
+                    
+                    # Check current state for all windows
+                    current_counts = {}
+                    can_register = True
+                    
+                    for max_events, window_seconds in limits:
+                        window_key = f"{key_prefix}:{window_seconds}"
+                        window_start = now - window_seconds
+                        
+                        # Clean up expired events
+                        await pipe.zremrangebyscore(window_key, 0, window_start)
+                        count = await pipe.zcount(window_key, window_start, "+inf")
+                        current_counts[window_seconds] = count
+                        
+                        if count >= max_events:
+                            can_register = False
+                            break
+                    
+                    if not can_register:
+                        # At least one window is at limit
+                        await pipe.unwatch()
+                        return False, current_counts
+                    
+                    # Start transaction
+                    pipe.multi()
+                    
+                    # Add event to all windows
+                    for _, window_seconds in limits:
+                        window_key = f"{key_prefix}:{window_seconds}"
+                        await pipe.zadd(window_key, {event_id: now})
+                        await pipe.expire(window_key, window_seconds * 2)
+                    
+                    try:
+                        await pipe.execute()
+                        # Transaction succeeded - update counts
+                        for window_seconds in current_counts:
+                            current_counts[window_seconds] += 1
+                        return True, current_counts
+                    except WatchError:
+                        # Key was modified, retry with backoff
+                        logger.debug(f"Watch error on multi-window attempt {retry + 1}, retrying...")
+                        await asyncio.sleep(0.01 * retry)  # Small exponential backoff
+                        continue
+            
+            # Max retries exceeded
+            is_limited, counts = await self.check_multi_window_rate_limits(key_prefix, limits)
+            return not is_limited, counts
+            
+        except RedisError as e:
+            logger.error(f"Error in atomic multi-window event registration for key '{key_prefix}': {e}")
+            raise
+    
+    async def check_multi_window_count_limits(
+        self,
+        key_prefix: str,
+        limits: List[Tuple[int, int]],  # [(max_count, window_seconds), ...]
+        additional_count: int = 0
+    ) -> Tuple[bool, Dict[int, int]]:
+        """
+        Check count-based rate limits across multiple time windows.
+        
+        Args:
+            key_prefix: Base key for rate limit
+            limits: List of (max_count, window_seconds) tuples
+            additional_count: Additional count to check (0 = just check current)
+            
+        Returns:
+            Tuple of (is_limited, usage_by_window) where:
+                - is_limited: True if any window limit is exceeded (including additional_count)
+                - usage_by_window: Dictionary mapping window_seconds to current usage
         """
         try:
             client = await self.get_client()
             pipeline = await client.pipeline()
             now = time.time()
-            event_id = str(uuid.uuid4())  # Generate a unique ID for this event
             
-            # For each window, add the event and clean up expired events
-            for window_seconds in windows:
-                window_key = f"{key_prefix}:{window_seconds}"
+            # Add all window checks to pipeline
+            for max_count, window_seconds in limits:
+                window_key = f"{key_prefix}:{window_seconds}:count"
                 window_start = now - window_seconds
                 
-                # Remove events outside the window
+                # Remove expired events
                 await pipeline.zremrangebyscore(window_key, 0, window_start)
-                # Add the current event with the same ID but current timestamp
-                await pipeline.zadd(window_key, {event_id: now})
-                # Set expiration on the sorted set (2× window to ensure proper cleanup)
-                await pipeline.expire(window_key, window_seconds * 2)
-                # Count events in the window
-                await pipeline.zcount(window_key, window_start, "+inf")
+                # Get all members in window
+                await pipeline.zrangebyscore(window_key, window_start, "+inf")
                 
-            # Execute all operations in a single round-trip
+            # Execute all checks in a single round-trip
             results = await pipeline.execute()
             
-            # Process results to get counts
-            counts = {}
-            for i, window_seconds in enumerate(windows):
-                # Each window has four operations: zremrangebyscore, zadd, expire, zcount
-                # So we need to get the count from position i*4 + 3
-                counts[window_seconds] = results[i*4 + 3]
+            # Process results
+            is_limited = False
+            usage = {}
+            
+            for i, (max_count, window_seconds) in enumerate(limits):
+                # Each window has two operations: zremrangebyscore and zrangebyscore
+                # Get members from position i*2 + 1
+                members = results[i*2 + 1]
                 
-            return counts
+                # Calculate total usage
+                total_usage = 0
+                for member in members:
+                    parts = member.split(':')
+                    if len(parts) >= 2:
+                        try:
+                            member_count = int(parts[-1])
+                            total_usage += member_count
+                        except ValueError:
+                            pass
+                
+                usage[window_seconds] = max(0, total_usage)
+                
+                # Check if current usage plus additional count would exceed limit
+                if usage[window_seconds] + additional_count > max_count:
+                    is_limited = True
+                    
+            return is_limited, usage
         except RedisError as e:
-            logger.error(f"Error registering multi-window event for key '{key_prefix}': {e}")
+            logger.error(f"Error checking multi-window count limits for key '{key_prefix}': {e}")
+            return False, {}
+    
+    async def register_multi_window_count_event_atomic(
+        self,
+        key_prefix: str,
+        count: int,
+        limits: List[Tuple[int, int]]  # [(max_count, window_seconds), ...]
+    ) -> Tuple[bool, Dict[int, int]]:
+        """
+        Atomically register an event with count across multiple windows only if ALL windows allow it.
+        
+        Args:
+            key_prefix: Base key for rate limit
+            count: Number of units to consume (e.g., tokens)
+            limits: List of (max_count, window_seconds) tuples
+            
+        Returns:
+            Tuple of (event_registered, usage_by_window) where:
+                - event_registered: True if event was registered in ALL windows
+                - usage_by_window: Dictionary mapping window_seconds to current usage
+        """
+        try:
+            client = await self.get_client()
+            max_retries = 5
+            
+            for retry in range(max_retries):
+                now = time.time()
+                event_id = str(uuid.uuid4())
+                member = f"{event_id}:{count}"
+                
+                # Start a transaction with WATCH on all window keys
+                async with client.pipeline() as pipe:
+                    # Watch all window keys
+                    window_keys = []
+                    for _, window_seconds in limits:
+                        window_key = f"{key_prefix}:{window_seconds}:count"
+                        window_keys.append(window_key)
+                    
+                    for key in window_keys:
+                        await pipe.watch(key)
+                    
+                    # Check current usage for all windows
+                    current_usage = {}
+                    can_register = True
+                    
+                    for max_count, window_seconds in limits:
+                        window_key = f"{key_prefix}:{window_seconds}:count"
+                        window_start = now - window_seconds
+                        
+                        # Clean up expired events
+                        await pipe.zremrangebyscore(window_key, 0, window_start)
+                        members = await pipe.zrangebyscore(window_key, window_start, "+inf")
+                        
+                        # Calculate current usage
+                        total_usage = 0
+                        for existing_member in members:
+                            parts = existing_member.split(':')
+                            if len(parts) >= 2:
+                                try:
+                                    member_count = int(parts[-1])
+                                    total_usage += member_count
+                                except ValueError:
+                                    pass
+                        
+                        current_usage[window_seconds] = total_usage
+                        
+                        # Check if adding would exceed limit
+                        if total_usage + count > max_count:
+                            can_register = False
+                            break
+                    
+                    if not can_register:
+                        # At least one window would exceed limit
+                        await pipe.unwatch()
+                        return False, current_usage
+                    
+                    # Start transaction
+                    pipe.multi()
+                    
+                    # Add event to all windows
+                    for _, window_seconds in limits:
+                        window_key = f"{key_prefix}:{window_seconds}:count"
+                        await pipe.zadd(window_key, {member: now})
+                        await pipe.expire(window_key, window_seconds * 2)
+                    
+                    try:
+                        await pipe.execute()
+                        # Transaction succeeded - update usage
+                        for window_seconds in current_usage:
+                            current_usage[window_seconds] += count
+                        return True, current_usage
+                    except WatchError:
+                        # Key was modified, retry with backoff
+                        logger.debug(f"Watch error on multi-window count attempt {retry + 1}, retrying...")
+                        await asyncio.sleep(0.01 * retry)  # Small exponential backoff
+                        continue
+            
+            # Max retries exceeded
+            is_limited, usage = await self.check_multi_window_count_limits(key_prefix, limits)
+            return not is_limited, usage
+            
+        except RedisError as e:
+            logger.error(f"Error in atomic multi-window count registration for key '{key_prefix}': {e}")
             raise
     
     # Caching Methods
@@ -385,14 +1158,7 @@ class AsyncRedisClient:
         try:
             client = await self.get_client()
             
-            # Convert value to JSON string
-            # If value is already bytes, store it directly
-            # Otherwise, serialize to JSON string
-            if isinstance(value, bytes):
-                json_value = value
-            else:
-                json_value = json.dumps(value)
-            
+            # Calculate TTL first
             ttl_to_use = ttl if ttl is not None else self.default_ttl
             if isinstance(ttl_to_use, timedelta):
                 ttl_seconds = int(ttl_to_use.total_seconds())
@@ -403,6 +1169,41 @@ class AsyncRedisClient:
             
             if ttl_seconds <= 0:
                 ttl_seconds = int(self.default_ttl.total_seconds())
+            
+            # Handle different value types
+            if isinstance(value, bytes):
+                # For bytes, we need to use a binary-safe client
+                binary_client = redis.Redis(
+                    connection_pool=redis.ConnectionPool.from_url(
+                        self.redis_url,
+                        decode_responses=False,  # Don't decode for binary data
+                        socket_connect_timeout=self.socket_connect_timeout,
+                        socket_keepalive=True,
+                    )
+                )
+                
+                # Use pipeline for atomicity of SET + EXPIRE
+                async with binary_client.pipeline() as pipe:
+                    await pipe.set(key, value)
+                    if ttl_seconds > 0:
+                        await pipe.expire(key, ttl_seconds)
+                    results = await pipe.execute()
+                
+                await binary_client.aclose()
+                
+                set_ok = results[0]
+                expire_ok = results[1] if ttl_seconds > 0 else True
+                
+                if not set_ok:
+                    raise RedisError(f"SET command failed for key {key}")
+                if ttl_seconds > 0 and not expire_ok:
+                    logger.warning(f"Set cache OK for key '{key}' but EXPIRE failed.")
+                
+                logger.debug(f"Binary cache set for key '{key}' with TTL {ttl_seconds}s")
+                return
+            else:
+                # For non-binary data, serialize to JSON
+                json_value = json.dumps(value)
             
             # Use pipeline for atomicity of SET + EXPIRE
             async with client.pipeline() as pipe:
@@ -487,26 +1288,27 @@ class AsyncRedisClient:
             ConnectionError: For connection/auth issues
         """
         try:
-            client = await self.get_client()
+            # Create a separate connection that doesn't decode responses
+            # to properly handle binary data
+            pool = self._get_pool()
+            binary_client = redis.Redis(
+                connection_pool=redis.ConnectionPool.from_url(
+                    self.redis_url,
+                    decode_responses=False,  # Don't decode for binary data
+                    socket_connect_timeout=self.socket_connect_timeout,
+                    socket_keepalive=True,
+                )
+            )
             
-            # Need to get the raw value without automatic decoding
-            # Since the client uses decode_responses=True by default, 
-            # we need a special handling here to get the raw bytes
-            
-            # We can use execute_command to bypass the automatic decoding
-            # or set up a dedicated pipeline with a specific encoding setting
-            binary_data = await client.execute_command('GET', key)
+            binary_data = await binary_client.get(key)
             
             if binary_data is not None:
-                # If using decode_responses=True, the value might be 
-                # a string that needs to be converted back to bytes
-                if isinstance(binary_data, str):
-                    # import ipdb; ipdb.set_trace()
-                    binary_data = binary_data.encode('latin1')  # Use latin1 to preserve byte values
-                
                 logger.debug(f"Binary cache hit for key '{key}', size {len(binary_data)} bytes")
             else:
                 logger.debug(f"Binary cache miss for key '{key}'")
+            
+            # Clean up the binary client
+            await binary_client.aclose()
             
             return binary_data
                 
@@ -1480,30 +2282,50 @@ async def test_redis_client():
         assert delete_result is True, "Delete failed!"
         assert await client.get_cache(cache_key) is None, "Key not deleted!"
 
-        # --- Test Rate Limiting ---
-        print("\n--- Testing Rate Limiting ---")
-        rate_key = f"{TEST_PREFIX}rate:user:101"
+        # --- Test Pool-based Concurrency Limiting ---
+        print("\n--- Testing Pool-based Concurrency Limiting ---")
+        pool_key = f"{TEST_PREFIX}api_pool"
         
-        # Register events
-        for i in range(5):
-            count, limited = await client.register_event(rate_key, window_seconds=10)
-            print(f"Registered event {i+1}, count: {count}, limited: {limited}")
+        # Acquire resources from pool
+        alloc_id1, usage1, success1 = await client.acquire_from_pool(pool_key, count=10, max_pool_size=50, ttl=30)
+        print(f"Acquired 10 resources: alloc_id={alloc_id1}, usage={usage1}, success={success1}")
+        assert success1 is True, "Failed to acquire from pool!"
+        assert usage1 == 10, "Usage mismatch!"
         
-        # Check count and rate limit
-        count = await client.get_event_count(rate_key, window_seconds=10)
-        print(f"Event count for '{rate_key}': {count}")
-        assert count == 5, "Event count mismatch!"
+        # Acquire more resources
+        alloc_id2, usage2, success2 = await client.acquire_from_pool(pool_key, count=20, max_pool_size=50, ttl=30)
+        print(f"Acquired 20 more resources: alloc_id={alloc_id2}, usage={usage2}, success={success2}")
+        assert success2 is True, "Failed to acquire from pool!"
+        assert usage2 == 30, "Usage mismatch!"
         
-        is_limited = await client.is_rate_limited(rate_key, max_events=3, window_seconds=10)
-        print(f"Is rate limited (max 3 events): {is_limited}")
-        assert is_limited is True, "Should be rate limited!"
+        # Try to exceed pool limit
+        alloc_id3, usage3, success3 = await client.acquire_from_pool(pool_key, count=25, max_pool_size=50, ttl=30)
+        print(f"Tried to acquire 25 more (would exceed limit): alloc_id={alloc_id3}, usage={usage3}, success={success3}")
+        assert success3 is False, "Should not exceed pool limit!"
+        assert alloc_id3 is None, "Should not have allocation ID!"
         
-        is_limited = await client.is_rate_limited(rate_key, max_events=10, window_seconds=10)
-        print(f"Is rate limited (max 10 events): {is_limited}")
-        assert is_limited is False, "Should not be rate limited!"
+        # Release some resources
+        released1, usage_after_release1, success_release1 = await client.release_to_pool(pool_key, alloc_id1)
+        print(f"Released allocation {alloc_id1}: released={released1}, usage={usage_after_release1}, success={success_release1}")
+        assert success_release1 is True, "Failed to release!"
+        assert released1 == 10, "Released count mismatch!"
+        assert usage_after_release1 == 20, "Usage after release mismatch!"
         
-        # Clean up rate limit key
-        await client.delete_cache(rate_key)
+        # Now we should be able to acquire more
+        alloc_id4, usage4, success4 = await client.acquire_from_pool(pool_key, count=25, max_pool_size=50, ttl=30)
+        print(f"Acquired 25 after release: alloc_id={alloc_id4}, usage={usage4}, success={success4}")
+        assert success4 is True, "Should be able to acquire after release!"
+        assert usage4 == 45, "Usage mismatch!"
+        
+        # Get pool info
+        pool_info = await client.get_pool_info(pool_key)
+        print(f"Pool info: {pool_info}")
+        assert pool_info['current_usage'] == 45, "Pool info usage mismatch!"
+        assert pool_info['max_size'] == 50, "Pool max size mismatch!"
+        
+        # Clean up pool
+        await client.reset_pool(pool_key)
+        print(f"Reset pool '{pool_key}'")
         
         # --- Test Distributed Locking ---
         print("\n--- Testing Distributed Locking ---")

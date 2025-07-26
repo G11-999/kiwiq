@@ -75,6 +75,9 @@ gunicorn = "^23.0.0"
 fireworks = "^2.0.4"
 scrapy = "^2.13.3"
 playwright = "^1.53.0"
+protego = "^0.5.0"
+ultimate-sitemap-parser = "^1.4.0"
+feedparser = "^6.0.11"
 
 [tool.poetry.group.dev.dependencies]
 black = "^25.1.0"

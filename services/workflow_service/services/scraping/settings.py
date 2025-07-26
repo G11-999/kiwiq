@@ -7,56 +7,195 @@ methods for the scraping service components.
 
 from typing import Optional, Dict, Any
 from functools import lru_cache
-from global_config.settings import global_settings
+from global_config.settings import global_settings, Settings
 from workflow_service.config.settings import settings as workflow_settings
 
 
-class ScrapingSettings:
+class ScrapingSettings(Settings):
     """
     Settings specific to the scraping service.
     
     This class centralizes all configuration, key patterns, and key construction
     methods used by the scraping components.
     """
+
+    SCRAPELESS_API_KEY: str = ""
+    BROWSERBASE_API_KEY: str = ""
+    PROXY_URL_EVOMI_ROTATING: str = ""
+    SCRAPELESS_BROWSERS_POOL_KEY: str = "scrapeless_browsers_pool"
+    # In-memory vs Redis storage
+    USE_IN_MEMORY_QUEUE: bool = True  # Use in-memory storage instead of Redis (suitable for single-process deployments)
+
+    # Browser Pool Configuration for backup scraping strategy
+    BROWSER_POOL_ENABLED: bool = True  # Enable browser pool as backup scraping strategy
+    BROWSER_POOL_SIZE: int = 5  # Maximum number of browsers to maintain in pool
+    BROWSER_POOL_LOCAL_CONCURRENCY_LIMIT: int = 5  # Local concurrency limit for browser pool operations
+    BROWSER_POOL_TIMEOUT: int = 30  # Timeout in seconds for browser acquisition
+    BROWSER_POOL_SESSION_TTL: int = 900  # Session TTL in seconds (15 minutes)
+    BROWSER_POOL_PERSIST_PROFILE: bool = False  # Whether to persist browser profiles
+    BROWSER_POOL_INTERCEPT_MEDIA: bool = True  # Block media resources to save bandwidth
+    BROWSER_POOL_INTERCEPT_IMAGES: bool = True  # Block image resources to save bandwidth
+    BROWSER_POOL_PROXY_COUNTRY: str = "US"  # Default proxy country for browsers
+    
+    # Browser pool fallback limits
+    BROWSER_POOL_MAX_FALLBACKS_PER_JOB: int = 10  # Maximum browser fallbacks allowed per job (expensive operation)
+    BROWSER_POOL_FALLBACK_COUNTER_KEY_PATTERN: str = "browser_fallback_count:{spider}:{job}"  # Key pattern for tracking fallback usage
+    
+    # Proxy tier fallback limits
+    PROXY_TIER_ENABLED: bool = True  # Enable proxy tier as backup scraping strategy
+    PROXY_TIER_MAX_FALLBACKS_PER_JOB: int = 100  # Maximum proxy tier fallbacks allowed per job (moderate cost)
+    PROXY_TIER_FALLBACK_COUNTER_KEY_PATTERN: str = "proxy_fallback_count:{spider}:{job}"  # Key pattern for tracking proxy tier usage
+    
+    # Blocked URL tracking configuration
+    MAX_BLOCKED_URL_EXAMPLES: int = 10  # Maximum number of example URLs to store per trigger type
+    
+    # HTTP status codes that should trigger browser pool fallback
+    BROWSER_POOL_TRIGGER_CODES: list[int] = [
+        401,  # Unauthorized
+        403,  # Forbidden
+        407,  # Proxy Authentication Required
+        429,  # Too Many Requests
+        503,  # Service Unavailable
+        511,  # Network Authentication Required
+        520,  # Cloudflare: Web Server Returns Unknown Error
+        521,  # Cloudflare: Web Server Is Down
+        522,  # Cloudflare: Connection Timed Out
+        523,  # Cloudflare: Origin Is Unreachable
+        524,  # Cloudflare: A Timeout Occurred
+    ]
+    
+    # Content patterns that indicate anti-bot measures (case-insensitive)
+    BROWSER_POOL_TRIGGER_PATTERNS: list[str] = [
+        # Cloudflare specific
+        # "cloudflare",
+        "cf-browser-verification",
+        "ray id",  # Cloudflare Ray ID
+        "just a moment",  # Cloudflare's signature phrase
+        "checking your browser",
+        
+        # CAPTCHA variants
+        "captcha",
+        "recaptcha",
+        "hcaptcha",
+        "i'm not a robot",
+        "i am not a robot",
+        
+        # Generic bot detection
+        "access denied",
+        "access to this page",
+        # "blocked",
+        "bot detection",
+        "unusual traffic",
+        "suspicious activity",
+        
+        # Challenge/verification
+        # "challenge",
+        # "verification",
+        "please verify",
+        "verify you are human",
+        "verify you are a human",
+        "security check",
+        
+        # DDoS protection
+        "ddos protection",
+        "ddos-guard",
+        "under attack mode",
+        
+        # JavaScript requirements
+        "javascript is disabled",
+        "javascript is required",
+        "enable javascript",
+        # "noscript",
+    ]
     
     # Redis configuration
-    REDIS_URL: str = workflow_settings.REDIS_URL or global_settings.REDIS_URL
+    # REDIS_URL: str = workflow_settings.REDIS_URL or global_settings.REDIS_URL
     
     # Queue key patterns
-    QUEUE_KEY_PATTERN_SPIDER = "queue:{spider}:requests"
-    QUEUE_KEY_PATTERN_JOB = "queue:{spider}:{job}:requests"
+    QUEUE_KEY_PATTERN_SPIDER: str  = "queue:{spider}:requests"
+    QUEUE_KEY_PATTERN_JOB: str  = "queue:{spider}:{job}:requests"
     
     # Dupefilter key pattern (appended to queue key)
-    DUPEFILTER_SUFFIX = "dupefilter"
+    DUPEFILTER_SUFFIX: str = "dupefilter"
     
     # Job state patterns
-    JOB_STATE_PATTERN = "job_state:{key}"
+    JOB_STATE_PATTERN: str = "job_state:{key}"
     
     # Domain limit patterns
-    DOMAIN_LIMIT_PATTERN_SPIDER = "domain_limit:{spider}:{domain}"
-    DOMAIN_LIMIT_PATTERN_JOB = "domain_limit:{spider}:{job}:{domain}"
+    DOMAIN_LIMIT_PATTERN_SPIDER: str = "domain_limit:{spider}:{domain}"
+    DOMAIN_LIMIT_PATTERN_JOB: str = "domain_limit:{spider}:{job}:{domain}"
     
     # Processed items patterns (tracks actually yielded items)
-    PROCESSED_ITEMS_PATTERN_SPIDER = "processed_items:{spider}:{domain}"
-    PROCESSED_ITEMS_PATTERN_JOB = "processed_items:{spider}:{job}:{domain}"
+    PROCESSED_ITEMS_PATTERN_SPIDER: str = "processed_items:{spider}:{domain}"
+    PROCESSED_ITEMS_PATTERN_JOB: str = "processed_items:{spider}:{job}:{domain}"
     
     # Depth tracking patterns
-    DEPTH_STATS_PATTERN_SPIDER = "depth_stats:{spider}"
-    DEPTH_STATS_PATTERN_JOB = "depth_stats:{spider}:{job}"
+    DEPTH_STATS_PATTERN_SPIDER: str = "depth_stats:{spider}"
+    DEPTH_STATS_PATTERN_JOB: str = "depth_stats:{spider}:{job}"
+    CRAWL_SITEMAPS: bool = True
+    RESPECT_ROBOTS_TXT: bool = True
     
     # Default limits
-    DEFAULT_MAX_URLS_PER_DOMAIN = 1000
-    DEFAULT_MAX_PROCESSED_URLS_PER_DOMAIN = 500  # Default limit for actually processed items
-    DEFAULT_MAX_CRAWL_DEPTH = 10
-    DEFAULT_DUPEFILTER_TTL = 7 * 86400  # 7 days
+    DEFAULT_MAX_URLS_PER_DOMAIN: int = 1000
+    DEFAULT_MAX_PROCESSED_URLS_PER_DOMAIN: int = 500  # Default limit for actually processed items
+    DEFAULT_MAX_CRAWL_DEPTH: int = 10
+    DEFAULT_DUPEFILTER_TTL: int = 7 * 86400  # 7 days
     
     # Priority calculation
-    BASE_PRIORITY = 100
-    PRIORITY_DECAY_PER_DEPTH = 10  # Reduce priority by 10 for each depth level
+    BASE_PRIORITY: int = 100
+    PRIORITY_DECAY_PER_DEPTH: int = 10  # Reduce priority by 10 for each depth level
+    DEFAULT_ENABLE_BLOG_URL_PATTERN_PRIORITY_BOOST: bool = True
+
+    BLOG_URL_KEYWORDS: list[str] = [
+        'blog',
+        'new',
+        'article',
+        'post',
+        'story',
+        'update',
+        'press',
+        'post',
+        'feed',
+        'knowledge',
+        'learn',
+        'insight',
+        'resource',
+        'guide',
+        'tutorial',
+        'walkthrough',
+        'tech',
+        "customer",
+        "stories",
+        "story",
+        "case",
+        "use",
+        "study",
+        "success",
+        "update",
+        "press",
+        "post",
+        "feed",
+        "knowledge",
+        "learn",
+        "engineer",
+        "developer",
+        "strateg",
+        "report",
+        "research",
+        "product",
+        'how',
+        "best",
+        "practice",
+        "tips",
+        "tactic",
+        "industry",
+        "whitepaper",
+        "book",
+    ]
     
     # Body handling settings
-    DEFAULT_SKIP_BODY_FOR_GET = True  # Skip storing body for GET requests
-    DEFAULT_COMPRESS_BODY_THRESHOLD = 1024  # Compress bodies larger than 1KB
+    DEFAULT_SKIP_BODY_FOR_GET: bool = True  # Skip storing body for GET requests
+    DEFAULT_COMPRESS_BODY_THRESHOLD: int = 1024  # Compress bodies larger than 1KB
     
     @classmethod
     def get_queue_key(cls, spider_name: str, job_id: Optional[str] = None, 
@@ -73,8 +212,8 @@ class ScrapingSettings:
             Formatted queue key
         """
         if strategy == 'job' and job_id:
-            return cls.QUEUE_KEY_PATTERN_JOB.format(spider=spider_name, job=job_id)
-        return cls.QUEUE_KEY_PATTERN_SPIDER.format(spider=spider_name)
+            return scraping_settings.QUEUE_KEY_PATTERN_JOB.format(spider=spider_name, job=job_id)
+        return scraping_settings.QUEUE_KEY_PATTERN_SPIDER.format(spider=spider_name)
     
     @classmethod
     def get_dupefilter_key(cls, queue_key: str) -> str:
@@ -87,7 +226,7 @@ class ScrapingSettings:
         Returns:
             Dupefilter key
         """
-        return f"{queue_key}:{cls.DUPEFILTER_SUFFIX}"
+        return f"{queue_key}:{scraping_settings.DUPEFILTER_SUFFIX}"
     
     @classmethod
     def get_job_state_key(cls, key: str) -> str:
@@ -100,7 +239,7 @@ class ScrapingSettings:
         Returns:
             Job state key
         """
-        return cls.JOB_STATE_PATTERN.format(key=key)
+        return scraping_settings.JOB_STATE_PATTERN.format(key=key)
     
     @classmethod
     def get_domain_limit_key(cls, spider_name: str, domain: str, 
@@ -119,10 +258,10 @@ class ScrapingSettings:
             Domain limit key
         """
         if strategy == 'job' and job_id:
-            return cls.DOMAIN_LIMIT_PATTERN_JOB.format(
+            return scraping_settings.DOMAIN_LIMIT_PATTERN_JOB.format(
                 spider=spider_name, job=job_id, domain=domain
             )
-        return cls.DOMAIN_LIMIT_PATTERN_SPIDER.format(
+        return scraping_settings.DOMAIN_LIMIT_PATTERN_SPIDER.format(
             spider=spider_name, domain=domain
         )
     
@@ -143,10 +282,10 @@ class ScrapingSettings:
             Processed items key
         """
         if strategy == 'job' and job_id:
-            return cls.PROCESSED_ITEMS_PATTERN_JOB.format(
+            return scraping_settings.PROCESSED_ITEMS_PATTERN_JOB.format(
                 spider=spider_name, job=job_id, domain=domain
             )
-        return cls.PROCESSED_ITEMS_PATTERN_SPIDER.format(
+        return scraping_settings.PROCESSED_ITEMS_PATTERN_SPIDER.format(
             spider=spider_name, domain=domain
         )
     
@@ -165,8 +304,8 @@ class ScrapingSettings:
             Depth stats key
         """
         if strategy == 'job' and job_id:
-            return cls.DEPTH_STATS_PATTERN_JOB.format(spider=spider_name, job=job_id)
-        return cls.DEPTH_STATS_PATTERN_SPIDER.format(spider=spider_name)
+            return scraping_settings.DEPTH_STATS_PATTERN_JOB.format(spider=spider_name, job=job_id)
+        return scraping_settings.DEPTH_STATS_PATTERN_SPIDER.format(spider=spider_name)
     
     @classmethod
     def calculate_priority_from_depth(cls, depth: int, base_priority: Optional[int] = None) -> int:
@@ -182,10 +321,10 @@ class ScrapingSettings:
             Calculated priority (higher number = higher priority)
         """
         if base_priority is None:
-            base_priority = cls.BASE_PRIORITY
+            base_priority = scraping_settings.BASE_PRIORITY
             
         # Reduce priority as depth increases
-        priority = base_priority - (depth * cls.PRIORITY_DECAY_PER_DEPTH)
+        priority = base_priority - (depth * scraping_settings.PRIORITY_DECAY_PER_DEPTH)
         
         # Ensure priority doesn't go below 1
         return max(1, priority)
@@ -211,6 +350,8 @@ class ScrapingSettings:
                 f"domain_limit:{spider_name}:{job_id}:*",
                 f"processed_items:{spider_name}:{job_id}:*",
                 f"depth_stats:{spider_name}:{job_id}",
+                f"browser_fallback_count:{spider_name}:{job_id}",  # Browser fallback counter
+                f"proxy_fallback_count:{spider_name}:{job_id}",  # Proxy tier fallback counter
             ]
         else:
             # Spider-level patterns
@@ -220,6 +361,8 @@ class ScrapingSettings:
                 f"domain_limit:{spider_name}:*",
                 f"processed_items:{spider_name}:*",
                 f"depth_stats:{spider_name}*",
+                f"browser_fallback_count:{spider_name}:*",  # Browser fallback counters
+                f"proxy_fallback_count:{spider_name}:*",  # Proxy tier fallback counters
             ]
     
     @classmethod
@@ -271,4 +414,6 @@ get_processed_items_key = ScrapingSettings.get_processed_items_key
 get_depth_stats_key = ScrapingSettings.get_depth_stats_key
 calculate_priority_from_depth = ScrapingSettings.calculate_priority_from_depth
 get_purge_patterns = ScrapingSettings.get_purge_patterns
-parse_domain_from_url = ScrapingSettings.parse_domain_from_url 
+parse_domain_from_url = ScrapingSettings.parse_domain_from_url
+
+# print(scraping_settings.REDIS_URL)

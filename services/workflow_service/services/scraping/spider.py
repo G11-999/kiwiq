@@ -45,23 +45,413 @@ different content types (blog.site.com, support.site.com, docs.site.com, etc).
 import re
 import json
 import logging
-from typing import Dict, Any, List, Optional, Callable, Type
+from typing import Dict, Any, List, Optional, Callable, Type, Set, Union, Tuple
 from datetime import datetime
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urlparse, urljoin, ParseResult
+from threading import Lock
+import requests
+
+from usp.fetch_parse import XMLSitemapParser
+from typing import List, Union
+import xml.etree.ElementTree as ET
+import feedparser
 
 from scrapy import Spider, Request
 from scrapy.http import Response
 from scrapy.crawler import CrawlerProcess
 from scrapy.utils.project import get_project_settings
+from scrapy.linkextractors import LinkExtractor, IGNORED_EXTENSIONS
 
-from .settings import scraping_settings, get_queue_key, calculate_priority_from_depth, parse_domain_from_url, get_processed_items_key, get_depth_stats_key
-from .redis_sync_client import SyncRedisClient
+# Import special URL parsing libraries
+import protego
+import feedparser
+from usp.tree import sitemap_tree_for_homepage
+from usp.helpers import strip_url_to_homepage
+import xml.etree.ElementTree as ET
+
+from workflow_service.services.scraping.settings import scraping_settings, get_queue_key, calculate_priority_from_depth, parse_domain_from_url, get_processed_items_key, get_depth_stats_key, ScrapingSettings
+from workflow_service.services.scraping.redis_sync_client import SyncRedisClient
+from workflow_service.services.scraping.utils.feedparse import extract_urls_from_feed
 
 from global_config.logger import get_prefect_or_regular_python_logger
 
 # Registry for custom processors
 PROCESSOR_REGISTRY: Dict[str, Type['BaseProcessor']] = {}
 
+
+class RobotsCache:
+    """
+    Thread-safe cache for robots.txt files by domain/subdomain.
+    
+    This cache stores parsed robots.txt files for each domain to avoid
+    repeated fetching and parsing. It's used to check if URLs can be
+    fetched according to robots.txt rules.
+    """
+    
+    def __init__(self, logger=None):
+        """Initialize the robots cache with thread safety."""
+        self._cache: Dict[str, protego.Protego] = {}
+        self._lock = Lock()
+        self.logger = logger or logging.getLogger(__name__)
+        # User agents to check - we follow if ANY of these are allowed
+        self.check_user_agents = ['Googlebot', 'Google-Extended', 'ChatGPT-User']
+    
+    def get_url_domain(self, url: str, return_parsed: bool = False) -> Union[str, Tuple[ParseResult, str]]:
+        """
+        Get the domain from a URL.
+        """
+        parsed = urlparse(url)
+        domain = parsed.netloc.lower()
+        if return_parsed:
+            return parsed, domain
+        return domain
+    
+    def get_robots_url(self, url: str, scheme: Optional[str] = None) -> Tuple[str, str]:
+        """
+        Get the robots.txt URL for a given URL's domain.
+        """
+        parsed, domain = self.get_url_domain(url, return_parsed=True)
+        if scheme is None:
+            scheme = parsed.scheme
+        return domain, f"{scheme}://{domain}/robots.txt"
+
+    def get_robots_no_lock(self, url: str, fetch_if_missing: bool = True) -> Optional[protego.Protego]:
+        domain, robots_url = self.get_robots_url(url)
+        
+        if domain in self._cache:
+            return self._cache[domain], False
+        
+        if not fetch_if_missing:
+            return None, False
+        
+        try:
+            self.logger.debug(f"Fetching robots.txt for {domain}")
+            response = requests.get(robots_url, timeout=10, allow_redirects=True)
+            
+            if response.status_code == 200:
+                # Parse robots.txt
+                robots = protego.Protego.parse(response.text)
+                
+                # Cache it
+                self._cache[domain] = robots
+                    
+                self.logger.info(f"Cached robots.txt for {domain}")
+                return robots, True
+            else:
+                self.logger.warning(f"Failed to fetch robots.txt for {domain}: HTTP {response.status_code}")
+                # Cache None to avoid repeated failed fetches
+                self._cache[domain] = None
+                return None, True
+                
+        except Exception as e:
+            self.logger.warning(f"Error fetching robots.txt for {domain}: {e}")
+            # Cache None to avoid repeated failed fetches
+            self._cache[domain] = None
+            return None, True
+        
+    def get_robots(self, url: str, fetch_if_missing: bool = True) -> Optional[protego.Protego]:
+        """
+        Get robots.txt for a given URL's domain.
+        
+        Args:
+            url: URL to get robots.txt for
+            fetch_if_missing: Whether to fetch robots.txt if not cached
+            
+        Returns:
+            Parsed robots.txt object or None if not found/error
+        """
+        domain, robots_url = self.get_robots_url(url)
+        
+        if not domain:
+            return None
+            
+        # Check cache first
+        # with self._lock:
+        if domain in self._cache:
+            return self._cache[domain]
+                
+        if not fetch_if_missing:
+            return None
+        
+        with self._lock:
+            robots, fetched_now = self.get_robots_no_lock(url, fetch_if_missing)
+            return robots
+            
+    def can_fetch(self, url: str) -> bool:
+        """
+        Check if URL can be fetched according to robots.txt.
+        
+        Returns True if ANY of the check_user_agents can fetch the URL,
+        or if robots.txt doesn't exist/can't be parsed.
+        
+        Args:
+            url: URL to check
+            
+        Returns:
+            True if URL can be fetched, False otherwise
+        """
+        robots = self.get_robots(url)
+        
+        if robots is None:
+            # No robots.txt or error fetching - allow by default
+            return True
+            
+        # Check if any of our user agents can fetch
+        for user_agent in self.check_user_agents:
+            if robots.can_fetch(url, user_agent):
+                return True
+                
+        return False
+        
+    def set_robots(self, url: str, robots_content: str):
+        """
+        Manually set robots.txt content for a domain.
+        
+        Used when robots.txt is provided through scraping request.
+        
+        Args:
+            domain: Domain to set robots.txt for
+            robots_content: Raw robots.txt content
+        """
+        domain = self.get_url_domain(url)
+        try:
+            robots = protego.Protego.parse(robots_content)
+            with self._lock:
+                self._cache[domain.lower()] = robots
+            self.logger.info(f"Manually set robots.txt for {domain}")
+        except Exception as e:
+            self.logger.error(f"Error parsing robots.txt for {domain}: {e}")
+    
+    def is_robots_fetched(self, url: str) -> bool:
+        """
+        Check if robots.txt has been fetched for a given URL.
+        """
+        domain = self.get_url_domain(url)
+        return domain in self._cache
+    
+    def get_sitemaps(self, url: str) -> List[str]:
+        """
+        Get sitemap URLs for a given URL's homepage.
+        """
+        rp = self.get_robots(url)
+        if rp is None:
+            return []
+        return list(rp.sitemaps)
+            
+    def clear(self):
+        """Clear the robots cache."""
+        with self._lock:
+            self._cache.clear()
+
+
+class SitemapCache:
+    """
+    Thread-safe cache for sitemap data by homepage URL.
+    
+    This cache stores sitemap trees and extracted URLs to avoid
+    repeated fetching and parsing of sitemaps.
+    """
+
+    SITEMAP_PATTERNS = {
+        "sitemap.xml",
+        "sitemap.xml.gz",
+        "sitemap_index.xml",
+        "sitemap-index.xml",
+        "sitemap_index.xml.gz",
+        "sitemap-index.xml.gz",
+        ".sitemap.xml",
+        "sitemap",
+        "admin/config/search/xmlsitemap",
+        "sitemap/sitemap-index.xml",
+    }
+    
+    def __init__(self, logger=None):
+        """Initialize the sitemap cache with thread safety."""
+        self._cache: Dict[str, Set[str]] = {}  # homepage -> list of URLs
+        self._fetched_homepages: set = set()  # Track which homepages we've tried
+        self._lock = Lock()
+        self.logger = logger or logging.getLogger(__name__)
+    
+    def get_sitemap_candidate_urls(self, url: str) -> Set[str]:
+        """
+        Get sitemap URLs for a given URL's homepage.
+        """
+        parsed = urlparse(url)
+        domain = parsed.netloc.lower()
+        base_urls = []
+        for scheme in ['https', 'http']:
+            base_urls.append(f"{scheme}://{domain}")
+        sitemap_urls = []
+        for base_url in base_urls:
+            for pattern in self.SITEMAP_PATTERNS:
+                sitemap_urls.append(f"{base_url}/{pattern}")
+        return set(sitemap_urls)
+        
+    def get_and_set_sitemap_urls_no_lock(self, url: str, fetch_if_missing: bool = True, homepage: Optional[str] = None) -> Tuple[List[str], bool]:
+        """
+        Get sitemap URLs for a given URL's homepage and set them in the cache.
+        """
+        try:
+            if homepage is None:
+                homepage = strip_url_to_homepage(url)
+        except Exception as e:
+            self.logger.debug(f"Could not strip URL to homepage: {url} - {e}")
+            return [], False
+
+        if homepage in self._cache:
+            return self._cache[homepage].copy(), False
+            
+        # Check if we've already tried this homepage
+        if homepage in self._fetched_homepages:
+            return [], False
+            
+        if not fetch_if_missing:
+            return [], False
+            
+        # Mark that we're trying this homepage
+        self._fetched_homepages.add(homepage)
+            
+        # Fetch sitemap
+        urls = set()
+        try:
+            self.logger.debug(f"Fetching sitemap for homepage: {homepage}")
+            tree = sitemap_tree_for_homepage(homepage)
+            
+            # Extract all URLs
+            for page in tree.all_pages():
+                urls.add(page.url)
+                    
+            # Cache the URLs
+            self._cache[homepage] = urls
+                
+            self.logger.info(f"Cached {len(urls)} URLs from sitemap for {homepage}")
+            
+        except Exception as e:
+            self.logger.warning(f"Error fetching sitemap for {homepage}: {e}")
+            # Cache empty list to avoid repeated failed fetches
+            self._cache[homepage] = set()
+                
+        return urls.copy(), True
+
+    def get_sitemap_urls(self, url: str, fetch_if_missing: bool = True) -> List[str]:
+        """
+        Get sitemap URLs for a given URL's homepage.
+        
+        Args:
+            url: URL to get sitemap for
+            fetch_if_missing: Whether to fetch sitemap if not cached
+            
+        Returns:
+            List of URLs from sitemap or empty list
+        """
+        try:
+            homepage = strip_url_to_homepage(url)
+        except Exception as e:
+            self.logger.debug(f"Could not strip URL to homepage: {url} - {e}")
+            return []
+
+        if homepage in self._cache:
+            return self._cache[homepage].copy()
+            
+        # Check cache first
+        with self._lock:
+            urls, fetched_now = self.get_and_set_sitemap_urls_no_lock(url, fetch_if_missing, homepage)
+            return urls
+    
+    def is_sitemap_fetched(self, url: str) -> bool:
+        """
+        Check if sitemap URLs have been fetched for a given URL's homepage.
+        """
+        try:
+            homepage = strip_url_to_homepage(url)
+        except Exception as e:
+            self.logger.debug(f"Could not strip URL to homepage: {url} - {e}")
+            return False
+        
+        return homepage in self._fetched_homepages
+        
+    def set_sitemap_urls(self, homepage: str, urls: List[str]):
+        """
+        Manually set sitemap URLs for a homepage.
+        
+        Args:
+            homepage: Homepage URL
+            urls: List of URLs from sitemap
+        """
+        with self._lock:
+            self._cache[homepage] = urls.copy()
+            self._fetched_homepages.add(homepage)
+        self.logger.info(f"Manually set {len(urls)} sitemap URLs for {homepage}")
+
+    def parse_sitemap_content(self, content: str, base_url: str) -> Tuple[List[str], bool]:
+        """
+        Parse XML sitemap content and return a list of URLs.
+        
+        This function handles both sitemap index files (which contain references to other sitemaps)
+        and regular sitemaps (which contain page URLs).
+        
+        Args:
+            xml_content: Raw XML content of the sitemap
+            
+        Returns:
+            - List of URLs found in the sitemap. These can be:
+                - Page URLs (from regular sitemaps)
+                - Sitemap URLs (from sitemap index files)
+            - Whether this is a sitemap index file (True) or a regular sitemap (False)
+
+        Raises:
+            xml.etree.ElementTree.ParseError: If XML content is malformed
+
+        """
+        if not content:
+            return [], None
+        content = content.strip(" \n\t")
+        try:
+            root = ET.fromstring(content)
+        except ET.ParseError as e:
+            self.logger.error(f"Failed to parse XML content: {e}")
+            return [], None
+        
+        is_sitemap_index = False
+        urls = []
+
+        # Check if this is a sitemap index (contains references to other sitemaps)
+        root_tag = root.tag.split("}")[-1]  # Remove namespace if present
+        
+        if root_tag == "sitemapindex":
+            # This is a sitemap index file - extract sitemap URLs
+            is_sitemap_index = True
+            for sitemap_elem in root:
+                for child in sitemap_elem:
+                    if "loc" in child.tag:
+                        urls.append(child.text)
+
+        else:  # if root_tag == "urlset":
+            # This is a regular sitemap - extract page URLs
+
+            parser = XMLSitemapParser(
+                    url=base_url,
+                    content=content,
+                    recursion_level=1,
+                    web_client=None,  # RequestsWebClient()  None
+                    parent_urls=set(),
+                )
+            sitemap = parser.sitemap()
+            urls = [page.url for page in sitemap.all_pages()]
+            
+        # else:
+        #     logging.warning(f"Unknown sitemap root tag: {root_tag}")
+        
+        # Filter out None values and empty strings
+        urls = [url for url in urls if url and url.strip()]
+        
+        return urls, is_sitemap_index
+        
+    def clear(self):
+        """Clear the sitemap cache."""
+        with self._lock:
+            self._cache.clear()
+            self._fetched_homepages.clear()
 
 
 # class PrefectScrapyLogHandler(logging.Handler):
@@ -109,6 +499,9 @@ class BaseProcessor:
     Processors can accept initialization parameters via job config:
         - allowed_domains: List of allowed domains (automatically passed)
         - Any other custom parameters needed by the processor
+        
+    Processors can also override special URL handling methods to customize
+    how robots.txt, sitemaps, and feeds are processed for specific domains.
     """
     
     def __init__(self, *args, **kwargs):
@@ -123,6 +516,10 @@ class BaseProcessor:
         self.allowed_domains = kwargs.get('allowed_domains', [])
         # Store all kwargs for subclasses to use
         self.init_params = kwargs
+        # Store reference to robots cache if provided
+        self.robots_cache: RobotsCache = kwargs.get('robots_cache', None)
+        self.crawl_sitemaps = kwargs.get('crawl_sitemaps', scraping_settings.CRAWL_SITEMAPS)
+        self.respect_robots_txt = kwargs.get('respect_robots_txt', scraping_settings.RESPECT_ROBOTS_TXT)
     
     def on_response(self, response: Response, spider: Spider) -> Dict[str, Any]:
         """
@@ -138,12 +535,15 @@ class BaseProcessor:
         return {
             'url': response.url,
             'status': response.status,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.utcnow().isoformat(),
+            'content': response.text,
         }
     
     def should_follow_link(self, url: str, response: Response, spider: Spider) -> bool:
         """
         Determine if a link should be followed.
+        
+        This method now checks robots.txt rules before allowing a link to be followed.
         
         Args:
             url: URL to potentially follow
@@ -153,6 +553,18 @@ class BaseProcessor:
         Returns:
             True if link should be followed
         """
+        if not any(domain in url for domain in self.allowed_domains):
+            return False
+        
+        # Check robots.txt if we have a robots cache
+        if self.respect_robots_txt and self.robots_cache:
+            if not self.robots_cache.can_fetch(url):
+                spider.logger.debug(f"URL blocked by robots.txt: {url}")
+                return False
+        
+        if url.endswith(tuple(IGNORED_EXTENSIONS)):
+            return False
+        
         return True
     
     def should_process_link(self, response: Response, data: Dict[str, Any], spider: Spider) -> bool:
@@ -192,7 +604,7 @@ class BaseProcessor:
         """
         return data
     
-    def get_link_priority(self, url: str, depth: int, response: Response, spider: Spider) -> int:
+    def get_link_priority(self, url: str, depth: int, response: Optional[Response], spider: Optional[Spider], is_start_url: bool = False) -> int:
         """
         Calculate priority for a discovered link.
         
@@ -201,110 +613,21 @@ class BaseProcessor:
             depth: Current depth
             response: Current response
             spider: Spider instance
-            
+            is_start_url: Whether the URL is a start URL
+
         Returns:
             Priority value (higher = processed sooner)
         """
-        return calculate_priority_from_depth(depth)
-
-
-class OtterAIProcessor(BaseProcessor):
-    """Example processor for otter.ai with custom logic."""
-    
-    def __init__(self, *args, **kwargs):
-        """Initialize with optional parameters."""
-        super().__init__(*args, **kwargs)
-    
-    def on_response(self, response: Response, spider: Spider) -> Dict[str, Any]:
-        """Extract otter.ai specific data."""
-        data = super().on_response(response, spider)
         
-        # Extract page type
-        url = response.url
-        if '/blog' in url:
-            data['page_type'] = 'blog'
-            # Extract blog-specific data
-            data['title'] = response.css('h1::text').get()
-            data['author'] = response.css('.author-name::text').get()
-            data['publish_date'] = response.css('time::attr(datetime)').get()
-            data['content'] = ' '.join(response.css('article p::text').getall())
-            
-        elif '/pricing' in url:
-            data['page_type'] = 'pricing'
-            # Extract pricing tiers
-            data['pricing_tiers'] = []
-            for tier in response.css('.pricing-tier'):
-                data['pricing_tiers'].append({
-                    'name': tier.css('.tier-name::text').get(),
-                    'price': tier.css('.price::text').get(),
-                    'features': tier.css('.feature::text').getall()
-                })
-                
-        elif '/careers' in url:
-            data['page_type'] = 'careers'
-            # Extract job listings
-            data['jobs'] = []
-            for job in response.css('.job-listing'):
-                data['jobs'].append({
-                    'title': job.css('.job-title::text').get(),
-                    'department': job.css('.department::text').get(),
-                    'location': job.css('.location::text').get(),
-                    'url': response.urljoin(job.css('a::attr(href)').get())
-                })
-        else:
-            data['page_type'] = 'general'
-            
-        # Extract metadata
-        data['meta_description'] = response.css('meta[name="description"]::attr(content)').get()
-        data['og_image'] = response.css('meta[property="og:image"]::attr(content)').get()
+        n_priority = scraping_settings.BASE_PRIORITY if is_start_url else 0
+        if (not is_start_url) and spider.settings.get('ENABLE_BLOG_URL_PATTERN_PRIORITY_BOOST', scraping_settings.DEFAULT_ENABLE_BLOG_URL_PATTERN_PRIORITY_BOOST):
+            if any(keyword in url for keyword in scraping_settings.BLOG_URL_KEYWORDS):
+                n_priority += scraping_settings.BASE_PRIORITY
+                # spider.logger.info(f"Boosting priority for blog URL: {url}")
         
-        return data
-    
-    def should_follow_link(self, url: str, response: Response, spider: Spider) -> bool:
-        """Determine if otter.ai link should be followed."""
-        # Skip certain URLs
-        skip_patterns = [
-            'mailto:', 'javascript:', '#',
-            '/signin', '/signup', '/logout',
-            '.pdf', '.doc', '.xlsx'
-        ]
-        
-        for pattern in skip_patterns:
-            if pattern in url.lower():
-                return False
-                
-        # Only follow otter.ai domains
-        try:
-            parsed = urlparse(url)
-            if parsed.netloc and 'otter.ai' not in parsed.netloc:
-                return False
-        except:
-            return False
-            
-        return True
-    
-    def get_link_priority(self, url: str, depth: int, response: Response, spider: Spider) -> int:
-        """Prioritize certain otter.ai pages."""
-        base_priority = calculate_priority_from_depth(depth)
-        
-        # Boost priority for important pages
-        priority_boost = {
-            '/pricing': 20,
-            '/blog': 15,
-            '/features': 15,
-            '/business': 10,
-            '/education': 10,
-        }
-        
-        for pattern, boost in priority_boost.items():
-            if pattern in url:
-                return base_priority + boost
-                
-        return base_priority
-
+        return n_priority + calculate_priority_from_depth(depth)
 
 # Register processors
-PROCESSOR_REGISTRY['otter.ai'] = OtterAIProcessor
 PROCESSOR_REGISTRY['default'] = BaseProcessor
 
 
@@ -345,6 +668,16 @@ class GenericSpider(Spider):
         self.start_urls = self.job_config.get('start_urls', [])
         self.allowed_domains = self.job_config.get('allowed_domains', [])
         
+        # Initialize caches
+        self.robots_cache = RobotsCache(logger=self.logger)
+        self.sitemap_cache = SitemapCache(logger=self.logger)
+
+        self.respect_robots_txt = self.job_config.get('respect_robots_txt', scraping_settings.RESPECT_ROBOTS_TXT)
+        self.crawl_sitemaps = self.job_config.get('crawl_sitemaps', scraping_settings.CRAWL_SITEMAPS)
+
+        if not self.allowed_domains:
+            self.allowed_domains = [".".join(parse_domain_from_url(url).split(".")[-2:]) for url in self.start_urls]
+        
         # Get processor with optional initialization parameters
         processor_name = self.job_config.get('processor', 'default')
         processor_class = PROCESSOR_REGISTRY.get(processor_name, BaseProcessor)
@@ -354,6 +687,10 @@ class GenericSpider(Spider):
         
         # Always pass allowed_domains to processor
         processor_init_params['allowed_domains'] = self.allowed_domains
+        # Pass robots cache to processor
+        processor_init_params['robots_cache'] = self.robots_cache
+        processor_init_params['crawl_sitemaps'] = self.crawl_sitemaps
+        processor_init_params['respect_robots_txt'] = self.respect_robots_txt
         
         # Initialize processor with parameters
         self.processor = processor_class(**processor_init_params)
@@ -378,15 +715,118 @@ class GenericSpider(Spider):
         if hasattr(self, 'crawler') and hasattr(self.crawler, '_redis_clients'):
             return self.crawler._redis_clients.get('sync')
         return None
+
+    def _get_robots_requests_for_url(self, url: str, return_args_kwargs: bool = False, depth: int = 0) -> List[Request]:
+        """
+        Get robots.txt requests for a given URL.
+        
+        Args:
+            url: The URL to get robots.txt requests for
+            return_args_kwargs: If True, return (args, kwargs) tuples instead of Request objects
+            
+        Returns:
+            List of Request objects or (args, kwargs) tuples for creating requests
+        """
+        requests = []
+        for scheme in ['https', 'http']:
+            domain, robots_url = self.robots_cache.get_robots_url(url, scheme)
+            
+            # Create args and kwargs for Request instantiation
+            args = [robots_url]
+            kwargs = {
+                'priority': 1000,
+                'callback': self.parse,
+                'meta': {'is_start_url': True, 'depth': depth, "is_robots": True, "domain": domain}
+            }
+            
+            if return_args_kwargs:
+                requests.append((args, kwargs))
+            else:
+                requests.append(Request(*args, **kwargs))
+                
+        return requests
+    
+    def _get_sitemap_request(self, sitemap_url: str, sitemap_urls: Set[str], return_args_kwargs: bool = False, depth: int = 0) -> Request:
+        args = [sitemap_url]
+        kwargs = {
+            'priority': 950,
+            'callback': self.parse,
+            'meta': {'is_start_url': True, 'depth': depth, "is_sitemap": True, "is_sitemap_candidate": sitemap_url not in sitemap_urls}
+        }
+        
+        if return_args_kwargs:
+            return (args, kwargs)
+        else:
+            return Request(*args, **kwargs)
+    
+    def _get_sitemap_requests_for_url(self, url: str, sitemap_urls: Union[List[str], Set[str]] = [], return_args_kwargs: bool = False, depth: int = 0) -> List[Request]:
+        """
+        Get sitemap.xml requests for a given URL.
+        
+        Args:
+            url: The URL to get sitemap requests for
+            sitemap_urls: Additional sitemap URLs to include
+            return_args_kwargs: If True, return (args, kwargs) tuples instead of Request objects
+            
+        Returns:
+            List of Request objects or (args, kwargs) tuples for creating requests
+        """
+        requests = []
+        sitemap_urls = set(sitemap_urls)
+        for sitemap_url in self.sitemap_cache.get_sitemap_candidate_urls(url) | sitemap_urls:
+            # Create args and kwargs for Request instantiation
+            request = self._get_sitemap_request(sitemap_url, sitemap_urls, return_args_kwargs, depth)
+            
+            requests.append(request)
+                
+        return requests
         
     def start_requests(self):
         """Generate start requests with special flag."""
+        # Initialize robots.txt for all allowed domains
+        
+        # Then generate normal start requests
+        all_sitemap_pages = set()
         for url in self.start_urls:
+            robots = self.robots_cache.get_robots(url, fetch_if_missing=True)
+
+            if self.settings.getint('MAX_CRAWL_DEPTH', 5) > 0:
+                if self.respect_robots_txt:
+                    if not robots:
+                        self.crawler.stats.inc_value('scraping_strategy/robots/std/not_found')
+                        for request in self._get_robots_requests_for_url(url):
+                            yield request
+                    else:
+                        self.crawler.stats.inc_value('scraping_strategy/robots/std/found')
+                
+                if self.crawl_sitemaps:
+                    sitemap_pages = self.sitemap_cache.get_sitemap_urls(url, fetch_if_missing=True)
+                    if not sitemap_pages:
+                        self.crawler.stats.inc_value('scraping_strategy/sitemap/std/not_found')
+                        sitemap_urls = self.robots_cache.get_sitemaps(url)
+                        for request in self._get_sitemap_requests_for_url(url, sitemap_urls):
+                            yield request
+                    else:
+                        self.crawler.stats.inc_value('scraping_strategy/sitemap/std/found')
+                        self.crawler.stats.inc_value('scraping_strategy/sitemap/urls_found', len(sitemap_pages))
+                        all_sitemap_pages.update(sitemap_pages)
+
             yield Request(
                 url,
                 callback=self.parse,
-                meta={'is_start_url': True, 'depth': 0}
+                meta={'is_start_url': True, 'depth': 0},
+                priority = self.processor.get_link_priority(url, 0, None, self, is_start_url=True),
+                # TODO: FIXME: investigate `dont_filter` argument and ascertain these requests aren't filtered!
             )
+        
+        if self.crawl_sitemaps:
+            for url in all_sitemap_pages:
+                yield Request(
+                    url,
+                    callback=self.parse,
+                    meta={'is_start_url': False, 'depth': 0, "from_sitemap": True},
+                    priority = self.processor.get_link_priority(url, 0, None, self),
+                )
     
     def _check_processed_limit(self, response: Response, domain: str) -> bool:
         """
@@ -474,44 +914,161 @@ class GenericSpider(Spider):
         """Main parsing method."""
         self.pages_crawled += 1
         depth = response.meta.get('depth', 0)
+        is_start_url = response.meta.get('is_start_url', False)
+        is_robots = response.meta.get('is_robots', False)
+        is_sitemap = response.meta.get('is_sitemap', False)
+        is_sitemap_candidate = response.meta.get('is_sitemap_candidate', False)
+        from_sitemap = response.meta.get('from_sitemap', False)
         
         self.logger.info(
             f"[JOB {self.job_id}] Crawled {self.pages_crawled}: {response.url} "
             f"(depth: {depth})"
         )
+
+        could_be_sitemap = "sitemap" in response.url and (response.url.endswith(".xml") or response.url.endswith(".xml.gz"))
         
         # Process response with custom processor
+        sitemap_pages = []
+
+        robots_requests = []
+        sitemap_requests = []
+
+        all_next_urls = set()
+        
         try:
-            data = self.processor.on_response(response, self)
+
+            if is_robots:
+                if response.status < 400:
+                    self.crawler.stats.inc_value('scraping_strategy/robots/scraped/success')
+                    self.robots_cache.set_robots(response.url, response.text)
+                    robots_sitemap_urls = self.robots_cache.get_sitemaps(response.url)
+                    robots_sitemap_urls = set(robots_sitemap_urls)
+                    for sitemap_url in robots_sitemap_urls:
+                        if sitemap_url != response.url:
+                            args, kwargs = self._get_sitemap_request(sitemap_url, robots_sitemap_urls, return_args_kwargs=True, depth=depth)
+                            sitemap_requests.append((args, kwargs))
+                            # yield response.follow(*args, **kwargs)
+                    all_next_urls.update(robots_sitemap_urls)
+                else:
+                    self.crawler.stats.inc_value('scraping_strategy/robots/scraped/failed')
+                    self.logger.warning(f"Failed to fetch robots.txt for {response.url}: {response.status}")
             
-            # Apply custom extraction rules
-            if self.extract_rules:
-                data.update(self._apply_extraction_rules(response))
-            
-            # Transform data
-            data = self.processor.transform_data(data, response, self)
-            
-            # Check if we should process this item
-            if self.processor.should_process_link(response, data, self):
-                # Check processed items limit
-                domain = parse_domain_from_url(response.url)
-                if self._check_processed_limit(response, domain):
-                    # Add metadata
-                    data['_job_id'] = self.job_id
-                    data['_spider'] = self.name
-                    data['_crawled_at'] = datetime.utcnow().isoformat()
-                    data['_depth'] = depth
+            elif is_sitemap or could_be_sitemap:
+                if response.status < 400:
+                    sitemap_pages_or_urls, is_sitemap_index = self.sitemap_cache.parse_sitemap_content(response.text, response.url)
                     
-                    # Yield item
-                    self.items_extracted += 1
-                    yield data
-            else:
-                self.logger.debug(f"Item filtered by should_process_link: {response.url}")
-                if hasattr(self, 'crawler') and self.crawler.stats:
-                    self.crawler.stats.inc_value('items/filtered/should_process')
+                    if sitemap_pages_or_urls:
+                        if is_sitemap_candidate:
+                            self.crawler.stats.inc_value('scraping_strategy/sitemap/scraped/success/candidate_found')
+                        self.crawler.stats.inc_value('scraping_strategy/sitemap/scraped/success')
+                    else:
+                        fail_suffix = ""
+                        if response.status >= 300:
+                            fail_suffix = f"/3XX"
+                        if is_sitemap_candidate:
+                            self.crawler.stats.inc_value(f'scraping_strategy/sitemap/scraped/failed/candidate_not_found{fail_suffix}')
+                        self.crawler.stats.inc_value(f'scraping_strategy/sitemap/scraped/failed{fail_suffix}')
+                    
+                    if is_sitemap_index:
+                        self.crawler.stats.inc_value('scraping_strategy/sitemap/scraped/success/index_found')
+                        sitemap_pages_or_urls = set(sitemap_pages_or_urls)
+                        for sitemap_url in sitemap_pages_or_urls:
+                            if sitemap_url != response.url:
+                                args, kwargs = self._get_sitemap_request(sitemap_url, sitemap_pages_or_urls, return_args_kwargs=True, depth=depth)
+                                sitemap_requests.append((args, kwargs))
+                                # yield response.follow(*args, **kwargs)
+                        all_next_urls.update(sitemap_pages_or_urls)
+                    else:
+                        feed_urls = extract_urls_from_feed(response.text, flatten_results=True)
+                        if len(sitemap_pages_or_urls):
+                            self.crawler.stats.inc_value('scraping_strategy/sitemap/scraped/urls_found', len(sitemap_pages_or_urls))
+                        sitemap_pages = list(set(sitemap_pages_or_urls) | feed_urls)
+                        all_next_urls.update(sitemap_pages)
+                else:
+                    self.crawler.stats.inc_value('scraping_strategy/sitemap/scraped/failed')
+                    if is_sitemap_candidate:
+                        self.crawler.stats.inc_value('scraping_strategy/sitemap/scraped/failed/candidate_not_found')
+                    self.logger.warning(f"Failed to fetch sitemap.xml {'(candidate)' if is_sitemap_candidate else ''} for {response.url}: {response.status}")
+                
+            if (not (is_robots or is_sitemap)) and self.settings.getint('MAX_CRAWL_DEPTH', 5) > 0:
+                url = response.url
+                robots_sitemap_urls = []
+                if (not self.robots_cache.is_robots_fetched(url)) and self.respect_robots_txt:
+                    with self.robots_cache._lock:
+                        robots, fetched_now = self.robots_cache.get_robots_no_lock(url, fetch_if_missing=True)
+                    if fetched_now:
+                        robots_sitemap_urls = self.robots_cache.get_sitemaps(url)
+
+                        if not robots:
+                            self.crawler.stats.inc_value('scraping_strategy/robots/std/not_found')
+                            for args, kwargs in self._get_robots_requests_for_url(url, return_args_kwargs=True, depth=depth):
+                                robots_requests.append((args, kwargs))
+                                # yield response.follow(*args, **kwargs)
+                
+                if not self.sitemap_cache.is_sitemap_fetched(url) and self.crawl_sitemaps:
+                    with self.sitemap_cache._lock:
+                        sitemap_urls, fetched_now = self.sitemap_cache.get_and_set_sitemap_urls_no_lock(url, fetch_if_missing=True)
+                    if fetched_now:
+                        sitemap_pages = self.sitemap_cache.get_sitemap_urls(url)
+
+                        if not sitemap_pages:
+                            self.crawler.stats.inc_value('scraping_strategy/sitemap/std/not_found')
+                            
+                            for args, kwargs in self._get_sitemap_requests_for_url(url, robots_sitemap_urls, return_args_kwargs=True, depth=depth):
+                                sitemap_requests.append((args, kwargs))
+                                # yield response.follow(*args, **kwargs)
+                            all_next_urls.update(robots_sitemap_urls)
+                        else:
+                            self.crawler.stats.inc_value('scraping_strategy/sitemap/std/urls_found', len(sitemap_pages))
+                            self.crawler.stats.inc_value('scraping_strategy/sitemap/std/found')
+
+            if not (is_robots or is_sitemap):
+                # NOTE: if we want to process / scrape the robots / sitemap directly, we add them in the starter urls set 
+                #     and for those, is_robots and is_sitemap flags won't be set! These flags are just set for discovery 
+                #     of the website and we don't want to further process those requests!
+            
+                data = self.processor.on_response(response, self)
+                
+                # Apply custom extraction rules
+                if self.extract_rules:
+                    data.update(self._apply_extraction_rules(response))
+                
+                # Transform data
+                data = self.processor.transform_data(data, response, self)
+                
+                # Check if we should process this item
+                if self.processor.should_process_link(response, data, self):
+                    # Check processed items limit
+                    domain = parse_domain_from_url(response.url)
+                    if self._check_processed_limit(response, domain):
+                        # Add metadata
+                        data['_job_id'] = self.job_id
+                        data['_spider'] = self.name
+                        data['_crawled_at'] = datetime.utcnow().isoformat()
+                        data['_depth'] = depth
+                        
+                        # Yield item
+                        self.items_extracted += 1
+
+                        if self.settings.getbool('DEBUG_MODE', False):
+                            
+                            discovered_urls = self._discover_urls(response) if not (is_robots or is_sitemap) else []
+                            processed_urls = set()
+                            for url_list, from_sitemap in [(sitemap_pages, True), (discovered_urls, False)]:
+                                for url in url_list:
+                                    if self.processor.should_follow_link(url, response, self):
+                                        all_next_urls.add(url)
+
+                            data['_all_next_urls'] = list(all_next_urls)
+
+                        yield data
+                else:
+                    self.logger.debug(f"Item filtered by should_process_link: {response.url}")
+                    if hasattr(self, 'crawler') and self.crawler.stats:
+                        self.crawler.stats.inc_value('items/filtered/should_process')
                 
         except Exception as e:
-            self.logger.error(f"Error processing {response.url}: {e}")
+            self.logger.error(f"Error processing {response.url}: {e}", exc_info=True)
             yield {
                 'url': response.url,
                 'error': str(e),
@@ -521,47 +1078,126 @@ class GenericSpider(Spider):
             }
         
         # Discover and follow links
+
+        if depth <= self.settings.getint('MAX_CRAWL_DEPTH', 5):
+            for args, kwargs in sitemap_requests:
+                yield response.follow(*args, **kwargs)
+
+            for args, kwargs in robots_requests:
+                yield response.follow(*args, **kwargs)
+        
         if depth < self.settings.getint('MAX_CRAWL_DEPTH', 5):
-            for url in self._discover_urls(response):
-                if self.processor.should_follow_link(url, response, self):
-                    priority = self.processor.get_link_priority(url, depth + 1, response, self)
-                    
-                    yield response.follow(
-                        url,
-                        callback=self.parse,
-                        priority=priority,
-                        meta={'depth': depth + 1}
-                    )
+            # NOTE: We already processed the is_robts / is_sitemaps for urls to follow, no need to process them again!
+            discovered_urls = self._discover_urls(response) if not (is_robots or is_sitemap) else []
+
+            if not self.crawl_sitemaps:
+                sitemap_pages = []
+            
+            processed_urls = set()
+            for url_list, from_sitemap in [(sitemap_pages, True), (discovered_urls, False)]:
+                for url in url_list:
+                    if self.processor.should_follow_link(url, response, self):
+                        priority = self.processor.get_link_priority(url, depth + 1, response, self)
+                        if url not in processed_urls:
+                            processed_urls.add(url)
+                            yield response.follow(
+                                url,
+                                callback=self.parse,
+                                priority=priority,
+                                meta={'depth': depth + 1, 'from_sitemap': from_sitemap}
+                            )
     
     def _discover_urls(self, response: Response) -> List[str]:
         """Discover URLs from response.
+        
+        This method extracts URLs from:
+        1. Regular HTML links (<a> tags)
+        2. JavaScript code
+        3. Special files (robots.txt, sitemaps, feeds) via _parse_special_urls
+        4. Automatically fetches sitemaps for new domains/subdomains
+        
         TODO: FIXME: remove URLS like: mailto:hello@grain.com (leads to value error in scrapy from response lib!)
         """
         urls = set()
         
-        # Extract all links
+        # First, check if this response is a special URL that needs custom parsing
+        feed_urls = extract_urls_from_feed(response.text, flatten_results=True)
+        urls.update(feed_urls)
+        
+        # special_urls = self._parse_special_urls(response)
+        # urls.update(special_urls)
+        
+        # Extract all regular HTML links
         for link in response.css('a::attr(href)').getall():
             if link:
+                # Filter out invalid URLs that cause Scrapy errors
+                if not any(link.startswith(prefix) for prefix in ['mailto:', 'tel:', 'javascript:', '#']):
+                    absolute_url = response.urljoin(link)
+                    urls.add(absolute_url)
+        
+        # # Also check for URLs in JavaScript (common in SPAs)
+        # js_url_patterns = [
+        #     r'["\']/([\w\-/]+)["\']',  # Relative paths
+        #     r'https?://[^\s"\')]+',     # Absolute URLs
+        # ]
+        
+        # for script in response.css('script::text').getall():
+        #     for pattern in js_url_patterns:
+                
+        #         for match in re.finditer(pattern, script):
+        #             url = match.group(0).strip('"\'')
+        #             if url.startswith('/'):
+        #                 url = response.urljoin(url)
+        #             if url.startswith('http'):
+        #                 urls.add(url)
+        
+        # Extract all link URLs without filtering - domain restrictions handle the filtering
+        # Get all href attributes from link tags (canonical, alternate, etc.)
+        for link in response.css('link::attr(href)').getall():
+            if link and not any(link.startswith(prefix) for prefix in ['mailto:', 'tel:', 'javascript:', '#']):
                 absolute_url = response.urljoin(link)
                 urls.add(absolute_url)
         
-        # Also check for URLs in JavaScript (common in SPAs)
-        js_url_patterns = [
-            r'["\']/([\w\-/]+)["\']',  # Relative paths
-            r'https?://[^\s"\')]+',     # Absolute URLs
-        ]
+        # Look for special file references in the HTML content that might not be linked
+        # Combined regex pattern for efficiency - finds robots.txt, sitemaps, feeds, etc.
+        # Simple pattern without complex lookaheads for better compatibility
+        special_files_pattern = r'["\'/](robots\.txt|sitemap[^"\'\s]*\.xml|feed\.(?:xml|json)|rss\.xml|atom\.xml)'
         
-        for script in response.css('script::text').getall():
-            for pattern in js_url_patterns:
-                
-                for match in re.finditer(pattern, script):
-                    url = match.group(0).strip('"\'')
-                    if url.startswith('/'):
-                        url = response.urljoin(url)
-                    if url.startswith('http'):
-                        urls.add(url)
+        # Search in page content for special file references
+        for match in re.finditer(special_files_pattern, response.text):
+            potential_url = response.urljoin(match.group(1))
+            urls.add(potential_url)
+        
+        # # Automatically check for sitemap URLs for this domain
+        # # This ensures we discover all URLs from sitemaps for each domain/subdomain
+        # if self.sitemap_cache:
+        #     sitemap_urls = self.sitemap_cache.get_sitemap_urls(response.url, fetch_if_missing=True)
+        #     if sitemap_urls:
+        #         self.logger.debug(f"Adding {len(sitemap_urls)} URLs from sitemap for {response.url}")
+        #         urls.update(sitemap_urls)
         
         return list(urls)
+    
+    # def _parse_special_urls(self, response: Response) -> List[str]:
+    #     """
+    #     Parse special URLs like robots.txt, sitemap.xml, RSS/Atom feeds to discover more URLs.
+        
+    #     This method detects the type of special URL based on patterns and uses appropriate
+    #     parsers to extract additional URLs:
+    #     - robots.txt: Uses protego library to parse robots file
+    #     - sitemap.xml: Uses ultimate-sitemap-parser to extract URLs from sitemaps
+    #     - RSS/Atom/JSON feeds: Uses feedparser to extract links from feeds
+        
+    #     This method also handles manually seeded content that was provided in the job config
+    #     and retrieved through advanced anti-bot scraping.
+        
+    #     Args:
+    #         response: The response object containing the special URL content
+            
+    #     Returns:
+    #         List of discovered URLs from parsing special files
+    #     """
+    #     return []
     
     def _apply_extraction_rules(self, response: Response) -> Dict[str, Any]:
         """Apply custom extraction rules."""
@@ -604,6 +1240,7 @@ class GenericSpider(Spider):
     
     def closed(self, reason):
         """Called when spider closes."""
+        # self.stats_data = self.crawler.stats.get_stats()
         self.logger.info(
             f"Spider closed: {reason}. "
             f"Pages: {self.pages_crawled}, Items: {self.items_extracted}"
@@ -662,17 +1299,45 @@ def run_scraping_job(job_config: Dict[str, Any]) -> Dict[str, Any]:
     settings = get_project_settings()
     
     # Apply Redis configuration
+    debug_mode_enabled = job_config.get('debug_mode', False)
     settings.set('SCHEDULER', 'services.workflow_service.services.scraping.scrapy_redis_integration.RedisScheduler')
     settings.set('REDIS_URL', job_config.get('redis_url', scraping_settings.REDIS_URL))
+    settings.set('USE_IN_MEMORY_QUEUE', job_config.get('use_in_memory', scraping_settings.USE_IN_MEMORY_QUEUE))
     settings.set('REDIS_QUEUE_KEY_STRATEGY', 'job')
     settings.set('SCRAPY_JOB_ID', job_config['job_id'])
-    
+    settings.set('DEBUG_MODE', debug_mode_enabled)
+    settings.set('LOG_LEVEL', job_config.get('log_level', 'INFO' if not debug_mode_enabled else 'DEBUG'))
+    # Fix scrapy GZIP errors
+    settings.set('COMPRESSION_ENABLED', False)
     # Apply job-specific settings
     settings.set('MAX_URLS_PER_DOMAIN', job_config.get('max_urls_per_domain', 100))
     settings.set('MAX_PROCESSED_URLS_PER_DOMAIN', job_config.get('max_processed_urls_per_domain', 0))
     settings.set('MAX_CRAWL_DEPTH', job_config.get('max_crawl_depth', 5))
     settings.set('CONCURRENT_REQUESTS_PER_DOMAIN', job_config.get('concurrent_requests_per_domain', 10))
+    settings.set('CRAWL_SITEMAPS', job_config.get('crawl_sitemaps', scraping_settings.CRAWL_SITEMAPS))
+    settings.set('RESPECT_ROBOTS_TXT', job_config.get('respect_robots_txt', scraping_settings.RESPECT_ROBOTS_TXT))
+    settings.set('ENABLE_BLOG_URL_PATTERN_PRIORITY_BOOST', job_config.get('enable_blog_url_pattern_priority_boost', scraping_settings.DEFAULT_ENABLE_BLOG_URL_PATTERN_PRIORITY_BOOST))
     
+    # Configure download handler with browser pool support
+    settings.set('DOWNLOAD_HANDLERS', {
+        'http': 'services.workflow_service.services.scraping.scrapy_redis_integration.TieredDownloadHandler',
+        'https': 'services.workflow_service.services.scraping.scrapy_redis_integration.TieredDownloadHandler',
+    })
+    
+    # Configure browser pool settings
+    settings.set('BROWSER_POOL_ENABLED', job_config.get('browser_pool_enabled', scraping_settings.BROWSER_POOL_ENABLED))
+    settings.set('BROWSER_POOL_SIZE', job_config.get('browser_pool_size', scraping_settings.BROWSER_POOL_SIZE))
+    settings.set('BROWSER_POOL_LOCAL_CONCURRENCY_LIMIT', job_config.get('browser_pool_local_concurrency_limit', scraping_settings.BROWSER_POOL_LOCAL_CONCURRENCY_LIMIT))
+    settings.set('BROWSER_POOL_TIMEOUT', job_config.get('browser_pool_timeout', scraping_settings.BROWSER_POOL_TIMEOUT))
+    settings.set('BROWSER_POOL_INTERCEPT_MEDIA', job_config.get('browser_pool_intercept_media', scraping_settings.BROWSER_POOL_INTERCEPT_MEDIA))
+    settings.set('BROWSER_POOL_INTERCEPT_IMAGES', job_config.get('browser_pool_intercept_images', scraping_settings.BROWSER_POOL_INTERCEPT_IMAGES))
+    settings.set('BROWSER_POOL_PROXY_COUNTRY', job_config.get('browser_pool_proxy_country', scraping_settings.BROWSER_POOL_PROXY_COUNTRY))
+    settings.set('BROWSER_POOL_MAX_FALLBACKS_PER_JOB', job_config.get('browser_pool_max_fallbacks_per_job', scraping_settings.BROWSER_POOL_MAX_FALLBACKS_PER_JOB))
+    
+    # Proxy tier settings
+    settings.set('PROXY_TIER_ENABLED', job_config.get('proxy_tier_enabled', scraping_settings.PROXY_TIER_ENABLED))
+    settings.set('PROXY_TIER_MAX_FALLBACKS_PER_JOB', job_config.get('proxy_tier_max_fallbacks_per_job', scraping_settings.PROXY_TIER_MAX_FALLBACKS_PER_JOB))
+
     # Apply custom settings
     custom_settings = job_config.get('custom_settings', {})
     for key, value in custom_settings.items():
@@ -686,14 +1351,18 @@ def run_scraping_job(job_config: Dict[str, Any]) -> Dict[str, Any]:
     process = CrawlerProcess(settings)
     
     # Run spider
-    process.crawl(GenericSpider, job_config=job_config)
+    # spider_instance = GenericSpider()
+    crawler = process.create_crawler(GenericSpider)
+    process.crawl(crawler, job_config=job_config)
     process.start()
+    stats = crawler.stats.get_stats()
 
     # Return job stats
     return {
         'job_id': job_config['job_id'],
         'status': 'completed',
-        'completed_at': datetime.utcnow().isoformat()
+        'completed_at': datetime.utcnow().isoformat(),
+        'stats': stats,
     }
 
 def push_urls_to_redis(
@@ -705,7 +1374,8 @@ def push_urls_to_redis(
     queue_key_strategy: str = 'spider',
     max_urls_per_domain: int = 0,
     max_crawl_depth: int = 5,
-    initial_depth: int = 0
+    initial_depth: int = 0,
+    use_in_memory: bool = None
 ) -> Dict[str, Any]:
     """
     Push URLs to Redis queue for processing.
@@ -720,6 +1390,7 @@ def push_urls_to_redis(
         max_urls_per_domain: Max URLs per domain (0 = no limit)
         max_crawl_depth: Maximum crawl depth
         initial_depth: Initial depth for URLs
+        use_in_memory: If True, use in-memory storage instead of Redis
         
     Returns:
         Statistics about the push operation
@@ -728,7 +1399,9 @@ def push_urls_to_redis(
     own_client = False
     if not redis_client:
         redis_url = redis_url or scraping_settings.REDIS_URL
-        redis_client = SyncRedisClient(redis_url)
+        if use_in_memory is None:
+            use_in_memory = scraping_settings.USE_IN_MEMORY_QUEUE
+        redis_client = SyncRedisClient(redis_url, use_in_memory=use_in_memory)
         own_client = True
     
     # Get queue key
@@ -781,7 +1454,8 @@ def get_spider_stats(
     spider_name: str, 
     job_id: str = None, 
     redis_client: SyncRedisClient = None,
-    redis_url: str = None
+    redis_url: str = None,
+    use_in_memory: bool = None
 ) -> Dict[str, Any]:
     """
     Get statistics for a spider/job.
@@ -791,6 +1465,7 @@ def get_spider_stats(
         job_id: Optional job ID
         redis_client: Optional Redis client to use (job-specific)
         redis_url: Redis URL (only used if client not provided)
+        use_in_memory: If True, use in-memory storage instead of Redis
         
     Returns:
         Spider/job statistics
@@ -799,7 +1474,9 @@ def get_spider_stats(
     own_client = False
     if not redis_client:
         redis_url = redis_url or scraping_settings.REDIS_URL
-        redis_client = SyncRedisClient(redis_url)
+        if use_in_memory is None:
+            use_in_memory = scraping_settings.USE_IN_MEMORY_QUEUE
+        redis_client = SyncRedisClient(redis_url, use_in_memory=use_in_memory)
         own_client = True
     
     stats = {

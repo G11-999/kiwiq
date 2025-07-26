@@ -1,10 +1,16 @@
+import uuid
 import asyncio
 import base64
 import hashlib
 import json
 import re
+import fnmatch
+import threading
 from typing import Optional, Dict, Any, List, Tuple
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urlparse, urljoin, unquote_plus
+
+import httpx
+import gzip
 
 from scrapy import Request, Spider
 from scrapy.crawler import Crawler
@@ -22,11 +28,17 @@ from scrapy.utils.reactor import install_reactor
 install_reactor("twisted.internet.asyncioreactor.AsyncioSelectorReactor")
 
 from redis_client.redis_client import AsyncRedisClient  # Import your Redis client
-from .redis_sync_client import SyncRedisClient
-from .settings import (
+from workflow_service.services.scraping.redis_sync_client import SyncRedisClient
+from workflow_service.services.scraping.settings import (
     scraping_settings, get_queue_key, get_dupefilter_key, 
     get_domain_limit_key, get_processed_items_key, get_depth_stats_key, 
     calculate_priority_from_depth, parse_domain_from_url, get_purge_patterns
+)
+
+# Import the browser pool components
+from workflow_service.services.scraping.browsers.scrapeless.scrapeless_browser import (
+    ScrapelessBrowserPool,
+    ScrapelessBrowserContextManager
 )
 
 
@@ -49,8 +61,19 @@ class RedisScheduler(Scheduler):
         
         # Initialize Redis clients - These are job-specific and will be shared
         redis_url = self.settings.get('REDIS_URL', scraping_settings.REDIS_URL)
-        self.redis_client = AsyncRedisClient(redis_url)  # For async methods
-        self.sync_redis = SyncRedisClient(redis_url)    # For sync methods
+        use_in_memory = self.settings.getbool('USE_IN_MEMORY_QUEUE', scraping_settings.USE_IN_MEMORY_QUEUE)
+        # self.browser_pool_enabled = self.settings.getbool('BROWSER_POOL_ENABLED', scraping_settings.BROWSER_POOL_ENABLED)
+        
+        # Only create async client if not using in-memory mode
+        if use_in_memory:
+            self.redis_client = None  # No async client in in-memory mode
+        else:
+            self.redis_client = AsyncRedisClient(redis_url)  # For async methods
+            
+        self.sync_redis = SyncRedisClient(
+            redis_url,
+            use_in_memory=use_in_memory
+        )    # For sync methods
         
         # Store clients in crawler for other components to access
         crawler._redis_clients = {
@@ -92,6 +115,11 @@ class RedisScheduler(Scheduler):
         # Initialize stats
         self.stats = crawler.stats if crawler else None
         
+        # Blocked triggers tracking (not stored in stats until the end)
+        self._blocked_trigger_counts = {}
+        self._blocked_url_examples = {}
+        self._blocked_triggers_lock = threading.Lock()
+        
         # Persistence settings
         self.persist = self.settings.getbool('SCHEDULER_PERSIST', False)
         self.flush_on_start = self.settings.getbool('SCHEDULER_FLUSH_ON_START', False)
@@ -120,7 +148,6 @@ class RedisScheduler(Scheduler):
             return self.spider.job_id
             
         # Generate a default job ID
-        import uuid
         return str(uuid.uuid4())[:8]
         
     def open(self, spider: Spider):
@@ -138,6 +165,9 @@ class RedisScheduler(Scheduler):
             self.queue_key_strategy
         )
         
+        # Browser pool will be initialized in _async_open
+        self.browser_pool = None
+            
         # Log queue configuration
         spider.logger.info(
             f"Using queue key: {self.queue_key} (strategy: {self.queue_key_strategy})"
@@ -151,25 +181,80 @@ class RedisScheduler(Scheduler):
         
     async def _async_open(self):
         """Async initialization of the scheduler."""
-        # Check Redis connection
-        if not await self.redis_client.ping():
+        redis_client = self.redis_client
+        is_coroutine = True
+        if self.sync_redis.use_in_memory:
+            redis_client = self.sync_redis
+            is_coroutine = False
+            
+        if is_coroutine and (not await redis_client.ping()):
             raise ConnectionError("Cannot connect to Redis")
+        
+        # Initialize browser pool if enabled
+        if self.settings.getbool('BROWSER_POOL_ENABLED', scraping_settings.BROWSER_POOL_ENABLED):
+            try:
+                # Browser pool configuration
+                pool_config = {
+                    'max_concurrent_local': self.settings.getint('BROWSER_POOL_SIZE', scraping_settings.BROWSER_POOL_SIZE),
+                    'acquisition_timeout': self.settings.getint('BROWSER_POOL_TIMEOUT', scraping_settings.BROWSER_POOL_TIMEOUT),
+                    'browser_ttl': self.settings.getint('BROWSER_POOL_SESSION_TTL', scraping_settings.BROWSER_POOL_SESSION_TTL),
+                    'enable_keep_alive': True,  # Keep browsers alive for reuse during job
+                    'use_profiles': True,  # Disable profiles for scraping
+                    # 'intercept_media': self.settings.getbool('BROWSER_POOL_INTERCEPT_MEDIA', scraping_settings.BROWSER_POOL_INTERCEPT_MEDIA),
+                    # 'intercept_images': self.settings.getbool('BROWSER_POOL_INTERCEPT_IMAGES', scraping_settings.BROWSER_POOL_INTERCEPT_IMAGES),
+                }
+                
+                # Create async browser pool
+                self.browser_pool = ScrapelessBrowserPool(**pool_config)
+                
+                # Enter the context manager
+                await self.browser_pool.__aenter__()
+                
+                # Store in crawler for other components to access
+                self.crawler._browser_pool = self.browser_pool
+                
+                self.spider.logger.info(f"Browser pool initialized and entered context with {pool_config['max_concurrent_local']} max browsers for job {self.job_id}")
+            except Exception as e:
+                self.spider.logger.error(f"Failed to initialize browser pool: {e}")
+                self.browser_pool = None
+                self.crawler._browser_pool = None
             
         # Clear queue if requested
         if self.flush_on_start:
-            cleared, dupes_cleared = await self.redis_client.clear_queue(
-                self.queue_key, clear_dupefilter=True
-            )
+            if is_coroutine:
+                cleared, dupes_cleared = await redis_client.clear_queue(
+                    self.queue_key, clear_dupefilter=True
+                )
+            else:
+                cleared, dupes_cleared = redis_client.clear_queue(
+                    self.queue_key, clear_dupefilter=True
+                )
             # Also clear domain/depth tracking
             patterns = [
                 get_domain_limit_key(self.spider.name, '*', self.job_id, self.queue_key_strategy),
                 get_depth_stats_key(self.spider.name, self.job_id, self.queue_key_strategy)
             ]
-            await self.redis_client.delete_multiple_patterns(patterns)
+            # Also clear fallback counters
+            if self.job_id:
+                patterns.extend([
+                    scraping_settings.BROWSER_POOL_FALLBACK_COUNTER_KEY_PATTERN.format(
+                        spider=self.spider.name, job=self.job_id
+                    ),
+                    scraping_settings.PROXY_TIER_FALLBACK_COUNTER_KEY_PATTERN.format(
+                        spider=self.spider.name, job=self.job_id
+                    )
+                ])
+            if is_coroutine:
+                await redis_client.delete_multiple_patterns(patterns)
+            else:
+                redis_client.delete_multiple_patterns(patterns)
             self.spider.logger.info(f"Cleared {cleared} requests, {dupes_cleared} duplicates")
             
         # Check for existing requests
-        queue_len = await self.redis_client.get_queue_length(self.queue_key)
+        if is_coroutine:
+            queue_len = await redis_client.get_queue_length(self.queue_key)
+        else:
+            queue_len = redis_client.get_queue_length(self.queue_key)
         if queue_len:
             self.spider.logger.info(f"Resuming crawl ({queue_len} requests scheduled)")
 
@@ -180,8 +265,18 @@ class RedisScheduler(Scheduler):
         
     async def _async_close(self, reason):
         """Async cleanup on spider close."""
+        redis_client = self.redis_client
+        is_coroutine = True
+        if self.sync_redis.use_in_memory:
+            redis_client = self.sync_redis
+            is_coroutine = False
+            
         # Get final stats before any cleanup
-        stats = await self.redis_client.get_queue_stats(self.queue_key)
+        if is_coroutine:
+            stats = await redis_client.get_queue_stats(self.queue_key)
+        else:
+            stats = redis_client.get_queue_stats(self.queue_key)
+            
         if self.stats:
             self.stats.set_value('final_queue_size', stats['queue_size'])
             self.stats.set_value('final_dupefilter_size', stats['dupefilter_size'])
@@ -194,12 +289,48 @@ class RedisScheduler(Scheduler):
             # Get processed items stats
             processed_stats = await self._get_processed_items_stats()
             self.stats.set_value('domain_processed_counts', processed_stats)
+            
+            # Set blocked trigger stats from internal tracking
+            if self._blocked_trigger_counts:
+                self.stats.set_value('blocked_trigger_counts', dict(self._blocked_trigger_counts))
+            if self._blocked_url_examples:
+                self.stats.set_value('blocked_url_examples', dict(self._blocked_url_examples))
+            
+            # Get browser and proxy tier fallback stats
+            handler: TieredDownloadHandler = self.crawler.engine.downloader.handlers._get_handler('https')
+            
+            if handler:
+                # Browser pool stats
+                if hasattr(handler, 'browser_pool_enabled') and handler.browser_pool_enabled:
+                    browser_fallback_count = await self._get_browser_fallback_count()
+                    if browser_fallback_count is not None:
+                        self.stats.set_value('browser_pool_fallbacks_used', browser_fallback_count)
+                        if hasattr(handler, 'browser_pool_max_fallbacks'):
+                            self.stats.set_value('browser_pool_fallbacks_limit', handler.browser_pool_max_fallbacks)
+                            self.stats.set_value('browser_pool_fallbacks_percentage', 
+                                                (browser_fallback_count / handler.browser_pool_max_fallbacks * 100) 
+                                                if handler.browser_pool_max_fallbacks > 0 else 0)
+                
+                # Proxy tier stats
+                proxy_fallback_count = await self._get_proxy_fallback_count()
+                if proxy_fallback_count is not None:
+                    self.stats.set_value('proxy_tier_fallbacks_used', proxy_fallback_count)
+                    if hasattr(handler, 'proxy_tier_max_fallbacks'):
+                        self.stats.set_value('proxy_tier_fallbacks_limit', handler.proxy_tier_max_fallbacks)
+                        self.stats.set_value('proxy_tier_fallbacks_percentage', 
+                                            (proxy_fallback_count / handler.proxy_tier_max_fallbacks * 100) 
+                                            if handler.proxy_tier_max_fallbacks > 0 else 0)
         
         # Clear queue if not persisting
         if not self.persist:
-            cleared, dupes_cleared = await self.redis_client.clear_queue(
-                self.queue_key, clear_dupefilter=True
-            )
+            if is_coroutine:
+                cleared, dupes_cleared = await redis_client.clear_queue(
+                    self.queue_key, clear_dupefilter=True
+                )
+            else:
+                cleared, dupes_cleared = redis_client.clear_queue(
+                    self.queue_key, clear_dupefilter=True
+                )
             self.spider.logger.info(f"Spider closed: cleared {cleared} requests")
             
         # Purge all spider data if configured
@@ -209,24 +340,50 @@ class RedisScheduler(Scheduler):
                 self.spider.name, 
                 self.job_id if self.queue_key_strategy == 'job' else None
             )
-            deleted_counts = await self.redis_client.delete_multiple_patterns(patterns)
+            if is_coroutine:
+                deleted_counts = await redis_client.delete_multiple_patterns(patterns)
+            else:
+                deleted_counts = redis_client.delete_multiple_patterns(patterns)
+                
             total_deleted = sum(deleted_counts.values())
+            storage_type = "in-memory" if self.sync_redis.use_in_memory else "Redis"
             self.spider.logger.info(
-                f"Purged all Redis data for spider: {total_deleted} keys removed"
+                f"Purged all {storage_type} data for spider: {total_deleted} keys removed"
             )
             if self.stats:
-                self.stats.set_value('redis_keys_purged', total_deleted)
+                stat_key = 'memory_keys_purged' if self.sync_redis.use_in_memory else 'redis_keys_purged'
+                self.stats.set_value(stat_key, total_deleted)
                 
-        # Close Redis clients
-        await self.redis_client.close()
-        # Close sync wrapper (this will handle its own thread cleanup)
+        # Close clients
+        if is_coroutine:
+            await redis_client.close()
+        # Always close sync client (it's always created)
         self.sync_redis.close()
+        
+        # Clean up browser pool if it exists
+        if hasattr(self, 'browser_pool') and self.browser_pool:
+            try:
+                # Exit the context manager properly
+                await self.browser_pool.__aexit__(None, None, None)
+                self.spider.logger.info(f"Browser pool context exited and cleaned up")
+            except Exception as e:
+                self.spider.logger.error(f"Error exiting browser pool context: {e}")
+                # Force cleanup on error
+                try:
+                    cleaned = await self.browser_pool.cleanup_all_browsers()
+                    self.spider.logger.info(f"Force cleaned {cleaned} browsers after context exit error")
+                except Exception as cleanup_error:
+                    self.spider.logger.error(f"Error during force cleanup: {cleanup_error}")
+            finally:
+                self.browser_pool = None
         
         # Remove references from crawler
         if hasattr(self.crawler, '_redis_clients'):
             del self.crawler._redis_clients
+        if hasattr(self.crawler, '_browser_pool'):
+            del self.crawler._browser_pool
             
-        self.spider.logger.info("Redis clients closed and cleaned up")
+        self.spider.logger.info("Storage clients and browser pool closed and cleaned up")
             
     async def _get_domain_stats(self) -> Dict[str, int]:
         """Get statistics about domains crawled."""
@@ -235,18 +392,33 @@ class RedisScheduler(Scheduler):
             self.spider.name, '*', self.job_id, self.queue_key_strategy
         )
         
-        client = await self.redis_client.get_client()
-        keys = await client.keys(pattern)
-        
-        domain_stats = {}
-        for key in keys:
-            # Extract domain from key
-            parts = key.split(':')
-            domain = parts[-1]
-            count = await self.redis_client.get_counter_value(key)
-            domain_stats[domain] = count
+        if self.sync_redis.use_in_memory:
+            # In-memory mode - use sync client with pattern matching
+            # Get all matching keys from counters
+            domain_stats = {}
+            with self.sync_redis._memory_lock:
+                for key in self.sync_redis._memory_counters:
+                    if fnmatch.fnmatch(key, pattern):
+                        # Extract domain from key
+                        parts = key.split(':')
+                        domain = parts[-1]
+                        count = self.sync_redis.get_counter_value(key)
+                        domain_stats[domain] = count
+            return domain_stats
+        else:
+            # Redis mode
+            client = await self.redis_client.get_client()
+            keys = await client.keys(pattern)
             
-        return domain_stats
+            domain_stats = {}
+            for key in keys:
+                # Extract domain from key
+                parts = key.split(':')
+                domain = parts[-1]
+                count = await self.redis_client.get_counter_value(key)
+                domain_stats[domain] = count
+                
+            return domain_stats
     
     def _is_domain_over_processed_limit(self, domain: str) -> tuple[int, bool]:
         """
@@ -284,6 +456,37 @@ class RedisScheduler(Scheduler):
             
         return (current_count, is_over)
     
+    def _track_blocked_trigger(self, spider: Spider, trigger_reason: str, url: str) -> None:
+        """
+        Track blocked URL trigger reasons and store example URLs.
+        This data is kept internally and only added to stats at spider close.
+        
+        Args:
+            spider: The spider instance
+            trigger_reason: The reason for the block (e.g., "status_403", "pattern_cloudflare")
+            url: The URL that was blocked
+        """
+        # Thread-safe update of blocked triggers
+        with self._blocked_triggers_lock:
+            # Increment count
+            self._blocked_trigger_counts[trigger_reason] = self._blocked_trigger_counts.get(trigger_reason, 0) + 1
+            
+            # Add example URL
+            if trigger_reason not in self._blocked_url_examples:
+                self._blocked_url_examples[trigger_reason] = []
+            
+            examples = self._blocked_url_examples[trigger_reason]
+            if url not in examples:
+                examples.append(url)
+                
+                # Limit to max examples
+                max_examples = self.settings.getint(
+                    'MAX_BLOCKED_URL_EXAMPLES',
+                    scraping_settings.MAX_BLOCKED_URL_EXAMPLES
+                )
+                if len(examples) > max_examples:
+                    self._blocked_url_examples[trigger_reason] = examples[-max_examples:]  # Keep most recent
+    
     def _purge_domain_urls_from_queue(self, domain: str) -> int:
         """
         Purge remaining URLs from a specific domain from the queue.
@@ -316,18 +519,78 @@ class RedisScheduler(Scheduler):
             self.spider.name, '*', self.job_id, self.queue_key_strategy
         )
         
-        client = await self.redis_client.get_client()
-        keys = await client.keys(pattern)
-        
-        processed_stats = {}
-        for key in keys:
-            # Extract domain from key
-            parts = key.split(':')
-            domain = parts[-1]
-            count = await self.redis_client.get_counter_value(key)
-            processed_stats[domain] = count
+        if self.sync_redis.use_in_memory:
+            # In-memory mode - use sync client with pattern matching
+            processed_stats = {}
+            with self.sync_redis._memory_lock:
+                for key in self.sync_redis._memory_counters:
+                    if fnmatch.fnmatch(key, pattern):
+                        # Extract domain from key
+                        parts = key.split(':')
+                        domain = parts[-1]
+                        count = self.sync_redis.get_counter_value(key)
+                        processed_stats[domain] = count
+            return processed_stats
+        else:
+            # Redis mode
+            client = await self.redis_client.get_client()
+            keys = await client.keys(pattern)
             
-        return processed_stats
+            processed_stats = {}
+            for key in keys:
+                # Extract domain from key
+                parts = key.split(':')
+                domain = parts[-1]
+                count = await self.redis_client.get_counter_value(key)
+                processed_stats[domain] = count
+                
+            return processed_stats
+    
+    async def _get_proxy_fallback_count(self) -> Optional[int]:
+        """
+        Get the current proxy tier fallback count for this job.
+        
+        Returns:
+            Current proxy tier fallback count or None if not available
+        """
+        # Get job ID
+        job_id = self.job_id or 'default'
+        
+        # Generate counter key
+        counter_key = scraping_settings.PROXY_TIER_FALLBACK_COUNTER_KEY_PATTERN.format(
+            spider=self.spider.name,
+            job=job_id
+        )
+        
+        if self.sync_redis.use_in_memory:
+            # In-memory mode - use sync client
+            return self.sync_redis.get_counter_value(counter_key)
+        else:
+            # Redis mode - use async client
+            return await self.redis_client.get_counter_value(counter_key)
+            
+    async def _get_browser_fallback_count(self) -> Optional[int]:
+        """
+        Get the current browser fallback count for this job.
+        
+        Returns:
+            Current browser fallback count or None if not available
+        """
+        # Get job ID
+        job_id = self.job_id or 'default'
+        
+        # Generate counter key
+        counter_key = scraping_settings.BROWSER_POOL_FALLBACK_COUNTER_KEY_PATTERN.format(
+            spider=self.spider.name,
+            job=job_id
+        )
+        
+        if self.sync_redis.use_in_memory:
+            # In-memory mode - use sync client
+            return self.sync_redis.get_counter_value(counter_key)
+        else:
+            # Redis mode - use async client
+            return await self.redis_client.get_counter_value(counter_key)
             
     def enqueue_request(self, request):
         """Add request to Redis queue with domain/depth checking."""
@@ -484,7 +747,6 @@ class RedisScheduler(Scheduler):
         
     def _serialize_request(self, request: Request) -> dict:
         """Serialize Scrapy Request to dict with body optimization."""
-        import gzip
         
         # Check Redis memory usage periodically
         if hasattr(self, '_enqueue_count'):
@@ -602,7 +864,6 @@ class RedisScheduler(Scheduler):
             if body.startswith('gzip:'):
                 # Decompress gzipped body
                 try:
-                    import gzip
                     compressed_data = base64.b64decode(body[5:])  # Skip 'gzip:' prefix
                     body = gzip.decompress(compressed_data)
                 except Exception as e:
@@ -660,8 +921,20 @@ class TieredDownloadHandler:
         # Tier configuration
         self.tier_rules = settings.getdict('TIER_RULES', {})
         
-        # Browser pool for tier 2
-        self.browser_pool = None
+        # Browser pool configuration
+        self.browser_pool_enabled = settings.getbool('BROWSER_POOL_ENABLED', scraping_settings.BROWSER_POOL_ENABLED)
+        self.browser_pool_size = settings.getint('BROWSER_POOL_SIZE', scraping_settings.BROWSER_POOL_SIZE)
+        self.browser_pool_timeout = settings.getint('BROWSER_POOL_TIMEOUT', scraping_settings.BROWSER_POOL_TIMEOUT)
+        self.browser_pool_trigger_codes = settings.getlist('BROWSER_POOL_TRIGGER_CODES', scraping_settings.BROWSER_POOL_TRIGGER_CODES)
+        self.browser_pool_trigger_patterns = settings.getlist('BROWSER_POOL_TRIGGER_PATTERNS', scraping_settings.BROWSER_POOL_TRIGGER_PATTERNS)
+        self.browser_pool_max_fallbacks = settings.getint('BROWSER_POOL_MAX_FALLBACKS_PER_JOB', scraping_settings.BROWSER_POOL_MAX_FALLBACKS_PER_JOB)
+        
+        # Proxy tier configuration
+        self.proxy_tier_enabled = settings.getbool('PROXY_TIER_ENABLED', scraping_settings.PROXY_TIER_ENABLED)
+        self.proxy_tier_max_fallbacks = settings.getint('PROXY_TIER_MAX_FALLBACKS_PER_JOB', scraping_settings.PROXY_TIER_MAX_FALLBACKS_PER_JOB)
+        
+        # Browser pool will be accessed from crawler when needed
+        # It's created by RedisScheduler and stored as crawler._browser_pool
         
     @property 
     def redis_client(self):
@@ -669,10 +942,148 @@ class TieredDownloadHandler:
         if hasattr(self.crawler, '_redis_clients'):
             return self.crawler._redis_clients.get('async')
         return None
+    
+    @property
+    def sync_redis_client(self) -> Optional[SyncRedisClient]:
+        """Get sync Redis client from crawler (job-specific)."""
+        if hasattr(self.crawler, '_redis_clients'):
+            return self.crawler._redis_clients.get('sync')
+        return None
+    
+    @property
+    def browser_pool(self) -> Optional[ScrapelessBrowserPool]:
+        """Get browser pool from crawler (job-specific)."""
+        if hasattr(self.crawler, '_browser_pool'):
+            return self.crawler._browser_pool
+        return None
+    
+    def _check_and_increment_proxy_fallback_count(self, spider: Spider) -> bool:
+        """
+        Check if we can use proxy fallback and increment counter if allowed.
+        
+        This method tracks proxy tier fallback usage per job to prevent excessive
+        usage of proxy operations.
+        
+        Args:
+            spider: The spider instance
+            
+        Returns:
+            True if proxy fallback is allowed (under limit), False otherwise
+        """
+        # If no limit set, always allow
+        if self.proxy_tier_max_fallbacks <= 0:
+            return True
+            
+        # Get sync Redis client
+        redis_client = self.sync_redis_client
+        if not redis_client:
+            # No Redis client, can't track - allow by default
+            spider.logger.warning("No Redis client available for proxy fallback tracking")
+            return True
+            
+        # Get job ID from spider or settings
+        job_id = getattr(spider, 'job_id', None) or self.settings.get('SCRAPY_JOB_ID', 'default')
+        
+        # Generate counter key
+        counter_key = scraping_settings.PROXY_TIER_FALLBACK_COUNTER_KEY_PATTERN.format(
+            spider=spider.name,
+            job=job_id
+        )
+        
+        # Try to increment counter with limit check
+        try:
+            current_count, is_over_limit = redis_client.increment_counter_with_limit(
+                counter_key,
+                increment=1,
+                limit=self.proxy_tier_max_fallbacks,
+                ttl=86400  # 24 hours TTL
+            )
+            
+            if is_over_limit:
+                spider.logger.warning(
+                    f"Proxy tier fallback limit reached for job {job_id}: "
+                    f"{current_count}/{self.proxy_tier_max_fallbacks}"
+                )
+                if self.stats:
+                    self.stats.inc_value('downloader/proxy_tier/limit_exceeded', spider=spider)
+                return False
+                
+            spider.logger.debug(
+                f"Proxy tier fallback count for job {job_id}: "
+                f"{current_count}/{self.proxy_tier_max_fallbacks}"
+            )
+            return True
+            
+        except Exception as e:
+            spider.logger.error(f"Error tracking proxy tier fallback count: {e}")
+            # On error, allow fallback to avoid blocking
+            return True
+    
+    def _check_and_increment_browser_fallback_count(self, spider: Spider) -> bool:
+        """
+        Check if we can use browser fallback and increment counter if allowed.
+        
+        This method tracks browser fallback usage per job to prevent excessive
+        usage of expensive browser operations.
+        
+        Args:
+            spider: The spider instance
+            
+        Returns:
+            True if browser fallback is allowed (under limit), False otherwise
+        """
+        # If no limit set, always allow
+        if self.browser_pool_max_fallbacks <= 0:
+            return True
+            
+        # Get sync Redis client
+        redis_client = self.sync_redis_client
+        if not redis_client:
+            # No Redis client, can't track - allow by default
+            spider.logger.warning("No Redis client available for browser fallback tracking")
+            return True
+            
+        # Get job ID from spider or settings
+        job_id = getattr(spider, 'job_id', None) or self.settings.get('SCRAPY_JOB_ID', 'default')
+        
+        # Generate counter key
+        counter_key = scraping_settings.BROWSER_POOL_FALLBACK_COUNTER_KEY_PATTERN.format(
+            spider=spider.name,
+            job=job_id
+        )
+        
+        # Try to increment counter with limit check
+        try:
+            current_count, is_over_limit = redis_client.increment_counter_with_limit(
+                counter_key,
+                increment=1,
+                limit=self.browser_pool_max_fallbacks,
+                ttl=86400  # 24 hours TTL
+            )
+            
+            if is_over_limit:
+                spider.logger.warning(
+                    f"Browser fallback limit reached for job {job_id}: "
+                    f"{current_count}/{self.browser_pool_max_fallbacks}"
+                )
+                if self.stats:
+                    self.stats.inc_value('downloader/browser_pool/limit_exceeded', spider=spider)
+                return False
+                
+            spider.logger.debug(
+                f"Browser fallback count for job {job_id}: "
+                f"{current_count}/{self.browser_pool_max_fallbacks}"
+            )
+            return True
+            
+        except Exception as e:
+            spider.logger.error(f"Error tracking browser fallback count: {e}")
+            # On error, allow fallback to avoid blocking
+            return True
         
     def download_request(self, request: Request, spider: Spider) -> Deferred[Response]:
         """
-        Download request with tier escalation.
+        Download request with tier escalation and browser pool fallback.
         Returns a Deferred as required by Scrapy.
         """
         async def _download():
@@ -692,14 +1103,113 @@ class TieredDownloadHandler:
                     response = await self._download_basic(request, spider)
                 elif tier == 'playwright':
                     response = await self._download_playwright(request, spider)
-                elif tier == 'managed':
-                    response = await self._download_managed(request, spider)
                 else:
                     response = await self._download_basic(request, spider)
+                
+                # Check if response requires fallback (proxy tier first, then browser pool)
+                should_fallback, trigger_reason = self._should_use_browser_pool(response)
+                if should_fallback:
+                    spider.logger.info(f"Response indicates bot detection for {request.url} (status: {response.status}, trigger: {trigger_reason})")
                     
-                # Track success
-                if self.stats:
-                    self.stats.inc_value(f'downloader/tier_{tier}/success', spider=spider)
+                    # Track the trigger reason
+                    # Note: The scheduler will track this, not the handler
+                    scheduler = self.crawler.engine.slot.scheduler if hasattr(self.crawler.engine, 'slot') else self.crawler.engine._slot.scheduler
+                    if scheduler and hasattr(scheduler, '_track_blocked_trigger'):
+                        scheduler._track_blocked_trigger(spider, trigger_reason, request.url)
+                    
+                    # First try proxy tier if not already used
+                    if self.proxy_tier_enabled and (not request.meta.get('proxy_tier_used', False)):
+                        # Check if we're under the proxy tier fallback limit
+                        if self._check_and_increment_proxy_fallback_count(spider):
+                            spider.logger.info(f"Trying proxy tier fallback for {request.url}")
+                            if self.stats:
+                                self.stats.inc_value('downloader/proxy_tier/triggered', spider=spider)
+                                self.stats.inc_value(f'downloader/proxy_tier/trigger_status_{response.status}', spider=spider)
+                            
+                            try:
+                                # Mark that we're using proxy tier to avoid infinite loop
+                                request.meta['proxy_tier_used'] = True
+                                proxy_response = await self._download_basic(request, spider, use_proxy=True)
+                                
+                                # Check if proxy tier was successful
+                                proxy_should_fallback, proxy_trigger_reason = self._should_use_browser_pool(proxy_response, retry_on_failed_sitemap_or_robots=False)
+                                if not proxy_should_fallback:
+                                    # Proxy tier succeeded
+                                    if self.stats:
+                                        self.stats.inc_value('downloader/proxy_tier/success', spider=spider)
+                                    spider.logger.info(f"Proxy tier succeeded for {request.url}")
+                                    return proxy_response
+                                else:
+                                    # Proxy tier also hit bot detection
+                                    spider.logger.info(f"Proxy tier also detected as bot for {request.url} (status: {proxy_response.status}, trigger: {proxy_trigger_reason})")
+                                    if self.stats:
+                                        self.stats.inc_value('downloader/proxy_tier/still_detected_blocked', spider=spider)
+                                    # Track the proxy tier trigger
+                                    scheduler = self.crawler.engine.slot.scheduler if hasattr(self.crawler.engine, 'slot') else self.crawler.engine._slot.scheduler
+                                    if scheduler and hasattr(scheduler, '_track_blocked_trigger'):
+                                        scheduler._track_blocked_trigger(spider, f"proxy_{proxy_trigger_reason}", request.url)
+                                    # Continue to browser pool below
+                                    response = proxy_response  # Update response for browser pool check
+                                    
+                            except Exception as e:
+                                spider.logger.error(f"Proxy tier failed: {e}")
+                                if self.stats:
+                                    self.stats.inc_value('downloader/proxy_tier/failed', spider=spider)
+                                # Continue to browser pool below
+                        else:
+                            # Proxy tier limit reached
+                            spider.logger.info(
+                                f"Proxy tier fallback skipped due to limit for {request.url} "
+                                f"(continuing to browser pool if available)"
+                            )
+                    
+                    # Now try browser pool if enabled
+                    if self.browser_pool_enabled and self.browser_pool:
+                        spider.logger.info(f"Triggering browser pool fallback for {request.url} (status: {response.status})")
+                        
+                        # Check if we're under the browser fallback limit
+                        if self._check_and_increment_browser_fallback_count(spider):
+                            # Track browser pool usage
+                            if self.stats:
+                                self.stats.inc_value('downloader/browser_pool/triggered', spider=spider)
+                                self.stats.inc_value(f'downloader/browser_pool/trigger_status_{response.status}', spider=spider)
+                            
+                            # Try browser pool fallback
+                            try:
+                                browser_response = await self._download_with_browser_pool(request, spider)
+                                
+                                # Check if browser pool actually succeeded
+                                browser_should_fallback, _ = self._should_use_browser_pool(browser_response, retry_on_failed_sitemap_or_robots=False)
+                                if not browser_should_fallback:
+                                    # Browser pool succeeded in bypassing bot detection
+                                    if self.stats:
+                                        self.stats.inc_value('downloader/browser_pool/success', spider=spider)
+                                        # Track which trigger type was successfully bypassed
+                                        self.stats.inc_value(f'downloader/browser_pool/bypassed/{trigger_reason}', spider=spider)
+                                    response = browser_response
+                                else:
+                                    # Even browser pool couldn't bypass detection
+                                    spider.logger.warning(f"Browser pool also detected as bot for {request.url}")
+                                    if self.stats:
+                                        self.stats.inc_value('downloader/browser_pool/still_blocked', spider=spider)
+                                        self.stats.inc_value(f'downloader/browser_pool/failed_bypass/{trigger_reason}', spider=spider)
+                                    response = browser_response  # Return browser response anyway
+                                    
+                            except Exception as e:
+                                spider.logger.error(f"Browser pool fallback failed: {e}")
+                                if self.stats:
+                                    self.stats.inc_value('downloader/browser_pool/failed', spider=spider)
+                                # Return the last response we have
+                        else:
+                            # Fallback limit reached, return current response
+                            spider.logger.info(
+                                f"Browser pool fallback skipped due to limit for {request.url} "
+                                f"(returning response with status {response.status})"
+                            )
+                else:
+                    # Track success
+                    if self.stats:
+                        self.stats.inc_value(f'downloader/tier_{tier}/success', spider=spider)
                     
                 return response
                 
@@ -717,10 +1227,156 @@ class TieredDownloadHandler:
             if re.match(pattern, url):
                 return tier
         return 'basic'
+    
+    def _should_use_browser_pool(self, response: Response, retry_on_failed_sitemap_or_robots: bool = True) -> tuple[bool, Optional[str]]:
+        """
+        Check if response indicates need for browser pool fallback.
         
-    async def _download_basic(self, request: Request, spider: Spider) -> HtmlResponse:
+        This method checks multiple indicators:
+        1. HTTP status codes known to indicate bot detection
+        2. Response headers that indicate protection services
+        3. Content patterns in the response body
+        
+        Args:
+            response: The response to check
+            retry_on_failed_sitemap_or_robots: Whether to retry on failed sitemap/robots.txt
+            
+        Returns:
+            Tuple of (should_use_browser_pool, trigger_reason)
+        """
+        # Check status codes
+        if response.status in self.browser_pool_trigger_codes:
+            return (True, f"status_{response.status}")
+        
+        # if response.status == 404:
+        #     return False
+        is_url_xml = response.url.endswith("xml") or response.url.endswith("xml.gz")
+        ends_in_sitemap = response.url.endswith("sitemap")
+        contains_sitemap = "sitemap" in response.url
+        is_robots_txt = response.url.endswith("robots.txt")
+            
+        if ((is_url_xml and contains_sitemap) or ends_in_sitemap or is_robots_txt): 
+            if response.status == 404 or (not retry_on_failed_sitemap_or_robots):
+                return (False, None)
+        
+        # Check response headers for protection services
+        headers_lower = {k.lower(): v for k, v in response.headers.items()}
+        
+        # Cloudflare headers
+        if any(header in headers_lower for header in ['cf-ray', 'cf-request-id', 'cf-cache-status']):
+            # Check if it's a Cloudflare challenge (not just CDN)
+            if b'cf-mitigated' in headers_lower.get('cf-cache-status', b''):
+                return (True, "header_cloudflare_mitigated")
+            # Check server header
+            if b'cloudflare' in headers_lower.get('server', b'').lower():
+                # If Cloudflare server AND error status, likely a challenge
+                if response.status >= 400:
+                    return (True, f"header_cloudflare_status_{response.status}")
+        
+        # Other protection service headers
+        protection_headers = [
+            ('x-sucuri-id', 'header_sucuri_waf'),  # Sucuri WAF
+            ('x-denied-reason', 'header_generic_waf'),  # Generic WAF
+            ('x-firewall', 'header_firewall'),  # Generic firewall
+            ('x-security', 'header_security'),  # Generic security
+        ]
+        for header, trigger_name in protection_headers:
+            if header in headers_lower:
+                return (True, trigger_name)
+        
+        # Check content patterns (case-insensitive)
+        if hasattr(response, 'text'):
+            content_lower = response.text.lower()
+            
+            # # Quick check for very short responses that might be redirects
+            # if len(response.text) < 500 and response.status == 200:
+            #     # Check for meta refresh or JavaScript redirects
+            #     if any(pattern in content_lower for pattern in ['meta http-equiv="refresh"', 'window.location', 'document.location']):
+            #         return True
+            
+            # Check for trigger patterns
+            for pattern in self.browser_pool_trigger_patterns:  # TODO: FIXME: add min text size of body check too!  and response.body.decode('utf-8') --> convert ot markdown / text
+                if pattern.lower() in content_lower:
+                    # Create a clean trigger name from the pattern
+                    trigger_name = f"pattern_{pattern.replace(' ', '_').replace("'", '')[:30]}"
+                    return (True, trigger_name)
+        
+        return (False, None)
+    
+
+        
+    async def _download_with_browser_pool(self, request: Request, spider: Spider) -> HtmlResponse:
+        """
+        Download using browser pool as fallback strategy.
+        
+        This is now a proper async method using the async browser pool.
+        
+        Args:
+            request: The request to download
+            spider: The spider instance
+            
+        Returns:
+            HtmlResponse with the downloaded content
+        """
+        browser_instance = None
+        try:
+            # Use async browser pool with async context manager
+            async with ScrapelessBrowserContextManager(
+                self.browser_pool,
+                timeout=self.browser_pool_timeout,
+                force_close_on_error=True,
+                intercept_media=self.settings.getbool('BROWSER_POOL_INTERCEPT_MEDIA', scraping_settings.BROWSER_POOL_INTERCEPT_MEDIA),
+                intercept_images=self.settings.getbool('BROWSER_POOL_INTERCEPT_IMAGES', scraping_settings.BROWSER_POOL_INTERCEPT_IMAGES),
+            ) as browser:
+                
+                browser_instance = browser
+                spider.logger.debug(f"Browser acquired from pool for {request.url}")
+                
+                # Navigate to the URL
+                timeout_ms = self.settings.getint('BROWSER_POOL_TIMEOUT', scraping_settings.BROWSER_POOL_TIMEOUT) * 1000
+                await browser.page.goto(request.url, timeout=timeout_ms, wait_until='load')
+                
+                # Get the page content
+                html = await browser.page.content()
+                final_url = browser.page.url
+                
+                spider.logger.info(f"Successfully scraped {request.url} using browser pool")
+                
+                # Create response
+                response = HtmlResponse(
+                    url=final_url,
+                    status=200,  # Browser navigation successful
+                    body=html.encode('utf-8'),
+                    request=request,
+                    encoding='utf-8'
+                )
+                
+                # Add metadata
+                response.meta['browser_pool_used'] = True
+                response.meta['render_tier'] = 'browser_pool'
+                
+                # Track success
+                if self.stats:
+                    self.stats.inc_value('downloader/browser_pool/render_success', spider=spider)
+                
+                return response
+                
+        except asyncio.TimeoutError:
+            spider.logger.error(f"Browser pool timeout for {request.url}")
+            if self.stats:
+                self.stats.inc_value('downloader/browser_pool/timeout', spider=spider)
+            raise
+        except Exception as e:
+            spider.logger.error(f"Browser pool download failed for {request.url}: {e}")
+            if self.stats:
+                self.stats.inc_value('downloader/browser_pool/render_failed', spider=spider)
+                # Track specific error types
+                error_type = type(e).__name__
+                self.stats.inc_value(f'downloader/browser_pool/error/{error_type}', spider=spider)
+            raise
+        
+    async def _download_basic(self, request: Request, spider: Spider, use_proxy: bool = False) -> HtmlResponse:
         """Basic HTTP download."""
-        import httpx
         
         # Prepare headers
         headers = {}
@@ -732,7 +1388,11 @@ class TieredDownloadHandler:
             else:
                 headers[key] = values.decode('utf-8') if isinstance(values, bytes) else values
                 
-        async with httpx.AsyncClient(verify=False, timeout=30.0, follow_redirects=True) as client:
+        kwargs = {}
+        if use_proxy:
+            kwargs['proxy'] = scraping_settings.PROXY_URL_EVOMI_ROTATING
+            
+        async with httpx.AsyncClient(verify=False, timeout=30.0, follow_redirects=True, **kwargs) as client:
             resp = await client.request(
                 method=request.method,
                 url=request.url,
@@ -745,9 +1405,17 @@ class TieredDownloadHandler:
         # resp.content is already decompressed
         
         # Check if URL indicates a gzipped file (e.g., file.json.gz)
-        import gzip
+        
+        is_compressed = False
+        uri = urlparse(request.url)
+        url_path = unquote_plus(uri.path)
+        content_type = resp.headers.get("content-type") or ""
+
+        if url_path.lower().endswith(".gz") or "gzip" in content_type.lower():
+            is_compressed = True
+        
         content = resp.content
-        if request.url.endswith(('.gz', '.gzip')):
+        if is_compressed and len(content) > 0:
             try:
                 # Try to decompress as gzip
                 content = gzip.decompress(content)
@@ -771,7 +1439,7 @@ class TieredDownloadHandler:
             from playwright.async_api import async_playwright
         except ImportError:
             spider.logger.warning("Playwright not installed, falling back to basic download")
-            return await self._download_basic(request, spider)
+            return await self._download_basic(request, spider, use_proxy=True)
         
         # Initialize browser pool if needed
         if self.browser_pool is None:
@@ -828,7 +1496,7 @@ class TieredDownloadHandler:
                     url=final_url,
                     body=content.encode('utf-8'),
                     request=request,
-                    encoding='utf-8'
+                    encoding='utf-8',
                 )
                 
                 # Add metadata
@@ -843,7 +1511,7 @@ class TieredDownloadHandler:
         except Exception as e:
             # Handle Playwright errors (e.g., browser not installed)
             spider.logger.error(f"Playwright error: {e}, falling back to basic download")
-            return await self._download_basic(request, spider)
+            return await self._download_basic(request, spider, use_proxy=True)
                 
     async def _discover_urls(self, page, spider: Spider) -> List[str]:
         """Discover URLs from page during rendering."""
@@ -894,11 +1562,18 @@ class TieredDownloadHandler:
         if not parent_request.meta.get('discover_urls', True):
             return
             
-        # Get Redis client
+        # Get Redis client (async or sync)
         redis_client = self.redis_client
-        if not redis_client:
-            spider.logger.warning("No Redis client available for URL discovery")
+        sync_redis = None
+        if hasattr(self.crawler, '_redis_clients'):
+            sync_redis = self.crawler._redis_clients.get('sync')
+            
+        if not redis_client and not sync_redis:
+            spider.logger.warning("No storage client available for URL discovery")
             return
+            
+        # Check if we're in in-memory mode
+        use_in_memory = sync_redis and sync_redis.use_in_memory
             
         # Get scheduler for configuration
         scheduler = None
@@ -1017,12 +1692,25 @@ class TieredDownloadHandler:
             }
             new_requests.append(req_data)
             
-        # Batch queue to Redis
-        queued_count = await redis_client.push_requests_batch(
-            scheduler.queue_key,
-            new_requests,
-            check_duplicates=True
-        )
+        # Batch queue to storage
+        if use_in_memory:
+            # In-memory mode - use sync client
+            queued_count = 0
+            for req_data in new_requests:
+                # Extract priority and dedupe key
+                priority = req_data.get('priority', 0)
+                dedupe_key = req_data.get('url', '')
+                
+                # Push using sync client
+                if sync_redis.push_request(scheduler.queue_key, req_data, priority=priority, dedupe_key=dedupe_key):
+                    queued_count += 1
+        else:
+            # Redis mode - use async batch
+            queued_count = await redis_client.push_requests_batch(
+                scheduler.queue_key,
+                new_requests,
+                check_duplicates=True
+            )
         
         spider.logger.info(
             f"Queued {queued_count}/{len(urls)} URLs discovered from {parent_request.url}"
@@ -1061,13 +1749,7 @@ class TieredDownloadHandler:
                 
         spider.logger.debug(f"Executed {len(actions)} actions on {page.url}")
         
-    async def _download_managed(self, request, spider):
-        """Managed browser download - placeholder."""
-        # Implement your managed browser service integration here
-        spider.logger.warning(f"Managed browser not implemented, falling back to basic")
-        return await self._download_basic(request, spider)
-        
     def close(self):
         """Clean up resources."""
-        # Close browser pool if needed
+        # Browser pool is managed by RedisScheduler, no cleanup needed here
         return None

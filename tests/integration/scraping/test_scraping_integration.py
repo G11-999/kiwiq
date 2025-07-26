@@ -30,12 +30,14 @@ from workflow_service.services.scraping.redis_sync_client import SyncRedisClient
 from workflow_service.services.scraping.settings import (
     scraping_settings, get_queue_key, get_dupefilter_key,
     get_domain_limit_key, get_depth_stats_key, calculate_priority_from_depth,
-    parse_domain_from_url, get_purge_patterns, get_processed_items_key
+    parse_domain_from_url, get_purge_patterns, get_processed_items_key, ScrapingSettings
 )
 from workflow_service.services.scraping.scrapy_redis_integration import RedisScheduler, TieredDownloadHandler
 from workflow_service.services.scraping.spider import (
     push_urls_to_redis, get_spider_stats, GenericSpider
 )
+
+ScrapingSettings.USE_IN_MEMORY_QUEUE = False
 
 # Import settings
 from global_config.settings import global_settings

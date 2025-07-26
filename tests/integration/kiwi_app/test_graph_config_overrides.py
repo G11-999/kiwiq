@@ -17,8 +17,8 @@ from kiwi_app.workflow_app.workflow_config_override import (
 from kiwi_app.workflow_app.dependencies import get_node_template_registry
 
 # Import example graph schemas (dictionaries)
-from kiwi_client.workflows.wf_content_strategy import workflow_graph_schema as content_strategy_schema_dict
-from kiwi_client.workflows.wf_content_generation import workflow_graph_schema as content_generation_schema_dict
+from kiwi_client.workflows.wf_content_strategy_workflow import workflow_graph_schema as content_strategy_schema_dict
+from kiwi_client.workflows.wf_content_creation_workflow import workflow_graph_schema as content_generation_schema_dict
 from kiwi_client.workflows.wf_linkedin_content_analysis import workflow_graph_schema as linkedin_analysis_schema_dict
 
 

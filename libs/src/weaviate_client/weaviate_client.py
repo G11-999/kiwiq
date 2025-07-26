@@ -980,6 +980,9 @@ class WeaviateChunkClient:
             scheduled_date_end: Filter for SCHEDULED_DATE <= this date
             chunk_keys_contains_any: Filter for CHUNK_KEYS containing any of these values
             chunk_keys_contains_all: Filter for CHUNK_KEYS containing all of these values
+
+            # TODO: add Like support for namespace / docname prefix / suffix filters https://docs.weaviate.io/weaviate/api/graphql/filters#like
+            #     NOTE: this filter is inefficent and scales linearly with the number of documents!
             
         Returns:
             Optional[Filter]: Combined filter or None

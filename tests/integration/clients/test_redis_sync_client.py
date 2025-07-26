@@ -24,7 +24,8 @@ class TestRedisSyncClient(unittest.TestCase):
         if not self.redis_url:
             self.skipTest("REDIS_URL environment variable not set.")
             
-        self.client = SyncRedisClient(self.redis_url)
+        # Force Redis mode for these tests (override default in-memory mode)
+        self.client = SyncRedisClient(self.redis_url, use_in_memory=False)
         self.TEST_PREFIX = f"test_sync_{uuid.uuid4().hex[:6]}"
         
         # Test connection
@@ -57,12 +58,12 @@ class TestRedisSyncClient(unittest.TestCase):
         
         # Test with closed client
         self.client.close()
-        new_client = SyncRedisClient(self.redis_url)
+        new_client = SyncRedisClient(self.redis_url, use_in_memory=False)
         self.assertTrue(new_client.ping(), "Ping should succeed on new client")
         new_client.close()
         
         # Reconnect for other tests
-        self.client = SyncRedisClient(self.redis_url)
+        self.client = SyncRedisClient(self.redis_url, use_in_memory=False)
     
     def test_queue_operations_basic(self):
         """Test basic queue operations."""
@@ -640,8 +641,8 @@ class TestRedisSyncClient(unittest.TestCase):
     
     def test_error_handling(self):
         """Test error handling in various scenarios."""
-        # Test with invalid Redis URL
-        bad_client = SyncRedisClient("redis://invalid:6379")
+        # Test with invalid Redis URL (force Redis mode)
+        bad_client = SyncRedisClient("redis://invalid:6379", use_in_memory=False)
         self.assertFalse(bad_client.ping())
         bad_client.close()
         
@@ -650,8 +651,8 @@ class TestRedisSyncClient(unittest.TestCase):
         # For a truly closed connection test, we would need to modify the client
         # For now, we'll skip this test as the behavior is acceptable
         
-        # Reconnect for other tests
-        self.client = SyncRedisClient(self.redis_url)
+        # Reconnect for other tests (force Redis mode)
+        self.client = SyncRedisClient(self.redis_url, use_in_memory=False)
     
     def test_large_request_data(self):
         """Test handling large request data."""
@@ -715,7 +716,8 @@ class TestRedisSyncClientPerformance(unittest.TestCase):
         if not self.redis_url:
             self.skipTest("REDIS_URL environment variable not set.")
             
-        self.client = SyncRedisClient(self.redis_url)
+        # Force Redis mode for performance tests
+        self.client = SyncRedisClient(self.redis_url, use_in_memory=False)
         self.TEST_PREFIX = f"test_perf_{uuid.uuid4().hex[:6]}"
         
         if not self.client.ping():
@@ -782,6 +784,147 @@ class TestRedisSyncClientPerformance(unittest.TestCase):
         # Verify final count
         final_count = self.client.get_counter_value(counter_key)
         self.assertEqual(final_count, num_operations)
+
+
+class TestRedisSyncClientInMemoryMode(unittest.TestCase):
+    """Test in-memory mode alongside Redis mode for comparison."""
+    
+    def setUp(self):
+        """Set up test environment with in-memory client."""
+        self.client = SyncRedisClient(use_in_memory=True)
+        self.TEST_PREFIX = f"test_inmem_{uuid.uuid4().hex[:6]}"
+        
+        # Verify in memory mode
+        self.assertTrue(self.client.use_in_memory)
+        self.assertTrue(self.client.ping())  # Always True in memory mode
+    
+    def tearDown(self):
+        """Clean up after each test."""
+        if hasattr(self, 'client') and self.client:
+            self.client.close()
+    
+    def test_memory_mode_basic_operations(self):
+        """Test basic operations work in memory mode."""
+        # Queue operations
+        queue_key = f"{self.TEST_PREFIX}:queue"
+        request = {'url': 'https://example.com', 'meta': {'test': True}}
+        
+        self.assertTrue(self.client.push_request(queue_key, request))
+        self.assertEqual(self.client.get_queue_length(queue_key), 1)
+        
+        popped = self.client.pop_request(queue_key)
+        self.assertIsNotNone(popped)
+        self.assertEqual(popped['url'], request['url'])
+        
+        # Counter operations
+        counter_key = f"{self.TEST_PREFIX}:counter"
+        count, over = self.client.increment_counter_with_limit(counter_key, 5)
+        self.assertEqual(count, 5)
+        self.assertFalse(over)
+        
+        # Hash operations
+        hash_key = f"{self.TEST_PREFIX}:hash"
+        self.assertEqual(self.client.increment_hash_counter(hash_key, "field", 10), 10)
+        values = self.client.get_hash_counter_values(hash_key)
+        self.assertEqual(values["field"], 10)
+    
+    def test_memory_mode_no_ttl(self):
+        """Test that TTL is ignored in memory mode."""
+        counter_key = f"{self.TEST_PREFIX}:ttl_test"
+        
+        # Set with TTL (should be ignored)
+        count, _ = self.client.increment_counter_with_limit(counter_key, 10, ttl=1)
+        self.assertEqual(count, 10)
+        
+        # Wait longer than TTL
+        time.sleep(2)
+        
+        # Should still exist (no TTL in memory mode)
+        self.assertEqual(self.client.get_counter_value(counter_key), 10)
+    
+    def test_memory_mode_thread_safety(self):
+        """Test thread safety in memory mode."""
+        counter_key = f"{self.TEST_PREFIX}:threaded"
+        num_threads = 20
+        increments_per_thread = 100
+        
+        def worker():
+            for _ in range(increments_per_thread):
+                self.client.increment_counter_with_limit(counter_key, 1)
+        
+        # Run concurrent increments
+        with ThreadPoolExecutor(max_workers=num_threads) as executor:
+            futures = [executor.submit(worker) for _ in range(num_threads)]
+            for f in as_completed(futures):
+                f.result()
+        
+        # Should have exact count
+        final_count = self.client.get_counter_value(counter_key)
+        self.assertEqual(final_count, num_threads * increments_per_thread)
+    
+    def test_memory_mode_performance(self):
+        """Test performance of memory mode operations."""
+        num_ops = 5000
+        
+        # Queue performance
+        start = time.time()
+        queue_key = f"{self.TEST_PREFIX}:perf_queue"
+        for i in range(num_ops):
+            self.client.push_request(queue_key, {'url': f'test{i}'})
+        push_time = time.time() - start
+        
+        # Should be very fast in memory
+        self.assertLess(push_time, 1.0)  # 5000 ops in < 1 second
+        push_rate = num_ops / push_time
+        print(f"\nMemory mode push rate: {push_rate:.0f} ops/sec")
+        
+        # Pop performance
+        start = time.time()
+        popped = 0
+        while self.client.pop_request(queue_key):
+            popped += 1
+        pop_time = time.time() - start
+        
+        self.assertEqual(popped, num_ops)
+        self.assertLess(pop_time, 1.0)
+        pop_rate = num_ops / pop_time
+        print(f"Memory mode pop rate: {pop_rate:.0f} ops/sec")
+    
+    def test_memory_vs_redis_feature_parity(self):
+        """Test that memory mode supports all the same operations as Redis mode."""
+        # This test ensures API compatibility between modes
+        
+        # All queue operations
+        queue_key = f"{self.TEST_PREFIX}:parity:queue"
+        self.assertEqual(self.client.get_queue_length(queue_key), 0)
+        self.assertTrue(self.client.push_request(queue_key, {'url': 'test'}))
+        self.assertTrue(self.client.push_request_safe(queue_key, {'url': 'test2'}))
+        stats = self.client.get_queue_stats(queue_key)
+        self.assertIn('queue_size', stats)
+        self.assertIn('dupefilter_size', stats)
+        self.client.clear_queue(queue_key)
+        
+        # All counter operations
+        counter_key = f"{self.TEST_PREFIX}:parity:counter"
+        self.assertEqual(self.client.get_counter_value(counter_key), 0)
+        count, over = self.client.increment_counter_with_limit(counter_key, 5, limit=10)
+        self.assertEqual(count, 5)
+        self.assertFalse(over)
+        
+        # All hash operations
+        hash_key = f"{self.TEST_PREFIX}:parity:hash"
+        self.assertEqual(self.client.increment_hash_counter(hash_key, "f1", 1), 1)
+        values = self.client.get_hash_counter_values(hash_key)
+        self.assertEqual(values["f1"], 1)
+        
+        # Pattern operations
+        patterns = [f"{self.TEST_PREFIX}:parity:*"]
+        deleted = self.client.delete_multiple_patterns(patterns)
+        self.assertIsInstance(deleted, dict)
+        
+        # Utility operations
+        usage = self.client.check_memory_usage()
+        self.assertEqual(usage, 0.0)  # Always 0 in memory mode
 
 
 if __name__ == "__main__":

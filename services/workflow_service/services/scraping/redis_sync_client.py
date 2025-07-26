@@ -3,6 +3,9 @@ Synchronous Redis client for Scrapy integration.
 
 This uses the synchronous redis-py library to avoid event loop conflicts
 with Scrapy's Twisted reactor.
+
+Supports both Redis-based and in-memory storage modes for flexibility in deployment.
+In-memory mode is suitable for single-process deployments where Redis might be overkill.
 """
 
 import redis
@@ -10,9 +13,12 @@ import json
 import time
 import uuid
 import threading
-from typing import Any, Dict, List, Optional, Tuple
+import heapq
+import fnmatch
+from typing import Any, Dict, List, Optional, Tuple, Set
 from urllib.parse import urlparse, urlunparse
-from datetime import timedelta
+from datetime import timedelta, datetime
+from collections import defaultdict
 from redis.exceptions import ConnectionError, AuthenticationError, TimeoutError, ResponseError, RedisError
 
 from global_config.logger import get_logger
@@ -22,13 +28,14 @@ logger = get_logger(__name__)
 
 class SyncRedisClient:
     """
-    Synchronous Redis client for Scrapy integration.
+    Synchronous Redis client for Scrapy integration with in-memory fallback.
     
     This client provides the same interface as AsyncRedisClient but uses
     synchronous operations compatible with Scrapy's scheduler.
     
     Features:
-    - Connection Pooling with lazy initialization
+    - Connection Pooling with lazy initialization (Redis mode)
+    - In-memory storage option for single-process deployments
     - Queue Management for Scrapy
     - Counter/Limit Tracking
     - Memory monitoring
@@ -51,6 +58,7 @@ class SyncRedisClient:
         pool_size: int = 50,
         socket_connect_timeout: float = 5.0,
         decode_responses: bool = True,
+        use_in_memory: bool = False,
     ):
         """
         Initialize Redis client with connection pool configuration.
@@ -60,28 +68,74 @@ class SyncRedisClient:
             pool_size: Maximum number of connections in the pool
             socket_connect_timeout: Socket connection timeout in seconds
             decode_responses: Whether to decode responses from Redis
+            use_in_memory: If True, use in-memory storage instead of Redis
         """
-        if not redis_url:
-            raise ValueError("Redis URL cannot be empty.")
+        self.use_in_memory = use_in_memory
+        
+        if self.use_in_memory:
+            logger.info("Redis sync client configured in IN-MEMORY mode")
+            # Initialize in-memory storage structures
+            self._memory_queues: Dict[str, List[Tuple[float, float, str]]] = {}  # Priority queues (heapq) - (negative_priority, timestamp, json_data)
+            self._memory_sets: Dict[str, Set[str]] = {}  # For deduplication
+            self._memory_counters: Dict[str, int] = {}  # Simple counters
+            self._memory_hashes: Dict[str, Dict[str, Any]] = {}  # Hash structures
             
-        self.redis_url = redis_url
-        self.pool_size = pool_size
-        self.socket_connect_timeout = socket_connect_timeout
-        self._pool: Optional[redis.ConnectionPool] = None
-        self._client: Optional[redis.Redis] = None
-        self._decode_responses = decode_responses
+            # Thread locks for in-memory operations
+            self._memory_lock = threading.RLock()  # Global lock for structure creation
+            self._queue_locks: Dict[str, threading.RLock] = {}  # Per-queue locks
+            self._set_locks: Dict[str, threading.RLock] = {}  # Per-set locks
+            self._counter_locks: Dict[str, threading.RLock] = {}  # Per-counter locks
+            self._hash_locks: Dict[str, threading.RLock] = {}  # Per-hash locks
+        else:
+            if not redis_url:
+                raise ValueError("Redis URL cannot be empty when not using in-memory mode.")
+                
+            self.redis_url = redis_url
+            self.pool_size = pool_size
+            self.socket_connect_timeout = socket_connect_timeout
+            self._pool: Optional[redis.ConnectionPool] = None
+            self._client: Optional[redis.Redis] = None
+            self._decode_responses = decode_responses
+            
+            # Lock pool for thread-safe counter operations
+            # Each counter key gets its own lock to avoid contention
+            self._counter_locks: Dict[str, threading.RLock] = {}
+            self._locks_lock = threading.RLock()  # Lock to protect the lock dictionary itself
+            
+            logger.info(f"Redis sync client configured in REDIS mode. Target URL (credentials masked): {self._mask_url_password(redis_url)}")
+            logger.debug(f"Redis sync client configured with pool size {pool_size}")
+    
+    def _get_or_create_lock(self, lock_dict: Dict[str, threading.RLock], key: str) -> threading.RLock:
+        """
+        Get or create a lock for a specific key in a thread-safe manner.
         
-        # Lock pool for thread-safe counter operations
-        # Each counter key gets its own lock to avoid contention
-        self._counter_locks: Dict[str, threading.RLock] = {}
-        self._locks_lock = threading.RLock()  # Lock to protect the lock dictionary itself
+        Args:
+            lock_dict: Dictionary storing locks
+            key: The key to get/create lock for
+            
+        Returns:
+            A reentrant lock for the specified key
+        """
+        # First check if lock exists (common case, no locking needed)
+        if key in lock_dict:
+            return lock_dict[key]
         
-        logger.info(f"Redis sync client configured. Target URL (credentials masked): {self._mask_url_password(redis_url)}")
-        logger.debug(f"Redis sync client configured with pool size {pool_size}")
+        # Lock doesn't exist, need to create it thread-safely
+        with self._memory_lock:
+            # Double-check pattern - another thread might have created it
+            if key in lock_dict:
+                return lock_dict[key]
+            
+            # Create new lock for this key
+            lock = threading.RLock()
+            lock_dict[key] = lock
+            return lock
+    
+
     
     def _get_counter_lock(self, key: str) -> threading.RLock:
         """
-        Get or create a lock for a specific counter key.
+        Get or create a lock for a specific counter key (Redis mode).
         
         This method ensures thread-safe access to counter operations by providing
         a unique lock for each counter key, avoiding contention between different
@@ -93,21 +147,24 @@ class SyncRedisClient:
         Returns:
             A reentrant lock for the specified key
         """
-        # First check if lock exists (common case, no locking needed)
-        if key in self._counter_locks:
-            return self._counter_locks[key]
-        
-        # Lock doesn't exist, need to create it thread-safely
-        with self._locks_lock:
-            # Double-check pattern - another thread might have created it
+        if self.use_in_memory:
+            return self._get_or_create_lock(self._counter_locks, key)
+        else:
+            # First check if lock exists (common case, no locking needed)
             if key in self._counter_locks:
                 return self._counter_locks[key]
             
-            # Create new lock for this key
-            lock = threading.RLock()
-            self._counter_locks[key] = lock
-            logger.debug(f"Created new counter lock for key: {key}")
-            return lock
+            # Lock doesn't exist, need to create it thread-safely
+            with self._locks_lock:
+                # Double-check pattern - another thread might have created it
+                if key in self._counter_locks:
+                    return self._counter_locks[key]
+                
+                # Create new lock for this key
+                lock = threading.RLock()
+                self._counter_locks[key] = lock
+                logger.debug(f"Created new counter lock for key: {key}")
+                return lock
         
     def _mask_url_password(self, url: str) -> str:
         """Helper to mask password in URL for safe logging."""
@@ -194,17 +251,35 @@ class SyncRedisClient:
         
     def close(self):
         """Close the Redis connection pool gracefully."""
-        logger.info("Closing Redis sync connection...")
-        
-        # Clean up counter locks
-        with self._locks_lock:
-            lock_count = len(self._counter_locks)
-            self._counter_locks.clear()
-            if lock_count > 0:
-                logger.debug(f"Cleared {lock_count} counter locks")
-        
-        self._cleanup_connection()
-        logger.info("Redis sync client closed.")
+        if self.use_in_memory:
+            logger.info("Closing in-memory sync client...")
+            
+            # Clean up all in-memory structures
+            with self._memory_lock:
+                self._memory_queues.clear()
+                self._memory_sets.clear()
+                self._memory_counters.clear()
+                self._memory_hashes.clear()
+                
+                # Clear all locks
+                self._queue_locks.clear()
+                self._set_locks.clear()
+                self._counter_locks.clear()
+                self._hash_locks.clear()
+                
+            logger.info("In-memory sync client closed.")
+        else:
+            logger.info("Closing Redis sync connection...")
+            
+            # Clean up counter locks
+            with self._locks_lock:
+                lock_count = len(self._counter_locks)
+                self._counter_locks.clear()
+                if lock_count > 0:
+                    logger.debug(f"Cleared {lock_count} counter locks")
+            
+            self._cleanup_connection()
+            logger.info("Redis sync client closed.")
             
     def ping(self) -> bool:
         """
@@ -213,6 +288,10 @@ class SyncRedisClient:
         Returns:
             True if PING is successful, False otherwise
         """
+        if self.use_in_memory:
+            # In-memory mode is always "connected"
+            return True
+            
         try:
             # Get client instance (handles connection/creation)
             client = self._get_client()
@@ -254,6 +333,9 @@ class SyncRedisClient:
         Returns:
             True if request was queued, False if duplicate
         """
+        if self.use_in_memory:
+            return self._push_request_memory(queue_key, request_data, priority, dedupe_key)
+            
         try:
             client = self._get_client()
             
@@ -286,6 +368,61 @@ class SyncRedisClient:
         except RedisError as e:
             logger.error(f"Error pushing request to queue '{queue_key}': {e}")
             raise
+    
+    def _push_request_memory(
+        self,
+        queue_key: str,
+        request_data: Dict[str, Any],
+        priority: int = 0,
+        dedupe_key: Optional[str] = None
+    ) -> bool:
+        """
+        In-memory implementation of push_request.
+        
+        Uses a min-heap (heapq) for the priority queue where lower scores have higher priority.
+        Thread-safe implementation with per-queue locks.
+        
+        Time complexity: O(log n) for heap push
+        Space complexity: O(n) where n is number of requests
+        """
+        # Use URL as dedupe key if not provided
+        if dedupe_key is None:
+            dedupe_key = request_data.get('url', '')
+        
+        dupefilter_key = f"{queue_key}:dupefilter"
+        
+        # Get or create locks for queue and set
+        queue_lock = self._get_or_create_lock(self._queue_locks, queue_key)
+        set_lock = self._get_or_create_lock(self._set_locks, dupefilter_key)
+        
+        # Check for duplicates first (with set lock)
+        with set_lock:
+            if dupefilter_key not in self._memory_sets:
+                self._memory_sets[dupefilter_key] = set()
+                
+            if dedupe_key in self._memory_sets[dupefilter_key]:
+                logger.debug(f"Duplicate request filtered: {dedupe_key}")
+                return False
+        
+        # Add to queue and dupefilter atomically
+        with queue_lock:
+            with set_lock:
+                # Initialize queue if needed
+                if queue_key not in self._memory_queues:
+                    self._memory_queues[queue_key] = []
+                
+                # Add to priority queue (use negative priority for min-heap)
+                # Include timestamp for stable sorting when priorities are equal
+                heapq.heappush(
+                    self._memory_queues[queue_key],
+                    (-priority, time.time(), json.dumps(request_data))
+                )
+                
+                # Add to dupefilter set
+                self._memory_sets[dupefilter_key].add(dedupe_key)
+                
+        logger.debug(f"Request queued (in-memory): {dedupe_key}, priority: {priority}")
+        return True
             
     def push_request_safe(
         self,
@@ -326,6 +463,9 @@ class SyncRedisClient:
         Returns:
             Request data dict or None if queue empty
         """
+        if self.use_in_memory:
+            return self._pop_request_memory(queue_key)
+            
         try:
             client = self._get_client()
             
@@ -345,6 +485,28 @@ class SyncRedisClient:
         except RedisError as e:
             logger.error(f"Error popping request from queue '{queue_key}': {e}")
             raise
+    
+    def _pop_request_memory(self, queue_key: str) -> Optional[Dict[str, Any]]:
+        """
+        In-memory implementation of pop_request.
+        
+        Thread-safe pop from priority queue.
+        
+        Time complexity: O(log n) for heap pop
+        """
+        # Get queue lock
+        queue_lock = self._get_or_create_lock(self._queue_locks, queue_key)
+        
+        with queue_lock:
+            if queue_key not in self._memory_queues or not self._memory_queues[queue_key]:
+                return None
+            
+            # Pop from min-heap (highest priority = lowest negative value)
+            _, _, request_json = heapq.heappop(self._memory_queues[queue_key])
+            request_data = json.loads(request_json)
+            
+            logger.debug(f"Popped request (in-memory): {request_data.get('url', 'unknown')}")
+            return request_data
             
     def get_queue_length(self, queue_key: str) -> int:
         """
@@ -356,12 +518,29 @@ class SyncRedisClient:
         Returns:
             Number of requests in queue
         """
+        if self.use_in_memory:
+            return self._get_queue_length_memory(queue_key)
+            
         try:
             client = self._get_client()
             return client.zcard(queue_key)
         except RedisError as e:
             logger.error(f"Error getting queue length for '{queue_key}': {e}")
             raise
+    
+    def _get_queue_length_memory(self, queue_key: str) -> int:
+        """
+        In-memory implementation of get_queue_length.
+        
+        Time complexity: O(1)
+        """
+        # Get queue lock
+        queue_lock = self._get_or_create_lock(self._queue_locks, queue_key)
+        
+        with queue_lock:
+            if queue_key not in self._memory_queues:
+                return 0
+            return len(self._memory_queues[queue_key])
             
     def clear_queue(self, queue_key: str, clear_dupefilter: bool = True) -> Tuple[int, int]:
         """
@@ -374,6 +553,9 @@ class SyncRedisClient:
         Returns:
             Tuple of (queue_items_removed, dupefilter_items_removed)
         """
+        if self.use_in_memory:
+            return self._clear_queue_memory(queue_key, clear_dupefilter)
+            
         try:
             client = self._get_client()
             
@@ -400,6 +582,39 @@ class SyncRedisClient:
         except RedisError as e:
             logger.error(f"Error clearing queue '{queue_key}': {e}")
             raise
+    
+    def _clear_queue_memory(self, queue_key: str, clear_dupefilter: bool = True) -> Tuple[int, int]:
+        """
+        In-memory implementation of clear_queue.
+        
+        Time complexity: O(1) for deletion
+        """
+        dupefilter_key = f"{queue_key}:dupefilter"
+        
+        # Get locks
+        queue_lock = self._get_or_create_lock(self._queue_locks, queue_key)
+        set_lock = self._get_or_create_lock(self._set_locks, dupefilter_key)
+        
+        queue_count = 0
+        dupefilter_count = 0
+        
+        # Clear queue
+        with queue_lock:
+            if queue_key in self._memory_queues:
+                queue_count = len(self._memory_queues[queue_key])
+                del self._memory_queues[queue_key]
+        
+        # Clear dupefilter
+        if clear_dupefilter:
+            with set_lock:
+                if dupefilter_key in self._memory_sets:
+                    dupefilter_count = len(self._memory_sets[dupefilter_key])
+                    del self._memory_sets[dupefilter_key]
+        
+        logger.info(f"Cleared queue (in-memory) '{queue_key}': {queue_count} items, "
+                   f"dupefilter: {dupefilter_count} items")
+        
+        return queue_count, dupefilter_count
             
     def get_queue_stats(self, queue_key: str) -> Dict[str, Any]:
         """
@@ -411,6 +626,9 @@ class SyncRedisClient:
         Returns:
             Dictionary with queue statistics
         """
+        if self.use_in_memory:
+            return self._get_queue_stats_memory(queue_key)
+            
         try:
             client = self._get_client()
             dupefilter_key = f"{queue_key}:dupefilter"
@@ -438,6 +656,46 @@ class SyncRedisClient:
         except RedisError as e:
             logger.error(f"Error getting queue stats for '{queue_key}': {e}")
             raise
+    
+    def _get_queue_stats_memory(self, queue_key: str) -> Dict[str, Any]:
+        """
+        In-memory implementation of get_queue_stats.
+        
+        Time complexity: O(n) for priority calculation, where n is queue size
+        """
+        dupefilter_key = f"{queue_key}:dupefilter"
+        
+        # Get locks
+        queue_lock = self._get_or_create_lock(self._queue_locks, queue_key)
+        set_lock = self._get_or_create_lock(self._set_locks, dupefilter_key)
+        
+        stats = {
+            'queue_size': 0,
+            'dupefilter_size': 0,
+            'dupefilter_ttl': -1,  # No TTL in memory mode
+            'highest_priority': None,
+            'lowest_priority': None,
+        }
+        
+        # Get queue stats
+        with queue_lock:
+            if queue_key in self._memory_queues and self._memory_queues[queue_key]:
+                queue = self._memory_queues[queue_key]
+                stats['queue_size'] = len(queue)
+                
+                # Get priority range (remember we store negative priorities)
+                # Note: This is O(n) but acceptable for stats
+                priorities = [-item[0] for item in queue]
+                if priorities:
+                    stats['highest_priority'] = max(priorities)
+                    stats['lowest_priority'] = min(priorities)
+        
+        # Get dupefilter stats
+        with set_lock:
+            if dupefilter_key in self._memory_sets:
+                stats['dupefilter_size'] = len(self._memory_sets[dupefilter_key])
+        
+        return stats
             
     # Counter/Limit Tracking Methods
     
@@ -471,6 +729,9 @@ class SyncRedisClient:
             - current_count: The value after operation (may be rolled back if limit exceeded)
             - is_at_or_over_limit: True if current value >= limit
         """
+        if self.use_in_memory:
+            return self._increment_counter_with_limit_memory(key, increment, limit, ttl)
+            
         # Get the lock for this specific counter key
         lock = self._get_counter_lock(key)
         
@@ -514,6 +775,56 @@ class SyncRedisClient:
             except ValueError as e:
                 logger.error(f"Error parsing counter value for key '{key}': {e}")
                 raise
+    
+    def _increment_counter_with_limit_memory(
+        self,
+        key: str,
+        increment: int = 1,
+        limit: Optional[int] = None,
+        ttl: Optional[int] = None
+    ) -> Tuple[int, bool]:
+        """
+        In-memory implementation of increment_counter_with_limit.
+        
+        This is smarter than Redis - it enforces the limit by blocking increments
+        that would exceed it, rather than allowing the counter to go over.
+        
+        Time complexity: O(1)
+        
+        Returns:
+            Tuple of (current_count, is_at_or_over_limit) where:
+            - current_count: The counter value after the operation
+            - is_at_or_over_limit: True if at/over limit (can't increment further) or increment was blocked
+        
+        Note: ttl parameter is ignored in memory mode as all data is cleared
+        when the process ends or client is closed.
+        """
+        # Get counter lock
+        lock = self._get_counter_lock(key)
+        
+        with lock:
+            # Get current value
+            current_value = self._memory_counters.get(key, 0)
+            
+            # Calculate what the new count would be
+            new_count = current_value + increment
+            
+            # Smart limit enforcement for in-memory implementation
+            if limit is not None and increment > 0 and new_count > limit:
+                # Block the increment - would exceed the limit
+                logger.debug(
+                    f"Counter (in-memory) '{key}' increment blocked: would exceed limit "
+                    f"({new_count} > {limit}), remains at {current_value}"
+                )
+                return current_value, True  # Increment was blocked
+            
+            # Apply the increment
+            self._memory_counters[key] = new_count
+            
+            # Check if we're now at or would exceed the limit on next increment
+            is_at_limit = limit is not None and new_count >= limit
+            logger.debug(f"Counter (in-memory) '{key}' incremented by {increment}: {current_value} -> {new_count}")
+            return new_count, is_at_limit  # Return True if at/over limit
             
     def get_counter_value(self, key: str) -> int:
         """
@@ -525,6 +836,9 @@ class SyncRedisClient:
         Returns:
             Current counter value (0 if key doesn't exist)
         """
+        if self.use_in_memory:
+            return self._get_counter_value_memory(key)
+            
         try:
             client = self._get_client()
             value = client.get(key)
@@ -535,6 +849,18 @@ class SyncRedisClient:
             if isinstance(e, RedisError):
                 raise
             return 0
+    
+    def _get_counter_value_memory(self, key: str) -> int:
+        """
+        In-memory implementation of get_counter_value.
+        
+        Time complexity: O(1)
+        """
+        # Get counter lock
+        lock = self._get_counter_lock(key)
+        
+        with lock:
+            return self._memory_counters.get(key, 0)
             
     def increment_hash_counter(
         self,
@@ -555,6 +881,9 @@ class SyncRedisClient:
         Returns:
             New counter value
         """
+        if self.use_in_memory:
+            return self._increment_hash_counter_memory(hash_key, field, increment, ttl)
+            
         try:
             client = self._get_client()
             
@@ -569,6 +898,41 @@ class SyncRedisClient:
         except RedisError as e:
             logger.error(f"Error incrementing hash counter for '{hash_key}:{field}': {e}")
             raise
+    
+    def _increment_hash_counter_memory(
+        self,
+        hash_key: str,
+        field: str,
+        increment: int = 1,
+        ttl: Optional[int] = None
+    ) -> int:
+        """
+        In-memory implementation of increment_hash_counter.
+        
+        Time complexity: O(1)
+        
+        Note: ttl parameter is ignored in memory mode.
+        """
+        # Get hash lock
+        lock = self._get_or_create_lock(self._hash_locks, hash_key)
+        
+        with lock:
+            # Initialize hash if needed
+            if hash_key not in self._memory_hashes:
+                self._memory_hashes[hash_key] = {}
+            
+            # Get current value
+            current_value = self._memory_hashes[hash_key].get(field, 0)
+            if isinstance(current_value, str) and current_value.isdigit():
+                current_value = int(current_value)
+            elif not isinstance(current_value, int):
+                current_value = 0
+            
+            # Increment
+            new_value = current_value + increment
+            self._memory_hashes[hash_key][field] = new_value
+            
+            return new_value
             
     def get_hash_counter_values(self, hash_key: str) -> Dict[str, int]:
         """
@@ -580,6 +944,9 @@ class SyncRedisClient:
         Returns:
             Dictionary of field:value pairs (as integers)
         """
+        if self.use_in_memory:
+            return self._get_hash_counter_values_memory(hash_key)
+            
         try:
             client = self._get_client()
             raw_values = client.hgetall(hash_key)
@@ -593,6 +960,31 @@ class SyncRedisClient:
         except RedisError as e:
             logger.error(f"Error getting hash counter values for '{hash_key}': {e}")
             raise
+    
+    def _get_hash_counter_values_memory(self, hash_key: str) -> Dict[str, int]:
+        """
+        In-memory implementation of get_hash_counter_values.
+        
+        Time complexity: O(n) where n is number of fields in the hash
+        """
+        # Get hash lock
+        lock = self._get_or_create_lock(self._hash_locks, hash_key)
+        
+        with lock:
+            if hash_key not in self._memory_hashes:
+                return {}
+            
+            # Convert values to integers
+            result = {}
+            for field, value in self._memory_hashes[hash_key].items():
+                if isinstance(value, int):
+                    result[field] = value
+                elif isinstance(value, str) and value.isdigit():
+                    result[field] = int(value)
+                else:
+                    result[field] = 0
+            
+            return result
             
     def delete_multiple_patterns(self, patterns: List[str]) -> Dict[str, int]:
         """
@@ -604,6 +996,9 @@ class SyncRedisClient:
         Returns:
             Dictionary mapping pattern to number of keys deleted
         """
+        if self.use_in_memory:
+            return self._delete_multiple_patterns_memory(patterns)
+            
         try:
             client = self._get_client()
             deleted_counts = {}
@@ -621,6 +1016,55 @@ class SyncRedisClient:
         except RedisError as e:
             logger.error(f"Error deleting multiple patterns: {e}")
             raise
+    
+    def _delete_multiple_patterns_memory(self, patterns: List[str]) -> Dict[str, int]:
+        """
+        In-memory implementation of delete_multiple_patterns.
+        
+        Time complexity: O(n * m) where n is total keys and m is number of patterns
+        Uses fnmatch for Unix shell-style pattern matching.
+        """
+        deleted_counts = {}
+        
+        with self._memory_lock:
+            for pattern in patterns:
+                count = 0
+                
+                # Find all keys matching the pattern
+                all_keys = set()
+                all_keys.update(self._memory_queues.keys())
+                all_keys.update(self._memory_sets.keys())
+                all_keys.update(self._memory_counters.keys())
+                all_keys.update(self._memory_hashes.keys())
+                
+                # Match keys against pattern using Unix shell-style wildcards
+                matching_keys = [k for k in all_keys if fnmatch.fnmatch(k, pattern)]
+                
+                # Delete matching keys
+                for key in matching_keys:
+                    # Remove from all possible storages (a key might exist in multiple structures)
+                    if key in self._memory_queues:
+                        del self._memory_queues[key]
+                        count += 1
+                    if key in self._memory_sets:
+                        del self._memory_sets[key]
+                        count += 1
+                    if key in self._memory_counters:
+                        del self._memory_counters[key]
+                        count += 1
+                    if key in self._memory_hashes:
+                        del self._memory_hashes[key]
+                        count += 1
+                    
+                    # Remove associated locks
+                    self._queue_locks.pop(key, None)
+                    self._set_locks.pop(key, None)
+                    self._counter_locks.pop(key, None)
+                    self._hash_locks.pop(key, None)
+                
+                deleted_counts[pattern] = count
+        
+        return deleted_counts
             
     def check_memory_usage(self) -> float:
         """
@@ -629,6 +1073,11 @@ class SyncRedisClient:
         Returns:
             Memory usage percentage (0-100)
         """
+        if self.use_in_memory:
+            # In-memory mode doesn't have meaningful memory limits
+            # Could implement system memory checks if needed
+            return 0.0
+            
         try:
             client = self._get_client()
             info = client.info('memory')
@@ -647,3 +1096,517 @@ class SyncRedisClient:
         except RedisError as e:
             logger.error(f"Error checking memory usage: {e}")
             return 0.0 
+    
+    # Pool-based Resource Management Methods
+    
+    def acquire_from_pool(
+        self,
+        pool_key: str,
+        count: int = 1,
+        max_pool_size: int = 10,
+        ttl: int = 900  # 15 minutes default
+    ) -> Tuple[Optional[str], int, bool]:
+        """
+        Acquire resources from a concurrency pool with distributed synchronization.
+        
+        This method provides thread-safe and process-safe resource acquisition using Redis
+        or in-memory storage. It ensures that the total concurrent usage never exceeds
+        the configured maximum.
+        
+        Args:
+            pool_key: Unique identifier for the pool (e.g., "scrapeless_browsers")
+            count: Number of resources to acquire
+            max_pool_size: Maximum allowed concurrent resources
+            ttl: Time-to-live for the allocation in seconds
+            
+        Returns:
+            Tuple of (allocation_id, current_usage, success) where:
+                - allocation_id: Unique ID for this allocation (None if failed)
+                - current_usage: Current total usage of the pool
+                - success: Whether the acquisition was successful
+        """
+        if self.use_in_memory:
+            # In-memory implementation (single process only)
+            with self._memory_lock:
+                # Initialize pool data if not exists
+                if pool_key not in self._memory_counters:
+                    self._memory_counters[pool_key] = 0
+                    self._memory_hashes[pool_key] = {}
+                
+                current_usage = self._memory_counters[pool_key]
+                
+                # Check if we can acquire
+                if current_usage + count > max_pool_size:
+                    return None, current_usage, False
+                
+                # Generate allocation ID
+                allocation_id = str(uuid.uuid4())
+                
+                # Update usage
+                self._memory_counters[pool_key] += count
+                new_usage = self._memory_counters[pool_key]
+                
+                # Store allocation info
+                expiry_time = time.time() + ttl
+                self._memory_hashes[pool_key][allocation_id] = {
+                    'count': count,
+                    'expiry': expiry_time
+                }
+                
+                logger.debug(f"Acquired {count} from in-memory pool '{pool_key}', "
+                           f"allocation: {allocation_id}, usage: {new_usage}/{max_pool_size}")
+                return allocation_id, new_usage, True
+        
+        try:
+            client = self._get_client()
+            max_retries = 10
+            
+            for retry in range(max_retries):
+                allocation_id = str(uuid.uuid4())
+                now = time.time()
+                expiry = now + ttl
+                
+                # Keys for pool management
+                pool_hash_key = f"pool:{pool_key}"
+                allocs_key = f"pool:{pool_key}:allocs"
+                alloc_key = f"pool:{pool_key}:alloc:{allocation_id}"
+                
+                # Use WATCH for optimistic locking
+                pipe = client.pipeline()
+                try:
+                    # Watch both keys
+                    pipe.watch(pool_hash_key, allocs_key)
+                    
+                    # Get current state (non-transactional reads)
+                    pool_data = pipe.hgetall(pool_hash_key)
+                    current_usage = int(pool_data.get('current', '0'))
+                    stored_max = int(pool_data.get('max', str(max_pool_size)))
+                    
+                    # Use the stored max if it exists, otherwise use provided max
+                    effective_max = stored_max if pool_data else max_pool_size
+                    
+                    # Get expired allocations
+                    expired = pipe.zrangebyscore(allocs_key, 0, now)
+                    
+                    # Calculate expired count if any
+                    expired_count = 0
+                    if expired:
+                        for expired_id in expired:
+                            expired_alloc_key = f"pool:{pool_key}:alloc:{expired_id}"
+                            expired_val = pipe.get(expired_alloc_key)
+                            if expired_val:
+                                expired_count += int(expired_val)
+                    
+                    # Calculate actual current usage after accounting for expired
+                    actual_usage = max(0, current_usage - expired_count)
+                    
+                    # Check if we can acquire
+                    if actual_usage + count > effective_max:
+                        pipe.unwatch()
+                        return None, actual_usage, False
+                    
+                    # Start transaction
+                    pipe.multi()
+                    
+                    # Update pool state with actual usage
+                    new_usage = actual_usage + count
+                    pipe.hset(pool_hash_key, mapping={
+                        'current': str(new_usage),
+                        'max': str(effective_max)
+                    })
+                    
+                    # Store allocation
+                    pipe.set(alloc_key, str(count))
+                    pipe.zadd(allocs_key, {allocation_id: expiry})
+                    # Set a longer TTL as a safety measure (2x the allocation TTL)
+                    pipe.expire(alloc_key, ttl * 2)
+                    
+                    # Clean up expired allocations
+                    if expired:
+                        pipe.zrem(allocs_key, *expired)
+                        for expired_id in expired:
+                            pipe.delete(f"pool:{pool_key}:alloc:{expired_id}")
+                    
+                    # Execute transaction
+                    pipe.execute()
+                    logger.debug(f"Acquired {count} from pool '{pool_key}', "
+                               f"allocation: {allocation_id}, usage: {new_usage}/{effective_max}")
+                    return allocation_id, new_usage, True
+                    
+                except redis.WatchError:
+                    logger.debug(f"Watch error on pool acquire attempt {retry + 1}, retrying...")
+                    time.sleep(0.01 * retry)  # Small backoff
+                    continue
+            
+            # Max retries exceeded
+            current_usage = self.get_pool_usage(pool_key)
+            return None, current_usage, False
+            
+        except RedisError as e:
+            logger.error(f"Error acquiring from pool '{pool_key}': {e}")
+            raise
+    
+    def release_to_pool(
+        self,
+        pool_key: str,
+        allocation_id: str
+    ) -> Tuple[int, int, bool]:
+        """
+        Release resources back to a concurrency pool.
+        
+        Args:
+            pool_key: The pool identifier
+            allocation_id: The allocation ID returned from acquire_from_pool
+            
+        Returns:
+            Tuple of (released_count, current_usage, success) where:
+                - released_count: Number of resources released
+                - current_usage: Current total usage after release
+                - success: Whether the release was successful
+        """
+        if self.use_in_memory:
+            # In-memory implementation
+            with self._memory_lock:
+                if pool_key not in self._memory_hashes:
+                    return 0, 0, False
+                
+                alloc_info = self._memory_hashes[pool_key].get(allocation_id)
+                if not alloc_info:
+                    logger.warning(f"Allocation {allocation_id} not found for in-memory pool '{pool_key}'")
+                    return 0, self._memory_counters.get(pool_key, 0), False
+                
+                # Release the resources
+                count = alloc_info['count']
+                self._memory_counters[pool_key] = max(0, self._memory_counters[pool_key] - count)
+                new_usage = self._memory_counters[pool_key]
+                
+                # Remove allocation
+                del self._memory_hashes[pool_key][allocation_id]
+                
+                logger.debug(f"Released {count} to in-memory pool '{pool_key}', "
+                           f"allocation: {allocation_id}, usage: {new_usage}")
+                return count, new_usage, True
+        
+        try:
+            client = self._get_client()
+            max_retries = 10
+            
+            for retry in range(max_retries):
+                # Keys for pool management
+                pool_hash_key = f"pool:{pool_key}"
+                allocs_key = f"pool:{pool_key}:allocs"
+                alloc_key = f"pool:{pool_key}:alloc:{allocation_id}"
+                
+                # Start transaction with WATCH
+                pipe = client.pipeline()
+                
+                # Watch the pool hash and allocation
+                pipe.watch(pool_hash_key, alloc_key)
+                
+                # Get allocation count
+                alloc_count_str = pipe.get(alloc_key)
+                if not alloc_count_str:
+                    # Allocation doesn't exist or already released
+                    pipe.unwatch()
+                    current_usage = self.get_pool_usage(pool_key)
+                    logger.warning(f"Allocation {allocation_id} not found for pool '{pool_key}' during release")
+                    return 0, current_usage, False
+                
+                alloc_count = int(alloc_count_str)
+                
+                # Get current pool state
+                pool_data = pipe.hgetall(pool_hash_key)
+                current_usage = int(pool_data.get('current', '0'))
+                
+                # Start transaction
+                pipe.multi()
+                
+                # Update pool state
+                new_usage = max(0, current_usage - alloc_count)
+                pipe.hset(pool_hash_key, 'current', str(new_usage))
+                
+                # Remove allocation
+                pipe.delete(alloc_key)
+                pipe.zrem(allocs_key, allocation_id)
+                
+                try:
+                    pipe.execute()
+                    logger.debug(f"Released {alloc_count} to pool '{pool_key}', "
+                               f"allocation: {allocation_id}, usage: {new_usage}")
+                    return alloc_count, new_usage, True
+                except redis.WatchError:
+                    logger.debug(f"Watch error on pool release attempt {retry + 1}, retrying...")
+                    time.sleep(0.01 * retry)  # Small exponential backoff
+                    continue
+            
+            # Max retries exceeded
+            current_usage = self.get_pool_usage(pool_key)
+            return 0, current_usage, False
+            
+        except RedisError as e:
+            logger.error(f"Error releasing to pool '{pool_key}': {e}")
+            raise
+    
+    def get_pool_usage(self, pool_key: str) -> int:
+        """
+        Get current usage of a concurrency pool.
+        
+        Args:
+            pool_key: The pool identifier
+            
+        Returns:
+            Current usage count
+        """
+        if self.use_in_memory:
+            # In-memory implementation
+            with self._memory_lock:
+                # Clean up expired allocations first
+                self._cleanup_in_memory_pool_expired(pool_key)
+                return self._memory_counters.get(pool_key, 0)
+        
+        try:
+            client = self._get_client()
+            pool_hash_key = f"pool:{pool_key}"
+            
+            # Clean up expired allocations first
+            self._cleanup_pool_expired_allocations(pool_key)
+            
+            # Get the updated usage after cleanup
+            pool_data = client.hget(pool_hash_key, 'current')
+            return int(pool_data) if pool_data else 0
+            
+        except RedisError as e:
+            logger.error(f"Error getting pool usage for '{pool_key}': {e}")
+            raise
+    
+    def get_pool_info(self, pool_key: str) -> Dict[str, Any]:
+        """
+        Get detailed information about a concurrency pool.
+        
+        Args:
+            pool_key: The pool identifier
+            
+        Returns:
+            Dictionary with pool information including usage, max size, allocations
+        """
+        if self.use_in_memory:
+            # In-memory implementation
+            with self._memory_lock:
+                # Clean up expired allocations first
+                self._cleanup_in_memory_pool_expired(pool_key)
+                
+                current_usage = self._memory_counters.get(pool_key, 0)
+                allocations = []
+                
+                if pool_key in self._memory_hashes:
+                    for alloc_id, alloc_info in self._memory_hashes[pool_key].items():
+                        allocations.append({
+                            'id': alloc_id,
+                            'count': alloc_info['count'],
+                            'expiry': alloc_info['expiry'],
+                            'ttl': max(0, alloc_info['expiry'] - time.time())
+                        })
+                
+                return {
+                    'current_usage': current_usage,
+                    'max_size': None,  # Not stored in memory mode
+                    'allocation_count': len(allocations),
+                    'allocations': allocations,
+                    'mode': 'in-memory'
+                }
+        
+        try:
+            client = self._get_client()
+            pool_hash_key = f"pool:{pool_key}"
+            allocs_key = f"pool:{pool_key}:allocs"
+            
+            # Clean up expired allocations first
+            self._cleanup_pool_expired_allocations(pool_key)
+            
+            # Get pool state
+            pool_data = client.hgetall(pool_hash_key)
+            current_usage = int(pool_data.get('current', '0'))
+            max_size = int(pool_data.get('max', '0'))
+            
+            # Get all allocations with scores (expiry times)
+            allocations = []
+            alloc_data = client.zrange(allocs_key, 0, -1, withscores=True)
+            
+            for alloc_id, expiry in alloc_data:
+                alloc_key = f"pool:{pool_key}:alloc:{alloc_id}"
+                count = client.get(alloc_key)
+                if count:
+                    allocations.append({
+                        'id': alloc_id,
+                        'count': int(count),
+                        'expiry': expiry,
+                        'ttl': max(0, expiry - time.time())
+                    })
+            
+            return {
+                'current_usage': current_usage,
+                'max_size': max_size,
+                'allocation_count': len(allocations),
+                'allocations': allocations,
+                'mode': 'redis'
+            }
+            
+        except RedisError as e:
+            logger.error(f"Error getting pool info for '{pool_key}': {e}")
+            raise
+    
+    def _cleanup_pool_expired_allocations(self, pool_key: str) -> int:
+        """
+        Clean up expired allocations from a pool (Redis mode).
+        
+        Args:
+            pool_key: The pool identifier
+            
+        Returns:
+            Number of allocations cleaned up
+        """
+        try:
+            client = self._get_client()
+            pool_hash_key = f"pool:{pool_key}"
+            allocs_key = f"pool:{pool_key}:allocs"
+            
+            now = time.time()
+            max_retries = 3
+            
+            logger.debug(f"Starting cleanup for pool '{pool_key}' at time {now}")
+            
+            for retry in range(max_retries):
+                pipe = client.pipeline()
+                
+                # Watch the pool hash
+                pipe.watch(pool_hash_key)
+                
+                # Get expired allocations
+                expired = pipe.zrangebyscore(allocs_key, 0, now)
+                if not expired:
+                    pipe.unwatch()
+                    return 0
+                
+                # Get current usage
+                current_usage = pipe.hget(pool_hash_key, 'current')
+                current_usage = int(current_usage) if current_usage else 0
+                
+                # Calculate total to release
+                total_to_release = 0
+                for expired_id in expired:
+                    alloc_key = f"pool:{pool_key}:alloc:{expired_id}"
+                    count = pipe.get(alloc_key)
+                    if count:
+                        total_to_release += int(count)
+                
+                # Start transaction
+                pipe.multi()
+                
+                # Update pool usage
+                new_usage = max(0, current_usage - total_to_release)
+                if total_to_release > 0:
+                    pipe.hset(pool_hash_key, 'current', str(new_usage))
+                
+                # Remove expired allocations
+                pipe.zrem(allocs_key, *expired)
+                for expired_id in expired:
+                    pipe.delete(f"pool:{pool_key}:alloc:{expired_id}")
+                
+                try:
+                    results = pipe.execute()
+                    if len(expired) > 0:
+                        logger.info(f"Cleaned up {len(expired)} expired allocations "
+                                   f"from pool '{pool_key}', released {total_to_release} resources, "
+                                   f"new usage: {new_usage}")
+                    return len(expired)
+                except redis.WatchError:
+                    logger.warning(f"Watch error on cleanup attempt {retry + 1}, retrying...")
+                    time.sleep(0.01 * retry)  # Small exponential backoff
+                    continue
+            
+            return 0
+            
+        except RedisError as e:
+            logger.error(f"Error cleaning up pool '{pool_key}': {e}")
+            raise
+    
+    def _cleanup_in_memory_pool_expired(self, pool_key: str) -> int:
+        """
+        Clean up expired allocations from an in-memory pool.
+        
+        Args:
+            pool_key: The pool identifier
+            
+        Returns:
+            Number of allocations cleaned up
+        """
+        if pool_key not in self._memory_hashes:
+            return 0
+        
+        now = time.time()
+        expired_allocs = []
+        total_to_release = 0
+        
+        # Find expired allocations
+        for alloc_id, alloc_info in self._memory_hashes[pool_key].items():
+            if alloc_info['expiry'] <= now:
+                expired_allocs.append(alloc_id)
+                total_to_release += alloc_info['count']
+        
+        # Remove expired allocations and update counter
+        for alloc_id in expired_allocs:
+            del self._memory_hashes[pool_key][alloc_id]
+        
+        if total_to_release > 0:
+            self._memory_counters[pool_key] = max(0, self._memory_counters[pool_key] - total_to_release)
+            logger.info(f"Cleaned up {len(expired_allocs)} expired allocations "
+                       f"from in-memory pool '{pool_key}', released {total_to_release} resources")
+        
+        return len(expired_allocs)
+    
+    def reset_pool(self, pool_key: str) -> bool:
+        """
+        Reset a concurrency pool, clearing all allocations.
+        
+        Args:
+            pool_key: The pool identifier
+            
+        Returns:
+            True if pool was reset
+        """
+        if self.use_in_memory:
+            # In-memory implementation
+            with self._memory_lock:
+                if pool_key in self._memory_counters:
+                    self._memory_counters[pool_key] = 0
+                if pool_key in self._memory_hashes:
+                    self._memory_hashes[pool_key] = {}
+                logger.debug(f"Reset in-memory pool '{pool_key}'")
+                return True
+        
+        try:
+            client = self._get_client()
+            
+            # Keys to delete
+            keys_to_delete = [
+                f"pool:{pool_key}",
+                f"pool:{pool_key}:allocs"
+            ]
+            
+            # Get all allocation keys
+            allocs_key = f"pool:{pool_key}:allocs"
+            allocations = client.zrange(allocs_key, 0, -1)
+            for alloc_id in allocations:
+                keys_to_delete.append(f"pool:{pool_key}:alloc:{alloc_id}")
+            
+            # Delete all keys
+            if keys_to_delete:
+                client.delete(*keys_to_delete)
+                logger.debug(f"Reset pool '{pool_key}', deleted {len(keys_to_delete)} keys")
+                return True
+                
+            return False
+            
+        except RedisError as e:
+            logger.error(f"Error resetting pool '{pool_key}': {e}")
+            raise 

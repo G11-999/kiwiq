@@ -1,0 +1,28 @@
+# Scrapeless Profile Manager - Data Directory
+# Exclude cache files and temporary data from version control
+
+# Cache directory and all JSON files within
+data/
+*.json
+*.json.backup
+
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db 
