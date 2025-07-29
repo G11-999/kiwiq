@@ -1,6 +1,6 @@
 import asyncio
 import logging
-import ipdb
+# import ipdb
 from typing import Dict, Any, Optional
 
 from workflow_service.services.scraping.browsers.actors.base_actor import BaseBrowserActor
@@ -72,7 +72,7 @@ class ScrapelessLoggedInBrowserActor(BaseBrowserActor):
             logger.info(f"Live URL: {self.live_url}")
             
             # Pause for manual login - user interaction required
-            ipdb.set_trace()
+            import ipdb; ipdb.set_trace()
             
             logger.info("Continuing after manual login...")
             

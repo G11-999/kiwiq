@@ -1255,22 +1255,6 @@ files = [
 toml = ["tomli ; python_full_version <= \"3.11.0a6\""]
 
 [[package]]
-name = "crochet"
-version = "2.1.1"
-description = "Use Twisted anywhere!"
-optional = false
-python-versions = ">=3.8.0"
-groups = ["main"]
-files = [
-    {file = "crochet-2.1.1-py3-none-any.whl", hash = "sha256:87970cbd1b384a8d3b10152565283d76843d56ea7e087ea3239092a64ffaea0e"},
-    {file = "crochet-2.1.1.tar.gz", hash = "sha256:7ece69de1ce8e63ffc0af8e2331ec4eb898d91ed4271aafa4ccc398523b81cf9"},
-]
-
-[package.dependencies]
-Twisted = ">=16.0"
-wrapt = "*"
-
-[[package]]
 name = "cryptography"
 version = "44.0.2"
 description = "cryptography is a package which provides cryptographic recipes and primitives to Python developers."
@@ -9171,4 +9155,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.14"
-content-hash = "231d89d060184c763544a867f92b6f9019737b2e27f4dd1602ab19c7f0cb795d"
+content-hash = "b0962e748c23334c71c880fdeda64bf197753d9d946b37b9f8c96ee0eddd2020"
