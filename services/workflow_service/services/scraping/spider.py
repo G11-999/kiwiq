@@ -616,7 +616,7 @@ class BaseProcessor:
                 spider.logger.debug(f"URL blocked by robots.txt: {url}")
                 return False
         
-        if url.endswith(tuple(IGNORED_EXTENSIONS)):
+        if url.endswith(tuple(IGNORED_EXTENSIONS)) and (not url.endswith(url_domain)):
             return False
         
         return True
