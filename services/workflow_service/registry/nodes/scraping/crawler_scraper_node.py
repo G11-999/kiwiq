@@ -612,6 +612,8 @@ class CrawlerScraperNode(BaseNode[CrawlerScraperInput, CrawlerScraperOutput, Cra
             self.info(f"Running scraping job {job_id} via spider server")
             
             from workflow_service.services.worker import web_crawler_scraper_flow
+
+            self.info(f"SCRAPER NODE Job config: {json.dumps(job_config, indent=4)}")
             
             result = await web_crawler_scraper_flow(job_config=job_config)
 

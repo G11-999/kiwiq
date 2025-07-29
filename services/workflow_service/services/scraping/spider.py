@@ -1519,6 +1519,7 @@ def run_scraping_job(job_config: Dict[str, Any], use_prefect_logging: bool = Fal
     # Apply Redis configuration
 
     settings.set('start_urls', job_config.get('start_urls', []))
+    logger.info(f"START_URLS: {settings.get('start_urls')}")
     
     settings.set('SCHEDULER', 'services.workflow_service.services.scraping.scrapy_redis_integration.RedisScheduler')
     settings.set('REDIS_URL', job_config.get('redis_url', scraping_settings.REDIS_URL))
@@ -1536,6 +1537,10 @@ def run_scraping_job(job_config: Dict[str, Any], use_prefect_logging: bool = Fal
 
     settings.set('MAX_URLS_PER_DOMAIN', job_config.get('max_urls_per_domain', scraping_settings.DEFAULT_MAX_URLS_PER_DOMAIN))
     settings.set('MAX_PROCESSED_URLS_PER_DOMAIN', job_config.get('max_processed_urls_per_domain', scraping_settings.DEFAULT_MAX_PROCESSED_URLS_PER_DOMAIN))
+    
+    logger.info(f"MAX_URLS_PER_DOMAIN: {settings.get('MAX_URLS_PER_DOMAIN')}")
+    logger.info(f"MAX_PROCESSED_URLS_PER_DOMAIN: {settings.get('MAX_PROCESSED_URLS_PER_DOMAIN')}")
+
     settings.set('MAX_CRAWL_DEPTH', job_config.get('max_crawl_depth', scraping_settings.DEFAULT_MAX_CRAWL_DEPTH))
     concurrent_requests_per_domain = job_config.get('concurrent_requests_per_domain', 10)
     settings.set('CONCURRENT_REQUESTS_PER_DOMAIN', concurrent_requests_per_domain)
