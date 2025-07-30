@@ -36,6 +36,24 @@ Unlike web scraping, AI provider queries **consume API resources** and may incur
 
 **Key Principle**: The default configuration balances comprehensive results with efficient resource usage. Always use caching unless you specifically need fresh data.
 
+### Billing Information
+
+The AI Answer Engine Scraper node uses a **flat-rate billing model**:
+
+- **Cost**: $0.03 per query (3 cents per query)
+- **Same rate for all providers**: Google, OpenAI, and Perplexity all cost the same per query
+- **Cached queries are free**: Only new queries consume credits
+- **Credit allocation**: Credits are allocated before queries execute
+- **Credit adjustment**: After execution, credits are adjusted based on successful queries only
+- **Failed queries don't charge**: You're only charged for successful query results
+
+**Example Cost Calculation**:
+- 10 entities × 5 query templates = 50 queries
+- If 20 queries are served from cache: 30 new queries
+- Cost: 30 × $0.03 = $0.90
+
+**Insufficient Credits**: If you don't have enough credits, the node will fail with an error before executing any queries.
+
 ## Configuration (`AIAnswerEngineScraperConfig`) - Use Defaults
 
 The node comes with carefully tuned default settings. **We strongly recommend using the defaults** unless you have specific requirements. Here's what the configuration controls:

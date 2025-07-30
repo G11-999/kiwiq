@@ -35,6 +35,25 @@ Unlike API-based scraping, web crawling is **resource-intensive** and can impact
 
 **Key Principle**: The default configuration is carefully tuned for respectful, efficient crawling. Avoid changing configuration settings unless you have specific requirements and understand the implications.
 
+### Billing Information
+
+The Crawler Scraper node uses a **flat-rate billing model** based on the number of URLs processed:
+
+- **Cost**: 5 processed URLs per cent ($0.01 per 5 URLs = $0.002 per URL)
+- **Cached results are free**: Only new scraping consumes credits
+- **Credit allocation**: Credits are allocated before scraping based on estimated URLs
+- **Credit adjustment**: After execution, credits are adjusted based on actual URLs processed
+- **Billing based on documents stored**: You're charged based on the actual number of pages successfully scraped and stored
+
+**Example Cost Calculation**:
+- Max processed URLs per domain: 200
+- Number of domains: 2
+- Estimated URLs: 200 × 2 = 400 URLs
+- Estimated cost: 400 × $0.002 = $0.80
+- If only 150 URLs were actually scraped: Final cost = 150 × $0.002 = $0.30
+
+**Insufficient Credits**: If you don't have enough credits, the node will fail with an error before starting the scraping job.
+
 ## Configuration (`CrawlerScraperConfig`) - Use Defaults
 
 The node comes with carefully tuned default settings. **We strongly recommend using the defaults** unless you have specific requirements. Here's what the configuration controls:

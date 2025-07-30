@@ -35,6 +35,13 @@ from workflow_service.registry.schemas.base import BaseNodeConfig, BaseSchema
 from kiwi_app.workflow_app.constants import LaunchStatus
 from workflow_service.config.constants import APPLICATION_CONTEXT_KEY, EXTERNAL_CONTEXT_MANAGER_KEY
 
+# Billing imports
+from kiwi_app.billing.exceptions import InsufficientCreditsException
+
+from kiwi_app.billing.models import CreditType
+
+from db.session import get_async_db_as_manager
+
 # Scraping and customer data imports
 from workflow_service.services.scraping.settings import scraping_settings
 from kiwi_app.workflow_app import schemas as customer_data_schemas
@@ -618,7 +625,6 @@ class AIAnswerEngineScraperNode(BaseNode[AIAnswerEngineScraperInput, AIAnswerEng
             document_data = result
             
             # Store in MongoDB
-            from db.session import get_async_db_as_manager
             
             async with get_async_db_as_manager() as db_session:
                 is_created = await customer_data_service._create_or_update_unversioned_document_no_lock(
@@ -812,6 +818,41 @@ class AIAnswerEngineScraperNode(BaseNode[AIAnswerEngineScraperInput, AIAnswerEng
             "persist_profile": self.config.persist_browser_profile,
         }
         
+        # Billing: Calculate and allocate credits for queries
+        allocated_credits = 0.0
+        if len(all_queries) > 0 and self.billing_mode:
+            try:
+                # Calculate estimated cost: 3 cents per query
+                estimated_cost = len(all_queries) * scraping_settings.AI_ANSWER_ENGINE_PRICE_PER_QUERY
+                
+                # Allocate credits
+                # from kiwi_app.billing.models import CreditType
+                
+                async with get_async_db_as_manager() as db_session:
+                    allocation_result = await ext_context.billing_service.allocate_credits_for_operation(
+                        db=db_session,
+                        org_id=org_id,
+                        user_id=user.id,
+                        credit_type=CreditType.DOLLAR_CREDITS,
+                        estimated_credits=estimated_cost,
+                        operation_id=run_job.run_id,
+                        metadata={
+                            "node_type": "ai_answer_engine_scraper",
+                            "query_count": len(all_queries),
+                            "price_per_query": scraping_settings.AI_ANSWER_ENGINE_PRICE_PER_QUERY,
+                        }
+                    )
+                    allocated_credits = estimated_cost  # allocation_result.allocated_credits
+                
+                self.info(f"💳 Allocated ${allocated_credits:.4f} for {len(all_queries)} queries")
+                
+            except InsufficientCreditsException as e:
+                self.error(f"❌ Insufficient credits: {str(e)}")
+                raise ValueError(f"Insufficient credits to execute {len(all_queries)} queries. Cost: ${estimated_cost:.4f}")
+            except Exception as e:
+                self.warning(f"⚠️ Billing allocation error (proceeding anyway): {str(e)}")
+                # Continue execution even if billing fails in non-critical cases
+        
         # Execute queries only if there are any non-cached queries
         if len(all_queries) > 0:
             try:
@@ -976,6 +1017,39 @@ class AIAnswerEngineScraperNode(BaseNode[AIAnswerEngineScraperInput, AIAnswerEng
                 f"New: 🆕 {entity_data['new_count']}, "
                 f"Categories: 📁 {list(entity_data['categorized_results'].keys())}"
             )
+        
+        # Billing: Adjust allocated credits with actual usage
+        if allocated_credits > 0 and self.billing_mode:
+            try:
+                # Calculate actual cost based on successful queries
+                actual_queries_count = total_successful
+                actual_cost = actual_queries_count * scraping_settings.AI_ANSWER_ENGINE_PRICE_PER_QUERY
+                
+                # Adjust credits
+                # from kiwi_app.billing.models import CreditType
+                
+                async with get_async_db_as_manager() as db_session:
+                    adjustment_result = await ext_context.billing_service.adjust_allocated_credits(
+                        db=db_session,
+                        org_id=org_id,
+                        user_id=user.id,
+                        credit_type=CreditType.DOLLAR_CREDITS,
+                        operation_id=run_job.run_id,
+                        actual_credits=actual_cost,
+                        allocated_credits=allocated_credits,
+                        metadata={
+                            "node_type": "ai_answer_engine_scraper",
+                            "successful_queries": total_successful,
+                            "failed_queries": total_failed,
+                            "cached_queries": total_cached_results,
+                            "price_per_query": scraping_settings.AI_ANSWER_ENGINE_PRICE_PER_QUERY,
+                        }
+                    )
+                
+                self.info(f"💳 Adjusted credits: allocated=${allocated_credits:.4f}, actual=${actual_cost:.4f}")
+                
+            except Exception as e:
+                self.warning(f"⚠️ Failed to adjust allocated credits: {str(e)}")
         
         # Log final completion time
         total_elapsed = (datetime.now() - start_time).total_seconds()

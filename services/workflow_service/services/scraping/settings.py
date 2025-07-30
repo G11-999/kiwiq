@@ -200,6 +200,10 @@ class ScrapingSettings(Settings):
     DEFAULT_SKIP_BODY_FOR_GET: bool = True  # Skip storing body for GET requests
     DEFAULT_COMPRESS_BODY_THRESHOLD: int = 1024  # Compress bodies larger than 1KB
     
+    # Billing configuration
+    AI_ANSWER_ENGINE_PRICE_PER_QUERY: float = 0.03  # 3 cents per query (any provider)
+    CRAWLER_SCRAPER_PRICE_PER_URL: float = 0.002  # 1 cent / 5 URLs = 0.2 cents per URL
+    
     @classmethod
     def get_queue_key(cls, spider_name: str, job_id: Optional[str] = None, 
                       strategy: str = 'spider') -> str:

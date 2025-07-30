@@ -35,6 +35,13 @@ from workflow_service.registry.schemas.base import BaseNodeConfig, BaseSchema
 from kiwi_app.workflow_app.constants import LaunchStatus
 from workflow_service.config.constants import APPLICATION_CONTEXT_KEY, EXTERNAL_CONTEXT_MANAGER_KEY
 
+# Billing imports
+from kiwi_app.billing.exceptions import InsufficientCreditsException
+
+from kiwi_app.billing.models import CreditType
+
+from db.session import get_async_db_as_manager
+
 # Scraping and customer data imports
 from workflow_service.services.scraping.settings import scraping_settings
 from kiwi_app.workflow_app import schemas as customer_data_schemas
@@ -606,6 +613,50 @@ class CrawlerScraperNode(BaseNode[CrawlerScraperInput, CrawlerScraperOutput, Cra
         if input_data.allowed_domains:
             job_config['allowed_domains'] = input_data.allowed_domains
         
+        # Billing: Calculate and allocate credits for crawling
+        allocated_credits = 0.0
+        estimated_urls = input_data.max_processed_urls_per_domain
+        if input_data.allowed_domains:
+            estimated_urls *= len(input_data.allowed_domains)
+        else:
+            # If no allowed domains, estimate based on start URLs
+            estimated_urls *= len(input_data.start_urls)
+        
+        if self.billing_mode:
+            try:
+                # Calculate estimated cost: 0.2 cents per URL (5 URLs per cent)
+                estimated_cost = estimated_urls * scraping_settings.CRAWLER_SCRAPER_PRICE_PER_URL
+                
+                # Allocate credits
+                # from kiwi_app.billing.models import CreditType
+                
+                async with get_async_db_as_manager() as db_session:
+                    allocation_result = await ext_context.billing_service.allocate_credits_for_operation(
+                        db=db_session,
+                        org_id=org_id,
+                        user_id=user.id,
+                        credit_type=CreditType.DOLLAR_CREDITS,
+                        estimated_credits=estimated_cost,
+                        operation_id=run_job.run_id,
+                        metadata={
+                            "node_type": "crawler_scraper",
+                            "estimated_urls": estimated_urls,
+                            "price_per_url": scraping_settings.CRAWLER_SCRAPER_PRICE_PER_URL,
+                            # "start_urls": input_data.start_urls,
+                            # "allowed_domains": input_data.allowed_domains,
+                        }
+                    )
+                    allocated_credits = estimated_cost  # allocation_result.allocated_credits
+                
+                self.info(f"💳 Allocated ${allocated_credits:.4f} for estimated {estimated_urls} URLs")
+                
+            except InsufficientCreditsException as e:
+                self.error(f"❌ Insufficient credits: {str(e)}")
+                raise ValueError(f"Insufficient credits to execute crawling job. Estimated cost: ${estimated_cost:.4f} for {estimated_urls} URLs")
+            except Exception as e:
+                self.warning(f"⚠️ Billing allocation error (proceeding anyway): {str(e)}")
+                # Continue execution even if billing fails in non-critical cases
+        
         try:
             
             # Run scraping job via spider server client - async approach
@@ -633,6 +684,39 @@ class CrawlerScraperNode(BaseNode[CrawlerScraperInput, CrawlerScraperOutput, Cra
                     is_shared=input_data.is_shared,
                 )
                 scraped_sample.extend(results)
+            
+            # Billing: Adjust allocated credits with actual usage
+            if allocated_credits > 0 and self.billing_mode:
+                try:
+                    # Calculate actual cost based on documents stored
+                    actual_urls_count = documents_stored
+                    actual_cost = actual_urls_count * scraping_settings.CRAWLER_SCRAPER_PRICE_PER_URL
+                    
+                    # Adjust credits
+                    # from kiwi_app.billing.models import CreditType
+                    
+                    async with get_async_db_as_manager() as db_session:
+                        adjustment_result = await ext_context.billing_service.adjust_allocated_credits(
+                            db=db_session,
+                            org_id=org_id,
+                            user_id=user.id,
+                            credit_type=CreditType.DOLLAR_CREDITS,
+                            operation_id=run_job.run_id,
+                            actual_credits=actual_cost,
+                            allocated_credits=allocated_credits,
+                            metadata={
+                                "node_type": "crawler_scraper",
+                                "actual_urls": actual_urls_count,
+                                "estimated_urls": estimated_urls,
+                                "price_per_url": scraping_settings.CRAWLER_SCRAPER_PRICE_PER_URL,
+                                # "namespaces": list(namespaces.keys()),
+                            }
+                        )
+                    
+                    self.info(f"💳 Adjusted credits: allocated=${allocated_credits:.4f}, actual=${actual_cost:.4f} for {actual_urls_count} URLs")
+                    
+                except Exception as e:
+                    self.warning(f"⚠️ Failed to adjust allocated credits: {str(e)}")
             
             return CrawlerScraperOutput(
                 job_id=result['job_id'],
