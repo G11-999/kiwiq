@@ -82,7 +82,7 @@ class Settings(BaseSettings):
     WEAVIATE_API_KEY: Optional[str] = None
     CACHE_TTL: int = 3600  # seconds
 
-    SCRAPING_SERVER_URL: Optional[str] = None
+    SCRAPING_SERVER_URL: Optional[str] = "http://prefect-agent:6969"
     
     # Worker pool settings
     WORKER_POOL_SIZE: int = 4
