@@ -49,6 +49,9 @@ WORKDIR /app
 
 RUN python -m spacy download en_core_web_sm
 
+# Run Redis pool cleanup script
+RUN python services/workflow_service/services/scraping/browsers/scripts/cleanup_redis_pool.py
+
 # Default command: run both processes directly with bash
 # This starts both the workflow worker and the spider server with gunicorn
 # For testing, override the command with: PYTHONPATH=$(pwd):$(pwd)/services poetry run pytest

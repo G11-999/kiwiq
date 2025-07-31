@@ -279,6 +279,11 @@ class ScrapelessBrowserPool:
     - Checks browser TTL expiration during acquisition
     - Force close problematic browsers regardless of keep-alive settings
     - Force cleanup Redis pool for recovery from corrupted state
+    
+    Resource Management:
+    - When keep-alive is enabled: Browsers retain Redis allocations when returned to pool
+      (ensures accurate tracking of Scrapeless resource usage)
+    - When keep-alive is disabled: Browsers are closed and Redis allocations are released
     """
     
     def __init__(
@@ -340,7 +345,11 @@ class ScrapelessBrowserPool:
             self._profile_manager_owned = False
         
         # In-memory browser pool
-        self._available_browsers: List[Dict] = []  # Available browsers ready for use
+        # Resource Management Strategy:
+        # - When keep-alive is ON: Browsers in _available_browsers KEEP their Redis allocations
+        # - When keep-alive is OFF: Browsers are closed and Redis allocations are released
+        # This ensures accurate tracking of actual resource usage on the Scrapeless side
+        self._available_browsers: List[Dict] = []  # Available browsers ready for use (may have Redis allocations)
         self._active_browsers: Dict[str, Dict] = {}  # Currently active browsers by session_id
         self._browser_metadata: Dict[str, Dict] = {}  # Metadata for tracking browsers
         
@@ -381,6 +390,26 @@ class ScrapelessBrowserPool:
         except Exception as e:
             self.logger.error(f"Error force cleaning up Redis pool {self.pool_key}: {e}")
             return False
+    
+    async def cleanup_stale_allocations(self) -> int:
+        """
+        Clean up stale Redis allocations that may have been orphaned.
+        This is a maintenance method that can be called periodically.
+        
+        Returns:
+            Number of allocations cleaned up
+        """
+        try:
+            # Force cleanup of expired allocations
+            cleaned = await self.redis_client._cleanup_pool_expired_allocations(self.pool_key)
+            
+            if cleaned > 0:
+                self.logger.info(f"Cleaned up {cleaned} stale Redis allocations from pool")
+            
+            return cleaned
+        except Exception as e:
+            self.logger.error(f"Error cleaning up stale allocations: {e}", exc_info=True)
+            return 0
     
     async def _acquire_redis_resource(self) -> Optional[str]:
         """
@@ -618,9 +647,20 @@ class ScrapelessBrowserPool:
                     browser_data = self._available_browsers.pop()
                     browser_data['last_used'] = datetime.now()
                     browser_data['use_count'] += 1
-                    self._active_browsers[browser_data['session_id']] = browser_data
+                    
+                    # Browsers in available pool already have Redis allocations if keep-alive is enabled
+                    # Just move directly to active
+                    session_id = browser_data['session_id']
+                    self._active_browsers[session_id] = browser_data
                     self._local_active_count += 1
-                    self.logger.info(f"♻️ Reused browser from pool: {browser_data['session_id']}")
+                    
+                    allocation_id = browser_data.get('redis_allocation_id')
+                    if allocation_id:
+                        self.logger.info(f"♻️ Reused browser from pool with existing allocation: {session_id}")
+                    else:
+                        # This shouldn't happen with keep-alive, but log it
+                        self.logger.warning(f"♻️ Reused browser from pool without allocation (keep-alive may be off): {session_id}")
+                    
                     return browser_data
                 
                 # Check local concurrency limit before attempting to create new browser
@@ -705,10 +745,14 @@ class ScrapelessBrowserPool:
             if (self._keep_alive_on_release and 
                 self._pool_active and 
                 not is_expired):
-                # Add back to available pool
+                # IMPORTANT: Do NOT release Redis allocation when keeping browser alive
+                # The browser is still running and consuming resources on Scrapeless side
+                # We must maintain the Redis allocation to accurately track resource usage
+                
+                # Add back to available pool with allocation intact
                 browser_data['last_used'] = datetime.now()
                 self._available_browsers.append(browser_data)
-                self.logger.debug(f"Browser returned to pool: {session_id}")
+                self.logger.debug(f"Browser returned to pool (kept alive with Redis allocation): {session_id}")
                 return True
             else:
                 # Close the browser and release all resources
@@ -827,15 +871,17 @@ class ScrapelessBrowserPool:
             total_redis_resources_released = 0
             
             # Close all available browsers
+            # Note: Available browsers may have Redis allocations if keep-alive is enabled
             for browser_data in self._available_browsers[:]:
                 session_id = browser_data.get('session_id', 'unknown')
                 allocation_id = browser_data.get('redis_allocation_id')
                 
-                # Always try to release Redis resource first
+                # Release Redis resource (available browsers have allocations when keep-alive is on)
                 if allocation_id:
                     try:
                         await self._release_redis_resource(allocation_id)
                         total_redis_resources_released += 1
+                        self.logger.debug(f"Released Redis allocation for available browser {session_id}")
                     except Exception as e:
                         self.logger.error(f"Failed to release Redis resource for {session_id}: {e}")
                 
@@ -937,7 +983,8 @@ class ScrapelessBrowserPool:
                 'use_profiles': self.use_profiles,
                 'persist_profile': self.persist_profile,
                 'redis_pool_info': redis_pool_info,
-                'profile_stats': profile_stats
+                'profile_stats': profile_stats,
+                'available_browsers_with_allocations': sum(1 for b in self._available_browsers if b.get('redis_allocation_id'))
             }
     
     async def __aenter__(self) -> "ScrapelessBrowserPool":
@@ -1019,6 +1066,16 @@ async def cleanup_scrapeless_redis_pool(redis_url: Optional[str] = None) -> bool
         pool_key = scraping_settings.SCRAPELESS_BROWSERS_POOL_KEY
         
         logger.warning(f"Force cleaning up Scrapeless Redis pool: {pool_key}")
+        
+        # First try to clean up expired allocations
+        try:
+            cleaned = await redis_client._cleanup_pool_expired_allocations(pool_key)
+            if cleaned > 0:
+                logger.info(f"Cleaned up {cleaned} expired allocations before reset")
+        except Exception as e:
+            logger.warning(f"Error cleaning expired allocations: {e}")
+        
+        # Then reset the entire pool
         success = await redis_client.reset_pool(pool_key)
         
         if success:

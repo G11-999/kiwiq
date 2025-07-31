@@ -58,6 +58,18 @@ The AI Answer Engine Scraper node uses a **flat-rate billing model**:
 - A query is only skipped if cached results exist for ALL enabled providers
 - If you have cached results from Google but not OpenAI, the query will still be executed for all providers
 - To maximize cache usage, keep your provider configuration consistent between runs
+- **Important**: Cached results are filtered to only show results from currently enabled providers
+- If you disable a provider, its cached results won't be returned even if they exist in the database
+- **Deduplication**: If the same query was executed multiple times (e.g., on different days), only the most recent result for each (query, provider) combination is returned
+
+**Understanding Result Counts**:
+- **Unique queries**: The number of distinct queries (e.g., 3 queries from your templates)
+- **Total results**: The total number of query-provider combinations (e.g., 3 queries × 2 providers = 6 results)
+- **Cached results**: Only includes results from currently enabled providers
+- Example: If you had 3 queries cached for 3 providers (9 results) but now only enable Google:
+  - You'll see only 3 cached Google results (not all 9)
+  - Results from disabled providers (OpenAI, Perplexity) are filtered out
+  - The system returns a "completed_from_cache" status if all queries for enabled providers are cached
 
 **Insufficient Credits**: If you don't have enough credits, the node will fail with an error before executing any queries.
 

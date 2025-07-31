@@ -50,6 +50,20 @@ async def main():
             logger.info(f"  - Max size: {pool_info.get('max_size', 'N/A')}")
             logger.info(f"  - Active allocations: {pool_info.get('active_allocations', 'N/A')}")
             logger.info(f"  - Available: {pool_info.get('available', 'N/A')}")
+            logger.info(f"  - Expired allocations cleaned: {pool_info.get('cleaned_expired', 'N/A')}")
+            
+            # Show allocation details with TTL
+            allocations = pool_info.get('allocations', [])
+            if allocations:
+                logger.info(f"\n📋 Active allocations (showing TTL):")
+                for alloc in allocations:
+                    ttl = alloc.get('expires_in', 0)
+                    if ttl < 0:
+                        logger.info(f"    - ID: {alloc['id'][:8]}... | Count: {alloc['count']} | EXPIRED {abs(ttl)}s ago")
+                    else:
+                        logger.info(f"    - ID: {alloc['id'][:8]}... | Count: {alloc['count']} | TTL: {ttl}s")
+            else:
+                logger.info(f"  - No active allocations found")
         except Exception as e:
             logger.warning(f"Could not get pool info: {e}")
         
@@ -69,6 +83,20 @@ async def main():
                 logger.info(f"  - Max size: {pool_info.get('max_size', 'N/A')}")
                 logger.info(f"  - Active allocations: {pool_info.get('active_allocations', 'N/A')}")
                 logger.info(f"  - Available: {pool_info.get('available', 'N/A')}")
+                logger.info(f"  - Expired allocations cleaned: {pool_info.get('cleaned_expired', 'N/A')}")
+                
+                # Show remaining allocations with TTL
+                allocations = pool_info.get('allocations', [])
+                if allocations:
+                    logger.info(f"\n📋 Remaining allocations after cleanup:")
+                    for alloc in allocations:
+                        ttl = alloc.get('expires_in', 0)
+                        if ttl < 0:
+                            logger.warning(f"    - ID: {alloc['id'][:8]}... | Count: {alloc['count']} | STILL EXPIRED {abs(ttl)}s ago")
+                        else:
+                            logger.info(f"    - ID: {alloc['id'][:8]}... | Count: {alloc['count']} | TTL: {ttl}s")
+                else:
+                    logger.info(f"  - No active allocations remaining (pool is clean)")
             except Exception as e:
                 logger.info(f"Pool has been reset (no data found, which is expected)")
         else:

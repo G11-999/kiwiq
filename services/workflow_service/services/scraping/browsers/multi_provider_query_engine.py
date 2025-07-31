@@ -50,6 +50,7 @@ class MultiProviderQueryEngine:
         self,
         queries: List[str],
         providers_config: Optional[Dict[str, ProviderConfig]] = None,
+        query_provider_mapping: Optional[Dict[str, List[str]]] = None,
         max_concurrent_browsers: int = 3,
         browser_pool_config: Optional[Dict] = None,
         output_file: Optional[str] = None,
@@ -61,6 +62,9 @@ class MultiProviderQueryEngine:
         Args:
             queries: List of query strings to execute
             providers_config: Configuration for each provider (openai, google, perplexity)
+            query_provider_mapping: Optional mapping of query -> list of providers to use.
+                                   If not provided, all enabled providers will be used for all queries.
+                                   Example: {"What is AI?": ["openai", "google"], "Tell me about ML": ["perplexity"]}
             max_concurrent_browsers: Maximum concurrent browsers in the pool
             browser_pool_config: Additional browser pool configuration
             output_file: JSON output file name (defaults to timestamped file)
@@ -76,6 +80,9 @@ class MultiProviderQueryEngine:
             "google": default_config, 
             "perplexity": default_config
         }
+        
+        # Query-specific provider mapping
+        self.query_provider_mapping = query_provider_mapping or {}
         
         # Browser pool configuration
         self.max_concurrent_browsers = max_concurrent_browsers
@@ -103,9 +110,24 @@ class MultiProviderQueryEngine:
             "perplexity": PerplexityBrowserActor,
         }
         
+        # Calculate total tasks based on query-provider mapping
+        total_tasks = 0
+        for query in queries:
+            if query in self.query_provider_mapping:
+                # Use specific providers for this query
+                providers_for_query = [p for p in self.query_provider_mapping[query] 
+                                     if p in self.providers_config and self.providers_config[p].enabled]
+                total_tasks += len(providers_for_query)
+            else:
+                # Use all enabled providers
+                total_tasks += len([p for p, cfg in self.providers_config.items() if cfg.enabled])
+        
         self.logger.info(f"MultiProviderQueryEngine initialized:")
         self.logger.info(f"  📋 Queries: {len(queries)}")
         self.logger.info(f"  🌐 Enabled providers: {[p for p, cfg in self.providers_config.items() if cfg.enabled]}")
+        if self.query_provider_mapping:
+            self.logger.info(f"  🎯 Query-specific provider mapping: {len(self.query_provider_mapping)} custom mappings")
+        self.logger.info(f"  📊 Total tasks: {total_tasks}")
         self.logger.info(f"  🔄 Max concurrent browsers: {max_concurrent_browsers}")
         self.logger.info(f"  💾 Output file: {self.output_file}")
     
@@ -137,7 +159,18 @@ class MultiProviderQueryEngine:
         
         # Get enabled providers for parallel processing and optimization calculation
         enabled_providers = [(name, config) for name, config in self.providers_config.items() if config.enabled]
-        total_queries_to_execute = len(self.queries) * len(enabled_providers)
+        
+        # Calculate total queries based on query-provider mapping
+        total_queries_to_execute = 0
+        for query in self.queries:
+            if query in self.query_provider_mapping:
+                # Count only enabled providers for this query
+                providers_for_query = [p for p in self.query_provider_mapping[query] 
+                                     if p in self.providers_config and self.providers_config[p].enabled]
+                total_queries_to_execute += len(providers_for_query)
+            else:
+                # Use all enabled providers
+                total_queries_to_execute += len(enabled_providers)
         
         # Optimization: disable keep-alive if we have enough browsers for all queries
         # This saves resources by not keeping browsers alive unnecessarily
@@ -167,19 +200,37 @@ class MultiProviderQueryEngine:
                 self.logger.warning("⚠️ No providers enabled! Nothing to process.")
                 return all_results
             
-            total_tasks = len(self.queries) * len(enabled_providers)
-            self.logger.info(f"🚀 Processing {len(self.queries)} queries across {len(enabled_providers)} providers "
-                       f"({total_tasks} total tasks) in FULL PARALLEL mode")
+            # Calculate actual total tasks based on query-provider mapping
+            total_tasks = 0
+            query_provider_details = []
+            
+            for i, query in enumerate(self.queries):
+                if query in self.query_provider_mapping:
+                    # Use specific providers for this query
+                    providers_for_query = [
+                        (name, self.providers_config[name]) 
+                        for name in self.query_provider_mapping[query]
+                        if name in self.providers_config and self.providers_config[name].enabled
+                    ]
+                    query_provider_details.append((query, i, providers_for_query))
+                    total_tasks += len(providers_for_query)
+                else:
+                    # Use all enabled providers
+                    query_provider_details.append((query, i, enabled_providers))
+                    total_tasks += len(enabled_providers)
+            
+            self.logger.info(f"🚀 Processing {len(self.queries)} queries with custom provider mappings")
+            self.logger.info(f"📊 Total tasks: {total_tasks} (varies by query)")
             self.logger.info(f"🔄 Browser pool capacity: {browser_pool.effective_max_concurrent} concurrent browsers")
             
-            # Create tasks for ALL queries across ALL providers simultaneously
+            # Create tasks based on query-provider mapping
             all_tasks = []
             task_metadata = []
             
-            for provider_name, provider_config in enabled_providers:
-                actor_class = self.provider_actors[provider_name]
-                
-                for i, query in enumerate(self.queries):
+            for query, query_index, providers_for_query in query_provider_details:
+                for provider_name, provider_config in providers_for_query:
+                    actor_class = self.provider_actors[provider_name]
+                    
                     task = asyncio.create_task(
                         self._execute_single_query_with_retry(
                             actor_class=actor_class,
@@ -187,14 +238,14 @@ class MultiProviderQueryEngine:
                             provider_name=provider_name,
                             provider_config=provider_config,
                             browser_pool=browser_pool,
-                            query_index=i
+                            query_index=query_index
                         ),
-                        name=f"{provider_name}_query_{i}"
+                        name=f"{provider_name}_query_{query_index}"
                     )
                     all_tasks.append(task)
                     task_metadata.append({
                         "provider": provider_name,
-                        "query_index": i,
+                        "query_index": query_index,
                         "query": query
                     })
             
@@ -241,21 +292,24 @@ class MultiProviderQueryEngine:
                 for provider_name in all_results["results"]:
                     provider_results = all_results["results"][provider_name]
                     
+                    # Calculate how many queries were actually sent to this provider
+                    actual_queries_for_provider = len(provider_results)
+                    
                     successful_queries = sum(1 for r in provider_results if r.get("success", False))
                     total_duration = sum(r.get("duration_seconds", 0) for r in provider_results)
                     avg_duration = total_duration / len(provider_results) if provider_results else 0
                     
                     all_results["statistics"][provider_name] = {
-                        "total_queries": len(self.queries),
+                        "total_queries": actual_queries_for_provider,
                         "successful_queries": successful_queries,
-                        "failed_queries": len(self.queries) - successful_queries,
-                        "success_rate": successful_queries / len(self.queries) if self.queries else 0,
+                        "failed_queries": actual_queries_for_provider - successful_queries,
+                        "success_rate": successful_queries / actual_queries_for_provider if actual_queries_for_provider else 0,
                         "total_duration_seconds": total_duration,
                         "average_duration_seconds": avg_duration
                     }
                     
-                    self.logger.info(f"✅ {provider_name.upper()}: {successful_queries}/{len(self.queries)} queries "
-                              f"({successful_queries/len(self.queries)*100:.1f}%) in {total_duration:.1f}s "
+                    self.logger.info(f"✅ {provider_name.upper()}: {successful_queries}/{actual_queries_for_provider} queries "
+                              f"({successful_queries/actual_queries_for_provider*100:.1f}%) in {total_duration:.1f}s "
                               f"(avg: {avg_duration:.1f}s/query)")
                 
             except Exception as e:

@@ -207,6 +207,10 @@ class AsyncRedisClient:
         """
         try:
             client = await self.get_client()
+            
+            # ALWAYS clean up expired allocations first, regardless of whether we're acquiring
+            await self._cleanup_pool_expired_allocations(pool_key)
+            
             max_retries = 10  # Increased for better race condition handling
             
             for retry in range(max_retries):
@@ -233,7 +237,7 @@ class AsyncRedisClient:
                         # Use the stored max if it exists, otherwise use provided max
                         effective_max = stored_max if pool_data else max_pool_size
                         
-                        # Get expired allocations
+                        # Double-check for any newly expired allocations since our cleanup
                         expired = await pipe.zrangebyscore(allocs_key, 0, now)
                         
                         # Calculate expired count if any
@@ -245,11 +249,25 @@ class AsyncRedisClient:
                                 if expired_val:
                                     expired_count += int(expired_val)
                         
-                        # Calculate actual current usage after accounting for expired
+                        # Calculate actual current usage after accounting for any newly expired
                         actual_usage = max(0, current_usage - expired_count)
                         
                         # Check if we can acquire
                         if actual_usage + count > effective_max:
+                            # Even if we can't acquire, clean up any newly expired allocations
+                            if expired:
+                                pipe.multi()
+                                # Update pool state
+                                await pipe.hset(pool_hash_key, 'current', str(actual_usage))
+                                # Clean up expired
+                                await pipe.zrem(allocs_key, *expired)
+                                for expired_id in expired:
+                                    await pipe.delete(f"pool:{pool_key}:alloc:{expired_id}")
+                                try:
+                                    await pipe.execute()
+                                except WatchError:
+                                    pass  # Someone else cleaned up, that's fine
+                            
                             await pipe.unwatch()
                             return None, actual_usage, False
                         
@@ -263,13 +281,15 @@ class AsyncRedisClient:
                             'max': str(effective_max)
                         })
                         
-                        # Store allocation (don't set TTL on the key itself, we track expiry in the sorted set)
+                        # Store allocation with proper expiry tracking
                         await pipe.set(alloc_key, str(count))
                         await pipe.zadd(allocs_key, {allocation_id: expiry})
-                        # Set a longer TTL as a safety measure (2x the allocation TTL)
-                        await pipe.expire(alloc_key, ttl * 2)
+                        # Set TTL on the allocation key as a safety net
+                        # Use max of (ttl + 60) or 120 seconds to prevent very long TTLs
+                        safety_ttl = min(ttl + 60, max(ttl, 120))
+                        await pipe.expire(alloc_key, safety_ttl)
                         
-                        # Clean up expired allocations
+                        # Clean up any newly expired allocations
                         if expired:
                             await pipe.zrem(allocs_key, *expired)
                             for expired_id in expired:
@@ -286,7 +306,7 @@ class AsyncRedisClient:
                         await asyncio.sleep(0.01 * retry)  # Small backoff
                         continue
             
-            # Max retries exceeded
+            # Max retries exceeded - get current usage after cleanup
             current_usage = await self.get_pool_usage(pool_key)
             return None, current_usage, False
             

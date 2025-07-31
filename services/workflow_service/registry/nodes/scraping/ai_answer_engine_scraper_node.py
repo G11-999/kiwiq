@@ -22,7 +22,8 @@ import asyncio
 import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional, Union, ClassVar, Type
+from typing import List, Dict, Any, Optional, Union, ClassVar, Type, Tuple, Set
+from dataclasses import dataclass
 from urllib.parse import urlparse
 
 from kiwi_app.workflow_app.schemas import WorkflowRunJobCreate
@@ -60,6 +61,453 @@ logger = get_prefect_or_regular_python_logger(
     name="workflow_service.registry.nodes.scraping.ai_answer_engine_scraper_node",
     return_non_prefect_logger=False
 )
+
+
+# ============================================================================
+# Helper Classes for Modular Design
+# ============================================================================
+
+@dataclass
+class CacheResult:
+    """Results from cache checking operation."""
+    found: bool = False
+    results: List[Dict[str, Any]] = None
+    categorized_results: Dict[str, List[Dict[str, Any]]] = None
+    namespace: Optional[str] = None
+    cached_count: int = 0
+    remaining_queries: Dict[str, List[str]] = None
+    found_query_providers: Set[Tuple[str, str]] = None
+    
+    def __post_init__(self):
+        if self.results is None:
+            self.results = []
+        if self.categorized_results is None:
+            self.categorized_results = {}
+        if self.remaining_queries is None:
+            self.remaining_queries = {}
+        if self.found_query_providers is None:
+            self.found_query_providers = set()
+
+
+class QueryBuilder:
+    """Handles query construction and naming operations."""
+    
+    @staticmethod
+    def construct_queries(
+        template_vars: Dict[str, str], 
+        query_templates: Dict[str, List[str]]
+    ) -> Dict[str, List[str]]:
+        """
+        Construct actual queries from templates by substituting variables.
+        
+        Args:
+            template_vars: Dictionary of variables to substitute
+            query_templates: Categorized query templates
+            
+        Returns:
+            Dictionary of category -> list of constructed queries
+        """
+        categorized_queries = {}
+        
+        for category, category_templates in query_templates.items():
+            queries = []
+            for template in category_templates:
+                query = template
+                # Replace all variables found in the template
+                for var_name, var_value in template_vars.items():
+                    var_placeholder = f"{{{var_name}}}"
+                    if var_placeholder in query:
+                        query = query.replace(var_placeholder, var_value)
+                
+                queries.append(query)
+            
+            # Remove duplicates while preserving order within category
+            seen = set()
+            unique_queries = []
+            for query in queries:
+                if query not in seen:
+                    seen.add(query)
+                    unique_queries.append(query)
+            
+            if unique_queries:  # Only add category if it has queries
+                categorized_queries[category] = unique_queries
+                
+        return categorized_queries
+    
+    @staticmethod
+    def generate_namespace(entity_name: str, date_str: str) -> str:
+        """Generate namespace for the AI query results."""
+        # Clean entity name for use in namespace
+        clean_entity = entity_name.lower().replace(' ', '_').replace('-', '_')
+        # Remove any non-alphanumeric characters except underscore
+        clean_entity = ''.join(c for c in clean_entity if c.isalnum() or c == '_')
+        
+        namespace = f"scraping_ai_answers_results_{clean_entity}_{date_str}"
+        return namespace
+    
+    @staticmethod
+    def generate_docname(query: str, provider: str, model: str = "default") -> str:
+        """Generate document name for the query result."""
+        # Generate deterministic UUID from query
+        query_uuid = uuid.uuid5(uuid.NAMESPACE_DNS, query)
+        docname = f"scraped_query_result_{query_uuid}_{provider}_{model}"
+        return docname
+
+
+class CacheManager:
+    """Manages cache checking and deduplication operations."""
+    
+    def __init__(self, customer_data_service: CustomerDataService):
+        self.customer_data_service = customer_data_service
+        self.logger = logger
+    
+    async def check_cache(
+        self,
+        categorized_queries: Dict[str, List[str]],
+        entity_name: str,
+        enable_cache: bool,
+        lookback_days: int,
+        enabled_providers: List[str]
+    ) -> CacheResult:
+        """
+        Check MongoDB for cached query results within the lookback period.
+        
+        Returns CacheResult with found results and remaining queries to execute.
+        """
+        result = CacheResult()
+        
+        if not enable_cache:
+            result.remaining_queries = categorized_queries.copy()
+            return result
+        
+        # Debug logging
+        total_queries = sum(len(queries) for queries in categorized_queries.values())
+        self.logger.debug(f"🔍 Checking cache for {total_queries} queries for entity '{entity_name}', " +
+                         f"enabled providers: {enabled_providers}, lookback: {lookback_days} days")
+        
+        try:
+            # Phase 1: Broad search
+            phase1_results = await self._phase1_broad_search(
+                entity_name, lookback_days, enabled_providers
+            )
+            
+            # Process Phase 1 results - only include queries that match current configuration
+            filtered_out_count = 0
+            for (query, provider), doc in phase1_results.items():
+                # Check if this query is part of current configuration
+                query_in_current_config = False
+                query_category = None
+                
+                for category, queries in categorized_queries.items():
+                    if query in queries:
+                        query_in_current_config = True
+                        query_category = category
+                        break
+                
+                # Only process if query is in current configuration
+                if query_in_current_config:
+                    result.found_query_providers.add((query, provider))
+                    
+                    # Categorize result
+                    if query_category not in result.categorized_results:
+                        result.categorized_results[query_category] = []
+                    result.categorized_results[query_category].append(doc.document_contents)
+                    
+                    result.results.append(doc.document_contents)
+                    if not result.namespace:
+                        result.namespace = doc.metadata.namespace
+                else:
+                    filtered_out_count += 1
+                    self.logger.debug(f"  - Filtered out cached result not in current config: query='{query[:40]}...', provider={provider}")
+            
+            result.cached_count = len(result.results)  # Count only results matching current config
+            result.found = result.cached_count > 0
+            
+            if filtered_out_count > 0:
+                self.logger.info(f"🔍 Filtered out {filtered_out_count} cached results that don't match current query configuration")
+            
+            # Determine remaining queries
+            found_queries = {qp[0] for qp in result.found_query_providers}
+            for category, queries in categorized_queries.items():
+                remaining = [q for q in queries if q not in found_queries]
+                if remaining:
+                    result.remaining_queries[category] = remaining
+            
+            # Phase 2: Exact search for remaining queries
+            if result.remaining_queries:
+                phase2_count = await self._phase2_exact_search(
+                    result, entity_name, lookback_days, enabled_providers
+                )
+                result.cached_count += phase2_count
+            
+            # Final logging
+            self.logger.debug(f"📊 Cache check complete: total_cached={result.cached_count}, " +
+                            f"unique_query_providers={len(result.found_query_providers)}")
+            
+        except Exception as e:
+            self.logger.error(f"⚠️ Error checking for cached results: {e}", exc_info=True)
+            result.remaining_queries = categorized_queries.copy()
+        
+        return result
+    
+    async def _phase1_broad_search(
+        self,
+        entity_name: str,
+        lookback_days: int,
+        enabled_providers: List[str]
+    ) -> Dict[Tuple[str, str], Any]:
+        """
+        Phase 1: Broad search for all documents with namespace prefix.
+        Returns deduplicated results as {(query, provider): document}.
+        """
+        # Clean entity name
+        clean_entity = entity_name.lower().replace(' ', '_').replace('-', '_')
+        clean_entity = ''.join(c for c in clean_entity if c.isalnum() or c == '_')
+        
+        namespace_prefix = f"scraping_ai_answers_results_{clean_entity}_"
+        cutoff_date = datetime.now() - timedelta(days=lookback_days)
+        
+        # Search for documents
+        search_results = await self.customer_data_service.system_search_documents(
+            namespace_pattern=f"{namespace_prefix}*",
+            docname_pattern="*",
+            skip=0,
+            limit=1000,
+            sort_by=customer_data_schemas.CustomerDataSortBy.CREATED_AT,
+            sort_order=customer_data_schemas.SortOrder.DESC
+        )
+        
+        self.logger.debug(f"🔍 Phase 1 search found {len(search_results) if search_results else 0} total documents")
+        
+        # Deduplicate and filter results
+        query_provider_results = {}
+        processed_count = 0
+        skipped_disabled = 0
+        skipped_old = 0
+        
+        if search_results:
+            for doc in search_results:
+                namespace = doc.metadata.namespace
+                if namespace.startswith(namespace_prefix):
+                    date_str = namespace.split("_")[-1]
+                    if len(date_str) == 8 and date_str.isdigit():
+                        try:
+                            namespace_date = datetime.strptime(date_str, '%Y%m%d')
+                            if namespace_date >= cutoff_date:
+                                if (doc.document_contents and 
+                                    'query' in doc.document_contents and 
+                                    doc.document_contents.get('success', False)):
+                                    
+                                    query = doc.document_contents['query']
+                                    provider = doc.document_contents.get('provider', 'unknown')
+                                    processed_count += 1
+                                    
+                                    # Filter by enabled providers
+                                    if enabled_providers and provider not in enabled_providers:
+                                        skipped_disabled += 1
+                                        continue
+                                    
+                                    key = (query, provider)
+                                    # Keep only most recent for each (query, provider)
+                                    if (key not in query_provider_results or 
+                                        namespace_date > query_provider_results[key][1]):
+                                        query_provider_results[key] = (doc, namespace_date)
+                            else:
+                                skipped_old += 1
+                        except ValueError:
+                            pass
+        
+        self.logger.debug(f"📊 Phase 1 statistics: processed={processed_count}, " +
+                         f"skipped_disabled={skipped_disabled}, skipped_old={skipped_old}, " +
+                         f"unique_results={len(query_provider_results)}")
+        
+        # Return only the documents (without dates)
+        return {k: v[0] for k, v in query_provider_results.items()}
+    
+    async def _phase2_exact_search(
+        self,
+        result: CacheResult,
+        entity_name: str,
+        lookback_days: int,
+        enabled_providers: List[str]
+    ) -> int:
+        """
+        Phase 2: Exact search for specific remaining queries.
+        Returns count of new results found.
+        """
+        self.logger.debug(f"🔍 Phase 2: Running exact searches for " +
+                         f"{sum(len(queries) for queries in result.remaining_queries.values())} remaining queries")
+        
+        # Clean entity name
+        clean_entity = entity_name.lower().replace(' ', '_').replace('-', '_')
+        clean_entity = ''.join(c for c in clean_entity if c.isalnum() or c == '_')
+        
+        phase2_tasks = []
+        phase2_metadata = []
+        
+        # Build search tasks
+        for category, queries in result.remaining_queries.items():
+            for query in queries:
+                providers_to_check = enabled_providers if enabled_providers else ["openai", "google", "perplexity"]
+                for provider in providers_to_check:
+                    docname = QueryBuilder.generate_docname(query, provider)
+                    
+                    for days_ago in range(lookback_days):
+                        check_date = datetime.now() - timedelta(days=days_ago)
+                        date_str = check_date.strftime('%Y%m%d')
+                        namespace = f"scraping_ai_answers_results_{clean_entity}_{date_str}"
+                        
+                        task = self.customer_data_service.system_search_documents(
+                            namespace_pattern=namespace,
+                            docname_pattern=docname,
+                            skip=0,
+                            limit=1,
+                            sort_by=customer_data_schemas.CustomerDataSortBy.CREATED_AT,
+                            sort_order=customer_data_schemas.SortOrder.DESC
+                        )
+                        phase2_tasks.append(task)
+                        phase2_metadata.append({
+                            'query': query,
+                            'category': category,
+                            'provider': provider,
+                            'namespace': namespace
+                        })
+        
+        # Execute searches
+        phase2_found = 0
+        phase2_skipped = 0
+        
+        if phase2_tasks:
+            phase2_results = await asyncio.gather(*phase2_tasks, return_exceptions=True)
+            
+            for search_result, metadata in zip(phase2_results, phase2_metadata):
+                if not isinstance(search_result, Exception) and search_result:
+                    doc = search_result[0]
+                    if doc.document_contents and doc.document_contents.get('success', False):
+                        result_provider = doc.document_contents.get('provider', 'unknown')
+                        
+                        if enabled_providers and result_provider not in enabled_providers:
+                            continue
+                        
+                        # Check for duplicates
+                        query_provider_key = (metadata['query'], result_provider)
+                        if query_provider_key in result.found_query_providers:
+                            self.logger.debug(f"  - Skipping duplicate from Phase 2: {query_provider_key}")
+                            phase2_skipped += 1
+                            continue
+                        
+                        # Add new result (already filtered by query being in remaining_queries)
+                        result.results.append(doc.document_contents)
+                        result.found = True
+                        phase2_found += 1
+                        result.found_query_providers.add(query_provider_key)
+                        
+                        # Categorize
+                        category = metadata['category']
+                        if category not in result.categorized_results:
+                            result.categorized_results[category] = []
+                        result.categorized_results[category].append(doc.document_contents)
+                        
+                        # Remove from remaining
+                        query = metadata['query']
+                        if category in result.remaining_queries and query in result.remaining_queries[category]:
+                            result.remaining_queries[category].remove(query)
+                            if not result.remaining_queries[category]:
+                                del result.remaining_queries[category]
+        
+        self.logger.debug(f"📊 Phase 2 statistics: found={phase2_found}, skipped_duplicates={phase2_skipped}")
+        return phase2_found
+
+
+class BillingHandler:
+    """Handles billing operations for scraping."""
+    
+    def __init__(self, billing_service, logger):
+        self.billing_service = billing_service
+        self.logger = logger
+    
+    async def allocate_credits(
+        self,
+        org_id: str,
+        user_id: str,
+        run_id: str,
+        total_api_calls: int,
+        query_count: int,
+        enabled_providers_count: int
+    ) -> float:
+        """Allocate credits for the operation."""
+        if total_api_calls == 0:
+            return 0.0
+        
+        estimated_cost = total_api_calls * scraping_settings.AI_ANSWER_ENGINE_PRICE_PER_QUERY
+        
+        try:
+            async with get_async_db_as_manager() as db_session:
+                await self.billing_service.allocate_credits_for_operation(
+                    db=db_session,
+                    org_id=org_id,
+                    user_id=user_id,
+                    credit_type=CreditType.DOLLAR_CREDITS,
+                    estimated_credits=estimated_cost,
+                    operation_id=run_id,
+                    metadata={
+                        "node_type": "ai_answer_engine_scraper",
+                        "query_count": query_count,
+                        "enabled_providers": enabled_providers_count,
+                        "total_api_calls": total_api_calls,
+                        "price_per_query": scraping_settings.AI_ANSWER_ENGINE_PRICE_PER_QUERY,
+                    }
+                )
+            
+            self.logger.info(f"💳 Allocated ${estimated_cost:.4f} for {total_api_calls} API calls")
+            return estimated_cost
+            
+        except InsufficientCreditsException as e:
+            self.logger.error(f"❌ Insufficient credits: {str(e)}")
+            raise ValueError(f"Insufficient credits to execute queries. Cost: ${estimated_cost:.4f}")
+        except Exception as e:
+            self.logger.warning(f"⚠️ Billing allocation error (proceeding anyway): {str(e)}")
+            return 0.0
+    
+    async def adjust_credits(
+        self,
+        org_id: str,
+        user_id: str,
+        run_id: str,
+        allocated_credits: float,
+        successful_queries: int,
+        failed_queries: int,
+        cached_queries: int
+    ) -> None:
+        """Adjust credits based on actual usage."""
+        if allocated_credits <= 0:
+            return
+        
+        actual_cost = successful_queries * scraping_settings.AI_ANSWER_ENGINE_PRICE_PER_QUERY
+        
+        try:
+            async with get_async_db_as_manager() as db_session:
+                await self.billing_service.adjust_allocated_credits(
+                    db=db_session,
+                    org_id=org_id,
+                    user_id=user_id,
+                    credit_type=CreditType.DOLLAR_CREDITS,
+                    operation_id=run_id,
+                    actual_credits=actual_cost,
+                    allocated_credits=allocated_credits,
+                    metadata={
+                        "node_type": "ai_answer_engine_scraper",
+                        "successful_queries": successful_queries,
+                        "failed_queries": failed_queries,
+                        "cached_queries": cached_queries,
+                        "price_per_query": scraping_settings.AI_ANSWER_ENGINE_PRICE_PER_QUERY,
+                    }
+                )
+            
+            self.logger.info(f"💳 Adjusted credits: allocated=${allocated_credits:.4f}, actual=${actual_cost:.4f}")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ Failed to adjust allocated credits: {str(e)}")
 
 
 class AIAnswerEngineScraperConfig(BaseNodeConfig):
@@ -333,266 +781,27 @@ class AIAnswerEngineScraperNode(BaseNode[AIAnswerEngineScraperInput, AIAnswerEng
     
     config: AIAnswerEngineScraperConfig
 
-    def _construct_queries(self, template_vars: Dict[str, str], query_templates: Optional[Dict[str, List[str]]] = None) -> Dict[str, List[str]]:
-        """
-        Construct actual queries from templates by substituting variables.
-        
-        Args:
-            template_vars: Dictionary of variables to substitute
-            query_templates: Optional categorized query templates to override config defaults
-            
-        Returns:
-            Dictionary of category -> list of constructed queries
-        """
-        categorized_queries = {}
-        
-        # Use provided templates or fall back to config templates
-        templates = query_templates if query_templates is not None else self.config.query_templates
-        
-        for category, category_templates in templates.items():
-            queries = []
-            for template in category_templates:
-                query = template
-                # Replace all variables found in the template
-                for var_name, var_value in template_vars.items():
-                    var_placeholder = f"{{{var_name}}}"
-                    if var_placeholder in query:
-                        query = query.replace(var_placeholder, var_value)
-                
-                queries.append(query)
-            
-            # Remove duplicates while preserving order within category
-            seen = set()
-            unique_queries = []
-            for query in queries:
-                if query not in seen:
-                    seen.add(query)
-                    unique_queries.append(query)
-            
-            if unique_queries:  # Only add category if it has queries
-                categorized_queries[category] = unique_queries
-                
-        return categorized_queries
-
-    def _generate_namespace(self, entity_name: str, date_str: str) -> str:
-        """
-        Generate namespace for the AI query results.
-        
-        Format: scraping_ai_answers_results_<entity_name>_YYYYMMDD
-        
-        Args:
-            entity_name: The entity name from template_vars
-            date_str: Date string in YYYYMMDD format
-            
-        Returns:
-            The generated namespace string
-        """
-        # Clean entity name for use in namespace
-        clean_entity = entity_name.lower().replace(' ', '_').replace('-', '_')
-        # Remove any non-alphanumeric characters except underscore
-        clean_entity = ''.join(c for c in clean_entity if c.isalnum() or c == '_')
-        
-        namespace = f"scraping_ai_answers_results_{clean_entity}_{date_str}"
-        return namespace
-
-    def _generate_docname(self, query: str, provider: str, model: str = "default") -> str:
-        """
-        Generate document name for the query result.
-        
-        Format: scraped_query_result_<query_uuid>_<provider>_<model>
-        
-        Args:
-            query: The actual query that was executed
-            provider: The AI provider name
-            model: The model name (default for now)
-            
-        Returns:
-            The generated document name string
-        """
-        # Generate deterministic UUID from query
-        query_uuid = uuid.uuid5(uuid.NAMESPACE_DNS, query)
-        docname = f"scraped_query_result_{query_uuid}_{provider}_{model}"
-        return docname
-
-    async def _check_and_retrieve_cached_results(
+    def _build_providers_config(
         self,
-        categorized_queries: Dict[str, List[str]],
-        entity_name: str,
-        customer_data_service: CustomerDataService,
-        enable_cache: bool,
-        lookback_days: int,
-    ) -> Dict[str, Any]:
-        """
-        Check MongoDB for cached query results within the lookback period using two-phase search.
+        input_providers_config: Optional[Dict[str, Dict[str, Any]]]
+    ) -> Dict[str, ProviderConfig]:
+        """Build provider configurations with overrides."""
+        providers_config = {}
+        for provider, default_config in self.config.default_providers_config.items():
+            provider_config = ProviderConfig(**default_config)
+            
+            # Override with input config if provided
+            if input_providers_config and provider in input_providers_config:
+                input_config = input_providers_config[provider]
+                for key in ['enabled', 'max_retries', 'retry_delay', 'timeout']:
+                    if key in input_config:
+                        setattr(provider_config, key, input_config[key])
+            
+            providers_config[provider] = provider_config
         
-        Args:
-            categorized_queries: Dictionary of category -> list of queries to check
-            entity_name: Entity name for namespace generation
-            customer_data_service: Customer data service instance
-            enable_cache: Whether to enable cache checking
-            lookback_days: Number of days to look back for cached results
-            
-        Returns:
-            Dictionary with cache information and results
-        """
-        cached_results = {
-            'found': False,
-            'results': [],
-            'categorized_results': {},
-            'namespace': None,
-            'cached_count': 0,
-            'remaining_queries': {}
-        }
-        
-        if not enable_cache:
-            # Return all queries as remaining
-            cached_results['remaining_queries'] = categorized_queries.copy()
-            return cached_results
-            
-        try:
-            # Clean entity name for namespace
-            clean_entity = entity_name.lower().replace(' ', '_').replace('-', '_')
-            clean_entity = ''.join(c for c in clean_entity if c.isalnum() or c == '_')
-            
-            # Calculate cutoff date for namespace date check
-            cutoff_date = datetime.now() - timedelta(days=lookback_days)
-            
-            # Phase 1: Search for latest namespace with prefix
-            namespace_prefix = f"scraping_ai_answers_results_{clean_entity}_"
-            
-            # Search for all documents with the namespace prefix
-            search_results = await customer_data_service.system_search_documents(
-                namespace_pattern=f"{namespace_prefix}*",
-                docname_pattern="*",
-                skip=0,
-                limit=1000,  # Get many documents
-                sort_by=customer_data_schemas.CustomerDataSortBy.CREATED_AT,
-                sort_order=customer_data_schemas.SortOrder.DESC
-            )
-            
-            # Extract queries from found documents that are within lookback period
-            # Key change: Track found queries by (query, provider) tuple
-            found_query_providers = set()  # Set of (query, provider) tuples
-            found_by_category = defaultdict(list)
-            
-            if search_results:
-                for doc in search_results:
-                    # Extract date from namespace pattern: scraping_ai_answers_results_{entity}_YYYYMMDD
-                    namespace = doc.metadata.namespace
-                    if namespace.startswith(namespace_prefix):
-                        # Extract YYYYMMDD from the end
-                        date_str = namespace.split("_")[-1]
-                        if len(date_str) == 8 and date_str.isdigit():
-                            # Parse the date
-                            try:
-                                namespace_date = datetime.strptime(date_str, '%Y%m%d')
-                                # Check if within lookback period
-                                if namespace_date >= cutoff_date:
-                                    if doc.document_contents and 'query' in doc.document_contents and doc.document_contents.get('success', False):
-                                        # Only process successful cached results
-                                        query = doc.document_contents['query']
-                                        provider = doc.document_contents.get('provider', 'unknown')
-                                        found_query_providers.add((query, provider))
-                                        
-                                        # Try to determine category
-                                        for category, queries in categorized_queries.items():
-                                            if query in queries:
-                                                found_by_category[category].append(doc.document_contents)
-                                                break
-                                        
-                                        cached_results['results'].append(doc.document_contents)
-                                        cached_results['cached_count'] += 1
-                                        if not cached_results['namespace']:
-                                            cached_results['namespace'] = doc.metadata.namespace
-                            except ValueError:
-                                # Invalid date format, skip
-                                pass
-            else:
-                self.info(f"🔍 No documents found for namespace prefix: {namespace_prefix}")
-                cached_results['remaining_queries'] = categorized_queries.copy()
-                return cached_results
-            
-            if cached_results['cached_count'] > 0:
-                cached_results['found'] = True
-                cached_results['categorized_results'] = dict(found_by_category)
-            
-            # Determine remaining queries that weren't found in cache
-            # Extract just the unique queries from found_query_providers
-            found_queries = set(qp[0] for qp in found_query_providers) if found_query_providers else set()
-            
-            remaining_queries = {}
-            for category, queries in categorized_queries.items():
-                remaining = [q for q in queries if q not in found_queries]
-                if remaining:
-                    remaining_queries[category] = remaining
-            
-            # Phase 2: For remaining queries, do concurrent exact searches
-            if remaining_queries:
-                phase2_tasks = []
-                phase2_metadata = []
-                
-                for category, queries in remaining_queries.items():
-                    for query in queries:
-                        # Generate exact docname for this query
-                        for provider in ["openai", "google", "perplexity"]:  # Check all providers
-                            docname = self._generate_docname(query, provider)
-                            
-                            # Search for exact document within lookback period
-                            for days_ago in range(lookback_days):
-                                check_date = datetime.now() - timedelta(days=days_ago)
-                                date_str = check_date.strftime('%Y%m%d')
-                                namespace = f"scraping_ai_answers_results_{clean_entity}_{date_str}"
-                                
-                                task = customer_data_service.system_search_documents(
-                                    namespace_pattern=namespace,
-                                    docname_pattern=docname,
-                                    skip=0,
-                                    limit=1,
-                                    sort_by=customer_data_schemas.CustomerDataSortBy.CREATED_AT,
-                                    sort_order=customer_data_schemas.SortOrder.DESC
-                                )
-                                phase2_tasks.append(task)
-                                phase2_metadata.append({
-                                    'query': query,
-                                    'category': category,
-                                    'provider': provider,
-                                    'namespace': namespace
-                                })
-                
-                # Execute all phase 2 searches concurrently
-                if phase2_tasks:
-                    phase2_results = await asyncio.gather(*phase2_tasks, return_exceptions=True)
-                    
-                    for result, metadata in zip(phase2_results, phase2_metadata):
-                        if not isinstance(result, Exception) and result:
-                            doc = result[0]
-                            if doc.document_contents and doc.document_contents.get('success', False):
-                                # Only process successful queries
-                                cached_results['results'].append(doc.document_contents)
-                                cached_results['cached_count'] += 1
-                                cached_results['found'] = True
-                                
-                                # Add to categorized results
-                                category = metadata['category']
-                                if category not in cached_results['categorized_results']:
-                                    cached_results['categorized_results'][category] = []
-                                cached_results['categorized_results'][category].append(doc.document_contents)
-                                
-                                # Remove from remaining queries
-                                query = metadata['query']
-                                if category in remaining_queries and query in remaining_queries[category]:
-                                    remaining_queries[category].remove(query)
-                                    if not remaining_queries[category]:
-                                        del remaining_queries[category]
-            
-            cached_results['remaining_queries'] = remaining_queries
-                    
-        except Exception as e:
-            self.error(f"⚠️ Error checking for cached results: {e}", exc_info=True)
-            # Return all queries as remaining on error
-            cached_results['remaining_queries'] = categorized_queries.copy()
-            
-        return cached_results
+        return providers_config
+
+
 
     async def _store_query_result(
         self,
@@ -622,7 +831,7 @@ class AIAnswerEngineScraperNode(BaseNode[AIAnswerEngineScraperInput, AIAnswerEng
             Boolean indicating success
         """
         try:
-            docname = self._generate_docname(query, provider)
+            docname = QueryBuilder.generate_docname(query, provider)
             
             # Store the full result from MultiProviderQueryEngine
             # The result contains: query, query_index, provider, success, attempts, 
@@ -699,6 +908,10 @@ class AIAnswerEngineScraperNode(BaseNode[AIAnswerEngineScraperInput, AIAnswerEng
         if not user or not org_id:
             raise ValueError("User and org_id are required for AI answer engine scraper node")
         
+        # Initialize helper classes
+        cache_manager = CacheManager(customer_data_service)
+        billing_handler = BillingHandler(ext_context.billing_service, self)
+        
         # Process multiple entities
         start_time = datetime.now()
         self.info(f"🚀 Starting AI answer engine scraper for {len(input_data.list_template_vars)} entities")
@@ -707,23 +920,8 @@ class AIAnswerEngineScraperNode(BaseNode[AIAnswerEngineScraperInput, AIAnswerEng
         date_str = datetime.now().strftime('%Y%m%d')
         
         # Build provider configurations first (needed for cache checking)
-        providers_config = {}
-        for provider, default_config in self.config.default_providers_config.items():
-            provider_config = ProviderConfig(**default_config)
-            
-            # Override with input config if provided
-            if input_data.providers_config and provider in input_data.providers_config:
-                input_config = input_data.providers_config[provider]
-                if 'enabled' in input_config:
-                    provider_config.enabled = input_config['enabled']
-                if 'max_retries' in input_config:
-                    provider_config.max_retries = input_config['max_retries']
-                if 'retry_delay' in input_config:
-                    provider_config.retry_delay = input_config['retry_delay']
-                if 'timeout' in input_config:
-                    provider_config.timeout = input_config['timeout']
-            
-            providers_config[provider] = provider_config
+        providers_config = self._build_providers_config(input_data.providers_config)
+        enabled_providers = [p for p, config in providers_config.items() if config.enabled]
         
         # Collect all queries for all entities
         all_queries = []
@@ -732,22 +930,23 @@ class AIAnswerEngineScraperNode(BaseNode[AIAnswerEngineScraperInput, AIAnswerEng
         entity_results = {}  # Store results per entity
         total_cached_results = 0
         used_any_cache = False
+        query_provider_mapping = {}  # Map query -> list of providers that need to be queried
         
         # Process each entity
         for template_vars in input_data.list_template_vars:
             entity_name = template_vars.get('entity_name', '')
             
             # Construct categorized queries for this entity
-            entity_queries = self._construct_queries(template_vars, input_data.query_templates)
+            query_templates = input_data.query_templates or self.config.query_templates
+            entity_queries = QueryBuilder.construct_queries(template_vars, query_templates)
             
             # Generate namespace for this entity
-            namespace = self._generate_namespace(entity_name, date_str)
+            namespace = QueryBuilder.generate_namespace(entity_name, date_str)
             entity_namespaces[entity_name] = namespace
             
-            # Map queries to entity and category
+            # Map queries to entity and category (but don't add to all_queries yet)
             for category, queries in entity_queries.items():
                 for query in queries:
-                    all_queries.append(query)
                     entity_query_map[query] = {'entity': entity_name, 'category': category}
             
             # Initialize entity results
@@ -761,50 +960,75 @@ class AIAnswerEngineScraperNode(BaseNode[AIAnswerEngineScraperInput, AIAnswerEng
             }
             
             # Check for cached results if enabled
-            if input_data.enable_mongodb_cache:
-                cached_info = await self._check_and_retrieve_cached_results(
-                    entity_queries, entity_name, customer_data_service,
-                    input_data.enable_mongodb_cache, input_data.cache_lookback_days
-                )
+            cache_result = await cache_manager.check_cache(
+                entity_queries, 
+                entity_name,
+                input_data.enable_mongodb_cache,
+                input_data.cache_lookback_days,
+                enabled_providers
+            )
+            
+            if cache_result.found and cache_result.cached_count > 0:
+                num_unique_queries = len(set(qp[0] for qp in cache_result.found_query_providers))
+                # Fix: Show actual unique count instead of total cached count
+                self.info(f"📋 Found {len(cache_result.found_query_providers)} cached results for {entity_name}: " +
+                         f"{num_unique_queries} unique queries × {len(enabled_providers)} providers " +
+                         f"(providers: {', '.join(enabled_providers)})")
+                entity_results[entity_name]['cached_count'] = cache_result.cached_count
+                entity_results[entity_name]['results'].extend(cache_result.results)
+                entity_results[entity_name]['categorized_results'] = cache_result.categorized_results
+                total_cached_results += cache_result.cached_count
+                used_any_cache = True
                 
-                if cached_info['found'] and cached_info['cached_count'] > 0:
-                    self.info(f"📋 Found {cached_info['cached_count']} cached results for {entity_name}")
-                    entity_results[entity_name]['cached_count'] = cached_info['cached_count']
-                    entity_results[entity_name]['results'].extend(cached_info['results'])
-                    entity_results[entity_name]['categorized_results'] = cached_info['categorized_results']
-                    total_cached_results += cached_info['cached_count']
-                    used_any_cache = True
-                    
-                    # Only remove queries from all_queries if ALL enabled providers have cached results
-                    # First, get the list of enabled providers
-                    enabled_providers = [p for p, config in providers_config.items() if config.enabled]
-                    
-                    if 'found_query_providers' in cached_info:
-                        # Group cached results by query
-                        query_provider_map = defaultdict(set)
-                        for query, provider in cached_info['found_query_providers']:
-                            query_provider_map[query].add(provider)
+                # Build query-provider mapping based on cache results
+                cached_query_provider_map = defaultdict(set)
+                for query, provider in cache_result.found_query_providers:
+                    cached_query_provider_map[query].add(provider)
+                
+                # For each query in this entity, determine which providers need to be queried
+                for category, queries in entity_queries.items():
+                    for query in queries:
+                        cached_providers = cached_query_provider_map.get(query, set())
+                        # Only query providers that don't have cached results
+                        providers_to_query = [p for p in enabled_providers if p not in cached_providers]
                         
-                        # Only remove queries that have cached results for ALL enabled providers
-                        fully_cached_queries = []
-                        for query in query_provider_map:
-                            cached_providers = query_provider_map[query]
-                            if all(provider in cached_providers for provider in enabled_providers):
-                                fully_cached_queries.append(query)
-                        
-                        if fully_cached_queries:
-                            self.info(f"📝 Removing {len(fully_cached_queries)} fully cached queries (cached for all {len(enabled_providers)} providers)")
-                            all_queries = [q for q in all_queries if q not in fully_cached_queries]
-                    else:
-                        # Fallback to old behavior if found_query_providers not available
-                        cached_queries = [r.get('query') for r in cached_info['results'] if 'query' in r]
-                        all_queries = [q for q in all_queries if q not in cached_queries]
+                        if providers_to_query:
+                            # This query needs to be executed for some providers
+                            if query not in query_provider_mapping:
+                                query_provider_mapping[query] = []
+                            query_provider_mapping[query].extend(providers_to_query)
+                            
+                            # Add to all_queries for execution
+                            if query not in all_queries:
+                                all_queries.append(query)
+                        else:
+                            # All providers have cached results
+                            self.debug(f"✅ Query fully cached for all providers: {query[:50]}...")
+                
+                # Count queries that are fully cached (all providers)
+                fully_cached_count = sum(1 for q in cached_query_provider_map 
+                                       if all(p in cached_query_provider_map[q] for p in enabled_providers))
+                if fully_cached_count > 0:
+                    self.info(f"📝 {fully_cached_count} queries fully cached for all {len(enabled_providers)} providers")
                     
                     # Update entity queries to only include remaining queries
-                    entity_results[entity_name]['remaining_queries'] = cached_info['remaining_queries']
+                entity_results[entity_name]['remaining_queries'] = cache_result.remaining_queries
+            else:
+                # No cache or no results found - need to query all
+                for category, queries in entity_queries.items():
+                    for query in queries:
+                        if query not in all_queries:
+                            all_queries.append(query)
+                        if query not in query_provider_mapping:
+                            query_provider_mapping[query] = enabled_providers.copy()
         
         cache_check_elapsed = (datetime.now() - start_time).total_seconds()
         self.info(f"📊 Total queries to execute: {len(all_queries)} (after removing {total_cached_results} cached) - Cache check took {cache_check_elapsed:.1f}s")
+        
+        # Debug: Show query-provider mapping
+        if query_provider_mapping:
+            total_api_calls = sum(len(providers) for providers in query_provider_mapping.values())
+            self.debug(f"🔍 Query-provider mapping: {len(query_provider_mapping)} unique queries → {total_api_calls} total API calls")
         
         # If all results are cached, return early
         if len(all_queries) == 0 and used_any_cache:
@@ -849,41 +1073,26 @@ class AIAnswerEngineScraperNode(BaseNode[AIAnswerEngineScraperInput, AIAnswerEng
         enabled_providers_count = sum(1 for p in providers_config.values() if p.enabled)
         
         if len(all_queries) > 0 and self.billing_mode:
-            try:
-                # Calculate estimated cost: 3 cents per query PER PROVIDER
-                # If we have 10 queries and 3 enabled providers, that's 30 API calls
-                total_api_calls = len(all_queries) * enabled_providers_count
-                estimated_cost = total_api_calls * scraping_settings.AI_ANSWER_ENGINE_PRICE_PER_QUERY
-                
-                # Allocate credits
-                # from kiwi_app.billing.models import CreditType
-                
-                async with get_async_db_as_manager() as db_session:
-                    allocation_result = await ext_context.billing_service.allocate_credits_for_operation(
-                        db=db_session,
-                        org_id=org_id,
-                        user_id=user.id,
-                        credit_type=CreditType.DOLLAR_CREDITS,
-                        estimated_credits=estimated_cost,
-                        operation_id=run_job.run_id,
-                        metadata={
-                            "node_type": "ai_answer_engine_scraper",
-                            "query_count": len(all_queries),
-                            "enabled_providers": enabled_providers_count,
-                            "total_api_calls": total_api_calls,
-                            "price_per_query": scraping_settings.AI_ANSWER_ENGINE_PRICE_PER_QUERY,
-                        }
-                    )
-                    allocated_credits = estimated_cost  # allocation_result.allocated_credits
-                
-                self.info(f"💳 Allocated ${allocated_credits:.4f} for {len(all_queries)} queries × {enabled_providers_count} providers = {total_api_calls} API calls")
-                
-            except InsufficientCreditsException as e:
-                self.error(f"❌ Insufficient credits: {str(e)}")
-                raise ValueError(f"Insufficient credits to execute {len(all_queries)} queries. Cost: ${estimated_cost:.4f}")
-            except Exception as e:
-                self.warning(f"⚠️ Billing allocation error (proceeding anyway): {str(e)}")
-                # Continue execution even if billing fails in non-critical cases
+            # Calculate total API calls needed
+            total_api_calls = sum(
+                len(query_provider_mapping.get(query, enabled_providers))
+                for query in all_queries
+            )
+            
+            # Allocate credits
+            allocated_credits = await billing_handler.allocate_credits(
+                org_id=org_id,
+                user_id=user.id,
+                run_id=run_job.run_id,
+                total_api_calls=total_api_calls,
+                query_count=len(all_queries),
+                enabled_providers_count=enabled_providers_count
+            )
+            
+            # Log cache optimization
+            cache_savings = (len(all_queries) * enabled_providers_count) - total_api_calls
+            if cache_savings > 0:
+                self.info(f"💸 Cache optimization saved {cache_savings} API calls")
         
         # Execute queries only if there are any non-cached queries
         if len(all_queries) > 0:
@@ -892,12 +1101,16 @@ class AIAnswerEngineScraperNode(BaseNode[AIAnswerEngineScraperInput, AIAnswerEng
                 engine = MultiProviderQueryEngine(
                     queries=all_queries,
                     providers_config=providers_config,
+                    query_provider_mapping=query_provider_mapping,  # Pass the optimized mapping
                     max_concurrent_browsers=self.config.max_concurrent_browsers,
                     browser_pool_config=browser_pool_config,
                     output_file=None,  # We don't need file output
                 )
                 
-                self.info(f"🔄 Executing {len(all_queries)} queries across enabled providers")
+                # Log optimization details
+                actual_tasks = sum(len(query_provider_mapping.get(q, [])) if q in query_provider_mapping 
+                                 else enabled_providers_count for q in all_queries)
+                self.info(f"🔄 Executing {len(all_queries)} queries with provider-specific optimization ({actual_tasks} total API calls)")
                 
                 # Execute all queries
                 query_start_time = datetime.now()
@@ -1042,46 +1255,27 @@ class AIAnswerEngineScraperNode(BaseNode[AIAnswerEngineScraperInput, AIAnswerEng
             final_all_results.extend(entity_data['results'])
             
             # Log per-entity summary
+            unique_queries_count = sum(len(queries) for queries in entity_data.get('categorized_queries', {}).values())
+            
             self.info(
                 f"🏢 Entity '{entity_name}' summary: "
-                f"Total queries: {len(entity_data['results'])}, "
-                f"Cached: 💾 {entity_data['cached_count']}, "
-                f"New: 🆕 {entity_data['new_count']}, "
+                f"Unique queries: {unique_queries_count}, "
+                f"Total results: {len(entity_data['results'])} "
+                f"(Cached: 💾 {entity_data['cached_count']}, New: 🆕 {entity_data['new_count']}), "
                 f"Categories: 📁 {list(entity_data['categorized_results'].keys())}"
             )
         
         # Billing: Adjust allocated credits with actual usage
         if allocated_credits > 0 and self.billing_mode:
-            try:
-                # Calculate actual cost based on successful queries
-                actual_queries_count = total_successful
-                actual_cost = actual_queries_count * scraping_settings.AI_ANSWER_ENGINE_PRICE_PER_QUERY
-                
-                # Adjust credits
-                # from kiwi_app.billing.models import CreditType
-                
-                async with get_async_db_as_manager() as db_session:
-                    adjustment_result = await ext_context.billing_service.adjust_allocated_credits(
-                        db=db_session,
-                        org_id=org_id,
-                        user_id=user.id,
-                        credit_type=CreditType.DOLLAR_CREDITS,
-                        operation_id=run_job.run_id,
-                        actual_credits=actual_cost,
-                        allocated_credits=allocated_credits,
-                        metadata={
-                            "node_type": "ai_answer_engine_scraper",
-                            "successful_queries": total_successful,
-                            "failed_queries": total_failed,
-                            "cached_queries": total_cached_results,
-                            "price_per_query": scraping_settings.AI_ANSWER_ENGINE_PRICE_PER_QUERY,
-                        }
-                    )
-                
-                self.info(f"💳 Adjusted credits: allocated=${allocated_credits:.4f}, actual=${actual_cost:.4f}")
-                
-            except Exception as e:
-                self.warning(f"⚠️ Failed to adjust allocated credits: {str(e)}")
+            await billing_handler.adjust_credits(
+                org_id=org_id,
+                user_id=user.id,
+                run_id=run_job.run_id,
+                allocated_credits=allocated_credits,
+                successful_queries=total_successful,
+                failed_queries=total_failed,
+                cached_queries=total_cached_results
+            )
         
         # Log final completion time
         total_elapsed = (datetime.now() - start_time).total_seconds()

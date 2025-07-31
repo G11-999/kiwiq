@@ -55,17 +55,17 @@ workflow_graph_schema = {
                 # to ensure all template variables can be replaced
                 "query_templates": {
                     "basic_info": [
-                        "What is {entity_name}?",
-                        # "Tell me about {entity_name}",
+                        # "What is {entity_name}?",
+                        "Tell me about {entity_name}",
                         # "What does {entity_name} do?"
                     ],
                     "business": [
-                        "What products or services does {entity_name} offer?",
-                        # "What is the business model of {entity_name}?"
+                        # "What products or services does {entity_name} offer?",
+                        "What is the business model of {entity_name}?"
                     ],
                     "market": [
-                        "Who are the competitors of {entity_name}?",
-                        # "What is the market position of {entity_name}?"
+                        # "Who are the competitors of {entity_name}?",
+                        "What is the market position of {entity_name}?"
                     ],
                     # "recent": [
                     #     "What is the latest news about {entity_name}?",
@@ -75,18 +75,18 @@ workflow_graph_schema = {
                 
                 # # Provider configuration
                 "default_providers_config": {
-                    # "google": {
-                    #     "enabled": True,
-                    #     "max_retries": 2,
-                    # },
-                    # "openai": {
-                    #     "enabled": True,
-                    #     "max_retries": 3,
-                    # },
-                    # "perplexity": {
-                    #     "enabled": True,
-                    #     "max_retries": 2,
-                    # }
+                    "google": {
+                        "enabled": True,
+                        "max_retries": 2,
+                    },
+                    "openai": {
+                        "enabled": True,
+                        "max_retries": 3,
+                    },
+                    "perplexity": {
+                        "enabled": True,
+                        "max_retries": 2,
+                    }
                 },
                 
                 # # Browser pool configuration
@@ -319,10 +319,13 @@ async def main_test_ai_scraper(
             print(f"\n📊 --- Entity Results Summary ---")
             for entity_name, data in entity_results.items():
                 print(f"\n🏢 {entity_name}:")
-                total_queries = sum(len(queries) for queries in data.get('categorized_queries', {}).values())
-                print(f"  📋 Total queries: {total_queries}")
-                print(f"  💾 Cached: {data.get('cached_count', 0)}")
-                print(f"  🆕 New: {data.get('new_count', 0)}")
+                unique_queries = sum(len(queries) for queries in data.get('categorized_queries', {}).values())
+                results = data.get('results', [])
+                unique_query_provider_combos = len(set((r.get('query', ''), r.get('provider', '')) for r in results if r))
+                print(f"  📋 Unique queries: {unique_queries}")
+                print(f"  📊 Total results: {unique_query_provider_combos} unique (query, provider) combinations")
+                print(f"  💾 Cached results used: {data.get('cached_count', 0)}")
+                print(f"  🆕 New results generated: {data.get('new_count', 0)}")
                 
                 # Show categorized results
                 categorized = data.get('categorized_results', {})
@@ -335,7 +338,7 @@ async def main_test_ai_scraper(
         query_results = final_run_outputs.get('query_results', [])
         if query_results:
             print(f"\n📄 --- Sample Query Results ({len(query_results)} total) ---")
-            for i, result in enumerate(query_results[:3]):  # Show first 3
+            for i, result in enumerate(query_results[:7]):  # Show first 3
                 print(f"\nResult {i+1}:")
                 print(f"  Query: {result.get('query', 'N/A')}")
                 print(f"  Provider: {result.get('provider', 'N/A')}")
@@ -389,8 +392,8 @@ if __name__ == "__main__":
     # to ensure all queries can be properly constructed for each entity
     example1_entities = [
         {"entity_name": "OpenAI", "location": "San Francisco", "industry": "AI"},
-        {"entity_name": "Anthropic", "location": "San Francisco", "industry": "AI"},
-        {"entity_name": "Tesla", "location": "Palo Alto", "industry": "Automotive"}  # Added location
+        # {"entity_name": "Anthropic", "location": "San Francisco", "industry": "AI"},
+        # {"entity_name": "Tesla", "location": "Palo Alto", "industry": "Automotive"}  # Added location
     ]
     
     # Example 2: Custom query templates
