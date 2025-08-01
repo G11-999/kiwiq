@@ -235,6 +235,12 @@ class PerplexityBrowserActor(BaseBrowserActor):
 
         # Press Enter to submit
         await self.page.keyboard.press("Enter")
+
+        try:
+            await self.wait_and_click(PERPLEXITY_SELECTORS["close_popup"], timeout=1000)
+            await self.wait_for_seconds(0.1)
+        except Exception as e:
+            self.logger.info(f" close popup not found: {e}")
         
         
         answers = await self.wait_until_perplexity_response_complete()

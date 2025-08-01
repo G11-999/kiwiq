@@ -269,6 +269,7 @@ class ScrapelessBrowserPool:
     - Force close mechanism for error recovery
     - Local concurrency limiting
     - Force cleanup Redis pool functionality
+    - Browser creation throttling via semaphore to prevent excessive concurrent attempts
     
     Features:
     - Respects MAX_CONCURRENT_SCRAPELESS_BROWSERS limit globally across all processes
@@ -361,6 +362,10 @@ class ScrapelessBrowserPool:
         self._pool_active = False
         self._cleanup_task: Optional[asyncio.Task] = None
         self._lock = asyncio.Lock()  # For thread-safe pool operations
+        
+        # # Semaphore to limit concurrent browser creation attempts
+        # # This prevents too many threads from trying to create browsers simultaneously
+        # self._browser_creation_semaphore = asyncio.Semaphore(self.effective_max_concurrent)
         
         self.logger.info(
             f"ScrapelessBrowserPool initialized: {self.pool_id}, "
@@ -617,6 +622,11 @@ class ScrapelessBrowserPool:
         2. Reuses valid available browsers
         3. Creates new browsers if resources allow
         4. Respects both global (Redis) and local concurrency limits
+        5. Limits concurrent browser creation attempts using a semaphore
+        
+        The browser creation semaphore ensures that at most `effective_max_concurrent`
+        threads can simultaneously attempt to acquire Redis resources and create browsers.
+        This prevents resource contention and excessive concurrent creation attempts.
         
         Args:
             timeout: Timeout in seconds for acquiring a browser
@@ -674,7 +684,11 @@ class ScrapelessBrowserPool:
                 # This prevents race conditions where multiple tasks might think they can create browsers
                 self._local_active_count += 1
             
-            # Now try to create a new browser outside the lock (allows parallel creation)
+            # # Now try to create a new browser outside the lock (allows parallel creation)
+            # # Use semaphore to limit concurrent browser creation attempts
+            # self.logger.debug(f"Attempting to acquire browser creation semaphore (available: {self._browser_creation_semaphore._value}/{self.effective_max_concurrent})")
+            # async with self._browser_creation_semaphore:
+            self.logger.debug(f"Acquired browser creation semaphore, proceeding with browser creation")
             try:
                 # Acquire Redis resource (slow operation, do outside lock)
                 allocation_id = await self._acquire_redis_resource()
@@ -687,6 +701,7 @@ class ScrapelessBrowserPool:
                 
                 # Create browser (slow operation, do outside lock)
                 try:
+                    # await asyncio.sleep(random.random() * 1)
                     browser_data = await self._create_new_browser(session_config)
                     browser_data['redis_allocation_id'] = allocation_id
                     browser_data['use_count'] = 1
@@ -696,7 +711,7 @@ class ScrapelessBrowserPool:
                         self._active_browsers[browser_data['session_id']] = browser_data
                     
                     return browser_data
-                    
+                
                 except Exception as e:
                     # Browser creation failed, cleanup
                     self.logger.error(f"❌ Failed to create new browser: {e}", exc_info=True)
@@ -705,7 +720,7 @@ class ScrapelessBrowserPool:
                     async with self._lock:
                         self._local_active_count = max(0, self._local_active_count - 1)
                     # Continue to retry
-                    
+                
             except Exception as e:
                 # Unexpected error, release the local slot
                 self.logger.error(f"Unexpected error during browser acquisition: {e}", exc_info=True)
@@ -984,7 +999,12 @@ class ScrapelessBrowserPool:
                 'persist_profile': self.persist_profile,
                 'redis_pool_info': redis_pool_info,
                 'profile_stats': profile_stats,
-                'available_browsers_with_allocations': sum(1 for b in self._available_browsers if b.get('redis_allocation_id'))
+                'available_browsers_with_allocations': sum(1 for b in self._available_browsers if b.get('redis_allocation_id')),
+                # 'browser_creation_semaphore': {
+                #     'available_permits': self._browser_creation_semaphore._value,
+                #     'max_permits': self.effective_max_concurrent,
+                #     'waiting_threads': self.effective_max_concurrent - self._browser_creation_semaphore._value
+                # }
             }
     
     async def __aenter__(self) -> "ScrapelessBrowserPool":

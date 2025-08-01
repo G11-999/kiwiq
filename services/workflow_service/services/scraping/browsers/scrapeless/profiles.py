@@ -6,6 +6,7 @@ This module provides comprehensive management of Scrapeless browser profiles inc
 - Local JSON persistence of profile data
 - Thread-safe in-memory allocation manager with priority queue
 - Automatic profile pool management and load balancing
+- Delta profile creation when pool size increases
 
 Key Features:
 - Creates configured number of concurrent profiles
@@ -13,6 +14,32 @@ Key Features:
 - Thread-safe allocation/deallocation
 - Priority-based allocation (least used profiles first)
 - Automatic profile pool reset and recreation
+- Smart delta creation: only creates new profiles when pool size increases
+- Preserves existing profile statistics during expansion
+
+Delta Profile Creation:
+When num_profiles is increased, the manager intelligently:
+1. Loads existing profiles from cache with their statistics intact
+2. Fetches existing profiles from API to avoid recreating them
+3. Merges API profiles with cache data (preserves statistics)
+4. Calculates the delta (additional profiles needed)
+5. Creates only the new profiles, skipping existing indices
+6. Preserves all allocation counts and penalty scores
+
+API Synchronization:
+During initialization, the manager:
+1. Fetches all profiles from the Scrapeless API
+2. Filters profiles matching the configured name prefix
+3. Merges API profiles with local cache data
+4. Only creates profiles that don't exist on the API server
+5. Fills gaps in profile indices intelligently
+
+Example:
+    - Cache: 3 profiles (profile-1, profile-2, profile-3) 
+    - API: Has profile-1, profile-2, profile-4, profile-7
+    - Request: 5 profiles
+    - Result: Uses existing 4 from API, creates only profile-5
+    - Cache statistics are preserved for all profiles
 
 Author: Generated for KiwiQ Backend
 """
@@ -913,6 +940,91 @@ class ScrapelessProfileManager:
         """Generate profile name using configured prefix and index."""
         return f"{self.name_prefix}-{index}"
     
+    async def _fetch_existing_profiles_from_api(self) -> List[ProfileData]:
+        """
+        Fetch existing profiles from Scrapeless API that match our naming pattern.
+        
+        This method:
+        1. Fetches all profiles from the API
+        2. Filters profiles that match our name_prefix pattern
+        3. Converts them to ProfileData objects
+        4. Returns sorted list by profile index
+        
+        Returns:
+            List of ProfileData objects for existing profiles on the API server
+        """
+        if not self.api_client or not self.api_client.has_api_key:
+            print("ℹ️ No API client available, skipping API profile fetch")
+            return []
+        
+        try:
+            print(f"🔍 Fetching existing profiles from API with prefix: {self.name_prefix}")
+            
+            all_api_profiles = []
+            page = 1
+            page_size = 100
+            
+            # Fetch all pages of profiles
+            while True:
+                response = self.api_client.get_profiles(page=page, page_size=page_size)
+                if not response:
+                    break
+                
+                profiles = response.get('data', [])
+                if not profiles:
+                    break
+                
+                all_api_profiles.extend(profiles)
+                
+                # Check if there are more pages
+                total = response.get('total', 0)
+                if len(all_api_profiles) >= total:
+                    break
+                
+                page += 1
+            
+            print(f"📥 Fetched {len(all_api_profiles)} total profiles from API")
+            
+            # Filter profiles that match our naming pattern
+            matching_profiles = []
+            for api_profile in all_api_profiles:
+                profile_name = api_profile.get('name', '')
+                if profile_name.startswith(f"{self.name_prefix}-"):
+                    try:
+                        # Extract index from name (e.g., "profile-1" -> 1)
+                        index_str = profile_name[len(f"{self.name_prefix}-"):]
+                        index = int(index_str)
+                        
+                        # Convert to ProfileData
+                        profile_data = ProfileData(
+                            profile_id=str(api_profile.get('id', '')),
+                            name=profile_name,
+                            created_at=api_profile.get('createdAt', datetime.now().isoformat()),
+                            penalty_score=0,  # Initialize with no penalty
+                            actual_allocations=0,  # Reset allocations
+                            total_allocations=0  # Reset lifetime allocations
+                        )
+                        matching_profiles.append((index, profile_data))
+                        
+                    except (ValueError, TypeError):
+                        print(f"⚠️ Skipping profile with invalid index: {profile_name}")
+                        continue
+            
+            # Sort by index and return ProfileData objects
+            matching_profiles.sort(key=lambda x: x[0])
+            sorted_profiles = [profile_data for _, profile_data in matching_profiles]
+            
+            print(f"✅ Found {len(sorted_profiles)} matching profiles on API server")
+            if sorted_profiles:
+                indices = [int(p.name.split('-')[-1]) for p in sorted_profiles]
+                print(f"   Profile indices: {indices[:10]}{'...' if len(indices) > 10 else ''}")
+            
+            return sorted_profiles
+            
+        except Exception as e:
+            print(f"❌ Error fetching profiles from API: {e}")
+            return []
+    
     async def _save_profiles_to_cache(self) -> None:
         """
         Save current profile list to local JSON cache with multi-processing safety.
@@ -1152,6 +1264,7 @@ class ScrapelessProfileManager:
         Async implementation of init with Redis-based distributed locking.
         
         Ensures only one process can initialize the profile pool at a time.
+        Handles delta profile creation when num_profiles increases.
         """
         init_lock_key = f"scrapeless_init_lock:{self.name_prefix}"
         max_retries = 3
@@ -1170,30 +1283,123 @@ class ScrapelessProfileManager:
                 ):
                     print(f"✅ Init lock acquired, performing safe initialization...")
                     
-                    # Check if another process already initialized while we waited
+                    # Load existing profiles from cache if available
+                    existing_profiles = []
+                    cache_profiles_dict = {}
                     if os.path.exists(self.cache_file):
                         try:
                             with open(self.cache_file, 'r') as f:
                                 existing_data = json.load(f)
                             
                             existing_profiles = existing_data.get("profiles", [])
-                            if len(existing_profiles) >= self.num_profiles:
-                                print(f"ℹ️ Found existing {len(existing_profiles)} profiles in cache, skipping creation")
-                                
-                                # Load existing profiles
-                                self._profiles = [ProfileData(**profile_dict) for profile_dict in existing_profiles]
-                                self.allocation_manager.load_profiles(self._profiles)
-                                self._is_initialized = True
-                                print(f"🔓 Init lock released (loaded from cache)")
-                                return True
-                                
+                            # Build lookup by profile ID for merging with API data
+                            for profile in existing_profiles:
+                                cache_profiles_dict[profile.get('profile_id')] = profile
+                            
+                            print(f"📥 Found {len(existing_profiles)} existing profiles in cache")
+                            
                         except (json.JSONDecodeError, IOError) as e:
                             print(f"⚠️ Could not read existing cache during init: {e}")
                     
-                    # Perform actual initialization
-                    result = await self._init_profiles()
-                    print(f"🔓 Init lock released")
-                    return result
+                    # Fetch existing profiles from API to avoid recreating them
+                    api_profiles = await self._fetch_existing_profiles_from_api()
+                    
+                    # Merge API profiles with cache data (preserve cache statistics)
+                    merged_profiles = []
+                    merged_profile_ids = set()
+                    
+                    for api_profile in api_profiles:
+                        # Check if this profile exists in cache
+                        if api_profile.profile_id in cache_profiles_dict:
+                            # Merge: use API profile but preserve cache statistics
+                            cache_data = cache_profiles_dict[api_profile.profile_id]
+                            api_profile.penalty_score = cache_data.get('penalty_score', 0)
+                            api_profile.actual_allocations = cache_data.get('actual_allocations', 0)
+                            api_profile.total_allocations = cache_data.get('total_allocations', 0)
+                            print(f"   📊 Merged cache stats for {api_profile.name}")
+                        
+                        merged_profiles.append(asdict(api_profile))
+                        merged_profile_ids.add(api_profile.profile_id)
+                    
+                    # Add any cache-only profiles that weren't found in API (might have been deleted from API)
+                    for cache_profile in existing_profiles:
+                        if cache_profile.get('profile_id') not in merged_profile_ids:
+                            merged_profiles.append(cache_profile)
+                            print(f"   ⚠️ Profile {cache_profile.get('name')} exists in cache but not in API")
+                    
+                    # Use merged profiles as our existing profiles
+                    existing_profiles = merged_profiles
+                    existing_count = len(existing_profiles)
+                    
+                    if api_profiles:
+                        print(f"📊 Profile sync summary:")
+                        print(f"   - Cache profiles: {len(cache_profiles_dict)}")
+                        print(f"   - API profiles: {len(api_profiles)}")
+                        print(f"   - Merged profiles: {existing_count}")
+                    
+                    if existing_count >= self.num_profiles:
+                        # We have enough or more profiles than requested
+                        print(f"ℹ️ Cache has {existing_count} profiles, requested {self.num_profiles} - loading from cache")
+                        
+                        # Load existing profiles (up to num_profiles if we have more)
+                        profiles_to_load = existing_profiles[:self.num_profiles]
+                        self._profiles = [ProfileData(**profile_dict) for profile_dict in profiles_to_load]
+                        self.allocation_manager.load_profiles(self._profiles)
+                        self._is_initialized = True
+                        
+                        # Record initial state for delta tracking
+                        self._record_initial_state()
+                        
+                        print(f"✅ Loaded {len(self._profiles)} profiles from cache")
+                        print(f"🔓 Init lock released (loaded from cache)")
+                        return True
+                    
+                    elif existing_count > 0:
+                        # We have some profiles but need more - delta creation
+                        delta_needed = self.num_profiles - existing_count
+                        print(f"📊 Delta profile creation needed:")
+                        print(f"   - Existing profiles: {existing_count}")
+                        print(f"   - Requested profiles: {self.num_profiles}")
+                        print(f"   - Delta to create: {delta_needed}")
+                        
+                        # Load existing profiles
+                        self._profiles = [ProfileData(**profile_dict) for profile_dict in existing_profiles]
+                        
+                        # Build set of existing indices to avoid duplicates
+                        existing_indices = set()
+                        for profile in self._profiles:
+                            try:
+                                index = int(profile.name.split('-')[-1])
+                                existing_indices.add(index)
+                            except (ValueError, AttributeError):
+                                continue
+                        
+                        # Create only the delta profiles, skipping existing indices
+                        result = await self._create_delta_profiles(
+                            start_index=1,  # Start from 1 to fill gaps if any
+                            count=delta_needed,
+                            existing_indices=existing_indices
+                        )
+                        
+                        if result:
+                            # Load all profiles (existing + new) into allocation manager
+                            self.allocation_manager.load_profiles(self._profiles)
+                            self._is_initialized = True
+                            
+                            # Record initial state for delta tracking after loading all profiles
+                            self._record_initial_state()
+                            
+                            print(f"✅ Profile pool expanded from {existing_count} to {len(self._profiles)} profiles")
+                        
+                        print(f"🔓 Init lock released")
+                        return result
+                    
+                    else:
+                        # No existing profiles - create all from scratch
+                        print(f"🆕 No existing profiles found - creating {self.num_profiles} new profiles")
+                        result = await self._init_profiles()
+                        print(f"🔓 Init lock released")
+                        return result
                     
             except asyncio.TimeoutError:
                 print(f"⏳ Init lock acquisition timeout on attempt {attempt + 1}")
@@ -1211,6 +1417,100 @@ class ScrapelessProfileManager:
         print(f"❌ Failed to acquire init lock after {max_retries} attempts")
         raise Exception("Could not acquire init lock for safe initialization")
     
+    async def _create_delta_profiles(self, start_index: int, count: int, existing_indices: set = None) -> bool:
+        """
+        Create only the delta (additional) profiles needed when expanding the pool.
+        
+        This method creates new profiles starting from a specific index, preserving
+        all existing profiles and their statistics. It also skips indices that
+        already exist to avoid duplicates.
+        
+        Args:
+            start_index: Starting index for new profile names (e.g., 4 if we have 3 existing)
+            count: Number of new profiles to create
+            existing_indices: Set of profile indices that already exist (to skip)
+            
+        Returns:
+            True if delta creation successful, False otherwise
+        """
+        # Build set of existing indices if not provided
+        if existing_indices is None:
+            existing_indices = set()
+            for profile in self._profiles:
+                try:
+                    # Extract index from profile name
+                    index = int(profile.name.split('-')[-1])
+                    existing_indices.add(index)
+                except (ValueError, AttributeError):
+                    continue
+        
+        print(f"🔧 Creating {count} additional profiles starting from index {start_index}...")
+        if existing_indices:
+            print(f"   📊 Existing indices to skip: {sorted(existing_indices)[:10]}{'...' if len(existing_indices) > 10 else ''}")
+        
+        created_profiles = []
+        success_count = 0
+        profiles_needed = count
+        current_index = start_index
+        
+        while success_count < profiles_needed:
+            # Skip indices that already exist
+            if current_index in existing_indices:
+                print(f"   ⏭️ Skipping index {current_index} - profile already exists")
+                current_index += 1
+                continue
+            
+            profile_name = await self._generate_profile_name(current_index)
+            
+            print(f"📝 Creating delta profile {success_count + 1}/{profiles_needed}: {profile_name}")
+            
+            # Create profile via API with browser fallback
+            api_response = await self.api_client.create_profile(profile_name)
+            
+            if api_response:
+                # Extract profile ID from response (check multiple possible field names)
+                profile_id = None
+                for id_field in ['id', 'profileId', 'profile_id', '_id', 'uuid']:
+                    if id_field in api_response:
+                        profile_id = api_response[id_field]
+                        break
+                
+                if profile_id:
+                    profile_data = ProfileData(
+                        profile_id=str(profile_id),  # Ensure it's a string
+                        name=profile_name,
+                        created_at=datetime.now().isoformat(),
+                        penalty_score=0,  # Initialize with no penalty
+                        actual_allocations=0,  # No active allocations
+                        total_allocations=0  # No lifetime allocations yet
+                    )
+                    created_profiles.append(profile_data)
+                    self._profiles.append(profile_data)  # Add to existing profiles
+                    success_count += 1
+                else:
+                    print(f"⚠️ Delta profile creation failed - no valid ID in response: {profile_name}")
+            else:
+                print(f"⚠️ Delta profile creation failed - no response: {profile_name}")
+            
+            current_index += 1
+            
+            # Add small delay to avoid rate limiting
+            await asyncio.sleep(0.1)
+            
+            # Safety check to prevent infinite loop
+            if current_index > start_index + profiles_needed + len(existing_indices) + 100:
+                print(f"⚠️ Safety limit reached while creating delta profiles")
+                break
+        
+        # Save to cache with merging (preserves existing profile stats)
+        await self._save_profiles_to_cache()
+        
+        print(f"✅ Delta profile creation complete:")
+        print(f"   🎯 Successfully created: {success_count}/{profiles_needed} new profiles")
+        print(f"   📊 Total profiles now: {len(self._profiles)}")
+        
+        return success_count > 0
+
     async def _init_profiles(self) -> bool:
         """
         Core profile creation logic (called from async context).
@@ -1262,7 +1562,7 @@ class ScrapelessProfileManager:
                 print(f"⚠️ Profile creation failed - no response: {profile_name}")
             
             # Add small delay to avoid rate limiting
-            time.sleep(0.1)
+            await asyncio.sleep(0.1)
         
         # Update internal state
         self._profiles = created_profiles
@@ -1779,7 +2079,31 @@ if __name__ == "__main__":
     # If no API key is configured, will automatically use browser automation
     """)
     
-    print("\n5. Browser Automation Notes:")
+    print("\n5. Delta Profile Creation with API Sync (New Features):")
+    print("""
+    # Scenario: Local cache is out of sync with API server
+    # API has: profile-1, profile-2, profile-4, profile-7
+    # Cache has: profile-1, profile-2, profile-3 (with usage stats)
+    
+    async with ScrapelessProfileManager(num_profiles=5) as manager:
+        # Automatically:
+        # 1. Fetches existing profiles from API server
+        # 2. Merges with cache (preserves usage statistics)
+        # 3. Detects gaps: profile-3 missing on API, profile-5 and profile-6 needed
+        # 4. Creates only profile-5 (fills the gap to reach 5 profiles)
+        # 5. Preserves all allocation counts and penalties from cache
+        
+        stats = await manager.get_stats()
+        print(f"Synced profiles: {stats['total_profiles']}")
+    
+    # Benefits:
+    # - Avoids recreating profiles that exist on API
+    # - Preserves local usage statistics
+    # - Fills gaps in profile indices intelligently
+    # - Handles cache/API discrepancies gracefully
+    """)
+    
+    print("\n6. Browser Automation Notes:")
     print("""
     - First browser automation call will trigger manual login with ipdb.set_trace()
     - Browser session is cached for subsequent profile creations

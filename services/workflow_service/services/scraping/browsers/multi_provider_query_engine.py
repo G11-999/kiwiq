@@ -299,18 +299,24 @@ class MultiProviderQueryEngine:
                     total_duration = sum(r.get("duration_seconds", 0) for r in provider_results)
                     avg_duration = total_duration / len(provider_results) if provider_results else 0
                     
+                    # Calculate average attempts
+                    total_attempts = sum(r.get("attempts", 1) for r in provider_results)
+                    avg_attempts = total_attempts / len(provider_results) if provider_results else 0
+                    
                     all_results["statistics"][provider_name] = {
                         "total_queries": actual_queries_for_provider,
                         "successful_queries": successful_queries,
                         "failed_queries": actual_queries_for_provider - successful_queries,
                         "success_rate": successful_queries / actual_queries_for_provider if actual_queries_for_provider else 0,
                         "total_duration_seconds": total_duration,
-                        "average_duration_seconds": avg_duration
+                        "average_duration_seconds": avg_duration,
+                        "total_attempts": total_attempts,
+                        "average_attempts": avg_attempts
                     }
                     
                     self.logger.info(f"✅ {provider_name.upper()}: {successful_queries}/{actual_queries_for_provider} queries "
                               f"({successful_queries/actual_queries_for_provider*100:.1f}%) in {total_duration:.1f}s "
-                              f"(avg: {avg_duration:.1f}s/query)")
+                              f"(avg: {avg_duration:.1f}s/query, {avg_attempts:.1f} attempts/query)")
                 
             except Exception as e:
                 self.logger.error(f"❌ Fatal error during cross-provider parallel processing: {e}", exc_info=True)
@@ -557,17 +563,24 @@ class MultiProviderQueryEngine:
             summary["providers"][provider_name] = {
                 "success_rate": provider_stats["success_rate"],
                 "successful_queries": provider_stats["successful_queries"],
-                "failed_queries": provider_stats["failed_queries"]
+                "failed_queries": provider_stats["failed_queries"],
+                "average_attempts": provider_stats.get("average_attempts", 0)
             }
         
         # Overall statistics
         total_successful = sum(stats["successful_queries"] for stats in results.get("statistics", {}).values())
         total_possible = len(results.get("statistics", {})) * results["metadata"]["total_queries"]
         
+        # Calculate overall average attempts
+        total_attempts_all_providers = sum(stats["total_attempts"] for stats in results.get("statistics", {}).values())
+        total_queries_all_providers = sum(stats["total_queries"] for stats in results.get("statistics", {}).values())
+        overall_avg_attempts = total_attempts_all_providers / total_queries_all_providers if total_queries_all_providers > 0 else 0
+        
         summary["overall"] = {
             "total_possible_queries": total_possible,
             "total_successful_queries": total_successful,
-            "overall_success_rate": total_successful / total_possible if total_possible > 0 else 0
+            "overall_success_rate": total_successful / total_possible if total_possible > 0 else 0,
+            "overall_average_attempts": overall_avg_attempts
         }
         
         return summary

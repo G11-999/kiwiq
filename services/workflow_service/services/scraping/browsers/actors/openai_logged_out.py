@@ -167,7 +167,7 @@ class OpenAIBrowserActor(BaseBrowserActor):
             except Exception as e:
                 self.logger.info(f"Stay logged out button not found: {e}")
             try:
-                await self.wait_and_click(OPENAI_SELECTORS["search_web_no_login"])
+                await self.wait_and_click(OPENAI_SELECTORS["search_web_no_login"], timeout=500)
                 return True
             except Exception as e:
                 self.logger.info(f"Search web no login button not found: {e}")
@@ -201,6 +201,13 @@ class OpenAIBrowserActor(BaseBrowserActor):
         await self.wait_for_seconds(0.25, add_noise=True)
         await self.wait_and_click(OPENAI_SELECTORS["send_button"])
         # pause_until_confirm()
+
+        try:
+            await self.wait_and_click(OPENAI_SELECTORS["stay_logged_out"], timeout=1000)
+            self.logger.info(f"Stay logged out button clicked")
+            await self.wait_for_seconds(0.1, add_noise=True)
+        except Exception as e:
+            self.logger.info(f"Stay logged out button not found: {e}")
 
         # Wait for GPT to finish
         pairs = await self.wait_until_chatgpt_response_complete()
