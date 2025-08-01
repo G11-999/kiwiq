@@ -497,18 +497,6 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
       "user_documents_config_variables": {},
       "template_specific": false
     },
-    "linkedin_post_creation_from_scratch_workflow": {
-      "name": "linkedin_post_creation_from_scratch_workflow", 
-      "version": null,
-      "inputs": {
-        "user_input": null,
-        "post_uuid": null,
-        "past_context_posts_limit": 20,
-        "entity_username": null
-      },
-      "user_documents_config_variables": {},
-      "template_specific": false
-    },
     "blog_user_input_to_brief_workflow": {
       "name": "blog_user_input_to_brief_workflow",
       "version": null,
@@ -536,6 +524,17 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
       "inputs": {
         "company_name": null,
         "original_blog": null,
+        "route_all_choices": true
+      },
+      "user_documents_config_variables": {},
+      "template_specific": false
+    },
+    "linkedin_content_optimisation_workflow": {
+      "name": "linkedin_content_optimisation_workflow", 
+      "version": null,
+      "inputs": {
+        "original_post": null,
+        "entity_username": null,
         "route_all_choices": true
       },
       "user_documents_config_variables": {},
