@@ -290,7 +290,6 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
       },
       "template_specific": false
     },
-
     "linkedin_automatic_concept_selection_workflow": {
       "name": "linkedin_automatic_concept_selection_workflow",
       "version": null,
@@ -537,6 +536,16 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
         "entity_username": null,
         "route_all_choices": true
       },
+      "user_documents_config_variables": {},
+      "template_specific": false
+    },
+    "linkedin_user_input_to_brief_workflow": {
+      "name": "linkedin_user_input_to_brief_workflow",
+      "version": null,
+      "inputs": {
+        "entity_username": null,
+        "user_input": null
+       },
       "user_documents_config_variables": {},
       "template_specific": false
     }
