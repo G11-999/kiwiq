@@ -1424,22 +1424,22 @@ if __name__ == "__main__":
                 "generate_vectors": True  # Enable vector generation
             }
         ),
-        # Weekly content calendar generation deployment (weekly cron job)
-        weekly_content_calendar_generation_flow.to_deployment(
-            name="weekly",
-            tags=["content-service", "calendar-generation", "workflow-automation", "cron"],
-            cron="0 8 * * 5",  # Run weekly on Friday at 8 AM UTC (Friday midnight PST)
-            description=f"Weekly content calendar brief generation for all active entity usernames ({global_settings.APP_ENV})",
-            version="content-service/calendar-generation",
-            parameters={
-                # Use default parameters for production runs
-                "limit": None,  # Process all entities
-                "include_inactive_orgs": False,  # Only active organizations
-                "weeks_to_generate": 1,  # Generate 1 week of content
-                "past_context_posts_limit": 20,  # Use 20 past posts for context
-                "dry_run": False  # Actually trigger workflows (set to True for testing)
-            }
-        ),
+        # # Weekly content calendar generation deployment (weekly cron job)
+        # weekly_content_calendar_generation_flow.to_deployment(
+        #     name="weekly",
+        #     tags=["content-service", "calendar-generation", "workflow-automation", "cron"],
+        #     cron="0 8 * * 5",  # Run weekly on Friday at 8 AM UTC (Friday midnight PST)
+        #     description=f"Weekly content calendar brief generation for all active entity usernames ({global_settings.APP_ENV})",
+        #     version="content-service/calendar-generation",
+        #     parameters={
+        #         # Use default parameters for production runs
+        #         "limit": None,  # Process all entities
+        #         "include_inactive_orgs": False,  # Only active organizations
+        #         "weeks_to_generate": 1,  # Generate 1 week of content
+        #         "past_context_posts_limit": 20,  # Use 20 past posts for context
+        #         "dry_run": False  # Actually trigger workflows (set to True for testing)
+        #     }
+        # ),
         # Web crawler scraper deployment (on-demand)
         web_crawler_scraper_flow.to_deployment(
             name="on-demand",
