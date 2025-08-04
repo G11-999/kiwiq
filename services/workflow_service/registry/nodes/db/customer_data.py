@@ -1161,7 +1161,7 @@ class StoreCustomerDataOutput(DynamicSchema):
     """
     # TODO: Define a more structured output? E.g., results per store_config?
     # For now, just pass through input for simplicity, similar to IfElse.
-    paths_processed: List[List[Union[str, Dict[str, Any]]]] = Field(default_factory=list, description="List of paths processed successfully.")
+    paths_processed: Union[List[List[Union[str, Dict[str, Any]]]], List[str]] = Field(default_factory=list, description="List of paths processed successfully.")
     passthrough_data: Dict[str, Any] = Field(..., description="The original input data passed through.")
 
 

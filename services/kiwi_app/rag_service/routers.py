@@ -101,6 +101,11 @@ async def search_documents(
         validated_request = search_request.model_copy()
         validated_request.org_id = effective_org_id
         validated_request.user_id = effective_user_id
+
+        if validated_request.search_only_system_entities and (not current_user.is_superuser):
+            raise RAGPermissionException(
+                message="Regular users cannot search only system entities"
+            )
         
         response = await rag_service.search_documents(
             search_request=validated_request,

@@ -313,18 +313,21 @@ class DocumentListFilter(BaseModel):
         
         return self
     
-    def get_namespace(self, entity_username: str) -> str:
-        """Get the namespace for filtering."""
+    def get_doc_params(self, entity_username: str) -> Dict[str, Any]:
+        """Get the doc params for filtering."""
         key_to_use = self.doc_key or self.namespace_of_doc_key
         if key_to_use:
             params = resolve_doc_params(key_to_use, entity_username)
-            return params["namespace"] if params else ""
-        return ""
+            return params or {}
+        return {}
     
     def to_query_params(self, entity_username: str) -> Dict[str, Any]:
         """Convert to query parameters for document listing."""
+        doc_params = self.get_doc_params(entity_username)
         params = {
-            "namespace": self.get_namespace(entity_username),
+            "namespace": doc_params.get("namespace", ""),
+            "is_system_entity": doc_params.get("is_system_entity", None),
+            "is_shared": doc_params.get("is_shared", None),
             # "limit": self.limit,
             # "offset": self.offset
         }

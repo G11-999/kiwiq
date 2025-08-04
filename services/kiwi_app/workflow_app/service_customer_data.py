@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from kiwi_app.auth.models import User
 from kiwi_app.workflow_app import schemas
 from kiwi_app.workflow_app import crud
-from kiwi_app.workflow_app.constants import SchemaType
+from kiwi_app.workflow_app.constants import SchemaType, CustomerDataServiceConstants
 from mongo_client import AsyncMongoDBClient, AsyncMongoVersionedClient
 from kiwi_app.settings import settings
 from kiwi_app.utils import get_kiwi_logger
@@ -36,10 +36,10 @@ class CustomerDataService:
     """
     
     # Constant for shared document user ID placeholder
-    SHARED_DOC_PLACEHOLDER = "_shared_"
-    SHARED_AND_API_READABLE_SYSTEM_NAMESPACE = "_shared_and_api_readable_"  # Only use for system docs!
-    PRIVATE_DOC_PLACEHOLDER = "_private_"
-    SYSTEM_DOC_PLACEHOLDER = "_system_"
+    SHARED_DOC_PLACEHOLDER = CustomerDataServiceConstants.SHARED_DOC_PLACEHOLDER
+    SHARED_AND_API_READABLE_SYSTEM_NAMESPACE = CustomerDataServiceConstants.SHARED_AND_API_READABLE_SYSTEM_NAMESPACE
+    PRIVATE_DOC_PLACEHOLDER = CustomerDataServiceConstants.PRIVATE_DOC_PLACEHOLDER
+    SYSTEM_DOC_PLACEHOLDER = CustomerDataServiceConstants.SYSTEM_DOC_PLACEHOLDER
     
     def __init__(
         self,
@@ -2355,6 +2355,7 @@ class CustomerDataService:
         sort_by: Optional[schemas.CustomerDataSortBy] = None,
         sort_order: Optional[schemas.SortOrder] = schemas.SortOrder.DESC,
         is_called_from_workflow: bool = False,
+        is_tool_call: bool = False,
     ) -> List[schemas.CustomerDocumentSearchResult]:
         """
         Search documents accessible to the user.
@@ -2374,7 +2375,8 @@ class CustomerDataService:
             sort_by: Field to sort results by
             sort_order: Order to sort results (ASC or DESC)
             is_called_from_workflow: Whether this operation is called from a workflow
-            
+            is_tool_call: Whether this operation is called from a tool call
+
         Returns:
             Search of document search results
         """
@@ -2390,7 +2392,7 @@ class CustomerDataService:
                 detail="Only superusers can act on behalf of other users"
             )
             
-        if include_system_entities and not user.is_superuser:
+        if include_system_entities and not (user.is_superuser or is_tool_call):
             self.logger.warning(f"Permission denied: Non-superuser {user.id} attempted to Search system entities")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -2426,12 +2428,13 @@ class CustomerDataService:
                 patterns.append([str(org_id), self.SHARED_DOC_PLACEHOLDER, namespace_filter_pattern, "*"])
         
         # System patterns
-        if include_system_entities and user.is_superuser:  # Regular users can still see shared system docs
+        if include_system_entities and (user.is_superuser or is_tool_call):  # Regular users can still see shared system docs
             # self.logger.debug("Including shared system documents")
             patterns.append([CustomerDataService.SYSTEM_DOC_PLACEHOLDER, self.SHARED_DOC_PLACEHOLDER, namespace_filter_pattern, "*"])
             # Only superusers can access private system docs
             # self.logger.debug("Including private system documents (superuser only)")
-            patterns.append([CustomerDataService.SYSTEM_DOC_PLACEHOLDER, self.PRIVATE_DOC_PLACEHOLDER, namespace_filter_pattern, "*"])
+            if user.is_superuser:
+                patterns.append([CustomerDataService.SYSTEM_DOC_PLACEHOLDER, self.PRIVATE_DOC_PLACEHOLDER, namespace_filter_pattern, "*"])
         
         try:
             self.logger.debug(f"Beginning document search with {len(patterns)} patterns")

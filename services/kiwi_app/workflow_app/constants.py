@@ -1,6 +1,12 @@
 """Constants for the Workflow Application."""
 from enum import Enum
 
+class CustomerDataServiceConstants:
+    SHARED_DOC_PLACEHOLDER = "_shared_"
+    SHARED_AND_API_READABLE_SYSTEM_NAMESPACE = "_shared_and_api_readable_"  # Only use for system docs!
+    PRIVATE_DOC_PLACEHOLDER = "_private_"
+    SYSTEM_DOC_PLACEHOLDER = "_system_"
+
 class LaunchStatus(str, Enum):
     """Enum for the launch status of Node Templates."""
     INTERNAL = "internal"

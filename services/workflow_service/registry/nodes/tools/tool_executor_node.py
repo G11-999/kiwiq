@@ -619,7 +619,7 @@ class ToolExecutorNode(BaseDynamicNode):  # BaseNode[ToolExecutorNodeInputSchema
             tool_node_kwargs = {
                 'node_id': f"TOOL_CALL:{tool_call.tool_name}_{tool_call_id}",
                 'prefect_mode': self.prefect_mode, # Enable prefect mode for logging
-                'config': tool_node_config if tool_node_config else None # Pass None if no specific config
+                'config': tool_node_config,  #  if tool_node_config else None # Pass None if no specific config
             }
 
             # tool_node here is the class retrieved from the registry.

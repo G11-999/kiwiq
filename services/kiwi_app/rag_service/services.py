@@ -33,6 +33,7 @@ from kiwi_app.rag_service.schemas import (
     RAGAdvancedSearchRequest, RAGAdvancedSearchResponse, RAGGroupedSearchResult,
     SearchType
 )
+from kiwi_app.workflow_app.constants import CustomerDataServiceConstants
 from kiwi_app.rag_service.exceptions import RAGPermissionException
 from global_config.logger import get_prefect_or_regular_python_logger
 
@@ -114,6 +115,7 @@ class RAGService:
         scheduled_after: Optional[datetime] = None,
         scheduled_before: Optional[datetime] = None,
         chunk_keys_contain: Optional[List[str]] = None,
+        search_only_system_entities: bool = False,
         **kwargs
     ) -> Optional[Any]:
         """
@@ -133,6 +135,7 @@ class RAGService:
             scheduled_after: Optional scheduled after date filter
             scheduled_before: Optional scheduled before date filter
             chunk_keys_contain: Optional chunk keys filter
+            search_only_system_entities: Optional search only system entities filter
             **kwargs: Additional filter parameters
             
         Returns:
@@ -152,36 +155,33 @@ class RAGService:
         if effective_user_id:
             user_segment = str(effective_user_id)
         
-        # Use the weaviate client's build_filter method
-        weaviate_filter = self.weaviate_client.build_filter(
-            org_segment=org_segment,
-            user_segment=user_segment,
-            namespace=namespace_filter,
-            doc_name=doc_name_filter,
-            version=version_filter,
-            created_at_start=created_after,
-            created_at_end=created_before,
-            updated_at_start=updated_after,
-            updated_at_end=updated_before,
-            scheduled_date_start=scheduled_after,
-            scheduled_date_end=scheduled_before,
-            chunk_keys_contains_any=chunk_keys_contain
-        )
+        if search_only_system_entities:
+            org_segment = CustomerDataServiceConstants.SYSTEM_DOC_PLACEHOLDER
+            user_segment = CustomerDataServiceConstants.SHARED_DOC_PLACEHOLDER
+            if user.is_superuser:
+                user_segment = None
         
-        if user_segment:
+        # Use the weaviate client's build_filter method
+        kwargs = {
+            "org_segment": org_segment,
+            "user_segment": user_segment,
+            "namespace": namespace_filter,
+            "doc_name": doc_name_filter,
+            "version": version_filter,
+            "created_at_start": created_after,
+            "created_at_end": created_before,
+            "updated_at_start": updated_after,
+            "updated_at_end": updated_before,
+            "scheduled_date_start": scheduled_after,
+            "scheduled_date_end": scheduled_before,
+            "chunk_keys_contains_any": chunk_keys_contain
+        }
+        weaviate_filter = self.weaviate_client.build_filter(**kwargs)
+        
+        if user_segment and (not search_only_system_entities):
+            kwargs["user_segment"] = CustomerDataServiceConstants.SHARED_DOC_PLACEHOLDER
             weaviate_filter = weaviate_filter | self.weaviate_client.build_filter(
-                org_segment=org_segment,
-                user_segment=self.customer_data_service.SHARED_DOC_PLACEHOLDER,
-                namespace=namespace_filter,
-                doc_name=doc_name_filter,
-                version=version_filter,
-                created_at_start=created_after,
-                created_at_end=created_before,
-                updated_at_start=updated_after,
-                updated_at_end=updated_before,
-                scheduled_date_start=scheduled_after,
-                scheduled_date_end=scheduled_before,
-                chunk_keys_contains_any=chunk_keys_contain
+                **kwargs
             )
         
         return weaviate_filter
@@ -256,7 +256,7 @@ class RAGService:
     async def search_documents(
         self,
         search_request: RAGSearchRequest,
-        user: User
+        user: User,
     ) -> RAGSearchResponse:
         """
         Search documents using vector, keyword, or hybrid search.
@@ -295,7 +295,8 @@ class RAGService:
             updated_before=search_request.updated_before,
             scheduled_after=search_request.scheduled_after,
             scheduled_before=search_request.scheduled_before,
-            chunk_keys_contain=search_request.chunk_keys_contain
+            chunk_keys_contain=search_request.chunk_keys_contain,
+            search_only_system_entities=search_request.search_only_system_entities,
         )
         
         try:

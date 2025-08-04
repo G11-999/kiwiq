@@ -61,35 +61,126 @@ RAG_INGESTION_MAX_BATCHES_PER_RUN = 50
 # Default document patterns for ingestion
 # These patterns target the most important document types for RAG
 DEFAULT_INGESTION_DOCUMENT_PATTERNS = [
-    # User strategy documents
-    ("user_strategy_*", "user_dna_doc"),
-    ("user_strategy_*", "content_strategy_doc"),
     
-    # User analysis documents  
-    ("user_analysis_*", "user_source_analysis"),
-    ("user_analysis_*", "content_analysis_doc"),
+    # # Uploaded files (empty docname template, so match all)
+    # ("uploaded_files_*", "*"),
     
-    # User inputs and preferences
-    ("user_inputs_*", "core_beliefs_perspectives_doc"),
-    ("user_inputs_*", "content_pillars_doc"),
-    ("user_inputs_*", "user_preferences_doc"),
-    ("user_inputs_*", "writing_style_posts_doc"),
+    # LinkedIn executive strategy and analysis documents
+    ("linkedin_executive_strategy_*", "*"),
+    ("linkedin_content_diagnostic_*", "*"),
+    ("linkedin_knowledge_base_*", "*"),
+    ("linkedin_uploaded_files_*", "*"),
+    ("linkedin_executive_profile_namespace_*", "*"),
+    ("linkedin_executive_analysis_*", "*"),
     
-    # Knowledge base
-    ("knowledge_base_*", "knowledge_base_analysis"),
+    # LinkedIn scraping results (updated patterns)
+    ("linkedin_scraping_results_*", "*"),
     
-    # LinkedIn scraped data
-    ("scraping_results_*", "linkedin_scraped_profile_doc"),
-    ("scraping_results_*", "linkedin_scraped_posts_doc"),
+    # LinkedIn content creation documents
+    ("linkedin_content_briefs_*", "*"),
+    ("linkedin_post_drafts_*", "*"),
+    ("linkedin_content_ideas_*", "*"),
     
-    # Content creation documents (these use dynamic UUIDs)
-    ("content_briefs_*", "brief_*"),
-    ("content_concepts_*", "concept_*"),
-    ("post_drafts_*", "draft_*"),
-    ("content_ideas_*", "idea_*"),
+    # Blog company and strategy documents
+    ("blog_company_profile_*", "*"),
+    ("blog_company_strategy_*", "*"),
+    ("blog_content_data_*", "*"),
     
-    # Uploaded files (empty docname template, so match all)
-    ("uploaded_files_*", "*"),
+    
+    # Blog analysis documents
+    ("blog_analysis_*", "*"),
+    
+    # Blog content diagnostic documents
+    ("blog_content_diagnostic_*", "*"),
+    # ("blog_content_diagnostic_report_*", "blog_content_diagnostic_report_doc"),
+    
+    # Blog AI query tracking documents
+    ("blog_ai_query_tracking_*", "*"),
+    
+    # Blog content creation and delivery documents
+    ("blog_spark_delivery_*", "*"),
+    ("blog_content_creation_*", "*"),
+    ("blog_posts_draft_*", "blog_post_draft_*"),
+    
+    # System strategy documents (important for RAG context)
+    ("blog_playbook_sys", "*"),
+    ("blog_uploaded_files_*", "*"),
+    
+    # # LinkedIn executive strategy and analysis documents
+    # ("linkedin_executive_strategy_*", "linkedin_content_playbook_doc"),
+    # ("linkedin_content_diagnostic_*", "linkedin_content_diagnostic_report_doc"),
+    # ("linkedin_knowledge_base_*", "linkedin_knowledge_base_analysis"),
+    # ("linkedin_uploaded_files_*", "*"),
+    # ("linkedin_executive_profile_namespace_*", "linkedin_executive_profile_doc"),
+    # ("linkedin_executive_profile_namespace_*", "linkedin_executive_writing_style_doc"),
+    # ("linkedin_executive_analysis_*", "linkedin_content_analysis_doc"),
+    # ("linkedin_executive_analysis_*", "linkedin_executive_web_audit_doc"),
+    # ("linkedin_executive_analysis_*", "linkedin_executive_ai_visibility_test_doc"),
+    
+    # # LinkedIn scraping results (updated patterns)
+    # ("linkedin_scraping_results_*", "linkedin_scraped_profile_doc"),
+    # ("linkedin_scraping_results_*", "linkedin_scraped_posts_doc"),
+    
+    # # LinkedIn content creation documents
+    # ("linkedin_content_briefs_*", "linkedin_brief_*"),
+    # ("linkedin_post_drafts_*", "linkedin_draft_*"),
+    # ("linkedin_content_ideas_*", "linkedin_idea_*"),
+    
+    # # Blog company and strategy documents
+    # ("blog_company_profile_*", "blog_company_doc"),
+    # ("blog_company_strategy_*", "blog_content_playbook_doc"),
+    # ("blog_content_data_*", "blog_post_catalog_doc"),
+    
+    # # Blog analysis documents
+    # ("blog_analysis_*", "blog_seo_audit_doc"),
+    # ("blog_analysis_*", "blog_ai_visibility_test_doc"),
+    # ("blog_analysis_dashboard_*", "blog_analysis_dashboard_doc"),
+    # ("blog_analysis_*", "blog_company_ai_baseline_doc"),
+    # ("blog_analysis_*", "blog_competitor_content_analysis_*"),
+    # ("blog_analysis_*", "blog_deep_research_report_doc"),
+    # ("blog_analysis_*", "blog_content_analysis_doc"),
+    # ("blog_analysis_*", "blog_competitor_ai_visibility_test_*"),
+    
+    # # Blog content diagnostic documents
+    # ("blog_content_diagnostic_*", "blog_enhanced_ai_visibility_deepdive_doc"),
+    # ("blog_content_diagnostic_*", "blog_context_package_doc"),
+    # ("blog_content_diagnostic_*", "blog_keyword_validation_doc"),
+    # ("blog_content_diagnostic_report_*", "blog_content_diagnostic_report_doc"),
+    
+    # # Blog AI query tracking documents
+    # ("blog_ai_query_tracking_*", "blog_query_management_dashboard_doc"),
+    # ("blog_ai_query_tracking_*", "blog_weekly_ai_visibility_report_doc"),
+    # ("blog_ai_query_tracking_*", "blog_query_performance_summary_doc"),
+    
+    # # Blog content creation and delivery documents
+    # ("blog_spark_delivery_*", "blog_user_schedule_config_doc"),
+    # ("blog_spark_delivery_*", "blog_spark_content_card_*"),
+    # ("blog_content_creation_*", "blog_topic_ideas_*"),
+    # ("blog_content_creation_*", "blog_content_brief_*"),
+    # ("blog_content_creation_*", "blog_improvement_suggestions_*"),
+    # ("blog_posts_draft_*", "blog_post_draft_*"),
+    
+    # # System strategy documents (important for RAG context)
+    # ("blog_playbook_sys", "Play 1: The Problem Authority Stack"),
+    # ("blog_playbook_sys", "Play 2: The Category Pioneer Manifesto"),
+    # ("blog_playbook_sys", "Play 3: The David vs Goliath Playbook"),
+    # ("blog_playbook_sys", "Play 4: The Practitioner's Handbook"),
+    # ("blog_playbook_sys", "Play 5: The Use Case Library"),
+    # ("blog_playbook_sys", "Play 6: The Migration Magnet"),
+    # ("blog_playbook_sys", "Play 7: The Integration Authority"),
+    # ("blog_playbook_sys", "Play 8: The Vertical Dominator"),
+    # ("blog_playbook_sys", "Play 9: The Customer Intelligence Network"),
+    # ("blog_playbook_sys", "Play 10: The Research Engine"),
+    # ("blog_playbook_sys", "Play 11: The Remote Revolution Handbook"),
+    # ("blog_playbook_sys", "Play 12: The Maturity Model Master"),
+    # ("blog_playbook_sys", "Play 13: The Community-Driven Roadmap"),
+    # ("blog_playbook_sys", "Play 14: The Enterprise Translator"),
+    # ("blog_playbook_sys", "Play 15: The Ecosystem Architect"),
+    # ("blog_playbook_sys", "Play 16: The AI Specialist"),
+    # ("blog_playbook_sys", "Play 17: The Efficiency Engine"),
+    # ("blog_playbook_sys", "Play 18: The False Start Chronicles"),
+    # ("blog_playbook_sys", "Play 19: The Compliance Simplifier"),
+    # ("blog_playbook_sys", "Play 20: The Talent Magnet"),
     
     # # System strategy documents (important for RAG context)
     # ("system_strategy_docs_namespace", "methodology_implementation_ai_copilot"),

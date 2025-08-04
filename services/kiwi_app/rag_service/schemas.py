@@ -49,6 +49,7 @@ class RAGSearchRequest(RAGBaseRequest):
     namespace_filter: Optional[str] = Field(None, description="Filter by document namespace")
     doc_name_filter: Optional[str] = Field(None, description="Filter by document name")
     version_filter: Optional[str] = Field(None, description="Filter by document version")
+    search_only_system_entities: bool = Field(False, description="Limit search to only system entities (default: False)")
     
     # Date range filtering
     created_after: Optional[datetime] = Field(None, description="Filter documents created after this date")

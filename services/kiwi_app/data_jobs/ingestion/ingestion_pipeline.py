@@ -26,6 +26,7 @@ from uuid import UUID, uuid4
 from kiwi_app.workflow_app.schemas import CustomerDocumentSearchResult, CustomerDocumentSearchResultMetadata
 from kiwi_app.data_jobs.ingestion.chunking import JSONSplitter
 from weaviate_client.weaviate_client import WeaviateChunkClient, ChunkSchema
+from kiwi_app.workflow_app.constants import CustomerDataServiceConstants
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -324,7 +325,7 @@ def process_chunks_for_ingestion(
                 chunk_keys = []
             
             # Build org and user segments from metadata object
-            org_segment = str(base_metadata.org_id)
+            org_segment = str(base_metadata.org_id) if not base_metadata.is_system_entity else CustomerDataServiceConstants.SYSTEM_DOC_PLACEHOLDER
             
             user_segment = str(base_metadata.user_id_or_shared_placeholder)
             
@@ -490,15 +491,18 @@ class DocumentIngestionPipeline:
         
         # Build ID from components
         org_id = metadata.org_id or 'unknown'
+        if metadata.is_system_entity:
+            org_id = CustomerDataServiceConstants.SYSTEM_DOC_PLACEHOLDER
+        user_id_or_shared_placeholder = metadata.user_id_or_shared_placeholder
         namespace = metadata.namespace or 'default'
         docname = metadata.docname or 'unknown'
         version = metadata.version or ''
         
         # Include version in ID if available
         if version:
-            return f"{org_id}_{namespace}_{docname}_v{version}"
+            return f"{org_id}_{user_id_or_shared_placeholder}_{namespace}_{docname}_v{version}"
         else:
-            return f"{org_id}_{namespace}_{docname}"
+            return f"{org_id}_{user_id_or_shared_placeholder}_{namespace}_{docname}"
     
     async def ingest_documents(
         self,

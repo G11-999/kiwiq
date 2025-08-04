@@ -579,7 +579,7 @@ async def run_graph(
                                     payload["central_state_update"] = central_state_update
                                 
                                 # Redact potentially sensitive data such as shared system docs / prompts
-                                restricted_node_names = ["prompt_constructor", "load_customer_data", ]  # , "llm"
+                                restricted_node_names = ["prompt_constructor", "load_customer_data", "tool_executor", "crawler_scraper", "ai_answer_engine_scraper"]  # , "llm"
                                 user = initial_runtime_config[APPLICATION_CONTEXT_KEY].get("user", None)
                                 
                                 try:

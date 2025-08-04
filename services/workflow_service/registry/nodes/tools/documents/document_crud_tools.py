@@ -546,6 +546,8 @@ class EditDocumentTool(BaseNode[EditDocumentInputSchema, EditDocumentOutputSchem
     input_schema_cls: ClassVar[Type[EditDocumentInputSchema]] = EditDocumentInputSchema
     output_schema_cls: ClassVar[Type[EditDocumentOutputSchema]] = EditDocumentOutputSchema
     config_schema_cls: ClassVar[Type[EditDocumentConfigSchema]] = EditDocumentConfigSchema
+
+    config: EditDocumentConfigSchema
     
     async def process(
         self,
@@ -1317,6 +1319,8 @@ class DocumentViewerTool(BaseNode[DocumentViewerInputSchema, DocumentViewerOutpu
     input_schema_cls: ClassVar[Type[DocumentViewerInputSchema]] = DocumentViewerInputSchema
     output_schema_cls: ClassVar[Type[DocumentViewerOutputSchema]] = DocumentViewerOutputSchema
     config_schema_cls: ClassVar[Type[DocumentViewerConfigSchema]] = DocumentViewerConfigSchema
+
+    config: DocumentViewerConfigSchema
     
     async def process(
         self,
@@ -1484,6 +1488,7 @@ class DocumentViewerTool(BaseNode[DocumentViewerInputSchema, DocumentViewerOutpu
             # Extract filter parameters
             namespace_filter = query_params.get("namespace")
             doc_key = query_params.get("doc_key")
+            is_system_entity = query_params.get("is_system_entity", False)
             
             # Extract date filters from query_params
             scheduled_date_range_start = query_params.get("scheduled_after")
@@ -1518,8 +1523,9 @@ class DocumentViewerTool(BaseNode[DocumentViewerInputSchema, DocumentViewerOutpu
                 include_user_specific=True,
                 skip=input_data.offset,
                 limit=input_data.limit,
-                include_system_entities=False,
-                is_called_from_workflow=True
+                include_system_entities=is_system_entity,
+                is_called_from_workflow=True,
+                is_tool_call=True,
             )
             
             # Convert search results to document viewer format
@@ -1648,6 +1654,11 @@ class DocumentSearchInputSchema(BaseDocumentInputSchema):
             "Use this to search across many documents at once."
         )
     )
+
+    search_only_system_entities: bool = Field(
+        False,
+        description="Limit search to only system entities such as system playbooks (default: False). Only use this option when `document_identifier` or `list_filter` are not provided, since those options will override this option."
+    )
     
     # Search options
     limit: int = Field(
@@ -1668,8 +1679,8 @@ class DocumentSearchInputSchema(BaseDocumentInputSchema):
         has_document = self.document_identifier is not None
         has_list = self.list_filter is not None
         
-        if not has_document and not has_list:
-            raise ValueError("Must provide either 'document_identifier' (to search one document) or 'list_filter' (to search multiple)")
+        # if not has_document and not has_list:
+        #     raise ValueError("Must provide either 'document_identifier' (to search one document) or 'list_filter' (to search multiple)")
         
         if has_document and has_list:
             raise ValueError("Provide either 'document_identifier' or 'list_filter', not both")
@@ -1718,6 +1729,10 @@ class DocumentSearchOutputSchema(BaseNodeConfig):
 
 class DocumentSearchConfigSchema(BaseNodeConfig):
     """Configuration schema for the DocumentSearchTool."""
+    return_full_document_contents: bool = Field(
+        False,
+        description="Whether to return the full document contents"
+    )
     max_results_limit: int = Field(
         10,
         description="Maximum number of search results that can be returned"
@@ -1759,6 +1774,8 @@ class DocumentSearchTool(BaseNode[DocumentSearchInputSchema, DocumentSearchOutpu
     input_schema_cls: ClassVar[Type[DocumentSearchInputSchema]] = DocumentSearchInputSchema
     output_schema_cls: ClassVar[Type[DocumentSearchOutputSchema]] = DocumentSearchOutputSchema
     config_schema_cls: ClassVar[Type[DocumentSearchConfigSchema]] = DocumentSearchConfigSchema
+
+    config: DocumentSearchConfigSchema
     
     async def process(
         self,
@@ -1836,6 +1853,7 @@ class DocumentSearchTool(BaseNode[DocumentSearchInputSchema, DocumentSearchOutpu
             scheduled_after = None
             scheduled_before = None
             doc_key = None
+            search_only_system_entities = input_data.search_only_system_entities
             
             if input_data.document_identifier:
                 # Single document search - first identify the document
@@ -1863,6 +1881,7 @@ class DocumentSearchTool(BaseNode[DocumentSearchInputSchema, DocumentSearchOutpu
                 doc_name_filter = document_info.docname
                 version_filter = document_info.version
                 doc_key = input_data.document_identifier.doc_key
+                search_only_system_entities = document_info.is_system_entity
                 
             else:
                 # Multiple document search using list filter
@@ -1876,6 +1895,7 @@ class DocumentSearchTool(BaseNode[DocumentSearchInputSchema, DocumentSearchOutpu
                     # Extract filter parameters
                     namespace_filter = query_params.get("namespace")
                     doc_key = query_params.get("doc_key")
+                    search_only_system_entities = query_params.get("is_system_entity", search_only_system_entities)
                     
                     # Extract date filters
                     scheduled_date_range_start = query_params.get("scheduled_after")
@@ -1891,6 +1911,8 @@ class DocumentSearchTool(BaseNode[DocumentSearchInputSchema, DocumentSearchOutpu
                         created_after = created_at_range_start
                     if created_at_range_end:
                         created_before = created_at_range_end
+
+                
             
             # Create RAG search request
             rag_request = RAGSearchRequest(
@@ -1909,13 +1931,14 @@ class DocumentSearchTool(BaseNode[DocumentSearchInputSchema, DocumentSearchOutpu
                 scheduled_before=scheduled_before,
                 include_vector=False,
                 include_chunk_keys=True,
-                alpha=0.5  # Balance between vector and keyword search
+                alpha=0.5,  # Balance between vector and keyword search
+                search_only_system_entities=search_only_system_entities,
             )
             
             # Call RAG service
             rag_response = await rag_service.search_documents(
                 search_request=rag_request,
-                user=user
+                user=user,
             )
             
             # Convert RAG results to DocumentSearchTool format
@@ -1957,14 +1980,16 @@ class DocumentSearchTool(BaseNode[DocumentSearchInputSchema, DocumentSearchOutpu
                 
                 # Calculate average score across all chunks
                 avg_score = sum(c.score or 0.0 for c in chunks) / len(chunks) if chunks else 0.0
-                
-                # Fetch full document content
-                document_contents = await fetch_document_content(
-                    document_info=doc_metadata,
-                    customer_data_service=customer_data_service,
-                    user=user,
-                    org_id=org_id
-                )
+
+                document_contents = None
+                if self.config.return_full_document_contents:                
+                    # Fetch full document content
+                    document_contents = await fetch_document_content(
+                        document_info=doc_metadata,
+                        customer_data_service=customer_data_service,
+                        user=user,
+                        org_id=org_id
+                    )
                 
                 doc_results.append((avg_score, doc_metadata, content_preview, document_contents))
             
@@ -2173,6 +2198,8 @@ class ListDocumentsTool(BaseNode[ListDocumentsInputSchema, ListDocumentsOutputSc
     input_schema_cls: ClassVar[Type[ListDocumentsInputSchema]] = ListDocumentsInputSchema
     output_schema_cls: ClassVar[Type[ListDocumentsOutputSchema]] = ListDocumentsOutputSchema
     config_schema_cls: ClassVar[Type[ListDocumentsConfigSchema]] = ListDocumentsConfigSchema
+
+    config: ListDocumentsConfigSchema
     
     async def process(
         self,
@@ -2228,6 +2255,7 @@ class ListDocumentsTool(BaseNode[ListDocumentsInputSchema, ListDocumentsOutputSc
             # Extract filter parameters
             namespace_filter = query_params.get("namespace")
             doc_key = query_params.get("doc_key")
+            is_system_entity = query_params.get("is_system_entity", False)
             
             # Extract date filters from query_params
             scheduled_date_range_start = query_params.get("scheduled_after")
@@ -2262,8 +2290,9 @@ class ListDocumentsTool(BaseNode[ListDocumentsInputSchema, ListDocumentsOutputSc
                 include_user_specific=True,
                 skip=input_data.offset,
                 limit=input_data.limit,
-                include_system_entities=False,
-                is_called_from_workflow=True
+                include_system_entities=is_system_entity,
+                is_called_from_workflow=True,
+                is_tool_call=True,
             )
             
             # Convert search results to DocumentListItem format

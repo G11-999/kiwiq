@@ -896,6 +896,253 @@ async def main_test_natural_language_editing():
     }
     
     # Setup actual system documents with proper configurations
+    # Create sample data for blog playbook system documents
+    blog_seo_best_practices_data = {
+        "title": "SEO Best Practices for B2B Blog Content",
+        "overview": "Strategic guidelines for optimizing B2B blog content for search engines while maintaining quality and relevance for your professional audience.",
+        "key_principles": [
+            {
+                "principle": "Keyword Research & Strategy",
+                "description": "Focus on long-tail, industry-specific keywords that your B2B audience actually searches for",
+                "best_practices": [
+                    "Use tools like SEMrush or Ahrefs to identify high-intent B2B keywords",
+                    "Target keywords with 100-1000 monthly searches for better ranking opportunities",
+                    "Include variations and semantic keywords naturally throughout content",
+                    "Map keywords to buyer journey stages (awareness, consideration, decision)"
+                ]
+            },
+            {
+                "principle": "Content Structure & Formatting",
+                "description": "Organize content for both search engines and busy B2B readers",
+                "best_practices": [
+                    "Use H1 for title, H2 for main sections, H3 for subsections",
+                    "Keep paragraphs short (2-3 sentences) for better readability",
+                    "Include a table of contents for posts over 1,500 words",
+                    "Use bullet points and numbered lists for easy scanning"
+                ]
+            },
+            {
+                "principle": "Technical SEO Elements",
+                "description": "Optimize technical elements that impact search rankings",
+                "best_practices": [
+                    "Write compelling meta descriptions (150-160 characters) with CTA",
+                    "Use descriptive, keyword-rich URLs (keep under 60 characters)",
+                    "Optimize images with descriptive alt text and compressed file sizes",
+                    "Ensure mobile responsiveness and fast page load times (under 3 seconds)"
+                ]
+            },
+            {
+                "principle": "Link Building & Authority",
+                "description": "Build credibility through strategic linking",
+                "best_practices": [
+                    "Include 2-3 internal links to related content on your site",
+                    "Link to authoritative external sources (industry reports, studies)",
+                    "Create linkable assets (original research, comprehensive guides)",
+                    "Guest post on reputable industry publications for backlinks"
+                ]
+            }
+        ],
+        "content_length_guidelines": {
+            "minimum_word_count": 1200,
+            "optimal_range": "1,500-2,500 words",
+            "pillar_content": "3,000+ words",
+            "rationale": "Longer content tends to rank better and provides more value to B2B audiences researching complex topics"
+        },
+        "seo_checklist": [
+            "Primary keyword in title, H1, and first 100 words",
+            "Secondary keywords distributed naturally throughout",
+            "Meta description includes keyword and clear value proposition",
+            "URL slug contains primary keyword",
+            "At least one image with descriptive alt text",
+            "Internal links to 2-3 related posts",
+            "External links to 1-2 authoritative sources",
+            "Schema markup for articles implemented",
+            "Mobile-friendly formatting verified",
+            "Page load speed under 3 seconds"
+        ]
+    }
+
+    blog_playbook_play_1_data = {
+        "play_name": "The Problem Authority Stack",
+        "tagline": "Become the go-to expert by owning a specific business problem",
+        "overview": "Position yourself as the definitive authority on a specific business challenge your target audience faces. This play focuses on deep, comprehensive coverage of one problem area.",
+        "why_it_works": "B2B buyers research problems extensively before looking for solutions. By becoming the primary resource for understanding a problem, you naturally become the trusted advisor for solving it.",
+        "core_strategy": {
+            "focus": "Choose one specific, painful problem your ideal customers face",
+            "depth": "Create 20-30 pieces of content exploring every angle of this problem",
+            "formats": ["Ultimate guides", "Case studies", "Research reports", "Diagnostic tools", "Frameworks"],
+            "distribution": "SEO-optimized blog posts, LinkedIn articles, downloadable resources"
+        },
+        "implementation_steps": [
+            {
+                "step": 1,
+                "action": "Problem Selection",
+                "details": "Survey customers to identify their #1 challenge. Look for problems that are urgent, expensive, and growing.",
+                "example": "For a CRM company: 'Sales and marketing alignment' or 'Lead qualification accuracy'"
+            },
+            {
+                "step": 2,
+                "action": "Content Mapping",
+                "details": "Create a comprehensive content map covering problem symptoms, root causes, impact, failed solutions, and success patterns.",
+                "example": "15 blog posts, 3 ultimate guides, 2 research reports, 5 diagnostic tools"
+            },
+            {
+                "step": 3,
+                "action": "Authority Building",
+                "details": "Interview experts, conduct original research, create frameworks, and develop proprietary methodologies.",
+                "example": "Interview 20 VPs of Sales about alignment challenges, create 'Alignment Maturity Model'"
+            },
+            {
+                "step": 4,
+                "action": "Content Production",
+                "details": "Publish 2-3 pieces per week, interlink everything, update older pieces with new insights.",
+                "example": "Week 1: 'The Hidden Cost of Misalignment', Week 2: '7 Signs Your Teams Are Misaligned'"
+            }
+        ],
+        "content_examples": [
+            "The Complete Guide to [Problem]: Everything You Need to Know",
+            "[Problem] Benchmark Report: How 500 Companies Handle This Challenge",
+            "The [Problem] Diagnostic: Assess Your Current State in 10 Minutes",
+            "Why Traditional Approaches to [Problem] Fail: A Data-Driven Analysis",
+            "[Problem] Case Study: How [Company] Reduced Impact by 73%"
+        ],
+        "success_metrics": [
+            "Organic traffic to problem-focused content",
+            "Email subscribers from problem-focused lead magnets",
+            "Speaking invitations on the topic",
+            "Media quotes as problem expert",
+            "Inbound leads mentioning the specific problem"
+        ],
+        "pro_tips": [
+            "Own the problem Wikipedia page through comprehensive coverage",
+            "Create a 'problem hub' page linking all related content",
+            "Develop a signature framework or methodology",
+            "Host a annual 'State of [Problem]' research report",
+            "Build an email course specifically about the problem"
+        ]
+    }
+
+    blog_playbook_play_2_data = {
+        "play_name": "The Category Pioneer Manifesto",
+        "tagline": "Create and own a new market category through thought leadership",
+        "overview": "Define a new way of solving old problems by creating a new category. This play positions you as the visionary leader of an emerging market segment.",
+        "why_it_works": "Being first in a new category is easier than being best in an existing one. B2B buyers are always looking for innovative approaches to persistent challenges.",
+        "core_strategy": {
+            "focus": "Identify an emerging trend or approach that deserves its own category",
+            "message": "Articulate why the old way is broken and the new way is inevitable",
+            "formats": ["Manifestos", "Trend reports", "Comparison guides", "Future-state visions", "Category definitions"],
+            "distribution": "Blog series, LinkedIn thought leadership, conference keynotes, podcast tours"
+        },
+        "implementation_steps": [
+            {
+                "step": 1,
+                "action": "Category Discovery",
+                "details": "Look for emerging practices that don't fit existing categories. Often found at intersection of technologies or disciplines.",
+                "example": "Revenue Operations (intersection of Sales, Marketing, Customer Success)"
+            },
+            {
+                "step": 2,
+                "action": "Category Definition",
+                "details": "Create clear definition, scope, principles, and differentiation from existing categories.",
+                "example": "RevOps: Unified revenue team operations breaking down silos between go-to-market functions"
+            },
+            {
+                "step": 3,
+                "action": "Manifesto Creation",
+                "details": "Write compelling narrative about why this category must exist now. Include problem, solution, and vision.",
+                "example": "The RevOps Manifesto: Why Revenue Teams Must Unify or Die"
+            },
+            {
+                "step": 4,
+                "action": "Ecosystem Building",
+                "details": "Create resources, communities, certifications, and events around the category.",
+                "example": "RevOps community, certification program, annual conference, job board"
+            }
+        ],
+        "content_examples": [
+            "The [Category] Manifesto: A New Approach to [Problem]",
+            "[Category] vs [Traditional Approach]: Why Everything Changes",
+            "The Definitive Guide to [Category]: Framework, Tools, and Best Practices",
+            "10 Signs Your Company Needs [Category] (Not More [Traditional Solution])",
+            "The State of [Category] Report: Adoption, Challenges, and Future"
+        ],
+        "success_metrics": [
+            "Media coverage of the new category",
+            "Other companies adopting category language",
+            "Search volume for category terms",
+            "Conference speaking invitations",
+            "Analyst inquiries about the category"
+        ],
+        "pro_tips": [
+            "Be consistent with category naming and definition",
+            "Create visual frameworks that explain the category",
+            "Build alliance with other vendors in the space",
+            "Pitch media on the category trend, not your product",
+            "Write the book on the category (literally)"
+        ]
+    }
+
+    blog_playbook_play_3_data = {
+        "play_name": "The David vs Goliath Playbook",
+        "tagline": "Challenge industry incumbents by championing the underdog perspective",
+        "overview": "Position your content as the voice of challengers taking on established players. This play resonates with companies looking to disrupt their markets.",
+        "why_it_works": "Many B2B buyers feel underserved by large vendors and are looking for alternatives. Challenger content creates strong emotional connection and differentiation.",
+        "core_strategy": {
+            "focus": "Highlight the disadvantages of working with incumbents",
+            "message": "Show how smaller, nimbler approaches deliver better outcomes",
+            "formats": ["Comparison guides", "Challenger case studies", "Myth-busting posts", "David wins stories"],
+            "distribution": "Blog posts, LinkedIn articles, challenger communities, industry forums"
+        },
+        "implementation_steps": [
+            {
+                "step": 1,
+                "action": "Incumbent Analysis",
+                "details": "Document common complaints about large vendors: slow, expensive, inflexible, poor support.",
+                "example": "Enterprise CRM: 18-month implementations, $500K minimum, requires consultants"
+            },
+            {
+                "step": 2,
+                "action": "Challenger Positioning",
+                "details": "Define the challenger advantage: faster, more affordable, flexible, better support.",
+                "example": "Modern CRM: 30-day implementation, usage-based pricing, no consultants needed"
+            },
+            {
+                "step": 3,
+                "action": "Success Story Collection",
+                "details": "Find and document cases where challengers beat incumbents.",
+                "example": "How a 50-person startup replaced Salesforce and saved $200K/year"
+            },
+            {
+                "step": 4,
+                "action": "Movement Building",
+                "details": "Create community of challengers, share resources, celebrate wins.",
+                "example": "The Modern CRM Movement: 1,000 companies choosing agility over legacy"
+            }
+        ],
+        "content_examples": [
+            "Why [Incumbent] Customers Are Switching to Modern Alternatives",
+            "The Hidden Costs of Enterprise [Solution]: What Vendors Won't Tell You",
+            "David Wins: How [Small Company] Outmaneuvered [Large Competitor]",
+            "[Incumbent] vs Modern [Solution]: An Honest Comparison",
+            "The Challenger's Guide to Competing with 800-Pound Gorillas"
+        ],
+        "success_metrics": [
+            "Engagement from companies using incumbent solutions",
+            "Share of voice in comparison searches",
+            "Community growth of challenger movement",
+            "Win rate against incumbents",
+            "Media coverage of David vs Goliath angle"
+        ],
+        "pro_tips": [
+            "Never make it personal - focus on approach differences",
+            "Use data to back up challenger advantages",
+            "Create 'switching guides' from incumbent to your approach",
+            "Celebrate customer wins publicly",
+            "Partner with other challengers for combined voice"
+        ]
+    }
+
+    # Setup documents list with both user documents and system blog playbook documents
     setup_docs: List[SetupDocInfo] = [
         # User DNA document
         # {
@@ -936,6 +1183,50 @@ async def main_test_natural_language_editing():
             'is_versioned': True,
             'initial_version': "default",
             'is_system_entity': False
+        },
+        
+        # Blog SEO Best Practices (System Document)
+        {
+            'namespace': "blog_seo_guidelines",
+            'docname': "seo_best_practices_doc",
+            'initial_data': blog_seo_best_practices_data,
+            'is_shared': True,
+            'is_versioned': False,
+            'initial_version': None,
+            'is_system_entity': True
+        },
+        
+        # Blog Playbook Play 1: Problem Authority (System Document)
+        {
+            'namespace': "blog_playbook_sys",
+            'docname': "Play 1: The Problem Authority Stack",
+            'initial_data': blog_playbook_play_1_data,
+            'is_shared': True,
+            'is_versioned': False,
+            'initial_version': None,
+            'is_system_entity': True
+        },
+        
+        # Blog Playbook Play 2: Category Pioneer (System Document)
+        {
+            'namespace': "blog_playbook_sys",
+            'docname': "Play 2: The Category Pioneer Manifesto",
+            'initial_data': blog_playbook_play_2_data,
+            'is_shared': True,
+            'is_versioned': False,
+            'initial_version': None,
+            'is_system_entity': True
+        },
+        
+        # Blog Playbook Play 3: David vs Goliath (System Document)
+        {
+            'namespace': "blog_playbook_sys",
+            'docname': "Play 3: The David vs Goliath Playbook",
+            'initial_data': blog_playbook_play_3_data,
+            'is_shared': True,
+            'is_versioned': False,
+            'initial_version': None,
+            'is_system_entity': True
         },
         # # User Preferences document
         # {
@@ -1029,6 +1320,30 @@ async def main_test_natural_language_editing():
     test_scenarios = [
 
         # {
+        #     "name": "Show system doc",
+        #     "initial_inputs": {
+        #         "entity_username": test_entity_username,
+        #         "user_request": "Show me the blog seo best practices doc"
+        #     },
+        # },
+
+        {
+            "name": "search system doc",
+            "initial_inputs": {
+                "entity_username": test_entity_username,
+                "user_request": "Search playbooks for 'Myth-busting posts'"
+            },
+        },
+
+        # {
+        #     "name": "Show system doc",
+        #     "initial_inputs": {
+        #         "entity_username": test_entity_username,
+        #         "user_request": "First list and then show me all available playbooks"
+        #     },
+        # },
+
+        # {
         #     "name": "Change posting schedule",
         #     "initial_inputs": {
         #         "entity_username": test_entity_username,
@@ -1036,13 +1351,13 @@ async def main_test_natural_language_editing():
         #     },
         # },
 
-        {
-            "name": "Summarize future scheduled posts",
-            "initial_inputs": {
-                "entity_username": test_entity_username,
-                "user_request": "Summarize my current content strategy, futgure planned posts, and recommended posts and identify 3 gaps based on my goal to improve my b2b saas sales per ticket size from 1000 - 5000 in next 2 months."
-            },
-        },
+        # {
+        #     "name": "Summarize future scheduled posts",
+        #     "initial_inputs": {
+        #         "entity_username": test_entity_username,
+        #         "user_request": "Summarize my current content strategy, futgure planned posts, and recommended posts and identify 3 gaps based on my goal to improve my b2b saas sales per ticket size from 1000 - 5000 in next 2 months."
+        #     },
+        # },
 
         # {
         #     "name": "Edit strategy doc",
@@ -1181,7 +1496,7 @@ async def main_test_natural_language_editing():
     # {"user_action": "provide_clarification", "user_feedback": "today is 2025-07-03 7 pm in IST timeZONE, please incorporate that in finding my answer"}
     # {"user_action": "provide_clarification", "user_feedback": "I would like to update my content strategy based on your suggestions, please make appropriate assumptions. These are gonna be in-person conferences."}
     
-    {"user_action": "provide_clarification", "user_feedback": "Actually, can you get rid of Networking Insight from high impact format, its too redudant with Conference Reflection"}
+    # {"user_action": "provide_clarification", "user_feedback": "Actually, can you get rid of Networking Insight from high impact format, its too redudant with Conference Reflection"}
 
     # Run test scenarios
     for scenario in test_scenarios:
@@ -1194,7 +1509,7 @@ async def main_test_natural_language_editing():
                 initial_inputs=scenario['initial_inputs'],
                 expected_final_status=WorkflowRunStatus.COMPLETED,
                 hitl_inputs=scenario.get('hitl_inputs', None),
-                setup_docs=setup_docs,
+                setup_docs=None,  # setup_docs,
                 cleanup_docs=cleanup_docs,
                 cleanup_docs_created_by_setup=False,
                 validate_output_func=validate_natural_language_editing_output,
