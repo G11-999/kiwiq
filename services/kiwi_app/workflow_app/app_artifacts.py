@@ -1074,8 +1074,20 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
       "version": null,
       "inputs": {
         "entity_username": null,
-        "user_input": null
+        "user_input": null,
+        "initial_status": "draft"
        },
+      "user_documents_config_variables": {},
+      "template_specific": false
+    },
+    "linkedin_brief_to_blog_draft_workflow": {
+      "name": "linkedin_brief_to_blog_draft_workflow",
+      "version": null,
+      "inputs": {
+	      "post_uuid": null,
+        "entity_username": null,
+        "brief_docname": null
+      },
       "user_documents_config_variables": {},
       "template_specific": false
     }
