@@ -84,11 +84,11 @@ workflow_graph_schema = {
                         "required": True,
                         "description": "Username of the entity for content strategy generation"
                     },
-                    "customer_context_doc_configs": {
-                        "type": "list",
-                        "required": True,
-                        "description": "List of document configs for loading context"
-                    },
+                    # "customer_context_doc_configs": {
+                    #     "type": "list",
+                    #     "required": True,
+                    #     "description": "List of document configs for loading context"
+                    # },
                     
                     # Optional workflow runner control fields
                     "execution_mode": {
@@ -152,7 +152,7 @@ workflow_graph_schema = {
             "dst_node_id": "strategy_workflow_runner",
             "mappings": [
                 {"src_field": "entity_username", "dst_field": "entity_username"},
-                {"src_field": "customer_context_doc_configs", "dst_field": "customer_context_doc_configs"},
+                # {"src_field": "customer_context_doc_configs", "dst_field": "customer_context_doc_configs"},
                 # Pass optional control field for thread ID if needed
                 # {"src_field": "thread_id", "dst_field": "_thread_id"}
             ]
@@ -354,7 +354,7 @@ async def main_test_workflow_runner(
     # Prepare workflow inputs
     WORKFLOW_RUNNER_INPUTS = {
         "entity_username": entity_username,
-        "customer_context_doc_configs": INPUT_DOCS_TO_BE_LOADED,
+        # "customer_context_doc_configs": INPUT_DOCS_TO_BE_LOADED,
         "execution_mode": execution_mode,
         "timeout_seconds": 600
     }
