@@ -574,8 +574,8 @@ class GoogleAIModeBrowserActor(BaseBrowserActor):
     async def get_content_with_stable_response(
         self,
         query: str,
-        poll_every: float = 5.0,
-        timeout: float = 180.0,
+        poll_every: float = 8.0,
+        timeout: float = 200.0,
     ) -> Tuple[List[Dict[str, str]], List[Dict[str, str]]]:
         """
         Poll extract_response_from_aimode_page_via_dom_tree_navigation until the combined

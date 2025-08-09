@@ -131,30 +131,57 @@ The node comes with carefully tuned default settings. **We strongly recommend us
 
 This is where you should focus your configuration efforts. Input parameters directly control what gets queried and how results are cached.
 
-### Required Fields
+### Core Input Fields
 
+- **`list_template_vars`** (Optional: List[Dict[str, str]] or Dict[str, str])
+  - Multi-entity mode: provide a list of dicts; each dict must include `entity_name`.
+  - Single-entity mode: provide a single dict; `entity_name` is not required here if you also set `entity_name`. If present, it must equal `entity_name`.
+  - If omitted (and no `entity_name` provided), templates are used as-is with no substitution and a generic entity context.
+
+- **`entity_name`** (Optional: str)
+  - When provided (or resolved via config path), enables single-entity mode: all queries run exactly once for this entity.
+  - In this mode, if `list_template_vars` is provided it must be a dict (not a list). If it includes `entity_name`, it must equal the `entity_name` field.
+
+- **`query_templates`** (Optional: Dict[str, List[str]])
+  - Override default templates. Variables use `{var_name}` format.
+
+- **`providers_config`** (Optional: Dict[str, Dict])
+  - Override per-provider settings.
+
+- **`enable_mongodb_cache`** (bool, default `true`), **`cache_lookback_days`** (int, default 14), **`is_shared`** (bool, default `false`)
+
+### Examples
+
+Multi-entity (list of entities):
 ```json
 {
   "list_template_vars": [
-    {
-      "entity_name": "OpenAI",
-      "location": "San Francisco",
-      "industry": "AI"
-    },
-    {
-      "entity_name": "Tesla",
-      "location": "Palo Alto", 
-      "industry": "Automotive"
-    }
-  ]
+    {"entity_name": "OpenAI", "location": "San Francisco", "industry": "AI"},
+    {"entity_name": "Tesla",  "location": "Palo Alto",      "industry": "Automotive"}
+  ],
+  "enable_mongodb_cache": true,
+  "cache_lookback_days": 7
 }
 ```
 
-- **`list_template_vars`** (List[Dict[str, str]], **Required**): List of entities to research
-  - Each dict **must** include `entity_name` key
-  - **Important**: All entities must have the same keys for template substitution to work
-  - Additional keys (like `location`, `industry`) can be used in custom templates
-  - **Impact**: More entities = more queries but efficient parallel processing
+Single-entity (explicit entity_name):
+```json
+{
+  "entity_name": "Anthropic",
+  "list_template_vars": {"industry": "AI safety"},
+  "query_templates": {
+    "recent": ["What are the latest announcements from {entity_name}?"]
+  }
+}
+```
+
+No template vars (templates used as-is):
+```json
+{
+  "enable_mongodb_cache": true
+}
+```
+In this case, the node executes templates without substitution and stores under a generic entity namespace (see Namespace Pattern).
 
 ### Query Customization (Optional)
 
@@ -193,6 +220,44 @@ This is where you should focus your configuration efforts. Input parameters dire
   - Disable providers to reduce costs or avoid specific services
   - Adjust retry logic for reliability vs speed tradeoff
   - **Impact**: Fewer providers = faster but potentially less comprehensive results
+
+### Path-Based Dynamic Inputs (Optional)
+
+You can provide inputs indirectly via dot-separated paths into your dynamic payload using node configuration fields:
+
+- Config fields:
+  - `query_templates_path`: path to find `query_templates` in the dynamic input
+  - `list_template_vars_path`: path to find `list_template_vars` in the dynamic input
+  - `entity_name_path`: path to find a single `entity_name` in the dynamic input (enables single-entity mode)
+
+- Priority order per field:
+  1. Direct top-level input field (if present)
+  2. Value resolved at configured path (if path set)
+  3. Default (only for `query_templates`; `list_template_vars` can be omitted entirely and templates will run as-is)
+
+- Error behavior:
+  - If `query_templates_path` is set but the value is not found, the node raises an error.
+  - If `list_template_vars_path` is set but the value is not found, the node raises an error.
+  - If `entity_name_path` is set but not found, single-entity mode is not enabled (falls back to multi-entity or generic mode).
+
+Example using paths:
+```json
+{
+  "node_config": {
+    "query_templates_path": "payload.research.templates",
+    "list_template_vars_path": "payload.targets.entities",
+    "entity_name_path": "payload.target_entity"
+  },
+  "input": {
+    "payload": {
+      "research": {"templates": {"basic_info": ["What is {entity_name}?"]}},
+      "targets": {"entities": [{"entity_name": "OpenAI"}, {"entity_name": "Google"}]},
+      "target_entity": null
+    }
+  }
+}
+```
+In this example, `query_templates` and `list_template_vars` are resolved from the payload. Because `target_entity` is null, single-entity mode is not activated.
 
 ### Caching Options (Performance Optimization)
 
@@ -332,6 +397,31 @@ The node provides comprehensive information about the query operation and result
 }
 ```
 
+### Single-Entity Research (New)
+```json
+{
+  "input": {
+    "entity_name": "LangChain",
+    "list_template_vars": {"focus": "tooling"},
+    "query_templates": {
+      "recent": ["What are the latest releases from {entity_name}?"]
+    }
+  }
+}
+```
+
+### Single-Entity via Path (New)
+```json
+{
+  "node_config": {
+    "entity_name_path": "ctx.entity.name"
+  },
+  "input": {
+    "ctx": {"entity": {"name": "Weaviate"}}
+  }
+}
+```
+
 ## Impact of Input Changes
 
 ### Adding More Entities
@@ -367,6 +457,10 @@ Query results are automatically stored in MongoDB with entity-specific namespace
 scraping_ai_answers_results_{entity_name}_{YYYYMMDD}
 ```
 Example: `scraping_ai_answers_results_openai_20240115`
+
+Notes:
+- In single-entity mode, `{entity_name}` is the provided/resolved value.
+- If no template vars or entity name are provided, the node uses `generic` for `{entity_name}` and executes templates without substitution.
 
 ### Accessing Results in Subsequent Nodes
 Use the `load_customer_data` or `load_multiple_customer_data` nodes:

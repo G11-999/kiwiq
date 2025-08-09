@@ -16,6 +16,35 @@ class BaseBrowserActor:
         self.page = page
         self.live_url = kwargs.get("live_url", None)
         self.logger = get_prefect_or_regular_python_logger(self.__class__.__name__)
+    
+    async def click_middle_with_offset(self):
+        page = self.page
+        # Get viewport size
+        # viewport = page.viewport_size
+
+        dimensions = await self.page.evaluate('''() => {
+            return {
+                width: window.innerWidth || document.documentElement.clientWidth,
+                height: window.innerHeight || document.documentElement.clientHeight
+            }
+        }''')
+        
+        # Calculate middle of the viewport
+        middle_x = dimensions['width'] // 2
+        middle_y = dimensions['height'] // 2
+        
+        # Generate random x offset between 10-100 pixels
+        random_offset = random.randint(10, 100)
+        
+        # Calculate final click position
+        click_x = middle_x + random_offset
+        click_y = middle_y
+        
+        # Click at the calculated position
+        await page.mouse.click(click_x, click_y)
+        
+        # print(f"Clicked at position: ({click_x}, {click_y})")
+        # print(f"Random offset applied: {random_offset} pixels")
 
     async def wait_and_click(self, selector: str, timeout: int = 30000) -> str:
         """

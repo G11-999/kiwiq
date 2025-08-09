@@ -296,7 +296,6 @@ class WorkflowRunnerNode(BaseDynamicNode):  # [WorkflowRunnerInput, WorkflowRunn
     node_name: ClassVar[str] = "workflow_runner"
     node_version: ClassVar[str] = "1.0.0"
     env_flag: ClassVar[LaunchStatus] = LaunchStatus.PRODUCTION
-    has_dynamic_inputs: ClassVar[bool] = True  # This node accepts dynamic inputs
     
     input_schema_cls: ClassVar[Type[WorkflowRunnerInput]] = WorkflowRunnerInput
     output_schema_cls: ClassVar[Type[WorkflowRunnerOutput]] = WorkflowRunnerOutput

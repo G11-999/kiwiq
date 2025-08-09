@@ -23,8 +23,8 @@ class OpenAIBrowserActor(BaseBrowserActor):
         
     async def wait_until_chatgpt_response_complete(
         self,
-        poll_every: float = 5.0,
-        timeout: float = 180.0,
+        poll_every: float = 10.0,
+        timeout: float = 200.0,
     ) -> List[Dict[str, str]]:
         """
         Re‑run `extract_response_from_chatgpt_page()` in a loop until no additional
@@ -159,17 +159,35 @@ class OpenAIBrowserActor(BaseBrowserActor):
         return pairs
     
     async def single_query(self, query: str) -> List[Dict[str, str]]:
+        async def close_popup():
+            try:
+                await self.wait_and_click(OPENAI_SELECTORS["close_popup"], timeout=1500)
+                await self.wait_for_seconds(0.1, add_noise=True)
+                self.logger.info(f"SUCCESS: Close popup button clicked")
+            except Exception as e:
+                self.logger.info(f"Close popup button not found: {e}")
+        
         async def short_prompt_focus_sequence():
+            await self.click_middle_with_offset()
             try:
                 await self.wait_and_click(OPENAI_SELECTORS["stay_logged_out"], timeout=500)
-                self.logger.info(f"Stay logged out button clicked")
+                self.logger.info(f"SUCCESS: Stay logged out button clicked")
                 await self.wait_for_seconds(0.1, add_noise=True)
+
             except Exception as e:
                 self.logger.info(f"Stay logged out button not found: {e}")
+            
+            await close_popup()
+            
             try:
-                await self.wait_and_click(OPENAI_SELECTORS["search_web_no_login"], timeout=500)
+                await self.wait_and_click(OPENAI_SELECTORS["search_web_no_login"], timeout=1500)
+                # await self.page.click(OPENAI_SELECTORS["search_web_no_login"], timeout=1500)
+                self.logger.info(f"SUCCESS: Search web no login button clicked")
                 return True
             except Exception as e:
+
+                await close_popup()
+
                 self.logger.info(f"Search web no login button not found: {e}")
             return False
         
@@ -192,6 +210,10 @@ class OpenAIBrowserActor(BaseBrowserActor):
         # # pause_until_confirm()
         if not clicked:
             clicked = await short_prompt_focus_sequence()
+            if not clicked:
+                clicked = await short_prompt_focus_sequence()
+        
+        await close_popup()
 
         # Send Q1
         await self.wait_for_seconds(0.25, add_noise=True)
@@ -200,7 +222,15 @@ class OpenAIBrowserActor(BaseBrowserActor):
         # pause_until_confirm()
         await self.page.keyboard.type(query, delay=random.randint(1, 5))
         await self.wait_for_seconds(0.25, add_noise=True)
-        await self.wait_and_click(OPENAI_SELECTORS["send_button"])
+
+        await close_popup()
+
+        try:
+            await self.wait_and_click(OPENAI_SELECTORS["send_button"], timeout=1000)
+        except Exception as e:
+            self.logger.info(f"Send button not found: {e}")
+            await close_popup()
+            await self.wait_and_click(OPENAI_SELECTORS["send_button"])
         # pause_until_confirm()
 
         try:
@@ -291,17 +321,18 @@ if __name__ == "__main__":
         async with ScrapelessBrowser() as browser:  # profile_id="39fd01df-7bf9-44b5-befb-4ea5d238caf8", persist_profile=True
             live_url = await browser.get_live_url()
             print("\n\nlive_url: ---> ",live_url)
+            import ipdb; ipdb.set_trace()
             actor = OpenAIBrowserActor(browser=browser.browser, context=browser.context, page=browser.page, live_url=live_url)
-            try:
-                 result = await actor.chatgpt_conversation("What is the capital of France?", "What is the capital of Italy?", "What is the capital of Germany?")
-                 print(result)
-            except Exception as e:
-                print(f"Error: {e}")
-                # await actor.wait_and_click("h1:has-text('Welcome back')")
-                # await actor.go_to_page(OPENAI_SELECTORS["base_url"])
+            # try:
+            #      result = await actor.chatgpt_conversation("What is the capital of France?", "What is the capital of Italy?", "What is the capital of Germany?")
+            #      print(result)
+            # except Exception as e:
+            #     print(f"Error: {e}")
+            #     # await actor.wait_and_click("h1:has-text('Welcome back')")
+            #     # await actor.go_to_page(OPENAI_SELECTORS["base_url"])
             
             result = await actor.single_query("What is the capital of France?")
             print(result)
-            # import ipdb; ipdb.set_trace()
+            import ipdb; ipdb.set_trace()
 
     asyncio.run(main())

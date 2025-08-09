@@ -546,6 +546,33 @@ class AIAnswerEngineScraperConfig(BaseNodeConfig):
         description="Categorized query templates with variables in {var_name} format. "
                    "Variables will be replaced with values from input template_vars."
     )
+    query_templates_path: Optional[str] = Field(
+        default=None,
+        description=(
+            "Dot-separated path inside dynamic inputs where 'query_templates' can be found. "
+            "Priority order for determining templates: "
+            "1) direct 'query_templates' in dynamic input, "
+            "2) value at this configured path, "
+            "3) this config's default 'query_templates'. "
+            "If a path is provided but not found, an error is raised."
+        ),
+    )
+    list_template_vars_path: Optional[str] = Field(
+        default=None,
+        description=(
+            "Dot-separated path inside dynamic inputs where 'list_template_vars' can be found. "
+            "Priority order: 1) direct 'list_template_vars' in inputs, 2) value at this path. "
+            "If neither is provided, templates are used as-is without substitution."
+        ),
+    )
+    entity_name_path: Optional[str] = Field(
+        default=None,
+        description=(
+            "Dot-separated path inside dynamic inputs to resolve a single 'entity_name'. "
+            "When provided (or when 'entity_name' is given directly in inputs), the node runs in single-entity mode: "
+            "all queries are executed once for this entity, and 'list_template_vars' must be a dict if provided."
+        ),
+    )
     
     # Provider configurations
     default_providers_config: Dict[str, Dict[str, Any]] = Field(
@@ -582,65 +609,108 @@ class AIAnswerEngineScraperConfig(BaseNodeConfig):
         description="Whether to use browser profiles for better anti-detection."
     )
     persist_browser_profile: bool = Field(
-        default=False,
+        default=True,
         description="Whether to persist browser profiles between sessions."
     )
 
 
-class AIAnswerEngineScraperInput(BaseSchema):
+class AIAnswerEngineScraperInput(DynamicSchema):
     """
-    Input schema for the AI answer engine scraper node.
+    Dynamic input schema for the AI answer engine scraper node with typed fields.
     
-    Provides template variables for query construction and optional
-    provider configuration overrides.
+    Accepts both fixed, typed fields and arbitrary extra dynamic fields. When the
+    typed fields are omitted, the node can optionally resolve them from dot-paths
+    configured in the node config. If `list_template_vars` is not provided anywhere,
+    templates are used as-is (no variable substitution).
     """
-    
-    list_template_vars: List[Dict[str, str]] = Field(
-        ...,
-        description="List of template variables for multiple entities. "
-                   "Each dict must include 'entity_name' key. "
-                   "Example: [{'entity_name': 'OpenAI', 'location': 'San Francisco'}, "
-                   "{'entity_name': 'Tesla', 'industry': 'Automotive'}]"
+
+    # Optional by design. If not provided, templates are used as-is.
+    # Can be a list[dict] in multi-entity mode, or a dict in single-entity mode (when entity_name is provided).
+    list_template_vars: Optional[Union[List[Dict[str, str]], Dict[str, str]]] = Field(
+        default=None,
+        description=(
+            "List of template variables for multiple entities. "
+            "Each dict must include 'entity_name' key. "
+            "Example: [{'entity_name': 'OpenAI', 'location': 'San Francisco'}, "
+            "{'entity_name': 'Tesla', 'industry': 'Automotive'}]"
+        ),
     )
-    
+
+    entity_name: Optional[str] = Field(
+        default=None,
+        description=(
+            "Explicit single 'entity_name'. When set (or resolved via config path), the node switches to single-entity mode: "
+            "all queries are run once for this entity. In this mode, 'list_template_vars' (if provided) must be a dict; "
+            "it need not include 'entity_name', but if present it must equal this field."
+        ),
+    )
+
     query_templates: Optional[Dict[str, List[str]]] = Field(
         default=None,
-        description="Optional categorized query templates to override config defaults. "
-                   "Templates use {var_name} format for variable substitution."
+        description=(
+            "Optional categorized query templates to override config defaults. "
+            "Templates use {var_name} format for variable substitution."
+        ),
     )
-    
+
     providers_config: Optional[Dict[str, Dict[str, Any]]] = Field(
         default=None,
-        description="Optional provider configuration to override defaults. "
-                   "Example: {'openai': {'enabled': False}, 'google': {'max_retries': 5}}"
+        description=(
+            "Optional provider configuration to override defaults. "
+            "Example: {'openai': {'enabled': False}, 'google': {'max_retries': 5}}"
+        ),
     )
-    
+
     # MongoDB caching settings
     enable_mongodb_cache: bool = Field(
         default=True,
-        description="Enable checking MongoDB for cached query results before running new queries."
+        description=(
+            "Enable checking MongoDB for cached query results before running new queries."
+        ),
     )
     cache_lookback_days: int = Field(
         default=14,
         ge=1,
         le=90,
-        description="Number of days to look back for cached results. "
-                   "Results older than this are considered stale."
+        description=(
+            "Number of days to look back for cached results. Results older than this are considered stale."
+        ),
     )
-    
+
     # Storage settings
     is_shared: bool = Field(
         default=False,
-        description="Store query results as organization-shared (accessible to all org users). "
-                   "If False, data is only accessible to the user who triggered the job."
+        description=(
+            "Store query results as organization-shared (accessible to all org users). "
+            "If False, data is only accessible to the user who triggered the job."
+        ),
     )
-    
-    @model_validator(mode='after')
-    def validate_entity_names(self) -> 'AIAnswerEngineScraperInput':
-        """Ensure entity_name is present in each template_vars dict."""
-        for i, template_vars in enumerate(self.list_template_vars):
-            if 'entity_name' not in template_vars:
-                raise ValueError(f"list_template_vars[{i}] must include 'entity_name' key")
+
+    @model_validator(mode="after")
+    def validate_entity_names(self) -> "AIAnswerEngineScraperInput":
+        """Validate entity and template vars consistency for single-/multi-entity modes."""
+        # Single-entity mode
+        if self.entity_name:
+            if self.list_template_vars is not None and not isinstance(self.list_template_vars, dict):
+                raise ValueError(
+                    "When 'entity_name' is provided, 'list_template_vars' must be a dict if provided"
+                )
+            if isinstance(self.list_template_vars, dict):
+                if "entity_name" in self.list_template_vars and self.list_template_vars["entity_name"] != self.entity_name:
+                    raise ValueError(
+                        "When 'entity_name' is provided, 'list_template_vars.entity_name' (if present) must equal 'entity_name'"
+                    )
+            return self
+
+        # Multi-entity mode
+        if self.list_template_vars is not None:
+            if not isinstance(self.list_template_vars, list):
+                raise ValueError("'list_template_vars' must be a list of dicts when provided in multi-entity mode")
+            for i, template_vars in enumerate(self.list_template_vars):
+                if not isinstance(template_vars, dict):
+                    raise ValueError(f"list_template_vars[{i}] must be a dict")
+                if "entity_name" not in template_vars:
+                    raise ValueError(f"list_template_vars[{i}] must include 'entity_name' key")
         return self
 
 
@@ -735,7 +805,7 @@ class AIAnswerEngineScraperOutput(BaseSchema):
     )
 
 
-class AIAnswerEngineScraperNode(BaseNode[AIAnswerEngineScraperInput, AIAnswerEngineScraperOutput, AIAnswerEngineScraperConfig]):
+class AIAnswerEngineScraperNode(BaseDynamicNode):  # [AIAnswerEngineScraperInput, AIAnswerEngineScraperOutput, AIAnswerEngineScraperConfig]
     """
     🤖 AI Answer Engine Scraper Node with MongoDB Storage.
     
@@ -772,7 +842,7 @@ class AIAnswerEngineScraperNode(BaseNode[AIAnswerEngineScraperInput, AIAnswerEng
     """
     
     node_name: ClassVar[str] = "ai_answer_engine_scraper"
-    node_version: ClassVar[str] = "0.1.0"
+    node_version: ClassVar[str] = "0.2.0"
     env_flag: ClassVar[LaunchStatus] = LaunchStatus.PRODUCTION
     
     input_schema_cls: ClassVar[Type[AIAnswerEngineScraperInput]] = AIAnswerEngineScraperInput
@@ -801,6 +871,37 @@ class AIAnswerEngineScraperNode(BaseNode[AIAnswerEngineScraperInput, AIAnswerEng
         
         return providers_config
 
+
+    def _resolve_path(self, data: Dict[str, Any], path: str) -> Any:
+        """
+        Resolve a dot-notation path in nested dynamic inputs, similar to
+        workflow_runner_node._resolve_path.
+        
+        Args:
+            data: Source dynamic inputs
+            path: Dot path (e.g., 'payload.inputs.vars')
+        Returns:
+            The value at the path, or None if not found
+        """
+        if not path:
+            return None
+        parts = path.split('.')
+        current: Any = data
+        for part in parts:
+            if isinstance(current, dict) and part in current:
+                current = current[part]
+            elif isinstance(current, list):
+                try:
+                    index = int(part)
+                    if 0 <= index < len(current):
+                        current = current[index]
+                    else:
+                        return None
+                except (ValueError, IndexError):
+                    return None
+            else:
+                return None
+        return current
 
 
     async def _store_query_result(
@@ -890,9 +991,14 @@ class AIAnswerEngineScraperNode(BaseNode[AIAnswerEngineScraperInput, AIAnswerEng
             ValueError: If required context (user, org_id) is missing
         """
         
-        # Convert input to proper schema if needed
+        # Normalize to both a parsed typed model and a raw dict to support
+        # dynamic dot-path resolution and typed defaults/validation.
         if isinstance(input_data, dict):
-            input_data = AIAnswerEngineScraperInput(**input_data)
+            input_parsed = AIAnswerEngineScraperInput(**input_data)
+            raw_inputs = input_data
+        else:
+            input_parsed = input_data  # Already a model
+            raw_inputs = input_data.model_dump() if hasattr(input_data, "model_dump") else dict(input_data)
         
         # Get app context and external context manager
         runtime_config = runtime_config.get("configurable")
@@ -914,13 +1020,94 @@ class AIAnswerEngineScraperNode(BaseNode[AIAnswerEngineScraperInput, AIAnswerEng
         
         # Process multiple entities
         start_time = datetime.now()
-        self.info(f"🚀 Starting AI answer engine scraper for {len(input_data.list_template_vars)} entities")
+        # Resolve dynamic inputs following the priority order:
+        # 1) Direct top-level inputs
+        # 2) Configured dot paths into dynamic inputs
+        # 3) Defaults (only for query_templates). list_template_vars must be provided (directly or via path)
+
+        # Resolve list_template_vars
+        resolved_list_template_vars: Optional[Union[List[Dict[str, Any]], Dict[str, Any]]] = None
+        if input_parsed.list_template_vars is not None:
+            resolved_list_template_vars = input_parsed.list_template_vars
+        elif self.config.list_template_vars_path:
+            resolved_list_template_vars = self._resolve_path(
+                raw_inputs, self.config.list_template_vars_path
+            )
+            if resolved_list_template_vars is None:
+                raise ValueError(
+                    f"list_template_vars_path='{self.config.list_template_vars_path}' provided but no data found at that path"
+                )
+        # If provided as a list, validate list semantics here; dict is allowed for single-entity mode
+        if isinstance(resolved_list_template_vars, list):
+            for i, template_vars in enumerate(resolved_list_template_vars):
+                if not isinstance(template_vars, dict):
+                    raise ValueError(f"list_template_vars[{i}] must be a dict")
+                if 'entity_name' not in template_vars:
+                    raise ValueError(f"list_template_vars[{i}] must include 'entity_name' key")
+
+        # Resolve query_templates
+        resolved_query_templates: Optional[Dict[str, List[str]]] = None
+        if input_parsed.query_templates is not None:
+            resolved_query_templates = input_parsed.query_templates
+        elif self.config.query_templates_path:
+            resolved_query_templates = self._resolve_path(raw_inputs, self.config.query_templates_path)
+            if resolved_query_templates is None:
+                raise ValueError(
+                    f"query_templates_path='{self.config.query_templates_path}' provided but no data found at that path"
+                )
+        else:
+            resolved_query_templates = self.config.query_templates
+
+        if not isinstance(resolved_query_templates, dict):
+            raise ValueError("'query_templates' must be a dict of {category: [templates]} when provided")
+
+        # Resolve single-entity name if provided directly or via path
+        resolved_entity_name: Optional[str] = None
+        if input_parsed.entity_name:
+            resolved_entity_name = input_parsed.entity_name
+        elif self.config.entity_name_path:
+            resolved_entity_name = self._resolve_path(raw_inputs, self.config.entity_name_path)  # type: ignore[arg-type]
+
+        # Determine mode and entities to process
+        no_template_vars = resolved_list_template_vars in (None, [], {})
+        single_entity_mode = resolved_entity_name is not None
+
+        if single_entity_mode:
+            # list_template_vars must be a dict if provided
+            if isinstance(resolved_list_template_vars, list):
+                raise ValueError(
+                    "In single-entity mode, 'list_template_vars' must be a dict when provided"
+                )
+            # Build single entity template vars
+            if isinstance(resolved_list_template_vars, dict):
+                tv = dict(resolved_list_template_vars)
+                if 'entity_name' in tv and tv['entity_name'] != resolved_entity_name:
+                    raise ValueError(
+                        "In single-entity mode, 'list_template_vars.entity_name' (if present) must equal 'entity_name'"
+                    )
+                tv['entity_name'] = resolved_entity_name  # enforce
+                entities_to_process: List[Dict[str, Any]] = [tv]
+            else:
+                # No substitution
+                entities_to_process = [{"entity_name": resolved_entity_name}]
+        else:
+            # Multi-entity mode
+            if resolved_list_template_vars is None or resolved_list_template_vars == []:
+                entities_to_process = [{"entity_name": "generic"}]
+            else:
+                if not isinstance(resolved_list_template_vars, list):
+                    raise ValueError(
+                        "In multi-entity mode, 'list_template_vars' must be a list of dicts when provided"
+                    )
+                entities_to_process = resolved_list_template_vars
+
+        self.info(f"🚀 Starting AI answer engine scraper for {len(entities_to_process)} entities")
         
         # Generate single date_str for consistency
         date_str = datetime.now().strftime('%Y%m%d')
         
         # Build provider configurations first (needed for cache checking)
-        providers_config = self._build_providers_config(input_data.providers_config)
+        providers_config = self._build_providers_config(input_parsed.providers_config)
         enabled_providers = [p for p, config in providers_config.items() if config.enabled]
         
         # Collect all queries for all entities
@@ -933,12 +1120,13 @@ class AIAnswerEngineScraperNode(BaseNode[AIAnswerEngineScraperInput, AIAnswerEng
         query_provider_mapping = {}  # Map query -> list of providers that need to be queried
         
         # Process each entity
-        for template_vars in input_data.list_template_vars:
-            entity_name = template_vars.get('entity_name', '')
+        for template_vars in entities_to_process:
+            entity_name = template_vars.get('entity_name', 'generic') if template_vars else 'generic'
             
             # Construct categorized queries for this entity
-            query_templates = input_data.query_templates or self.config.query_templates
-            entity_queries = QueryBuilder.construct_queries(template_vars, query_templates)
+            query_templates = resolved_query_templates or self.config.query_templates
+            tv_for_queries = {} if no_template_vars else template_vars
+            entity_queries = QueryBuilder.construct_queries(tv_for_queries, query_templates)
             
             # Generate namespace for this entity
             namespace = QueryBuilder.generate_namespace(entity_name, date_str)

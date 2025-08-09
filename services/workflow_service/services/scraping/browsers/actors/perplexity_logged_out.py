@@ -42,8 +42,8 @@ class PerplexityBrowserActor(BaseBrowserActor):
 
     async def wait_until_perplexity_response_complete(
         self,
-        poll_every: float = 5.0,
-        timeout: float = 180.0,
+        poll_every: float = 8.0,
+        timeout: float = 200.0,
     ) -> List[Dict[str, str]]:
         """
         Poll `extract_response_from_perplexity_page()` until the combined
