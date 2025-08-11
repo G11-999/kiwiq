@@ -616,7 +616,7 @@ class AIAnswerEngineScraperConfig(BaseNodeConfig):
         description="Whether to use browser profiles for better anti-detection."
     )
     persist_browser_profile: bool = Field(
-        default=True,
+        default=False,
         description="Whether to persist browser profiles between sessions."
     )
 
@@ -984,17 +984,18 @@ class AIAnswerEngineScraperNode(BaseDynamicNode):  # [AIAnswerEngineScraperInput
         top-level `query`, `provider`, and a `response` with `processed_data`.
         """
         flattened: List[Dict[str, Any]] = []
-        for _entity_name, data in entity_results.items():
+        for _entity_name, data in entity_results.items():  # [entity_name]['categorized_results'][category]List["response"][raw response for single query...]
             categorized = data.get("categorized_results", {}) or {}
             for category, results in categorized.items():
                 for res in results or []:
-                    if not isinstance(res, dict):
+                    response = res.get("response", {})
+                    if not isinstance(response, dict):
                         continue
-                    query_val = res.get("query", "")
-                    provider_val = res.get("provider", "unknown")
-                    markdown_val = res.get("markdown", "")
-                    links_val = res.get("links", [])
-                    citations_val = res.get("citations", [])
+                    query_val = response.get("query", "")
+                    provider_val = response.get("provider", "unknown")
+                    markdown_val = response.get("markdown", "")
+                    links_val = response.get("links", [])
+                    citations_val = response.get("citations", [])
                     flattened.append({
                         "query": query_val,
                         "markdown": markdown_val,
@@ -1357,7 +1358,7 @@ class AIAnswerEngineScraperNode(BaseDynamicNode):  # [AIAnswerEngineScraperInput
                 storage_tasks = []
                 storage_metadata = []
                 
-                for provider_name, provider_results in results.get('results', {}).items():
+                for provider_name, provider_results in results.get('results', {}).items():  # ["results"][provider_name]List["response"][raw response for single query...]
                     for result in provider_results:
                         if result.get('success', False) and result.get('response'):
                             query = result['query']
@@ -1385,7 +1386,7 @@ class AIAnswerEngineScraperNode(BaseDynamicNode):  # [AIAnswerEngineScraperInput
                                 'provider': provider_name,
                                 'entity_name': entity_name,
                                 'category': category,
-                                'result': result
+                                'result': result  # result ==> ["response"][raw response for single query...]
                             })
                 
                 # Execute all storage tasks concurrently
@@ -1410,7 +1411,7 @@ class AIAnswerEngineScraperNode(BaseDynamicNode):  # [AIAnswerEngineScraperInput
                         # Add to categorized results
                         if category not in entity_results[entity_name]['categorized_results']:
                             entity_results[entity_name]['categorized_results'][category] = []
-                        entity_results[entity_name]['categorized_results'][category].append(result_obj)
+                        entity_results[entity_name]['categorized_results'][category].append(result_obj)  # [entity_name]['categorized_results'][category]List["response"][raw response for single query...]
                 
                 # Get statistics and calculate additional metrics
                 stats = results.get('statistics', {})

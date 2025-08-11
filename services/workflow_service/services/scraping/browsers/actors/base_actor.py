@@ -62,7 +62,7 @@ class BaseBrowserActor:
         try:
             # print(selector)
             await self.page.wait_for_selector(selector, timeout=timeout)
-            await self.page.click(selector)
+            await self.page.click(selector, timeout=timeout)
             return self.page.url
         except Exception as e:
             raise Exception(f"Failed to click selector '{selector}': {e}")

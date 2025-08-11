@@ -310,7 +310,38 @@ if __name__ == "__main__":
             print("\n\nlive_url: ---> ",live_url)
             actor = PerplexityBrowserActor(browser=browser.browser, context=browser.context, page=browser.page, live_url=live_url)
             result = await actor.single_query("What is the capital of France?")
-            print(result)
+            import json
+            print(json.dumps(result, indent=4))
+            """
+            [
+                {
+                    "text": "/div> Images Sources \u00b7 Steps wikimedia foundation, inc. France - Wikipedia encyclopedia britannica France | History, Maps, Flag, Population, Cities, Capital, & Facts wikimedia foundation, inc. Kingdom of France - Wikipedia airline tickets: cheap flights to france & worldwide | air france usa | air france, united states Airline tickets: cheap flights to France & worldwide | Air France USA The capital of France is Paris . wikipedia +1 Paris serves as the country's largest city as well as its main cultural and economic center. As the seat of government, it is the location of major institutions including the presidential residence and both houses of Parliament (the Senate and National Assembly). France has had Paris as its capital since before the medieval period, and it remains widely recognized as a global city for its influence in art, culture, politics, and finance. britannica +1 Share Export Rewrite Related What are the main geographical features of France How has France's his2025-08-11 16:05:03,852 - PerplexityBrowserActor - INFO - segments extracted!
+            tory influenced its current political structure What are the key cultural traditions unique to France How do France's overseas territories impact its global presence What are the economic strengths and challenges of France Ask a follow-up\u2026 Sign in or create an account Unlock Pro Search and History Continue with Google Continue with Apple Continue with email Single sign-on (SSO)",
+                    "html": "",
+                    "links": [
+                        {
+                            "url": "https://en.wikipedia.org/wiki/France",
+                            "text": "wikimedia foundation, inc.France - Wikipedia",
+                            "title": "",
+                            "class": [
+                                "group",
+                                "flex",
+                                "w-full",
+                                "cursor-pointer",
+                                "items-stretch",
+                                "h-full"
+                            ]
+                        },
+                    ],
+                    "citations": [
+                        "wikipedia+1",
+                        "britannica+1"
+                    ],
+                    "markdown": "/div>\n\nImages\n\nSources\n\n\u00b7\n\nSteps\n\n[wikimedia foundation, inc.\n\nFrance - Wikipedia](https://en.wikipedia.org/wiki/France)\n\n[encyclopedia britannica\n\nFrance | History, Maps, Flag, Population, Cities, Capital, & Facts](https://www.britannica.com/place/France)\n\n[wikimedia foundation, inc.\n\nKingdom of France - Wikipedia](https://en.wikipedia.org/wiki/Kingdom_of_France)\n\n[airline tickets: cheap flights to france & worldwide | air france usa | air france, united states\n\nAirline tickets: cheap flights to France & worldwide | Air France USA](https://wwws.airfrance.us)\n\n![Al-Sharaa's visit to France: A European gateway towards ...](https://d2u1z1lopyfwlx.cloudfront.net/thumbnails/4db3a823-5133-5849-ae0e-2f45268147ae/971c32be-5eed-5cff-ad6c-b82aa22c2583.jpg)\n\n![Overseas France - Wikipedia](https://d2u1z1lopyfwlx.cloudfront.net/thumbnails/014aa4c7-5253-5675-80a2-d416628774f9/01a84265-e09c-5682-92ce-681c89a1afe2.jpg)\n\n![German military administration in occupied France during ...](https://d2u1z1lopyfwlx.cloudfront.net/thumbnails/4ddd2748-1588-572e-b6ba-55ca572caad1/01a84265-e09c-5682-92ce-681c89a1afe2.jpg)\n\n![Macron asks Syria\u2019s interim President al-Sharaa to protect all Syrians  during Elys\u00e9e visit](https://d2u1z1lopyfwlx.cloudfront.net/thumbnails/cfb791da-a2f5-5d93-8b19-1d6f3bcee02b/030f02cd-5c6f-5002-8969-b27852e7c726.jpg)\n\n![France | History, Maps, Flag, Population, Cities, Capital ...](https://d2u1z1lopyfwlx.cloudfront.net/thumbnails/d44e0360-06f7-5e78-909b-013f2be1619f/e91e73d4-022b-59db-9713-717a2a198855.jpg)\n\nThe **capital of France is Paris**.[wikipedia+1](https://en.wikipedia.org/wiki/France)\n\nParis serves as the country's largest city as well as its main cultural and economic center. As the seat of government, it is the location of major institutions including the presidential residence and both houses of Parliament (the Senate and National Assembly). France has had Paris as its capital since before the medieval period, and it remains widely recognized as a global city for its influence in art, culture, politics, and finance.[britannica+1](https://www.britannica.com/place/France)\n\nShare\n\nExport\n\nRewrite\n\nRelated\n\nWhat are the main geographical features of France\n\nHow has France's history influenced its current political structure\n\nWhat are the key cultural traditions unique to France\n\nHow do France's overseas territories impact its global presence\n\nWhat are the economic strengths and challenges of France\n\nAsk a follow-up\u2026\n\nSign in or create an account\n\nUnlock Pro Search and History\n\nContinue with Google\n\nContinue with Apple\n\nContinue with email\n\nSingle sign-on (SSO)",
+                    "query": "What is the capital of France?"
+                }
+
+            """
             # import ipdb; ipdb.set_trace()
 
     asyncio.run(main())

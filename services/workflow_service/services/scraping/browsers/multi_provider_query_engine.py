@@ -286,7 +286,7 @@ class MultiProviderQueryEngine:
                         }
                         all_results["results"][provider_name].append(failure_result)
                     else:
-                        all_results["results"][provider_name].append(result)
+                        all_results["results"][provider_name].append(result)  # ["results"][provider_name]LIST["response"][raw response for single query...]
                 
                 # Calculate statistics for each provider
                 for provider_name in all_results["results"]:

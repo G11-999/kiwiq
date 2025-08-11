@@ -664,7 +664,35 @@ if __name__ == "__main__":
             print("\n\nlive_url: ---> ",live_url)
             actor = GoogleAIModeBrowserActor(browser=browser.browser, context=browser.context, page=browser.page, live_url=live_url)
             result = await actor.single_query("What is the capital of France?")
-            print(result)
+            import json
+            print(json.dumps(result, indent=4))
+            """
+            [
+                {
+                    "text": "The capital and most populous city of France is Paris . Here is some additional information about Paris: Nickname: Often referred to as the \"City of Light\" (La Ville Lumi\u00e9re), reflecting its historical role as an enlightenment hub and its early adoption of extensive street lighting. Population: With an estimated population of 2,048,472 in January 2025 within the city proper, Paris ranks as the fourth-most populous city in the European Union. Location: Situated on the Seine River, in the north-central part of France, it is also the center of the \u00cele-de-France region. Cultural significance: Paris is renowned globally for its art, fashion, gastronomy, and culture. It is home to iconic landmarks like the Eiffel Tower, the Louvre Museum, and Notre-Dame Cathedral. AI responses may include mistakes. Learn more Thank you Your feedback helps Google improve. See our Privacy Policy . Share more feedback Report a problem Close",
+                    "html": "",
+                    "links": [
+                        {
+                            "url": "https://www.coe.int/en/web/interculturalcities/paris",
+                            "text": "",
+                            "title": "",
+                            "class": [
+                                "NDNGvf"
+                            ],
+                            "target": "_blank",
+                            "rel": [
+                                "noopener"
+                            ]
+                        },
+                    ],
+                    "citations": [
+                        "2025"
+                    ],
+                    "markdown": "The capital and most populous city of France is Paris\n\n.\n\nHere is some additional information about Paris:\n\n* **Nickname:** Often referred to as the \"City of Light\" (La Ville Lumi\u00e9re), reflecting its historical role as an enlightenment hub and its early adoption of extensive street lighting.\n* **Population:** With an estimated population of 2,048,472 in January 2025 within the city proper, Paris ranks as the fourth-most populous city in the European Union.\n* **Location:** Situated on the Seine River, in the north-central part of France, it is also the center of the \u00cele-de-France region.\n* **Cultural significance:** Paris is renowned globally for its art, fashion, gastronomy, and culture. It is home to iconic landmarks like the Eiffel Tower, the Louvre Museum, and Notre-Dame Cathedral.\n\nAI responses may include mistakes. [Learn more](https://support.google.com/websearch?p=aimode)\n\nThank you\n\nYour feedback helps Google improve. See our [Privacy Policy](https://policies.google.com/privacy?hl=en).\n\nShare more feedbackReport a problemClose",
+                    "query": "What is the capital of France?"
+                }
+
+            """
             # import ipdb; ipdb.set_trace()
 
     asyncio.run(main())

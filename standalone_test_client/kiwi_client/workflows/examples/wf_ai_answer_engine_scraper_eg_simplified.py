@@ -400,7 +400,7 @@ if __name__ == "__main__":
     # For automated testing, run example 1
     kwargs = {
         "entities": template_vars,
-        "use_cache": False,
+        "use_cache": True,
         "cache_lookback_days": 7
     }
     
@@ -413,7 +413,7 @@ if __name__ == "__main__":
     
     asyncio.run(main_test_ai_scraper(**kwargs))
     
-    print("\n" + "-"*60)
-    print("Run this script from the project root directory using:")
-    print("PYTHONPATH=. python standalone_test_client/kiwi_client/workflows/examples/wf_ai_answer_engine_scraper_eg.py")
-    print("-"*60) 
+    # print("\n" + "-"*60)
+    # print("Run this script from the project root directory using:")
+    # print("PYTHONPATH=. python standalone_test_client/kiwi_client/workflows/examples/wf_ai_answer_engine_scraper_eg.py")
+    # print("-"*60) 
