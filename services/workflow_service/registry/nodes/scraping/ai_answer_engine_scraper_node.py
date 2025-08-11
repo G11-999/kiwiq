@@ -593,7 +593,7 @@ class AIAnswerEngineScraperConfig(BaseNodeConfig):
     
     # Browser pool settings
     max_concurrent_browsers: int = Field(
-        default=35,
+        default=120,
         ge=1,
         le=MAX_CONCURRENT_SCRAPELESS_BROWSERS,
         description="Maximum number of concurrent browser instances. "
