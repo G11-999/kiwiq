@@ -286,12 +286,13 @@ class StreamingFilePipeline:
         if self.config.get('classify_pages_as_blog'):
             item_with_meta['is_blog'] = True
             try:
-                is_blog, _, _ = await classify_item_is_blog(
+                is_blog, parsed_classification, _ = await classify_item_is_blog(
                     item_with_meta,
                     model=self.config.get('blog_classifier_model'),
                     max_content_length=self.config.get('blog_classifier_max_length'),
                 )
                 item_with_meta['is_blog'] = is_blog
+                item_with_meta['is_blog__reason'] = parsed_classification.brief_reason
             except Exception as e:
                 self.logger.error(f"Failed to classify item as blog: {e}. Item URL: {item_with_meta.get('url', 'unknown')}", exc_info=True)
         
@@ -508,12 +509,13 @@ class MongoCustomerDataPipeline:
         if self.config.get('classify_pages_as_blog'):
             item['is_blog'] = True
             try:
-                is_blog, _, _ = await classify_item_is_blog(
+                is_blog, parsed_classification, _ = await classify_item_is_blog(
                     item,
                     model=self.config.get('blog_classifier_model'),
                     max_content_length=self.config.get('blog_classifier_max_length'),
                 )
                 item['is_blog'] = is_blog
+                item['is_blog__reason'] = parsed_classification.brief_reason
             except Exception as e:
                 self.logger.error(f"Failed to classify item as blog: {e}. Item URL: {item.get('url', 'unknown')}", exc_info=True)
         
