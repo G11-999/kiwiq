@@ -442,6 +442,10 @@ class CrawlerScraperNode(BaseNode[CrawlerScraperInput, CrawlerScraperOutput, Cra
                     out[k] = obj[k]
         if 'is_url_in_sitemap' in obj:
             out['is_url_in_sitemap'] = obj['is_url_in_sitemap']
+        if 'is_blog' in obj:
+            out['is_blog'] = obj['is_blog']
+        if 'is_blog__reason' in obj:
+            out['is_blog__reason'] = obj['is_blog__reason']
         return out
 
     async def _save_robots_analysis_snapshot(
@@ -944,7 +948,7 @@ class CrawlerScraperNode(BaseNode[CrawlerScraperInput, CrawlerScraperOutput, Cra
                 mongodb_namespaces=list(namespaces.keys()),
                 documents_stored=documents_stored,
                 scraped_data=filtered_sample,
-                total_scraped_count=len(scraped_sample),
+                total_scraped_count=len(filtered_sample),
                 used_cached_results=False,
                 technical_seo_summary=asdict(technical_seo_summary) if technical_seo_summary else None,
                 robots_analysis=result.get('robots_analysis'),
