@@ -1,4 +1,68 @@
 import re
+import uuid
+from bs4 import BeautifulSoup
+import trafilatura
+from workflow_service.services.scraping.utils.markdown_converter import convert_to_markdown_from_raw_file_content
+
+
+def clean_html_text_and_convert_to_markdown(html: str, remove_links: bool = True) -> str:
+    """
+    Clean HTML text and convert to markdown.
+    """
+
+    # Pre-process to protect headings
+    soup = BeautifulSoup(html, 'html.parser')
+    
+    # Store original headings
+    heading_map = {}
+    for i, heading in enumerate(soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])):
+        placeholder = f"HEADING_PLACEHOLDER_{i}"
+        heading_map[placeholder] = {
+            'tag': heading.name,
+            'text': heading.get_text(strip=True),
+            'html': str(heading)
+        }
+        # Replace heading with a paragraph containing placeholder
+        new_tag = soup.new_tag('p')
+        new_tag.string = f"{placeholder}: {heading.get_text(strip=True)}"
+        heading.replace_with(new_tag)
+    
+    # Extract with trafilatura
+    output = trafilatura.extract(
+        str(soup),
+        output_format="html",
+        include_formatting=True,
+        include_links=True,
+        favor_recall=True,
+        include_comments=True
+    )
+
+    # Restore headings
+    if output:
+        for placeholder, heading_info in heading_map.items():
+            # Replace placeholder with original heading HTML
+            output = output.replace(
+                f"<p>{placeholder}: {heading_info['text']}</p>",
+                heading_info['html']
+            )
+            # Also handle case where <p> tags were stripped
+            output = output.replace(
+                f"{placeholder}: {heading_info['text']}",
+                heading_info['html']
+            )
+
+    # output = trafilatura.extract(html, output_format="html", include_formatting=True, include_links=True, favor_recall=True, include_comments=True, )
+    # output = trafilatura.bare_extraction(html, as_dict=True, include_formatting=True, include_links=True, favor_recall=True, include_comments=True, )
+    # print(output)
+    # import ipdb; ipdb.set_trace()
+    
+    cleaned_markdown_content = convert_to_markdown_from_raw_file_content(output, f"temp_{uuid.uuid4()}.html")
+
+    if remove_links:
+        cleaned_markdown_content = remove_markdown_links(cleaned_markdown_content, max_chars=None)
+
+    return cleaned_markdown_content
+
 
 def remove_markdown_links(text: str, max_chars: int | None = None) -> str:
     """
@@ -107,20 +171,25 @@ if __name__ == "__main__":
     [2]: https://reference2.com
     """
     
-    print("Original text:")
-    print(markdown_text)
-    print("\n" + "="*50 + "\n")
+    # print("Original text:")
+    # print(markdown_text)
+    # print("\n" + "="*50 + "\n")
     
-    # Remove links, keep all text
-    print("Links removed (keep all text):")
-    print(remove_markdown_links(markdown_text))
-    print("\n" + "="*50 + "\n")
+    # # Remove links, keep all text
+    # print("Links removed (keep all text):")
+    # print(remove_markdown_links(markdown_text))
+    # print("\n" + "="*50 + "\n")
     
-    # Remove links, limit text to 10 characters
-    print("Links removed (max 10 chars):")
-    print(remove_markdown_links(markdown_text, max_chars=10))
-    print("\n" + "="*50 + "\n")
+    # # Remove links, limit text to 10 characters
+    # print("Links removed (max 10 chars):")
+    # print(remove_markdown_links(markdown_text, max_chars=10))
+    # print("\n" + "="*50 + "\n")
     
-    # Advanced version with reference links handling
-    print("Advanced version (max 15 chars):")
-    print(remove_markdown_links_advanced(markdown_text, max_chars=15, placeholder="link"))
+    # # Advanced version with reference links handling
+    # print("Advanced version (max 15 chars):")
+    # print(remove_markdown_links_advanced(markdown_text, max_chars=15, placeholder="link"))
+    
+    print(markdown_content)
+    import ipdb; ipdb.set_trace()
+
+

@@ -215,8 +215,8 @@ class ScrapingSettings(Settings):
     # Default OpenAI model used for the blog classifier. Must support structured output.
     CLASSIFY_PAGES_AS_BLOG: bool = True
     BLOG_CLASSIFIER_MODEL: str = "gpt-5-nano"
-    # Maximum number of characters from the `markdown_content` field to consider during classification
-    BLOG_CLASSIFIER_MAX_CONTENT_LENGTH: int = 10000
+    # Maximum number of characters from the `cleaned_markdown_content` field to consider during classification
+    BLOG_CLASSIFIER_MAX_CONTENT_LENGTH: int = 15000
     
     @classmethod
     def get_queue_key(cls, spider_name: str, job_id: Optional[str] = None, 

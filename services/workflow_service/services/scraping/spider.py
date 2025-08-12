@@ -92,6 +92,8 @@ from db.session import get_db_as_manager
 
 import warnings
 
+from workflow_service.utils.markdown_cleaner import clean_html_text_and_convert_to_markdown
+
 warnings.filterwarnings(
     "ignore",
     message=r'.*generator and includes a "return" statement.*',
@@ -746,7 +748,8 @@ class BaseProcessor:
         if not self.disable_html_dump_in_data:
             data['content'] = response.text
         try:
-            data['markdown_content'] = convert_to_markdown_from_raw_file_content(response.text, f"temp_{uuid.uuid4()}.html")
+            data['raw_markdown_content'] = convert_to_markdown_from_raw_file_content(response.text, f"temp_{uuid.uuid4()}.html")
+            data['cleaned_markdown_content'] = clean_html_text_and_convert_to_markdown(response.text, remove_links=True)
         except Exception as e:
             spider.logger.error(f"Error converting to markdown: {e}")
             texts = response.xpath(
@@ -754,7 +757,7 @@ class BaseProcessor:
             ).getall()
 
             plain_text = " ".join(t.strip() for t in texts if t.strip())
-            data['markdown_content'] = plain_text
+            data['markdown_content'] = data.get('raw_markdown_content', plain_text)
 
         
 
@@ -1920,9 +1923,9 @@ def run_scraping_job(job_config: Dict[str, Any], use_prefect_logging: bool = Fal
     settings.set('SCHEDULER_PERSIST', False)
     settings.set('SCHEDULER_PURGE_ON_CLOSE', True)
 
+    # NOTE: these below 3 configs is not used from settings
     settings.set('PERFORM_TECHNICAL_SEO', job_config.get('perform_technical_seo', scraping_settings.PERFORM_TECHNICAL_SEO))
     settings.set('TECHNICAL_SEO_LINK_SAMPLE_SIZE', job_config.get('technical_seo_link_sample_size', scraping_settings.TECHNICAL_SEO_LINK_SAMPLE_SIZE))
-
     settings.set('DISABLE_HTML_DUMP_IN_DATA', job_config.get('disable_html_dump_in_data', scraping_settings.DISABLE_HTML_DUMP_IN_DATA))
 
     settings.set('CLASSIFY_PAGES_AS_BLOG', job_config.get('classify_pages_as_blog', scraping_settings.CLASSIFY_PAGES_AS_BLOG))

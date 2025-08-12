@@ -78,6 +78,8 @@ Response schema (JSON only):
 Remember to base your decision solely on the provided URL and content, and the characteristics of blog posts described above. Do not make assumptions about content that isn't present in the given text.
 """
 
+MARKDOWN_CONTENT_KEY = "cleaned_markdown_content"
+
 
 async def classify_item_is_blog(
     item: Dict[str, Any],
@@ -100,7 +102,7 @@ async def classify_item_is_blog(
         model: Optional override of the OpenAI model name. Defaults to
             `scraping_settings.BLOG_CLASSIFIER_MODEL`.
         max_markdown_length: Optional override for the maximum characters of
-            `markdown_content` considered. Defaults to
+            `MARKDOWN_CONTENT_KEY` considered. Defaults to
             `scraping_settings.BLOG_CLASSIFIER_MAX_MARKDOWN_LENGTH`.
 
     Returns:
@@ -108,7 +110,7 @@ async def classify_item_is_blog(
             - is_blog (bool): Classification result.
             - classification (dict): Structured output with keys `is_blog` and `brief_reason`.
             - filtered_item (dict): The input item reduced to allowed keys, with
-              `markdown_content` truncated as configured.
+              `MARKDOWN_CONTENT_KEY` truncated as configured.
 
     Raises:
         ValueError: If the model response cannot be parsed into the expected schema.
@@ -119,7 +121,7 @@ async def classify_item_is_blog(
         allowed_keys = {
             "title",
             "url",
-            "markdown_content",
+            MARKDOWN_CONTENT_KEY,
             # "content",
             # "text",
             # "description",
@@ -140,14 +142,8 @@ async def classify_item_is_blog(
     filtered_item: Dict[str, Any] = {k: item[k] for k in allowed_keys if k in item}
 
     # Truncate markdown content if present to avoid excessive token usage
-    if "markdown_content" in filtered_item and isinstance(filtered_item["markdown_content"], str):
-        try:
-            cleaned_markdown_content = remove_markdown_links(filtered_item["markdown_content"], max_chars=25)
-            filtered_item["markdown_content"] = cleaned_markdown_content
-        except Exception as e:
-            # self.logger.error(f"Failed to remove markdown links: {e}. Item URL: {item.get('url', 'unknown')}", exc_info=True)
-            pass  # ignore errors
-        filtered_item["markdown_content"] = filtered_item["markdown_content"][:max_len]
+    if MARKDOWN_CONTENT_KEY in filtered_item and isinstance(filtered_item[MARKDOWN_CONTENT_KEY], str):
+        filtered_item[MARKDOWN_CONTENT_KEY] = filtered_item[MARKDOWN_CONTENT_KEY][:max_len]
 
     user_input: str = (
         f"Page content:\n\n"

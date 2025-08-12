@@ -78,13 +78,14 @@ The node comes with carefully tuned default settings. **We strongly recommend us
 
 **Recommendation**: Focus on configuring inputs rather than these settings. The defaults work well for most use cases.
 
-### Content Classification (New)
+### Content Classification and Markdown Cleaning (New)
 
 The node can classify pages as blog posts using an LLM and filter the returned sample accordingly.
 
 - `classify_pages_as_blog` (bool, default `true`): If enabled, pages are classified and `scraped_data` is filtered to include only items where `is_blog == true`.
 - `blog_classifier_model` (str, default from system settings): OpenAI model used for classification (e.g., `gpt-5-nano`).
-- `blog_classifier_max_length` (int, default from system settings): Maximum characters considered from the `markdown_content` field during classification.
+- `blog_classifier_max_length` (int, default from system settings): Maximum characters considered from the `cleaned_markdown_content` field during classification.
+- `clean_markdown` (bool, default `true`): If enabled, the node returns cleaned markdown content in the preview items. The output field `markdown_content` will be sourced from `cleaned_markdown_content` (URLs stripped, irrelevant boilerplate removed). If disabled, `markdown_content` will be sourced from `raw_markdown_content`.
 
 Notes:
 - Classification occurs in the scraping pipeline. When enabled, each stored document includes an `is_blog` boolean.
@@ -321,7 +322,7 @@ The node returns a filtered preview of each document with safe, high-signal fiel
 {
   "_job_id": "crawler_20240115_143000_abc123",
   "url": "https://example.com/article",
-  "markdown_content": "Extracted content converted to Markdown...",
+  "markdown_content": "Page content as Markdown (source depends on clean_markdown)",
   "technical_seo": {
     "dates": { /* detected publish/update dates if available */ }
   },
@@ -332,6 +333,11 @@ The node returns a filtered preview of each document with safe, high-signal fiel
   "feed_created_parsed": "2024-01-14T23:00:00Z"
 }
 ```
+
+#### Field provenance: `markdown_content`
+
+- When `clean_markdown` is `true` (default), `scraped_data[i].markdown_content` comes from `cleaned_markdown_content` which removes markdown links' URLs and prunes non-primary content. Link texts are preserved in brackets (e.g., `[Example](https://x.com)` → `[Example]`).
+- When `clean_markdown` is `false`, `scraped_data[i].markdown_content` comes from `raw_markdown_content` (direct markdown conversion with minimal cleaning).
 
 ## Best Practices
 

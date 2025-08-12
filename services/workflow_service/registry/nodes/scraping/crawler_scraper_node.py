@@ -57,6 +57,7 @@ from kiwi_app.workflow_app import schemas as customer_data_schemas
 from global_config.logger import get_prefect_or_regular_python_logger
 from workflow_service.services.scraping.pipelines import MongoCustomerDataPipeline
 from workflow_service.services.scraping.technical_seo import compute_summary_from_documents
+from workflow_service.utils.markdown_cleaner import remove_markdown_links
 
 logger = get_prefect_or_regular_python_logger(
     name="workflow_service.registry.nodes.scraping.crawler_scraper_node",
@@ -187,7 +188,15 @@ class CrawlerScraperConfig(BaseNodeConfig):
         ge=100,
         le=20000,
         description=(
-            "Maximum number of characters from `markdown_content` to consider when classifying."
+            "Maximum number of characters from `cleaned_markdown_content` to consider when classifying."
+        ),
+    )
+
+    # Output cleaning
+    clean_markdown: bool = Field(
+        default=True,
+        description=(
+            "If True, return cleaned markdown content in the output items with removed links and irrelevant content not part of the main content."
         ),
     )
 
@@ -414,7 +423,7 @@ class CrawlerScraperNode(BaseNode[CrawlerScraperInput, CrawlerScraperOutput, Cra
     config: CrawlerScraperConfig
 
     # -------------------- Helpers (no DB duplication, clean patterns) --------------------
-    def _allowlist_output_item(self, obj: Dict[str, Any]) -> Dict[str, Any]:
+    def _allowlist_output_item(self, obj: Dict[str, Any], clean_markdown: bool = True) -> Dict[str, Any]:
         """Return a filtered view of a scraped document limited to safe fields.
 
         Allowed keys:
@@ -426,7 +435,10 @@ class CrawlerScraperNode(BaseNode[CrawlerScraperInput, CrawlerScraperOutput, Cra
         """
         out: Dict[str, Any] = {}
         out['url'] = obj.get('url')
-        out['markdown_content'] = obj.get('markdown_content')
+        MARKDOWN_CONTENT_KEY = "raw_markdown_content"
+        if clean_markdown:
+            MARKDOWN_CONTENT_KEY = "cleaned_markdown_content"
+        out["markdown_content"] = obj.get(MARKDOWN_CONTENT_KEY)
         if 'technical_seo' in obj:
             # out['technical_seo'] = obj['technical_seo']
             if 'dates' in obj['technical_seo']:
@@ -718,7 +730,7 @@ class CrawlerScraperNode(BaseNode[CrawlerScraperInput, CrawlerScraperOutput, Cra
                     technical_seo_summary = await compute_summary_from_documents(scraped_sample)
                 
                 # Allowlist filter for cached sample as well
-                filtered_sample = [self._allowlist_output_item(doc) for doc in scraped_sample]
+                filtered_sample = [self._allowlist_output_item(doc, clean_markdown=self.config.clean_markdown) for doc in scraped_sample]
 
                 if len(filtered_sample) >= input_data.max_processed_urls_per_domain // 2:
 
@@ -726,6 +738,16 @@ class CrawlerScraperNode(BaseNode[CrawlerScraperInput, CrawlerScraperOutput, Cra
                     if self.config.classify_pages_as_blog:
                         filtered_sample = [d for d in filtered_sample if d and d.get('is_blog', True)]
                     
+                    # Optional: clean markdown links in output markdown_content
+                    # if self.config.clean_markdown:
+                    #     for d in filtered_sample:
+                    #         try:
+                    #             content = d.get('markdown_content')
+                    #             if isinstance(content, str):
+                    #                 d['markdown_content'] = remove_markdown_links(content, max_chars=None)
+                    #         except Exception:
+                    #             pass
+
                     filtered_sample = filtered_sample[:input_data.max_processed_urls_per_domain]
 
                     return CrawlerScraperOutput(
@@ -799,6 +821,7 @@ class CrawlerScraperNode(BaseNode[CrawlerScraperInput, CrawlerScraperOutput, Cra
             # Technical SEO
             'perform_technical_seo': self.config.perform_technical_seo,
             'technical_seo_link_sample_size': self.config.technical_seo_link_sample_size,
+            'disable_html_dump_in_data': True,
             
             # Custom settings for Scrapy
             'custom_settings': {
@@ -934,11 +957,21 @@ class CrawlerScraperNode(BaseNode[CrawlerScraperInput, CrawlerScraperOutput, Cra
                 technical_seo_summary = await compute_summary_from_documents(scraped_sample)
 
             # Allowlist filter for scraped sample
-            filtered_sample = [self._allowlist_output_item(doc) for doc in scraped_sample]
+            filtered_sample = [self._allowlist_output_item(doc, clean_markdown=self.config.clean_markdown) for doc in scraped_sample]
 
             # Optional filtering by blog classification
             if self.config.classify_pages_as_blog:
                 filtered_sample = [d for d in filtered_sample if d and d.get('is_blog', True)]
+
+            # Optional: clean markdown links in output markdown_content
+            # if self.config.clean_markdown:
+            #     for d in filtered_sample:
+            #         try:
+            #             content = d.get('markdown_content')
+            #             if isinstance(content, str):
+            #                 d['markdown_content'] = remove_markdown_links(content, max_chars=None)
+            #         except Exception:
+            #             pass
 
             return CrawlerScraperOutput(
                 job_id=result['job_id'],
