@@ -8029,14 +8029,14 @@ testing = ["mypy", "pytest", "pytest-gitignore", "pytest-mock", "responses", "ru
 
 [[package]]
 name = "tokencost"
-version = "0.1.25"
+version = "0.1.26"
 description = "To calculate token and translated USD cost of string and message calls to OpenAI, for example when used by AI agents"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "tokencost-0.1.25-py3-none-any.whl", hash = "sha256:6efed6237e7df7cb03f89e3b476be0097a3db017139c7d4050c28da84acf28a9"},
-    {file = "tokencost-0.1.25.tar.gz", hash = "sha256:ee928bab995e59855e1f108deb8ce5e84da732e2623ef00c0cbfc524b7d43b30"},
+    {file = "tokencost-0.1.26-py3-none-any.whl", hash = "sha256:f84803c4cc1449447d5f85a0d7269e660e10102e92e8c259763398702151d69e"},
+    {file = "tokencost-0.1.26.tar.gz", hash = "sha256:a16592a7a701cc021009c4d6fcb1eb7b2c8d6cd7befd50775ae65e2609a25070"},
 ]
 
 [package.dependencies]
@@ -9208,4 +9208,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.14"
-content-hash = "440fe74192884cfe7bbae9540a19f59cc7f35d115620ede831677a80dc13503f"
+content-hash = "9e3abab0906ad953bb8342c3439e9886789de976110ba93ccb167b9589ae9760"
