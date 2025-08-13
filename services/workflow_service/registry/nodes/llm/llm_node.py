@@ -11,7 +11,7 @@ import os
 from enum import Enum
 import re
 import time
-from typing import Any, ClassVar, Dict, List, Optional, Type, Union, Literal, cast, get_origin, get_args
+from typing import Any, ClassVar, Dict, List, Optional, Type, Union, Literal, cast, get_origin, get_args, Tuple
 from functools import partial
 from operator import itemgetter
 from uuid import uuid4
@@ -799,9 +799,10 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
         # Bind tools if configured in node config
         tool_kwargs = {}
         tools = []
+        is_all_inbuild_tools = True
         if is_tool_use:
             assert model_metadata.tool_use, f"Model {model_metadata.provider.value} -> `{model_metadata.model_name}` does not support tool use!"
-            tool_use_chat_model, tools, tool_kwargs = self._bind_tools(chat_model, model_metadata, registry)
+            is_all_inbuild_tools, tool_use_chat_model, tools, tool_kwargs = self._bind_tools(chat_model, model_metadata, registry)
             if not is_structured_output:
                 chat_model = tool_use_chat_model
             # import ipdb; ipdb.set_trace()
@@ -830,7 +831,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
 
 
         if is_tool_use and is_structured_output:
-            chat_model = self._apply_both_structured_output_and_tool_kwargs(chat_model, model_metadata, output_schema=determined_output_schema, tools=tools, **tool_kwargs)
+            chat_model = self._apply_both_structured_output_and_tool_kwargs(chat_model, model_metadata, output_schema=determined_output_schema, tools=tools, is_all_inbuild_tools=is_all_inbuild_tools, **tool_kwargs)
         
         
         # chat_model = chat_model.bind(**structured_output_kwargs, **tool_kwargs)
@@ -862,9 +863,11 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
         # Parse and validate response using node config
         return await self._parse_response(response, input_data.messages_history, current_messages, latency, determined_output_schema, model_metadata, ext_context=ext_context, app_context=app_context, allocated_credits=allocated_credits)
     
-    def _apply_both_structured_output_and_tool_kwargs(self, chat_model, model_metadata: ModelMetadata, output_schema: BaseSchema, tools: Optional[list] = None, **kwargs: Dict[str, Any]):
+    def _apply_both_structured_output_and_tool_kwargs(self, chat_model, model_metadata: ModelMetadata, output_schema: BaseSchema, tools: Optional[list] = None, is_all_inbuild_tools: bool = True, **kwargs: Dict[str, Any]):
         if model_metadata.provider == LLMModelProvider.OPENAI:
-            return self._apply_structured_and_tools_openai(chat_model, schema=output_schema, method="json_schema", include_raw=True, strict=False, tools=tools, **kwargs)  # DEBUG: STRICT
+            # NOTE: if using inbuilt tools only, we allow strict json schema (for structured output) param to maintain consistency; if using internal tools, using strict yields to incorrect tool call results so turn it off then.
+            #     This behaviour may have to change if strict impacts internal tool calls too, just like external tool calls!
+            return self._apply_structured_and_tools_openai(chat_model, schema=output_schema, method="json_schema", include_raw=True, strict=True if is_all_inbuild_tools else False, tools=tools, **kwargs)  # DEBUG: STRICT
         elif model_metadata.provider == LLMModelProvider.ANTHROPIC:
             return self._apply_structured_and_tools_anthropic(chat_model, schema=output_schema, include_raw=True, tools=tools, **kwargs)
         else:
@@ -1466,10 +1469,11 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
             self.critical("Failed to apply structured output to model")
             raise ValueError(f"Structured output configuration failed: {str(e)}") from e
 
-    def _bind_tools(self, model: Any, model_metadata: ModelMetadata, registry: DBRegistry) -> RunnableBinding:
+    def _bind_tools(self, model: Any, model_metadata: ModelMetadata, registry: DBRegistry) -> Tuple[bool, RunnableBinding, List[Any], Dict[str, Any]]:
         """Bind tools from node config."""
         assert model_metadata.tool_use, f"Model {model_metadata.provider.value} -> `{model_metadata.model_name}` does not support tool use!"
         tools = []
+        is_all_inbuild_tools = True
         for tool_config in self.config.tools:
             tool_for_binding: Any
             if tool_config.is_provider_inbuilt_tool:
@@ -1493,6 +1497,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                 tool_for_binding = tool_object.get_tool()
 
             else:
+                is_all_inbuild_tools = False
                 # NOTE: will raise error if node not found or found node is not a tool node!
                 tool_node: Type[BaseNode] = registry.get_node(tool_config.tool_name, tool_config.version, return_if_tool=True)
                 if not tool_node:
@@ -1607,7 +1612,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
             assert model_metadata.parallel_tool_calling_configurable, f"Model {model_metadata.provider.value} -> `{model_metadata.model_name}` does not support parallel tool calling!"
             kwargs["parallel_tool_calls"] = self.config.tool_calling_config.parallel_tool_calls
 
-        return model.bind_tools(tools=tools, **kwargs), tools, kwargs
+        return is_all_inbuild_tools, model.bind_tools(tools=tools, **kwargs), tools, kwargs
 
     async def _execute_model(self, model: Any, messages: List[AnyMessage], model_metadata: ModelMetadata, ext_context, app_context, **kwargs) -> Any:
         """Execute model with provider-specific streaming handling."""
@@ -1946,7 +1951,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                 except Exception as e:
                     pass
                     # logger.warning(f"Error parsing structured output: {e}")
-                structured_output = structured_output or (original_response["parsed"] if (not original_response["parsing_error"] and "parsed" in original_response) else None)
+                structured_output = structured_output or (original_response["parsed"] if isinstance(original_response, dict) and ((not original_response.get("parsing_error", None)) and "parsed" in original_response) else None)
                 structured_output = structured_output.model_dump() if isinstance(structured_output, BaseModel) else structured_output
                 
         

@@ -57,7 +57,7 @@ class DynamicSchemaFieldConfig(BaseSchema):
     # Instance fields
     type: str = Field(..., description="The type of the field")
     required: Optional[bool] = Field(None, description="Whether the field is required")
-    default: Optional[Union[str, int, float, bool, bytes, datetime, date]] = Field(DEFAULT_NOT_SPECIFIED_VALUE, description="The default value of the field, only specified if type is primitive, not list / dict.")
+    default: Optional[Union[str, int, float, bool, bytes, datetime, date, Any]] = Field(DEFAULT_NOT_SPECIFIED_VALUE, description="The default value of the field, only specified if type is primitive, not list / dict.")
     description: Optional[str] = Field(None, description="The description of the field")
     items_type: Optional[str] = Field(None, description="The type of the items in a list field")
     keys_type: Optional[str] = Field(None, description="The type of the keys in a dict field")
