@@ -17,7 +17,7 @@ from kiwi_client.test_run_workflow_client import (
 )
 from kiwi_client.schemas.workflow_constants import WorkflowRunStatus
 
-from kiwi_client.active.document_models.customer_docs import (
+from kiwi_client.workflows.active.document_models.customer_docs import (
     BLOG_COMPANY_DOCNAME,
     BLOG_COMPANY_NAMESPACE_TEMPLATE,
     BLOG_COMPANY_IS_SHARED,
@@ -39,7 +39,7 @@ from kiwi_client.active.document_models.customer_docs import (
     BLOG_TOPIC_IDEAS_CARD_NAMESPACE_TEMPLATE,
 )
 
-from kiwi_client.active.content_studio.llm_inputs.blog_monthly_calendar_topic_ideas import (
+from kiwi_client.workflows.active.content_studio.llm_inputs.blog_monthly_calendar_topic_ideas import (
     BLOG_MONTHLY_USER_PROMPT_TEMPLATE,
     BLOG_MONTHLY_SYSTEM_PROMPT_TEMPLATE,
     BLOG_MONTHLY_ADDITIONAL_USER_PROMPT_TEMPLATE,

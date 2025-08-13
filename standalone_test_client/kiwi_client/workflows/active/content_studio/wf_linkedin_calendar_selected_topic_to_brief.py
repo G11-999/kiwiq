@@ -34,7 +34,7 @@ from kiwi_client.test_run_workflow_client import (
 from kiwi_client.schemas.workflow_constants import WorkflowRunStatus
 
 # Import document model constants for LinkedIn
-from kiwi_client.active.document_models.customer_docs import (
+from kiwi_client.workflows.active.document_models.customer_docs import (
     LINKEDIN_USER_PROFILE_DOCNAME,
     LINKEDIN_USER_PROFILE_NAMESPACE_TEMPLATE,
     LINKEDIN_USER_PROFILE_IS_VERSIONED,
@@ -47,7 +47,7 @@ from kiwi_client.active.document_models.customer_docs import (
 )
 
 # Import LLM inputs for LinkedIn
-from kiwi_client.active.content_studio.llm_inputs.linkedin_calendar_selected_topic_to_brief import (
+from kiwi_client.workflows.active.content_studio.llm_inputs.linkedin_calendar_selected_topic_to_brief import (
     # System prompts
     BRIEF_GENERATION_SYSTEM_PROMPT,
     BRIEF_FEEDBACK_SYSTEM_PROMPT,

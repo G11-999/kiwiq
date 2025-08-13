@@ -19,7 +19,7 @@ batch ID -> 10 posts
 
 """
 
-from kiwi_client.active.document_models.customer_docs import (
+from kiwi_client.workflows.active.document_models.customer_docs import (
     LINKEDIN_SCRAPED_POSTS_DOCNAME,
     # Namespace and docname for storing the final analysis result
     LINKEDIN_SCRAPED_POSTS_NAMESPACE_TEMPLATE,
@@ -27,7 +27,7 @@ from kiwi_client.active.document_models.customer_docs import (
     LINKEDIN_CONTENT_ANALYSIS_NAMESPACE_TEMPLATE,
 )
 
-from kiwi_client.active.content_diagnostics.llm_inputs.linkedin_content_analysis import (
+from kiwi_client.workflows.active.content_diagnostics.llm_inputs.linkedin_content_analysis import (
     EXTRACTED_THEMES_SCHEMA,
     BATCH_CLASSIFICATION_SCHEMA,
     THEME_ANALYSIS_REPORT_SCHEMA,

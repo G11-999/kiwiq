@@ -33,7 +33,7 @@ from kiwi_client.test_run_workflow_client import (
 from kiwi_client.schemas.workflow_constants import WorkflowRunStatus
 
     # Import document model constants
-from kiwi_client.active.document_models.customer_docs import (
+from kiwi_client.workflows.active.document_models.customer_docs import (
     BLOG_COMPANY_DOCNAME,
     BLOG_COMPANY_NAMESPACE_TEMPLATE,
     BLOG_COMPANY_IS_SHARED,
@@ -50,7 +50,7 @@ from kiwi_client.active.document_models.customer_docs import (
 )
 
 # Import LLM inputs
-from kiwi_client.active.playbook.llm_inputs.blog_content_playbook_generation import (
+from kiwi_client.workflows.active.playbook.llm_inputs.blog_content_playbook_generation import (
     # System prompts
     PLAY_SELECTION_SYSTEM_PROMPT,
     DOCUMENT_FETCHER_SYSTEM_PROMPT,

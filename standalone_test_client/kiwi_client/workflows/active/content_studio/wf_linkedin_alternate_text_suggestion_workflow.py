@@ -15,14 +15,14 @@ from kiwi_client.test_run_workflow_client import (
 )
 from kiwi_client.schemas.workflow_constants import WorkflowRunStatus
 
-from kiwi_client.active.document_models.customer_docs import (
+from kiwi_client.workflows.active.document_models.customer_docs import (
     # User DNA
     USER_DNA_DOCNAME,
     USER_DNA_NAMESPACE_TEMPLATE,
     USER_DNA_IS_VERSIONED,
 )
 
-from kiwi_client.active.content_studio.llm_inputs.linkedin_alternate_text_suggestion_workflow import (
+from kiwi_client.workflows.active.content_studio.llm_inputs.linkedin_alternate_text_suggestion_workflow import (
     GENERATION_SCHEMA,
     FEEDBACK_SCHEMA,
     USER_PROMPT_TEMPLATE,

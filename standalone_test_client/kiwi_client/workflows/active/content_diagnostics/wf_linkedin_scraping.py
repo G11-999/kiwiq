@@ -70,7 +70,7 @@ from functools import partial
 
 # --- Workflow Constants ---
 
-from kiwi_client.active.document_models.customer_docs import (
+from kiwi_client.workflows.active.document_models.customer_docs import (
     LINKEDIN_SCRAPED_PROFILE_NAMESPACE_TEMPLATE,
     LINKEDIN_SCRAPED_POSTS_NAMESPACE_TEMPLATE,
     LINKEDIN_SCRAPED_PROFILE_DOCNAME,

@@ -30,7 +30,7 @@ from kiwi_client.test_config import CLIENT_LOG_LEVEL
 from kiwi_client.schemas.workflow_constants import WorkflowRunStatus
 
 # Import document models for content strategy workflow
-from kiwi_client.workflows.document_models.customer_docs import (
+from kiwi_client.workflows.examples.document_models.customer_docs import (
     # Content Strategy
     CONTENT_STRATEGY_DOCNAME,
     CONTENT_STRATEGY_NAMESPACE_TEMPLATE,

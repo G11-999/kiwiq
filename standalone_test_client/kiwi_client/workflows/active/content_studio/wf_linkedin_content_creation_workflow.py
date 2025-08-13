@@ -1,4 +1,4 @@
-from kiwi_client.active.document_models.customer_docs import (
+from kiwi_client.workflows.active.document_models.customer_docs import (
     # LinkedIn User Profile (replaces User DNA)
     LINKEDIN_USER_PROFILE_DOCNAME,
     LINKEDIN_USER_PROFILE_NAMESPACE_TEMPLATE,
@@ -21,7 +21,7 @@ from kiwi_client.active.document_models.customer_docs import (
     LINKEDIN_CONTENT_PLAYBOOK_NAMESPACE_TEMPLATE,
     LINKEDIN_CONTENT_PLAYBOOK_IS_VERSIONED,
 )
-from kiwi_client.active.content_studio.llm_inputs.linkedin_content_creation_workflow import (
+from kiwi_client.workflows.active.content_studio.llm_inputs.linkedin_content_creation_workflow import (
     POST_CREATION_FEEDBACK_USER_PROMPT,
     POST_CREATION_INITIAL_USER_PROMPT,
     POST_CREATION_SYSTEM_PROMPT,

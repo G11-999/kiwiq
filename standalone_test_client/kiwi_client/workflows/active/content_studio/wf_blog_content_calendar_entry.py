@@ -34,7 +34,7 @@ from kiwi_client.test_run_workflow_client import (
     CleanupDocInfo
 )
 from kiwi_client.schemas.workflow_constants import WorkflowRunStatus
-from kiwi_client.active.document_models.customer_docs import (
+from kiwi_client.workflows.active.document_models.customer_docs import (
     # Blog Company Profile
     BLOG_COMPANY_DOCNAME,
     BLOG_COMPANY_NAMESPACE_TEMPLATE,
@@ -56,7 +56,7 @@ from kiwi_client.active.document_models.customer_docs import (
     BLOG_TOPIC_IDEAS_CARD_NAMESPACE_TEMPLATE,
     BLOG_TOPIC_IDEAS_CARD_IS_VERSIONED,
 )
-from kiwi_client.active.content_studio.llm_inputs.blog_content_calendar_entry import (
+from kiwi_client.workflows.active.content_studio.llm_inputs.blog_content_calendar_entry import (
     BRIEF_USER_PROMPT_TEMPLATE, 
     BRIEF_SYSTEM_PROMPT_TEMPLATE, 
     BRIEF_LLM_OUTPUT_SCHEMA, 

@@ -33,7 +33,7 @@ from kiwi_client.test_run_workflow_client import (
 from kiwi_client.schemas.workflow_constants import WorkflowRunStatus
 
 # Import document model constants
-from kiwi_client.active.document_models.customer_docs import (
+from kiwi_client.workflows.active.document_models.customer_docs import (
     LINKEDIN_USER_PROFILE_DOCNAME,
     LINKEDIN_USER_PROFILE_NAMESPACE_TEMPLATE,
     LINKEDIN_USER_PROFILE_IS_VERSIONED,
@@ -52,7 +52,7 @@ from kiwi_client.active.document_models.customer_docs import (
 )
 
 # Import LLM inputs
-from kiwi_client.active.playbook.llm_inputs.linkedin_content_playbook_generation import (
+from kiwi_client.workflows.active.playbook.llm_inputs.linkedin_content_playbook_generation import (
     # System prompts
     PLAY_SELECTION_SYSTEM_PROMPT,
     DOCUMENT_FETCHER_SYSTEM_PROMPT,

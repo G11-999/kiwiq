@@ -37,7 +37,7 @@ from kiwi_client.test_run_workflow_client import (
 from kiwi_client.schemas.workflow_constants import WorkflowRunStatus
 
 # Import document model constants
-from kiwi_client.active.document_models.customer_docs import (
+from kiwi_client.workflows.active.document_models.customer_docs import (
     BLOG_COMPANY_DOCNAME,
     BLOG_COMPANY_NAMESPACE_TEMPLATE,
     BLOG_COMPANY_IS_VERSIONED,
@@ -50,7 +50,7 @@ from kiwi_client.active.document_models.customer_docs import (
 )
 
 # Import LLM inputs
-from kiwi_client.active.content_studio.llm_inputs.blog_content_optimisation_workflow import (
+from kiwi_client.workflows.active.content_studio.llm_inputs.blog_content_optimisation_workflow import (
     # System prompts
     CONTENT_ANALYZER_SYSTEM_PROMPT,
     SEO_INTENT_ANALYZER_SYSTEM_PROMPT,

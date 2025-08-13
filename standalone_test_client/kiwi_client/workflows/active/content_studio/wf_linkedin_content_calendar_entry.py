@@ -31,7 +31,7 @@ from kiwi_client.test_run_workflow_client import (
     CleanupDocInfo
 )
 from kiwi_client.schemas.workflow_constants import WorkflowRunStatus
-from kiwi_client.active.document_models.customer_docs import (
+from kiwi_client.workflows.active.document_models.customer_docs import (
     # User DNA
     LINKEDIN_USER_DNA_DOCNAME,
     LINKEDIN_USER_DNA_NAMESPACE_TEMPLATE,
@@ -56,7 +56,7 @@ from kiwi_client.active.document_models.customer_docs import (
     LINKEDIN_BRIEF_NAMESPACE_TEMPLATE,
     LINKEDIN_BRIEF_IS_VERSIONED,
 )
-from kiwi_client.active.content_studio.llm_inputs.linkedin_content_calendar_entry import BRIEF_USER_PROMPT_TEMPLATE, BRIEF_SYSTEM_PROMPT_TEMPLATE, BRIEF_LLM_OUTPUT_SCHEMA, BRIEF_ADDITIONAL_USER_PROMPT_TEMPLATE
+from kiwi_client.workflows.active.content_studio.llm_inputs.linkedin_content_calendar_entry import BRIEF_USER_PROMPT_TEMPLATE, BRIEF_SYSTEM_PROMPT_TEMPLATE, BRIEF_LLM_OUTPUT_SCHEMA, BRIEF_ADDITIONAL_USER_PROMPT_TEMPLATE
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

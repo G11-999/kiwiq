@@ -16,7 +16,7 @@ from kiwi_client.test_run_workflow_client import (
     CleanupDocInfo
 )
 
-from kiwi_client.active.document_models.customer_docs import (
+from kiwi_client.workflows.active.document_models.customer_docs import (
     BLOG_COMPANY_DOCNAME,
     BLOG_COMPANY_NAMESPACE_TEMPLATE,
     BLOG_AI_VISIBILITY_TEST_DOCNAME,
@@ -24,7 +24,7 @@ from kiwi_client.active.document_models.customer_docs import (
     BLOG_COMPANY_AI_VISIBILITY_TEST_DOCNAME,
     BLOG_COMPANY_AI_VISIBILITY_TEST_NAMESPACE_TEMPLATE,
 )
-from kiwi_client.active.document_models.customer_docs import (
+from kiwi_client.workflows.active.document_models.customer_docs import (
     LINKEDIN_USER_PROFILE_DOCNAME,
     LINKEDIN_USER_PROFILE_NAMESPACE_TEMPLATE,
     LINKEDIN_SCRAPED_PROFILE_DOCNAME,
@@ -32,7 +32,7 @@ from kiwi_client.active.document_models.customer_docs import (
     LINKEDIN_USER_AI_VISIBILITY_TEST_DOCNAME,
     LINKEDIN_USER_AI_VISIBILITY_TEST_NAMESPACE_TEMPLATE,
 )
-from kiwi_client.active.content_diagnostics.llm_inputs.ai_visibility import (
+from kiwi_client.workflows.active.content_diagnostics.llm_inputs.ai_visibility import (
     COMPETITIVE_ANALYSIS_SYSTEM_PROMPT,
     COMPETITIVE_ANALYSIS_USER_PROMPT_TEMPLATE,
     COMPETITIVE_ANALYSIS_SCHEMA,

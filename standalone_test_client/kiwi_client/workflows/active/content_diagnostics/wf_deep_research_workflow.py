@@ -15,7 +15,7 @@ from kiwi_client.test_run_workflow_client import (
 )
 from kiwi_client.schemas.workflow_constants import WorkflowRunStatus
 
-from kiwi_client.active.document_models.customer_docs import (
+from kiwi_client.workflows.active.document_models.customer_docs import (
     # Deep Research Report
     BLOG_DEEP_RESEARCH_REPORT_DOCNAME,
     BLOG_DEEP_RESEARCH_REPORT_NAMESPACE_TEMPLATE,
@@ -32,7 +32,7 @@ from kiwi_client.active.document_models.customer_docs import (
     BLOG_DEEP_RESEARCH_REPORT_IS_VERSIONED,
 )
 
-from kiwi_client.active.document_models.customer_docs import (
+from kiwi_client.workflows.active.document_models.customer_docs import (
     LINKEDIN_USER_PROFILE_DOCNAME,
     LINKEDIN_USER_PROFILE_NAMESPACE_TEMPLATE,
     LINKEDIN_SCRAPED_PROFILE_DOCNAME,
@@ -42,7 +42,7 @@ from kiwi_client.active.document_models.customer_docs import (
     LINKEDIN_DEEP_RESEARCH_REPORT_IS_VERSIONED,
 )
 
-from kiwi_client.active.content_diagnostics.llm_inputs.deep_research_content_strategy import (
+from kiwi_client.workflows.active.content_diagnostics.llm_inputs.deep_research_content_strategy import (
     # Content Strategy only schemas and prompts
     GENERATION_SCHEMA_FOR_DEEP_RESEARCH_BLOG_CONTENT_STRATEGY,
     SYSTEM_PROMPT_TEMPLATE_FOR_DEEP_RESEARCH_BLOG_CONTENT_STRATEGY,
@@ -266,7 +266,54 @@ workflow_graph_schema = {
             }
         },
         
-
+        "construct_combined_structured_prompt": {
+            "node_id": "construct_combined_structured_prompt",
+            "node_name": "prompt_constructor",
+            "enable_node_fan_in": True,
+            "node_config": {
+                "prompt_templates": {
+                    "user_prompt": {
+                        "id": "user_prompt",
+                        "template": "You will be given a combined deep research report text. Extract and structure the information strictly according to the provided JSON schema. Only output valid JSON. Source text:\n{combined_text}",
+                        "variables": {
+                            "combined_text": None
+                        },
+                        "construct_options": {
+                            "combined_text": "combined_text"
+                        }
+                    },
+                    "system_prompt": {
+                        "id": "system_prompt",
+                        "template": "You are a precise information extraction model. Produce strictly valid JSON that conforms exactly to this schema definition:\n{schema}",
+                        "variables": {
+                            "schema": json.dumps(GENERATION_SCHEMA_FOR_COMBINED_DEEP_RESEARCH, indent=2)
+                        },
+                        "construct_options": {}
+                    }
+                }
+            }
+        },
+ 
+        "structure_combined_output": {
+            "node_id": "structure_combined_output",
+            "node_name": "llm",
+            "node_config": {
+                "llm_config": {
+                    "model_spec": {
+                        "provider": LLM_PROVIDER,
+                        "model": "gpt-4o-mini"
+                    },
+                    "temperature": 0.2,
+                    "max_tokens": 20000
+                },
+                "output_schema": GENERATION_SCHEMA_FOR_COMBINED_DEEP_RESEARCH,
+                "tool_calling_config": {
+                    "enable_tool_calling": False,
+                    "parallel_tool_calls": False
+                },
+                "tools": []
+            }
+        },
 
         # --- 7. Deep Research LLM Nodes for different research types ---
         "deep_researcher_content_strategy": {
@@ -282,8 +329,6 @@ workflow_graph_schema = {
                     "max_tokens": LLM_MAX_TOKENS,
                 },
                 "output_schema": {
-                    # "schema_definition": GENERATION_SCHEMA_FOR_DEEP_RESEARCH_BLOG_CONTENT_STRATEGY,
-                    # "convert_loaded_schema_to_pydantic": False
                 },
                 "tool_calling_config": {
                     "enable_tool_calling": True,
@@ -311,8 +356,6 @@ workflow_graph_schema = {
                     "max_tokens": LLM_MAX_TOKENS,
                 },
                 "output_schema": {
-                    # "schema_definition": SCHEMA_TEMPLATE_FOR_LINKEDIN_RESEARCH,
-                    # "convert_loaded_schema_to_pydantic": False
                 },
                 "tool_calling_config": {
                     "enable_tool_calling": True,
@@ -339,10 +382,7 @@ workflow_graph_schema = {
                     "temperature": LLM_TEMPERATURE,
                     "max_tokens": LLM_MAX_TOKENS,
                 },
-                "output_schema": {
-                    # "schema_definition": GENERATION_SCHEMA_FOR_COMBINED_DEEP_RESEARCH,
-                    # "convert_loaded_schema_to_pydantic": False
-                },
+                "output_schema": {},
                 "tool_calling_config": {
                     "enable_tool_calling": True,
                     "parallel_tool_calls": True
@@ -506,7 +546,7 @@ workflow_graph_schema = {
             {"src_field": "system_prompt", "dst_field": "system_prompt"}
         ]},
         {"src_node_id": "deep_researcher_content_strategy", "dst_node_id": "store_blog_research", "mappings": [
-            {"src_field": "structured_output", "dst_field": "content_strategy_report"}
+            {"src_field": "text_content", "dst_field": "content_strategy_report"}
         ]},
         
         # --- LinkedIn Path ---
@@ -519,7 +559,7 @@ workflow_graph_schema = {
             {"src_field": "system_prompt", "dst_field": "system_prompt"}
         ]},
         {"src_node_id": "deep_researcher_linkedin", "dst_node_id": "store_linkedin_research", "mappings": [
-            {"src_field": "structured_output", "dst_field": "linkedin_report"}
+            {"src_field": "text_content", "dst_field": "linkedin_report"}
         ]},
         
         # --- Combined Path ---
@@ -532,17 +572,24 @@ workflow_graph_schema = {
             {"src_field": "user_prompt", "dst_field": "user_prompt"},
             {"src_field": "system_prompt", "dst_field": "system_prompt"}
         ]},
+        {"src_node_id": "deep_researcher_combined", "dst_node_id": "construct_combined_structured_prompt", "mappings": [
+            {"src_field": "text_content", "dst_field": "combined_text"}
+        ]},
+        {"src_node_id": "construct_combined_structured_prompt", "dst_node_id": "structure_combined_output", "mappings": [
+            {"src_field": "user_prompt", "dst_field": "user_prompt"},
+            {"src_field": "system_prompt", "dst_field": "system_prompt"}
+        ]},
         
         # Combined -> State (store full output)
-        {"src_node_id": "deep_researcher_combined", "dst_node_id": "$graph_state", "mappings": [
+        {"src_node_id": "structure_combined_output", "dst_node_id": "$graph_state", "mappings": [
             {"src_field": "structured_output", "dst_field": "combined_output"}
         ]},
         
         # State -> Extract reports (pass combined output to transform nodes)
-        {"src_node_id": "deep_researcher_combined", "dst_node_id": "extract_content_strategy_report", "mappings": [
+        {"src_node_id": "structure_combined_output", "dst_node_id": "extract_content_strategy_report", "mappings": [
             {"src_field": "structured_output", "dst_field": "content_strategy_research"}
         ]},
-        {"src_node_id": "deep_researcher_combined", "dst_node_id": "extract_linkedin_report", "mappings": [
+        {"src_node_id": "structure_combined_output", "dst_node_id": "extract_linkedin_report", "mappings": [
             {"src_field": "structured_output", "dst_field": "linkedin_research"}
         ]},
         

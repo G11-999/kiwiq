@@ -35,7 +35,7 @@ from kiwi_client.test_run_workflow_client import (
 from kiwi_client.schemas.workflow_constants import WorkflowRunStatus
 
 # Import document model constants
-from kiwi_client.active.document_models.customer_docs import (
+from kiwi_client.workflows.active.document_models.customer_docs import (
     # Blog Content Brief
     BLOG_CONTENT_BRIEF_NAMESPACE_TEMPLATE,
     # Blog Company Doc
@@ -54,7 +54,7 @@ from kiwi_client.active.document_models.customer_docs import (
     BLOG_SEO_BEST_PRACTICES_IS_SYSTEM_ENTITY,
 )
 
-from kiwi_client.active.content_studio.llm_inputs.blog_brief_to_blog import (
+from kiwi_client.workflows.active.content_studio.llm_inputs.blog_brief_to_blog import (
     KNOWLEDGE_ENRICHMENT_SYSTEM_PROMPT,
     KNOWLEDGE_ENRICHMENT_USER_PROMPT_TEMPLATE,
     CONTENT_GENERATION_SYSTEM_PROMPT,
