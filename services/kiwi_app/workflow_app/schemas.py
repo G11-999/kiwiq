@@ -1036,9 +1036,18 @@ class AssetAppDataOperation(str, Enum):
 
 # --- Asset App Data Schemas --- #
 
+class Onboarding(BaseModel):
+    isDocumentUpdateComplete: bool = False
+    diagnosticsComplete: bool = False
+    playbookComplete: bool = False
+    contentCalendarCreatedAt: str = ""
+
+
 class LinkedInProfileAppData(BaseModel):
     """Schema for LinkedIn Profile asset app_data."""
     profile_url: str = Field(..., pattern="^https?://([a-z]{2,3}\\.)?linkedin\\.com/in/[a-zA-Z0-9_-]+/?$", description="Full LinkedIn profile URL")
+    onboarding: Onboarding = Field(default_factory=Onboarding)
+    entity_name: Optional[str] = None
     # last_scraped: Optional[datetime] = Field(None, description="Last time the profile was scraped")
     # scrape_frequency: Optional[str] = Field("weekly", pattern="^(daily|weekly|monthly|manual)$", description="How often to scrape this profile")
     # extracted_data: Optional[Dict[str, Any]] = Field(None, description="Extracted profile data from last scrape")
@@ -1050,6 +1059,8 @@ class LinkedInProfileAppData(BaseModel):
 class BlogUrlAppData(BaseModel):
     """Schema for Blog URL asset app_data."""
     blog_url: str = Field(..., description="Full URL of the blog or blog post")
+    onboarding: Onboarding = Field(default_factory=Onboarding)
+    company_name: Optional[str] = None
     # blog_type: Optional[str] = Field("unknown", pattern="^(wordpress|medium|substack|ghost|custom|unknown)$", description="Type of blog platform")
     # last_scraped: Optional[datetime] = Field(None, description="Last time the blog was scraped")
     # scrape_frequency: Optional[str] = Field("weekly", pattern="^(daily|weekly|monthly|manual)$", description="How often to scrape this blog")
