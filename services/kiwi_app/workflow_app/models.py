@@ -306,6 +306,12 @@ class WorkflowConfigOverride(SQLModel, table=True):
 class WorkflowRun(SQLModel, table=True):
     """Represents an execution instance of a Workflow."""
     __tablename__ = f"{table_prefix}workflow_run"
+    __table_args__ = (
+        # Composite index to accelerate cache lookups by workflow id + input_hash + time
+        Index(f"{table_prefix}workflow_run_input_hash_created_idx", 'workflow_id', 'input_hash', 'created_at'),
+        # Name-based composite index for frequent lookups when runs are executed by workflow name
+        Index(f"{table_prefix}workflow_run_name_input_hash_created_idx", 'workflow_name', 'owner_org_id', 'input_hash', 'created_at'),
+    )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True, description="Unique ID for this specific run")
     parent_run_id: Optional[uuid.UUID] = Field(
@@ -344,6 +350,12 @@ class WorkflowRun(SQLModel, table=True):
     outputs: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON, nullable=True), description="High-level final outputs or summary")
     graph_schema: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON, nullable=True), description="Schema of the workflow graph")
     error_message: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True), description="Error message if the run failed")
+    # A deterministic hash derived from the normalized JSON of `inputs` (sorted keys) to support caching
+    input_hash: Optional[str] = Field(
+        default=None,
+        sa_column=Column(SQLAlchemyString, index=True, nullable=True),
+        description="Deterministic hash of normalized inputs used for cache lookups"
+    )
     detailed_results_ref: Optional[str] = Field(
         default=None,
         nullable=True,

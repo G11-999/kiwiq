@@ -99,6 +99,58 @@ OR
   - `true`: This node fails if the triggered workflow fails
   - `false`: This node succeeds but includes error details in output
 
+### Caching Settings (Optional)
+
+```json
+{
+  "enable_workflow_cache": true,
+  "cache_lookback_period": 7,
+  "check_error_free_logs": true
+}
+```
+
+- **`enable_workflow_cache`** (bool, default true): If true, the node attempts to reuse outputs from a recent run of the same workflow when inputs are identical.
+- **`cache_lookback_period`** (int, default 7): Number of days to look back for matching runs.
+- **`check_error_free_logs`** (bool, default true):
+  - When true, the node only reuses runs whose Prefect logs contain no ERROR/CRITICAL entries.
+  - When false, the node will pick the recent run with the fewest error logs (ties prefer the most recent).
+
+How cache matching works:
+- The node maps your `input_data` to the target workflow's inputs, then computes a deterministic hash from the normalized JSON (sorted keys) of those mapped inputs.
+- It preferentially searches by `(workflow_name, owner_org_id, input_hash)` and falls back to `(workflow_id, owner_org_id, input_hash)` when needed.
+- Only runs with status `COMPLETED` and without a stored error message are considered.
+- If `check_error_free_logs=true`, the candidate must have zero error logs (from Prefect). If logs cannot be fetched, the run is considered unsafe for reuse.
+- On a cache hit, the node immediately returns the cached run's outputs without re-executing the workflow. The `run_id` in the output corresponds to the reused run.
+
+Example with caching enabled and strict log checks:
+```json
+{
+  "node_config": {
+    "workflow_name": "content_generation_workflow",
+    "enable_workflow_cache": true,
+    "cache_lookback_period": 14,
+    "check_error_free_logs": true
+  },
+  "input": {
+    "entity_username": "company_profile",
+    "content_brief": "Write about our new product launch",
+    "tone": "professional"
+  }
+}
+```
+
+Example using lenient log selection:
+```json
+{
+  "node_config": {
+    "workflow_name": "content_generation_workflow",
+    "enable_workflow_cache": true,
+    "cache_lookback_period": 7,
+    "check_error_free_logs": false
+  }
+}
+```
+
 ### Input/Output Mapping (Advanced)
 
 ```json

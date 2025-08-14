@@ -14,14 +14,6 @@ class SalesFunnelStage(str, Enum):
     PURCHASE = "purchase"
     RETENTION = "retention"
 
-# --- Sales Funnel Stages constant for prompts ---
-SALES_FUNNEL_STAGES = {
-    "awareness": "Content that introduces the problem, educates about the industry, or builds brand awareness",
-    "consideration": "Content that presents solutions, compares options, or demonstrates value propositions",
-    "purchase": "Content that drives decision-making, showcases pricing, or includes clear calls-to-action",
-    "retention": "Content that supports existing customers, provides advanced usage tips, or builds loyalty"
-}
-
 # --- Classification Schemas ---
 
 class PostClassificationSchema(BaseModel):
@@ -91,6 +83,7 @@ class ContentAnalysisSchema(BaseModel):
     question_answer_extraction: QuestionAnswerExtractionSchema = Field(description="Question-Answer extraction for AEO/voice search")
     content_structure_elements: ContentStructureElementsSchema = Field(description="Content structure elements analysis")
     logical_flow_readability: LogicalFlowReadabilitySchema = Field(description="Logical flow and readability analysis")
+
     
 # --- Schema Definitions for LLM ---
 

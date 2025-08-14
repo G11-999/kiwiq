@@ -65,6 +65,10 @@ LLM_MODEL = "o4-mini-deep-research"  # Deep research model
 LLM_TEMPERATURE = 0.7
 LLM_MAX_TOKENS = 100000
 
+STRUCTURED_OUTPUT_PROVIDER = "anthropic"
+STRUCTURED_OUTPUT_MODEL = "claude-sonnet-4-20250514"
+STRUCTURED_OUTPUT_MAX_TOKENS = 4000
+
 workflow_graph_schema = {
     "nodes": {
         # --- 1. Input Node with routing options ---
@@ -74,10 +78,10 @@ workflow_graph_schema = {
             "node_config": {},
             "dynamic_output_schema": {
                 "fields": {
-                    "company_name": { "type": "str", "required": True, "description": "Name of the company to analyze" },
+                    "company_name": { "type": "str", "required": False, "description": "Name of the company to analyze" },
                     "entity_username": { "type": "str", "required": False, "description": "LinkedIn username for executive research" },
-                    "run_content_strategy": { "type": "bool", "required": True, "description": "Whether to run content strategy research" },
-                    "run_linkedin_research": { "type": "bool", "required": True, "description": "Whether to run LinkedIn research" }
+                    "run_blog_analysis": { "type": "bool", "required": True, "description": "Whether to run content strategy research" },
+                    "run_linkedin_exec": { "type": "bool", "required": True, "description": "Whether to run LinkedIn research" }
                 }
             }
         },
@@ -143,8 +147,8 @@ workflow_graph_schema = {
                         "condition_groups": [
                             {
                                 "conditions": [
-                                    {"field": "run_content_strategy", "operator": "equals", "value": True},
-                                    {"field": "run_linkedin_research", "operator": "equals", "value": True}
+                                    {"field": "run_blog_analysis", "operator": "equals", "value": True},
+                                    {"field": "run_linkedin_exec", "operator": "equals", "value": True}
                                 ],
                                 "logical_operator": "and"
                             }
@@ -169,8 +173,8 @@ workflow_graph_schema = {
                 "allow_multiple": False,
                 "choices_with_conditions": [
                     {"choice_id": "construct_combined_prompt", "input_path": "branch", "target_value": "true_branch"},
-                    {"choice_id": "construct_content_strategy_prompt", "input_path": "run_content_strategy", "target_value": True},
-                    {"choice_id": "construct_linkedin_prompt", "input_path": "run_linkedin_research", "target_value": True}
+                    {"choice_id": "construct_content_strategy_prompt", "input_path": "run_blog_analysis", "target_value": True},
+                    {"choice_id": "construct_linkedin_prompt", "input_path": "run_linkedin_exec", "target_value": True}
                 ],
             },
         },
@@ -284,10 +288,8 @@ workflow_graph_schema = {
                     },
                     "system_prompt": {
                         "id": "system_prompt",
-                        "template": "You are a precise information extraction model. Produce strictly valid JSON that conforms exactly to this schema definition:\n{schema}",
-                        "variables": {
-                            "schema": json.dumps(GENERATION_SCHEMA_FOR_COMBINED_DEEP_RESEARCH, indent=2)
-                        },
+                        "template": "You are a precise information extraction model. Produce strictly valid JSON that conforms exactly to this schema definition",
+                        "variables": {},
                         "construct_options": {}
                     }
                 }
@@ -300,18 +302,15 @@ workflow_graph_schema = {
             "node_config": {
                 "llm_config": {
                     "model_spec": {
-                        "provider": LLM_PROVIDER,
-                        "model": "gpt-4o-mini"
+                        "provider": STRUCTURED_OUTPUT_PROVIDER,
+                        "model": STRUCTURED_OUTPUT_MODEL
                     },
                     "temperature": 0.2,
-                    "max_tokens": 20000
+                    "max_tokens": STRUCTURED_OUTPUT_MAX_TOKENS
                 },
-                "output_schema": GENERATION_SCHEMA_FOR_COMBINED_DEEP_RESEARCH,
-                "tool_calling_config": {
-                    "enable_tool_calling": False,
-                    "parallel_tool_calls": False
-                },
-                "tools": []
+                "output_schema": {
+                    "schema_definition": GENERATION_SCHEMA_FOR_COMBINED_DEEP_RESEARCH
+                }
             }
         },
 
@@ -494,11 +493,11 @@ workflow_graph_schema = {
         {"src_node_id": "input_node", "dst_node_id": "$graph_state", "mappings": [
             {"src_field": "company_name", "dst_field": "company_name"},
             {"src_field": "entity_username", "dst_field": "entity_username"},
-            {"src_field": "run_content_strategy", "dst_field": "run_content_strategy"},
-            {"src_field": "run_linkedin_research", "dst_field": "run_linkedin_research"},
+            {"src_field": "run_blog_analysis", "dst_field": "run_blog_analysis"},
+            {"src_field": "run_linkedin_exec", "dst_field": "run_linkedin_exec"},
         ]},
         
-        # Route Data Loading -> Load Company Data (if run_content_strategy is true)
+        # Route Data Loading -> Load Company Data (if run_blog_analysis is true)
         {"src_node_id": "input_node", "dst_node_id": "load_company_data", "mappings": [
             {"src_field": "company_name", "dst_field": "company_name"}
         ]},
@@ -506,7 +505,7 @@ workflow_graph_schema = {
         {"src_node_id": "load_company_data", "dst_node_id": "$graph_state", "mappings": [
             {"src_field": "company_data", "dst_field": "company_data"}
         ]},
-        # Route Data Loading -> Load LinkedIn Data (if run_linkedin_research is true)
+        # Route Data Loading -> Load LinkedIn Data (if run_linkedin_exec is true)
         {"src_node_id": "load_company_data", "dst_node_id": "load_linkedin_data"},
 
         {"src_node_id": "$graph_state", "dst_node_id": "load_linkedin_data", "mappings": [
@@ -521,15 +520,15 @@ workflow_graph_schema = {
         {"src_node_id": "load_linkedin_data", "dst_node_id": "if_combined"},
         # State -> Router
         {"src_node_id": "$graph_state", "dst_node_id": "if_combined", "mappings": [
-            {"src_field": "run_content_strategy", "dst_field": "run_content_strategy"},
-            {"src_field": "run_linkedin_research", "dst_field": "run_linkedin_research"}
+            {"src_field": "run_blog_analysis", "dst_field": "run_blog_analysis"},
+            {"src_field": "run_linkedin_exec", "dst_field": "run_linkedin_exec"}
         ]},
         {"src_node_id": "if_combined", "dst_node_id": "route_research_type", "mappings": [
             {"src_field": "branch", "dst_field": "branch"}
         ]},
         {"src_node_id": "$graph_state", "dst_node_id": "route_research_type", "mappings": [
-            {"src_field": "run_content_strategy", "dst_field": "run_content_strategy"},
-            {"src_field": "run_linkedin_research", "dst_field": "run_linkedin_research"}
+            {"src_field": "run_blog_analysis", "dst_field": "run_blog_analysis"},
+            {"src_field": "run_linkedin_exec", "dst_field": "run_linkedin_exec"}
         ]},
 
         # Router -> Prompt constructors (control flow)
@@ -630,8 +629,8 @@ workflow_graph_schema = {
             "reducer": {
                 "company_name": "replace",
                 "entity_username": "replace",
-                "run_content_strategy": "replace",
-                "run_linkedin_research": "replace",
+                "run_blog_analysis": "replace",
+                "run_linkedin_exec": "replace",
                 "company_data": "replace",
                 "linkedin_user_profile": "replace",
                 "linkedin_scraped_profile": "replace",
@@ -655,8 +654,8 @@ async def main_test_deep_research_workflow():
     test_inputs = {
         "company_name": "kiwiq",
         "entity_username": "jmkmba",  # Example LinkedIn username
-        "run_content_strategy": True,  # Can be True/False
-        "run_linkedin_research": True,  # Can be True/False - set both to True for combined research
+        "run_blog_analysis": True,  # Can be True/False
+        "run_linkedin_exec": True,  # Can be True/False - set both to True for combined research
     }
     # Company document data that will be loaded
     COMPANY_DOCUMENT_DATA = {
@@ -757,7 +756,7 @@ async def main_test_deep_research_workflow():
     ]
     
     # Add LinkedIn documents if LinkedIn research is enabled
-    if test_inputs.get("run_linkedin_research"):
+    if test_inputs.get("run_linkedin_exec"):
         setup_docs.extend([
             SetupDocInfo(
                 docname=LINKEDIN_USER_PROFILE_DOCNAME,
@@ -803,8 +802,8 @@ async def main_test_deep_research_workflow():
         
         # Validate deep research results structure based on what was run
         research_results = outputs.get('deep_research_results', {})
-        run_content = test_inputs.get('run_content_strategy', False)
-        run_linkedin = test_inputs.get('run_linkedin_research', False)
+        run_content = test_inputs.get('run_blog_analysis', False)
+        run_linkedin = test_inputs.get('run_linkedin_exec', False)
         
         if run_content and run_linkedin:
             # Combined research should have both sections
@@ -900,14 +899,14 @@ async def main_test_deep_research_workflow():
         metadata = final_run_outputs.get('metadata', {})
         
         print(f"\n=== DEEP RESEARCH RESULTS ===")
-        print(f"Research Type: {'Combined' if test_inputs.get('run_content_strategy') and test_inputs.get('run_linkedin_research') else 'Content Strategy' if test_inputs.get('run_content_strategy') else 'LinkedIn'}")
+        print(f"Research Type: {'Combined' if test_inputs.get('run_blog_analysis') and test_inputs.get('run_linkedin_exec') else 'Content Strategy' if test_inputs.get('run_blog_analysis') else 'LinkedIn'}")
         print(f"Model: {metadata.get('model_name', 'unknown')}")
         print(f"Total Tokens: {metadata.get('token_usage', {}).get('total_tokens', 0)}")
         print(f"Tool Calls: {metadata.get('tool_call_count', 0)}")
         print(f"Latency: {metadata.get('latency', 0):.2f}s")
         
         # Show results based on research type
-        if test_inputs.get('run_content_strategy') and test_inputs.get('run_linkedin_research'):
+        if test_inputs.get('run_blog_analysis') and test_inputs.get('run_linkedin_exec'):
             # Combined research
             content_strategy = research_results.get('content_strategy_research', {})
             linkedin_research = research_results.get('linkedin_research', {})
@@ -922,14 +921,14 @@ async def main_test_deep_research_workflow():
                 print(f"\n=== LINKEDIN RESEARCH ===")
                 peers = linkedin_research.get('peer_category_benchmark', {}).get('peers', [])
                 print(f"Peers analyzed: {len(peers)}")
-        elif test_inputs.get('run_content_strategy'):
+        elif test_inputs.get('run_blog_analysis'):
             # Content strategy only
             print(f"\n=== CONTENT STRATEGY RESULTS ===")
             best_practices = research_results.get('industry_best_practices', {})
             if best_practices:
                 content_mix = best_practices.get('content_mix_benchmark', {})
                 print(f"Content mix recommendations provided")
-        elif test_inputs.get('run_linkedin_research'):
+        elif test_inputs.get('run_linkedin_exec'):
             # LinkedIn only
             print(f"\n=== LINKEDIN RESULTS ===")
             peer_benchmark = research_results.get('peer_category_benchmark', {})

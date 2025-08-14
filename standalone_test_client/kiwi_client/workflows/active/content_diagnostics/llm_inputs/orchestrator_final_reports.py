@@ -6,529 +6,604 @@ by synthesizing data from various subworkflows.
 """
 
 # ==================== SCHEMA DEFINITIONS (Pydantic) ====================
-from typing import List, Optional
+from typing import List
 from pydantic import BaseModel, Field
 
 
 # --- Executive: Content Performance ---
 class ExecTopPostSchema(BaseModel):
-    url: Optional[str] = Field(default=None)
-    engagement_rate: Optional[float] = Field(default=None)
-    key_message: Optional[str] = Field(default=None)
+    url: str = Field()
+    engagement_rate: float = Field()
+    key_message: str = Field()
 
 class ExecContentThemeItemSchema(BaseModel):
-    theme: Optional[str] = Field(default=None)
-    post_count: Optional[int] = Field(default=None)
-    avg_engagement: Optional[float] = Field(default=None)
-    top_performing_post: Optional[ExecTopPostSchema] = Field(default=None)
-    effectiveness_score: Optional[float] = Field(default=None)
+    theme: str = Field()
+    post_count: int = Field()
+    avg_engagement: float = Field()
+    top_performing_post: ExecTopPostSchema = Field()
+    effectiveness_score: float = Field()
 
 class ExecLikesDistributionSchema(BaseModel):
-    average: Optional[float] = Field(default=None)
-    median: Optional[float] = Field(default=None)
-    top_10_percent: Optional[float] = Field(default=None)
+    average: float = Field()
+    median: float = Field()
+    top_10_percent: float = Field()
 
 class ExecCommentsAnalysisSchema(BaseModel):
-    average_per_post: Optional[float] = Field(default=None)
-    sentiment_score: Optional[float] = Field(default=None)
-    discussion_depth: Optional[str] = Field(default=None)
+    average_per_post: float = Field()
+    sentiment_score: float = Field()
+    discussion_depth: str = Field()
 
 class ExecSharesImpactSchema(BaseModel):
-    average_shares: Optional[float] = Field(default=None)
-    viral_coefficient: Optional[float] = Field(default=None)
+    average_shares: float = Field()
+    viral_coefficient: float = Field()
 
 class ExecEngagementBreakdownSchema(BaseModel):
-    likes_distribution: Optional[ExecLikesDistributionSchema] = Field(default=None)
-    comments_analysis: Optional[ExecCommentsAnalysisSchema] = Field(default=None)
-    shares_impact: Optional[ExecSharesImpactSchema] = Field(default=None)
+    likes_distribution: ExecLikesDistributionSchema = Field()
+    comments_analysis: ExecCommentsAnalysisSchema = Field()
+    shares_impact: ExecSharesImpactSchema = Field()
 
 class ExecPostingPatternsSchema(BaseModel):
-    optimal_posting_time: Optional[str] = Field(default=None)
-    optimal_posting_day: Optional[str] = Field(default=None)
-    current_frequency: Optional[str] = Field(default=None)
-    recommended_frequency: Optional[str] = Field(default=None)
-    frequency_gap: Optional[str] = Field(default=None)
+    optimal_posting_time: str = Field()
+    optimal_posting_day: str = Field()
+    current_frequency: str = Field()
+    recommended_frequency: str = Field()
+    frequency_gap: str = Field()
 
 class ExecDateRangeSchema(BaseModel):
-    start_date: Optional[str] = Field(default=None)
-    end_date: Optional[str] = Field(default=None)
+    start_date: str = Field()
+    end_date: str = Field()
 
 class ExecPerformanceMetricsSchema(BaseModel):
-    total_posts_analyzed: Optional[int] = Field(default=None)
-    date_range: Optional[ExecDateRangeSchema] = Field(default=None)
-    average_engagement_rate: Optional[float] = Field(default=None)
-    viral_post_count: Optional[int] = Field(default=None)
-    consistency_score: Optional[float] = Field(default=None)
+    total_posts_analyzed: int = Field()
+    date_range: ExecDateRangeSchema = Field()
+    average_engagement_rate: float = Field()
+    viral_post_count: int = Field()
+    consistency_score: float = Field()
 
 class ExecContentFormatPerfItemSchema(BaseModel):
-    format: Optional[str] = Field(default=None)
-    usage_percentage: Optional[float] = Field(default=None)
-    avg_engagement: Optional[float] = Field(default=None)
-    recommendation: Optional[str] = Field(default=None)
+    format: str = Field()
+    usage_percentage: float = Field()
+    avg_engagement: float = Field()
+    recommendation: str = Field()
 
 class ExecutiveContentPerformanceSchema(BaseModel):
-    performance_metrics: Optional[ExecPerformanceMetricsSchema] = Field(default=None)
-    content_themes_analysis: Optional[List[ExecContentThemeItemSchema]] = Field(default=None)
-    posting_patterns: Optional[ExecPostingPatternsSchema] = Field(default=None)
-    engagement_breakdown: Optional[ExecEngagementBreakdownSchema] = Field(default=None)
-    content_format_performance: Optional[List[ExecContentFormatPerfItemSchema]] = Field(default=None)
+    performance_metrics: ExecPerformanceMetricsSchema = Field()
+    content_themes_analysis: List[ExecContentThemeItemSchema] = Field()
+    posting_patterns: ExecPostingPatternsSchema = Field()
+    engagement_breakdown: ExecEngagementBreakdownSchema = Field()
+    content_format_performance: List[ExecContentFormatPerfItemSchema] = Field()
 
 class ExecutiveContentPerformanceReport(BaseModel):
-    executive_content_performance: Optional[ExecutiveContentPerformanceSchema] = Field(default=None)
+    executive_content_performance: ExecutiveContentPerformanceSchema = Field()
 
 
 # --- Executive: Industry Benchmarking ---
 class ExecBenchmarkVsTopPerformerSchema(BaseModel):
-    engagement_gap: Optional[float] = Field(default=None)
-    follower_gap: Optional[int] = Field(default=None)
-    content_volume_gap: Optional[int] = Field(default=None)
-    authority_score_gap: Optional[float] = Field(default=None)
+    engagement_gap: float = Field()
+    follower_gap: int = Field()
+    content_volume_gap: int = Field()
+    authority_score_gap: float = Field()
 
 class ExecBenchmarkVsIndustryAvgSchema(BaseModel):
-    engagement_index: Optional[float] = Field(default=None)
-    visibility_index: Optional[float] = Field(default=None)
-    influence_index: Optional[float] = Field(default=None)
+    engagement_index: float = Field()
+    visibility_index: float = Field()
+    influence_index: float = Field()
 
 class ExecDirectCompetitorSchema(BaseModel):
-    competitor_name: Optional[str] = Field(default=None)
-    their_advantage: Optional[str] = Field(default=None)
-    your_advantage: Optional[str] = Field(default=None)
-    net_position: Optional[str] = Field(default=None)
+    competitor_name: str = Field()
+    their_advantage: str = Field()
+    your_advantage: str = Field()
+    net_position: str = Field()
+
+class ExecContentStrategyGapItemSchema(BaseModel):
+    gap_area: str = Field()
+    impact: str = Field()
+    recommendation: str = Field()
+
+class ExecCompetitiveAdvantageItemSchema(BaseModel):
+    advantage: str = Field()
+    evidence: str = Field()
+    sustainability: str = Field()
 
 class ExecBenchmarkMetricsSchema(BaseModel):
-    vs_top_performer: Optional[ExecBenchmarkVsTopPerformerSchema] = Field(default=None)
-    vs_industry_average: Optional[ExecBenchmarkVsIndustryAvgSchema] = Field(default=None)
-    vs_direct_competitors: Optional[List[ExecDirectCompetitorSchema]] = Field(default=None)
+    vs_top_performer: ExecBenchmarkVsTopPerformerSchema = Field()
+    vs_industry_average: ExecBenchmarkVsIndustryAvgSchema = Field()
+    vs_direct_competitors: List[ExecDirectCompetitorSchema] = Field()
 
 class ExecPositionSchema(BaseModel):
-    industry_ranking: Optional[int] = Field(default=None)
-    percentile: Optional[float] = Field(default=None)
-    tier: Optional[str] = Field(default=None)
+    industry_ranking: int = Field()
+    percentile: float = Field()
+    tier: str = Field()
 
 class ExecutiveIndustryBenchmarkingSchema(BaseModel):
-    executive_position: Optional[ExecPositionSchema] = Field(default=None)
-    benchmark_metrics: Optional[ExecBenchmarkMetricsSchema] = Field(default=None)
-    content_strategy_gaps: Optional[List[dict]] = Field(default=None)
-    competitive_advantages: Optional[List[dict]] = Field(default=None)
+    executive_position: ExecPositionSchema = Field()
+    benchmark_metrics: ExecBenchmarkMetricsSchema = Field()
+    content_strategy_gaps: List[ExecContentStrategyGapItemSchema] = Field()
+    competitive_advantages: List[ExecCompetitiveAdvantageItemSchema] = Field()
 
 class ExecutiveIndustryBenchmarkingReport(BaseModel):
-    industry_leader_benchmarking: Optional[ExecutiveIndustryBenchmarkingSchema] = Field(default=None)
+    industry_leader_benchmarking: ExecutiveIndustryBenchmarkingSchema = Field()
 
 
 # --- Executive: Personal Brand Opportunities ---
 class BrandOpportunityItemSchema(BaseModel):
-    opportunity_name: Optional[str] = Field(default=None)
-    effort_required: Optional[str] = Field(default=None)
-    expected_impact: Optional[str] = Field(default=None)
-    implementation_steps: Optional[List[str]] = Field(default=None)
-    success_metric: Optional[str] = Field(default=None)
-    timeline: Optional[str] = Field(default=None)
+    opportunity_name: str = Field()
+    effort_required: str = Field()
+    expected_impact: str = Field()
+    implementation_steps: List[str] = Field()
+    success_metric: str = Field()
+    timeline: str = Field()
 
 class PowerMoveItemSchema(BaseModel):
-    initiative_name: Optional[str] = Field(default=None)
-    strategic_value: Optional[str] = Field(default=None)
-    resource_requirement: Optional[str] = Field(default=None)
-    expected_roi: Optional[str] = Field(default=None)
-    implementation_plan: Optional[List[str]] = Field(default=None)
-    risk_factors: Optional[List[str]] = Field(default=None)
+    initiative_name: str = Field()
+    strategic_value: str = Field()
+    resource_requirement: str = Field()
+    expected_roi: str = Field()
+    implementation_plan: List[str] = Field()
+    risk_factors: List[str] = Field()
 
 class GameChangerItemSchema(BaseModel):
-    transformation_name: Optional[str] = Field(default=None)
-    market_impact: Optional[str] = Field(default=None)
-    investment_needed: Optional[str] = Field(default=None)
-    time_to_results: Optional[str] = Field(default=None)
-    competitive_advantage: Optional[str] = Field(default=None)
-    success_indicators: Optional[List[str]] = Field(default=None)
+    transformation_name: str = Field()
+    market_impact: str = Field()
+    investment_needed: str = Field()
+    time_to_results: str = Field()
+    competitive_advantage: str = Field()
+    success_indicators: List[str] = Field()
 
 class ContentOpportunitiesSchema(BaseModel):
-    untapped_topics: Optional[List[str]] = Field(default=None)
-    format_innovations: Optional[List[str]] = Field(default=None)
-    collaboration_opportunities: Optional[List[str]] = Field(default=None)
-    platform_expansion: Optional[List[str]] = Field(default=None)
+    untapped_topics: List[str] = Field()
+    format_innovations: List[str] = Field()
+    collaboration_opportunities: List[str] = Field()
+    platform_expansion: List[str] = Field()
 
 class PersonalBrandOpportunitiesSchema(BaseModel):
-    quick_wins: Optional[List[BrandOpportunityItemSchema]] = Field(default=None)
-    power_moves: Optional[List[PowerMoveItemSchema]] = Field(default=None)
-    game_changers: Optional[List[GameChangerItemSchema]] = Field(default=None)
-    content_opportunities: Optional[ContentOpportunitiesSchema] = Field(default=None)
+    quick_wins: List[BrandOpportunityItemSchema] = Field()
+    power_moves: List[PowerMoveItemSchema] = Field()
+    game_changers: List[GameChangerItemSchema] = Field()
+    content_opportunities: ContentOpportunitiesSchema = Field()
 
 class PersonalBrandOpportunitiesReport(BaseModel):
-    personal_brand_opportunities: Optional[PersonalBrandOpportunitiesSchema] = Field(default=None)
+    personal_brand_opportunities: PersonalBrandOpportunitiesSchema = Field()
 
 
 # --- Executive: Action Plan ---
 class ExecActionPlanItemSchema(BaseModel):
-    action: Optional[str] = Field(default=None)
-    expected_outcome: Optional[str] = Field(default=None)
-    time_investment: Optional[str] = Field(default=None)
-    resources_needed: Optional[str] = Field(default=None)
+    action: str = Field()
+    expected_outcome: str = Field()
+    time_investment: str = Field()
+    resources_needed: str = Field()
 
 class ExecActionPlanInitiativeSchema(BaseModel):
-    initiative: Optional[str] = Field(default=None)
-    milestones: Optional[List[str]] = Field(default=None)
-    success_criteria: Optional[str] = Field(default=None)
+    initiative: str = Field()
+    milestones: List[str] = Field()
+    success_criteria: str = Field()
 
 class ExecActionPlanCalendarItemSchema(BaseModel):
-    week: Optional[int] = Field(default=None)
-    content_theme: Optional[str] = Field(default=None)
-    post_count: Optional[int] = Field(default=None)
-    key_topics: Optional[List[str]] = Field(default=None)
+    week: int = Field()
+    content_theme: str = Field()
+    post_count: int = Field()
+    key_topics: List[str] = Field()
 
 class ExecImmediate30DayPlanSchema(BaseModel):
-    week_1_priorities: Optional[List[ExecActionPlanItemSchema]] = Field(default=None)
-    week_2_4_initiatives: Optional[List[ExecActionPlanInitiativeSchema]] = Field(default=None)
-    quick_content_calendar: Optional[List[ExecActionPlanCalendarItemSchema]] = Field(default=None)
+    week_1_priorities: List[ExecActionPlanItemSchema] = Field()
+    week_2_4_initiatives: List[ExecActionPlanInitiativeSchema] = Field()
+    quick_content_calendar: List[ExecActionPlanCalendarItemSchema] = Field()
+
+class ExecPillarContentStrategySchema(BaseModel):
+    pillars: List[str] = Field()
+    summary: str = Field()
+
+class ExecEngagementStrategySchema(BaseModel):
+    channels: List[str] = Field()
+    cadence: str = Field()
+    community_programs: List[str] = Field()
+
+class ExecVisibilityAmplificationSchema(BaseModel):
+    tactics: List[str] = Field()
+    collaboration_opportunities: List[str] = Field()
+    paid_amplification: List[str] = Field()
 
 class Exec90DayAuthoritySchema(BaseModel):
-    pillar_content_strategy: Optional[dict] = Field(default=None)
-    engagement_strategy: Optional[dict] = Field(default=None)
-    visibility_amplification: Optional[dict] = Field(default=None)
+    pillar_content_strategy: ExecPillarContentStrategySchema = Field()
+    engagement_strategy: ExecEngagementStrategySchema = Field()
+    visibility_amplification: ExecVisibilityAmplificationSchema = Field()
 
 class ExecSuccessKpiSchema(BaseModel):
-    metric: Optional[str] = Field(default=None)
-    current_value: Optional[str] = Field(default=None)
-    _30_day_target: Optional[str] = Field(alias="30_day_target", default=None)
-    _90_day_target: Optional[str] = Field(alias="90_day_target", default=None)
+    metric: str = Field()
+    current_value: str = Field()
+    day_30_target: str = Field(alias="30_day_target")
+    day_90_target: str = Field(alias="90_day_target")
 
 class ExecSuccessTrackingSchema(BaseModel):
-    kpis: Optional[List[ExecSuccessKpiSchema]] = Field(default=None)
-    review_schedule: Optional[str] = Field(default=None)
-    adjustment_triggers: Optional[List[str]] = Field(default=None)
+    kpis: List[ExecSuccessKpiSchema] = Field()
+    review_schedule: str = Field()
+    adjustment_triggers: List[str] = Field()
 
 class ExecutiveActionPlanSchema(BaseModel):
-    immediate_30_day_plan: Optional[ExecImmediate30DayPlanSchema] = Field(default=None)
-    _90_day_authority_building: Optional[Exec90DayAuthoritySchema] = Field(alias="90_day_authority_building", default=None)
-    success_tracking: Optional[ExecSuccessTrackingSchema] = Field(default=None)
+    immediate_30_day_plan: ExecImmediate30DayPlanSchema = Field()
+    day_90_authority_building: Exec90DayAuthoritySchema = Field(alias="90_day_authority_building")
+    success_tracking: ExecSuccessTrackingSchema = Field()
 
 class ExecutiveActionPlanReport(BaseModel):
-    executive_action_plan: Optional[ExecutiveActionPlanSchema] = Field(default=None)
+    executive_action_plan: ExecutiveActionPlanSchema = Field()
 
 
 # --- Company: Blog Performance Health ---
 class BlogDateRangeSchema(BaseModel):
-    start: Optional[str] = Field(default=None)
-    end: Optional[str] = Field(default=None)
+    start: str = Field()
+    end: str = Field()
 
 class BlogOverallHealthMetricsSchema(BaseModel):
-    health_score: Optional[float] = Field(default=None)
-    health_status: Optional[str] = Field(default=None)
-    total_posts_analyzed: Optional[int] = Field(default=None)
-    date_range_analyzed: Optional[BlogDateRangeSchema] = Field(default=None)
+    health_score: float = Field()
+    health_status: str = Field()
+    total_posts_analyzed: int = Field()
+    date_range_analyzed: BlogDateRangeSchema = Field()
 
 class BlogContentVelocitySchema(BaseModel):
-    current_rate: Optional[str] = Field(default=None)
-    consistency_score: Optional[float] = Field(default=None)
-    publishing_gaps: Optional[List[str]] = Field(default=None)
-    optimal_rate: Optional[str] = Field(default=None)
-    velocity_trend: Optional[str] = Field(default=None)
+    current_rate: str = Field()
+    consistency_score: float = Field()
+    publishing_gaps: List[str] = Field()
+    optimal_rate: str = Field()
+    velocity_trend: str = Field()
 
 class BlogFunnelStageSchema(BaseModel):
-    count: Optional[int] = Field(default=None)
-    percentage: Optional[float] = Field(default=None)
-    quality_score: Optional[float] = Field(default=None)
+    count: int = Field()
+    percentage: float = Field()
+    quality_score: float = Field()
 
 class BlogFunnelCoverageSchema(BaseModel):
-    awareness_posts: Optional[BlogFunnelStageSchema] = Field(default=None)
-    consideration_posts: Optional[BlogFunnelStageSchema] = Field(default=None)
-    purchase_posts: Optional[BlogFunnelStageSchema] = Field(default=None)
-    retention_posts: Optional[BlogFunnelStageSchema] = Field(default=None)
-    funnel_balance_score: Optional[float] = Field(default=None)
-    biggest_gap: Optional[str] = Field(default=None)
+    awareness_posts: BlogFunnelStageSchema = Field()
+    consideration_posts: BlogFunnelStageSchema = Field()
+    purchase_posts: BlogFunnelStageSchema = Field()
+    retention_posts: BlogFunnelStageSchema = Field()
+    funnel_balance_score: float = Field()
+    biggest_gap: str = Field()
 
 class BlogContentTypeItemSchema(BaseModel):
-    type: Optional[str] = Field(default=None)
-    count: Optional[int] = Field(default=None)
-    avg_length: Optional[int] = Field(default=None)
-    effectiveness_score: Optional[float] = Field(default=None)
+    type: str = Field()
+    count: int = Field()
+    avg_length: int = Field()
+    effectiveness_score: float = Field()
 
 class BlogContentMixEffectivenessSchema(BaseModel):
-    content_types: Optional[List[BlogContentTypeItemSchema]] = Field(default=None)
-    optimal_mix_recommendation: Optional[str] = Field(default=None)
+    content_types: List[BlogContentTypeItemSchema] = Field()
+    optimal_mix_recommendation: str = Field()
 
 class BlogPerformanceHealthSchema(BaseModel):
-    overall_health_metrics: Optional[BlogOverallHealthMetricsSchema] = Field(default=None)
-    content_velocity: Optional[BlogContentVelocitySchema] = Field(default=None)
-    funnel_coverage: Optional[BlogFunnelCoverageSchema] = Field(default=None)
-    content_mix_effectiveness: Optional[BlogContentMixEffectivenessSchema] = Field(default=None)
+    overall_health_metrics: BlogOverallHealthMetricsSchema = Field()
+    content_velocity: BlogContentVelocitySchema = Field()
+    funnel_coverage: BlogFunnelCoverageSchema = Field()
+    content_mix_effectiveness: BlogContentMixEffectivenessSchema = Field()
 
 class BlogPerformanceHealthReport(BaseModel):
-    blog_performance_health: Optional[BlogPerformanceHealthSchema] = Field(default=None)
+    blog_performance_health: BlogPerformanceHealthSchema = Field()
 
 
 # --- Company: Content Quality & Structure ---
 class ContentQualityReadabilityDistributionSchema(BaseModel):
-    easy: Optional[float] = Field(default=None)
-    moderate: Optional[float] = Field(default=None)
-    difficult: Optional[float] = Field(default=None)
+    easy: float = Field()
+    moderate: float = Field()
+    difficult: float = Field()
 
 class ContentQualityReadabilitySchema(BaseModel):
-    average_score: Optional[float] = Field(default=None)
-    distribution: Optional[ContentQualityReadabilityDistributionSchema] = Field(default=None)
+    average_score: float = Field()
+    distribution: ContentQualityReadabilityDistributionSchema = Field()
 
 class ContentStructureQualitySchema(BaseModel):
-    avg_headings_per_post: Optional[float] = Field(default=None)
-    avg_paragraphs_per_post: Optional[float] = Field(default=None)
-    bullet_points_usage: Optional[float] = Field(default=None)
-    media_inclusion_rate: Optional[float] = Field(default=None)
+    avg_headings_per_post: float = Field()
+    avg_paragraphs_per_post: float = Field()
+    bullet_points_usage: float = Field()
+    media_inclusion_rate: float = Field()
 
 class ContentDepthAnalysisSchema(BaseModel):
-    avg_word_count: Optional[int] = Field(default=None)
-    comprehensive_posts: Optional[float] = Field(default=None)
-    surface_level_posts: Optional[float] = Field(default=None)
+    avg_word_count: int = Field()
+    comprehensive_posts: float = Field()
+    surface_level_posts: float = Field()
 
 class ContentQualityMetricsSchema(BaseModel):
-    readability_analysis: Optional[ContentQualityReadabilitySchema] = Field(default=None)
-    structure_quality: Optional[ContentStructureQualitySchema] = Field(default=None)
-    depth_analysis: Optional[ContentDepthAnalysisSchema] = Field(default=None)
+    readability_analysis: ContentQualityReadabilitySchema = Field()
+    structure_quality: ContentStructureQualitySchema = Field()
+    depth_analysis: ContentDepthAnalysisSchema = Field()
 
 class TopicAuthorityItemSchema(BaseModel):
-    topic: Optional[str] = Field(default=None)
-    post_count: Optional[int] = Field(default=None)
-    authority_score: Optional[float] = Field(default=None)
-    coverage_depth: Optional[str] = Field(default=None)
+    topic: str = Field()
+    post_count: int = Field()
+    authority_score: float = Field()
+    coverage_depth: str = Field()
 
 class TopicAuthoritySchema(BaseModel):
-    primary_topics: Optional[List[TopicAuthorityItemSchema]] = Field(default=None)
-    topic_gaps: Optional[List[str]] = Field(default=None)
-    emerging_topics: Optional[List[str]] = Field(default=None)
+    primary_topics: List[TopicAuthorityItemSchema] = Field()
+    topic_gaps: List[str] = Field()
+    emerging_topics: List[str] = Field()
 
 class UserIntentAlignmentSchema(BaseModel):
-    informational_content: Optional[float] = Field(default=None)
-    commercial_content: Optional[float] = Field(default=None)
-    transactional_content: Optional[float] = Field(default=None)
-    navigational_content: Optional[float] = Field(default=None)
-    intent_balance_score: Optional[float] = Field(default=None)
+    informational_content: float = Field()
+    commercial_content: float = Field()
+    transactional_content: float = Field()
+    navigational_content: float = Field()
+    intent_balance_score: float = Field()
+
+class EeatAssessmentSchema(BaseModel):
+    experience: float = Field()
+    expertise: float = Field()
+    authoritativeness: float = Field()
+    trustworthiness: float = Field()
+    notes: str = Field()
 
 class ContentQualityStructureSchema(BaseModel):
-    eeat_assessment: Optional[dict] = Field(default=None)
-    content_quality_metrics: Optional[ContentQualityMetricsSchema] = Field(default=None)
-    topic_authority: Optional[TopicAuthoritySchema] = Field(default=None)
-    user_intent_alignment: Optional[UserIntentAlignmentSchema] = Field(default=None)
+    eeat_assessment: EeatAssessmentSchema = Field()
+    content_quality_metrics: ContentQualityMetricsSchema = Field()
+    topic_authority: TopicAuthoritySchema = Field()
+    user_intent_alignment: UserIntentAlignmentSchema = Field()
 
 class ContentQualityStructureReport(BaseModel):
-    content_quality_structure: Optional[ContentQualityStructureSchema] = Field(default=None)
+    content_quality_structure: ContentQualityStructureSchema = Field()
 
 
 # --- Company: Competitive Intelligence ---
 class CompetitiveMarketPositionSchema(BaseModel):
-    overall_ranking: Optional[int] = Field(default=None)
-    market_share_estimate: Optional[float] = Field(default=None)
-    position_trend: Optional[str] = Field(default=None)
-    key_differentiators: Optional[List[str]] = Field(default=None)
+    overall_ranking: int = Field()
+    market_share_estimate: float = Field()
+    position_trend: str = Field()
+    key_differentiators: List[str] = Field()
+
+class CompetitiveContentStrategySchema(BaseModel):
+    summary: str = Field()
+    key_elements: List[str] = Field()
 
 class CompetitiveCompetitorItemSchema(BaseModel):
-    competitor_name: Optional[str] = Field(default=None)
-    threat_level: Optional[str] = Field(default=None)
-    content_strategy: Optional[dict] = Field(default=None)
-    competitive_advantages: Optional[List[str]] = Field(default=None)
-    vulnerabilities: Optional[List[str]] = Field(default=None)
-    win_strategy: Optional[str] = Field(default=None)
+    competitor_name: str = Field()
+    threat_level: str = Field()
+    content_strategy: CompetitiveContentStrategySchema = Field()
+    competitive_advantages: List[str] = Field()
+    vulnerabilities: List[str] = Field()
+    win_strategy: str = Field()
 
 class CompetitiveGapItemSchema(BaseModel):
-    gap_area: Optional[str] = Field(default=None)
-    impact: Optional[str] = Field(default=None)
-    competitors_ahead: Optional[List[str]] = Field(default=None)
-    catch_up_strategy: Optional[str] = Field(default=None)
-    estimated_time: Optional[str] = Field(default=None)
+    gap_area: str = Field()
+    impact: str = Field()
+    competitors_ahead: List[str] = Field()
+    catch_up_strategy: str = Field()
+    estimated_time: str = Field()
 
 class CompetitiveOpportunityItemSchema(BaseModel):
-    opportunity: Optional[str] = Field(default=None)
-    first_mover_advantage: Optional[bool] = Field(default=None)
-    difficulty: Optional[str] = Field(default=None)
-    expected_impact: Optional[str] = Field(default=None)
+    opportunity: str = Field()
+    first_mover_advantage: bool = Field()
+    difficulty: str = Field()
+    expected_impact: str = Field()
 
 class CompetitiveIntelligenceSchema(BaseModel):
-    market_position: Optional[CompetitiveMarketPositionSchema] = Field(default=None)
-    competitor_analysis: Optional[List[CompetitiveCompetitorItemSchema]] = Field(default=None)
-    competitive_gaps: Optional[List[CompetitiveGapItemSchema]] = Field(default=None)
-    competitive_opportunities: Optional[List[CompetitiveOpportunityItemSchema]] = Field(default=None)
+    market_position: CompetitiveMarketPositionSchema = Field()
+    competitor_analysis: List[CompetitiveCompetitorItemSchema] = Field()
+    competitive_gaps: List[CompetitiveGapItemSchema] = Field()
+    competitive_opportunities: List[CompetitiveOpportunityItemSchema] = Field()
 
 class CompetitiveIntelligenceReport(BaseModel):
-    competitive_intelligence: Optional[CompetitiveIntelligenceSchema] = Field(default=None)
+    competitive_intelligence: CompetitiveIntelligenceSchema = Field()
 
 
 # --- Company: Content Gap Analysis ---
 class ContentGapRecommendedItemSchema(BaseModel):
-    content_title: Optional[str] = Field(default=None)
-    content_type: Optional[str] = Field(default=None)
-    target_keywords: Optional[List[str]] = Field(default=None)
-    estimated_impact: Optional[str] = Field(default=None)
+    content_title: str = Field()
+    content_type: str = Field()
+    target_keywords: List[str] = Field()
+    estimated_impact: str = Field()
+
+class CompetitorCoverageSchema(BaseModel):
+    competitors: List[str] = Field()
+    coverage_level: str = Field()
+    notes: str = Field()
 
 class ContentGapCriticalItemSchema(BaseModel):
-    gap_title: Optional[str] = Field(default=None)
-    gap_type: Optional[str] = Field(default=None)
-    business_impact: Optional[str] = Field(default=None)
-    competitor_coverage: Optional[dict] = Field(default=None)
-    recommended_content: Optional[List[ContentGapRecommendedItemSchema]] = Field(default=None)
+    gap_title: str = Field()
+    gap_type: str = Field()
+    business_impact: str = Field()
+    competitor_coverage: CompetitorCoverageSchema = Field()
+    recommended_content: List[ContentGapRecommendedItemSchema] = Field()
 
 class ContentGapOpportunityItemSchema(BaseModel):
-    topic: Optional[str] = Field(default=None)
-    search_volume: Optional[str] = Field(default=None)
-    competition_level: Optional[float] = Field(default=None)
-    relevance_score: Optional[float] = Field(default=None)
-    priority: Optional[str] = Field(default=None)
+    topic: str = Field()
+    search_volume: str = Field()
+    competition_level: float = Field()
+    relevance_score: float = Field()
+    priority: str = Field()
+
+class QuickWinItemSchema(BaseModel):
+    topic: str = Field()
+    rationale: str = Field()
+    expected_impact: str = Field()
 
 class ContentGapOpportunityMatrixSchema(BaseModel):
-    high_value_low_competition: Optional[List[ContentGapOpportunityItemSchema]] = Field(default=None)
-    quick_wins: Optional[List[dict]] = Field(default=None)
+    high_value_low_competition: List[ContentGapOpportunityItemSchema] = Field()
+    quick_wins: List[QuickWinItemSchema] = Field()
 
 class ContentCalendarRecommendationItemSchema(BaseModel):
-    week: Optional[int] = Field(default=None)
-    priority_topics: Optional[List[str]] = Field(default=None)
-    content_formats: Optional[List[str]] = Field(default=None)
-    funnel_stage: Optional[str] = Field(default=None)
+    week: int = Field()
+    priority_topics: List[str] = Field()
+    content_formats: List[str] = Field()
+    funnel_stage: str = Field()
 
 class ContentCalendarRecommendationsSchema(BaseModel):
-    next_30_days: Optional[List[ContentCalendarRecommendationItemSchema]] = Field(default=None)
-    quarterly_themes: Optional[List[str]] = Field(default=None)
+    next_30_days: List[ContentCalendarRecommendationItemSchema] = Field()
+    quarterly_themes: List[str] = Field()
 
 class ContentGapAnalysisSchema(BaseModel):
-    critical_content_gaps: Optional[List[ContentGapCriticalItemSchema]] = Field(default=None)
-    opportunity_matrix: Optional[ContentGapOpportunityMatrixSchema] = Field(default=None)
-    content_calendar_recommendations: Optional[ContentCalendarRecommendationsSchema] = Field(default=None)
+    critical_content_gaps: List[ContentGapCriticalItemSchema] = Field()
+    opportunity_matrix: ContentGapOpportunityMatrixSchema = Field()
+    content_calendar_recommendations: ContentCalendarRecommendationsSchema = Field()
 
 class ContentGapAnalysisReport(BaseModel):
-    content_gap_analysis: Optional[ContentGapAnalysisSchema] = Field(default=None)
+    content_gap_analysis: ContentGapAnalysisSchema = Field()
 
 
 # --- Company: Strategic Opportunities ---
 class MarketOpportunityItemSchema(BaseModel):
-    opportunity_name: Optional[str] = Field(default=None)
-    market_size: Optional[str] = Field(default=None)
-    growth_potential: Optional[str] = Field(default=None)
-    competitive_landscape: Optional[str] = Field(default=None)
-    entry_strategy: Optional[str] = Field(default=None)
-    resource_requirements: Optional[str] = Field(default=None)
-    expected_timeline: Optional[str] = Field(default=None)
+    opportunity_name: str = Field()
+    market_size: str = Field()
+    growth_potential: str = Field()
+    competitive_landscape: str = Field()
+    entry_strategy: str = Field()
+    resource_requirements: str = Field()
+    expected_timeline: str = Field()
 
 class ContentDifferentiationItemSchema(BaseModel):
-    angle: Optional[str] = Field(default=None)
-    rationale: Optional[str] = Field(default=None)
-    implementation_approach: Optional[str] = Field(default=None)
-    competitive_advantage: Optional[str] = Field(default=None)
+    angle: str = Field()
+    rationale: str = Field()
+    implementation_approach: str = Field()
+    competitive_advantage: str = Field()
+
+class AiOptimizationOpportunityItemSchema(BaseModel):
+    suggestion: str = Field()
+    expected_impact: str = Field()
+
+class PartnershipOpportunityItemSchema(BaseModel):
+    partner: str = Field()
+    rationale: str = Field()
+    expected_impact: str = Field()
 
 class StrategicOpportunitiesSchema(BaseModel):
-    market_opportunities: Optional[List[MarketOpportunityItemSchema]] = Field(default=None)
-    content_differentiation: Optional[dict] = Field(default=None)
-    ai_optimization_opportunities: Optional[List[dict]] = Field(default=None)
-    partnership_opportunities: Optional[List[dict]] = Field(default=None)
+    market_opportunities: List[MarketOpportunityItemSchema] = Field()
+    content_differentiation: List[ContentDifferentiationItemSchema] = Field()
+    ai_optimization_opportunities: List[AiOptimizationOpportunityItemSchema] = Field()
+    partnership_opportunities: List[PartnershipOpportunityItemSchema] = Field()
 
 class StrategicOpportunitiesReport(BaseModel):
-    strategic_opportunities: Optional[StrategicOpportunitiesSchema] = Field(default=None)
+    strategic_opportunities: StrategicOpportunitiesSchema = Field()
 
 
 # --- Company: Action Plan ---
 class CompanyPriorityFixItemSchema(BaseModel):
-    action: Optional[str] = Field(default=None)
-    category: Optional[str] = Field(default=None)
-    effort: Optional[str] = Field(default=None)
-    impact: Optional[str] = Field(default=None)
-    owner: Optional[str] = Field(default=None)
-    deadline: Optional[str] = Field(default=None)
+    action: str = Field()
+    category: str = Field()
+    effort: str = Field()
+    impact: str = Field()
+    owner: str = Field()
+    deadline: str = Field()
 
 class Company30DayInitiativeSchema(BaseModel):
-    initiative: Optional[str] = Field(default=None)
-    objectives: Optional[List[str]] = Field(default=None)
-    success_metrics: Optional[List[str]] = Field(default=None)
-    resources_needed: Optional[str] = Field(default=None)
+    initiative: str = Field()
+    objectives: List[str] = Field()
+    success_metrics: List[str] = Field()
+    resources_needed: str = Field()
 
 class Company90DayProjectMilestoneSchema(BaseModel):
-    milestone: Optional[str] = Field(default=None)
-    target_date: Optional[str] = Field(default=None)
-    deliverable: Optional[str] = Field(default=None)
+    milestone: str = Field()
+    target_date: str = Field()
+    deliverable: str = Field()
 
 class Company90DayProjectSchema(BaseModel):
-    project: Optional[str] = Field(default=None)
-    milestones: Optional[List[Company90DayProjectMilestoneSchema]] = Field(default=None)
-    expected_outcome: Optional[str] = Field(default=None)
+    project: str = Field()
+    milestones: List[Company90DayProjectMilestoneSchema] = Field()
+    expected_outcome: str = Field()
 
 class CompanyContentMixSchema(BaseModel):
-    awareness: Optional[float] = Field(default=None)
-    consideration: Optional[float] = Field(default=None)
-    purchase: Optional[float] = Field(default=None)
-    retention: Optional[float] = Field(default=None)
+    awareness: float = Field()
+    consideration: float = Field()
+    purchase: float = Field()
+    retention: float = Field()
+
+class ContentCalendarSchema(BaseModel):
+    entries: List[str] = Field()
+
+class FormatDistributionSchema(BaseModel):
+    blog: float = Field()
+    video: float = Field()
+    guide: float = Field()
+    webinar: float = Field()
+    other: float = Field()
 
 class CompanyContentStrategySchema(BaseModel):
-    content_calendar: Optional[dict] = Field(default=None)
-    topic_priorities: Optional[List[str]] = Field(default=None)
-    format_distribution: Optional[dict] = Field(default=None)
+    content_calendar: ContentCalendarSchema = Field()
+    topic_priorities: List[str] = Field()
+    format_distribution: FormatDistributionSchema = Field()
 
 class CompanyTechnicalImprovementsSchema(BaseModel):
-    critical_fixes: Optional[List[str]] = Field(default=None)
-    optimization_queue: Optional[List[str]] = Field(default=None)
-    monitoring_setup: Optional[List[str]] = Field(default=None)
+    critical_fixes: List[str] = Field()
+    optimization_queue: List[str] = Field()
+    monitoring_setup: List[str] = Field()
 
 class CompanyCompetitiveResponseSchema(BaseModel):
-    defensive_actions: Optional[List[str]] = Field(default=None)
-    offensive_moves: Optional[List[str]] = Field(default=None)
-    monitoring_targets: Optional[List[str]] = Field(default=None)
+    defensive_actions: List[str] = Field()
+    offensive_moves: List[str] = Field()
+    monitoring_targets: List[str] = Field()
 
 class CompanyResourceAllocationSchema(BaseModel):
-    budget_recommendations: Optional[str] = Field(default=None)
-    team_requirements: Optional[str] = Field(default=None)
-    tool_requirements: Optional[List[str]] = Field(default=None)
-    training_needs: Optional[List[str]] = Field(default=None)
+    budget_recommendations: str = Field()
+    team_requirements: str = Field()
+    tool_requirements: List[str] = Field()
+    training_needs: List[str] = Field()
 
 class CompanyPriorityRoadmapSchema(BaseModel):
-    immediate_fixes: Optional[List[CompanyPriorityFixItemSchema]] = Field(default=None)
-    _30_day_initiatives: Optional[List[Company30DayInitiativeSchema]] = Field(alias="30_day_initiatives", default=None)
-    _90_day_projects: Optional[List[Company90DayProjectSchema]] = Field(alias="90_day_projects", default=None)
+    immediate_fixes: List[CompanyPriorityFixItemSchema] = Field()
+    day_30_initiatives: List[Company30DayInitiativeSchema] = Field(alias="30_day_initiatives")
+    day_90_projects: List[Company90DayProjectSchema] = Field(alias="90_day_projects")
 
 class CompanyActionPlanSchema(BaseModel):
-    priority_roadmap: Optional[CompanyPriorityRoadmapSchema] = Field(default=None)
-    content_strategy: Optional[CompanyContentStrategySchema] = Field(default=None)
-    technical_improvements: Optional[CompanyTechnicalImprovementsSchema] = Field(default=None)
-    competitive_response: Optional[CompanyCompetitiveResponseSchema] = Field(default=None)
-    resource_allocation: Optional[CompanyResourceAllocationSchema] = Field(default=None)
+    priority_roadmap: CompanyPriorityRoadmapSchema = Field()
+    content_strategy: CompanyContentStrategySchema = Field()
+    technical_improvements: CompanyTechnicalImprovementsSchema = Field()
+    competitive_response: CompanyCompetitiveResponseSchema = Field()
+    resource_allocation: CompanyResourceAllocationSchema = Field()
 
 class CompanyActionPlanReport(BaseModel):
-    company_action_plan: Optional[CompanyActionPlanSchema] = Field(default=None)
+    company_action_plan: CompanyActionPlanSchema = Field()
 
 
 # --- Final: Business Impact Projection ---
 class ProjectionImpactWindowSchema(BaseModel):
-    traffic_increase: Optional[float] = Field(default=None)
-    engagement_increase: Optional[float] = Field(default=None)
-    lead_generation: Optional[str] = Field(default=None)
-    brand_visibility: Optional[str] = Field(default=None)
-    organic_growth: Optional[float] = Field(default=None)
-    conversion_improvement: Optional[float] = Field(default=None)
-    authority_score_change: Optional[float] = Field(default=None)
-    competitive_position_change: Optional[str] = Field(default=None)
-    revenue_impact: Optional[str] = Field(default=None)
-    market_share_change: Optional[float] = Field(default=None)
-    customer_acquisition: Optional[str] = Field(default=None)
-    retention_improvement: Optional[float] = Field(default=None)
+    traffic_increase: float = Field()
+    engagement_increase: float = Field()
+    lead_generation: str = Field()
+    brand_visibility: str = Field()
+    organic_growth: float = Field()
+    conversion_improvement: float = Field()
+    authority_score_change: float = Field()
+    competitive_position_change: str = Field()
+    revenue_impact: str = Field()
+    market_share_change: float = Field()
+    customer_acquisition: str = Field()
+    retention_improvement: float = Field()
 
 class ProjectionRoiAnalysisSchema(BaseModel):
-    total_investment: Optional[str] = Field(default=None)
-    break_even_point: Optional[str] = Field(default=None)
-    _12_month_roi: Optional[float] = Field(alias="12_month_roi", default=None)
-    payback_period: Optional[str] = Field(default=None)
+    total_investment: str = Field()
+    break_even_point: str = Field()
+    month_12_roi: float = Field(alias="12_month_roi")
+    payback_period: str = Field()
 
 class ProjectionRiskItemSchema(BaseModel):
-    risk: Optional[str] = Field(default=None)
-    probability: Optional[str] = Field(default=None)
-    impact: Optional[str] = Field(default=None)
-    mitigation: Optional[str] = Field(default=None)
+    risk: str = Field()
+    probability: str = Field()
+    impact: str = Field()
+    mitigation: str = Field()
 
 class ProjectionSuccessMetricSchema(BaseModel):
-    metric: Optional[str] = Field(default=None)
-    baseline: Optional[str] = Field(default=None)
-    _30_day_target: Optional[str] = Field(alias="30_day_target", default=None)
-    _60_day_target: Optional[str] = Field(alias="60_day_target", default=None)
-    _90_day_target: Optional[str] = Field(alias="90_day_target", default=None)
-    measurement_method: Optional[str] = Field(default=None)
+    metric: str = Field()
+    baseline: str = Field()
+    day_30_target: str = Field(alias="30_day_target")
+    day_60_target: str = Field(alias="60_day_target")
+    day_90_target: str = Field(alias="90_day_target")
+    measurement_method: str = Field()
+
+class BusinessRiskAssessmentSchema(BaseModel):
+    risks: List[ProjectionRiskItemSchema] = Field()
+    summary: str = Field()
+
+class BusinessSuccessMetricsSchema(BaseModel):
+    metrics: List[ProjectionSuccessMetricSchema] = Field()
+
+class NextStepsSchema(BaseModel):
+    immediate_actions: List[str] = Field()
+    long_term_actions: List[str] = Field()
 
 class BusinessImpactProjectionSchema(BaseModel):
-    expected_outcomes: Optional[dict] = Field(default=None)
-    roi_analysis: Optional[ProjectionRoiAnalysisSchema] = Field(default=None)
-    risk_assessment: Optional[dict] = Field(default=None)
-    success_metrics: Optional[dict] = Field(default=None)
-    next_steps: Optional[dict] = Field(default=None)
+    expected_outcomes: ProjectionImpactWindowSchema = Field()
+    roi_analysis: ProjectionRoiAnalysisSchema = Field()
+    risk_assessment: BusinessRiskAssessmentSchema = Field()
+    success_metrics: BusinessSuccessMetricsSchema = Field()
+    next_steps: NextStepsSchema = Field()
 
 class BusinessImpactProjectionReport(BaseModel):
-    business_impact_projection: Optional[BusinessImpactProjectionSchema] = Field(default=None)
+    business_impact_projection: BusinessImpactProjectionSchema = Field()
 
 
 # --- Export JSON Schema dictionaries ---
@@ -553,7 +628,10 @@ You are analyzing LinkedIn content performance data to generate an executive con
 Follow the provided output schema strictly. Do not include any example schema in your response.
 
 LinkedIn Content Analysis Data:
-{{linkedin_content_data}}
+{linkedin_content_data}
+
+AI Visibility Data:
+{ai_visibility_data}
 """
 
 EXECUTIVE_INDUSTRY_BENCHMARKING_PROMPT = """
@@ -562,10 +640,13 @@ You are generating an executive industry benchmarking report by comparing the ex
 Follow the provided output schema strictly. Do not include any example schema in your response.
 
 LinkedIn Content Data:
-{{linkedin_content_data}}
+{linkedin_content_data}
+
+Deep Research Data:
+{deep_research_data}
 
 Competitor Analysis Data:
-{{competitor_data}}
+{competitor_data}
 """
 
 PERSONAL_BRAND_OPPORTUNITIES_PROMPT = """
@@ -574,10 +655,10 @@ You are identifying personal brand opportunities based on LinkedIn content analy
 Follow the provided output schema strictly. Do not include any example schema in your response.
 
 LinkedIn Content Analysis:
-{{linkedin_content_data}}
+{linkedin_content_data}
 
 AI Visibility Data:
-{{ai_visibility_data}}
+{ai_visibility_data}
 """
 
 EXECUTIVE_ACTION_PLAN_PROMPT = """
@@ -586,11 +667,11 @@ You are creating a comprehensive executive action plan based on all executive an
 Follow the provided output schema strictly. Do not include any example schema in your response.
 
 Executive Reports Summary:
-- Visibility Scorecard: {{visibility_scorecard}}
-- Content Performance: {{content_performance}}
-- Industry Benchmarking: {{industry_benchmarking}}
-- AI Recognition: {{ai_recognition}}
-- Brand Opportunities: {{brand_opportunities}}
+- Visibility Scorecard: {visibility_scorecard}
+- Content Performance: {content_performance}
+- Industry Benchmarking: {industry_benchmarking}
+- AI Recognition: {ai_recognition}
+- Brand Opportunities: {brand_opportunities}
 """
 
 # ==================== COMPANY REPORTS ====================
@@ -601,7 +682,10 @@ You are analyzing blog content data to generate a comprehensive blog performance
 Follow the provided output schema strictly. Do not include any example schema in your response.
 
 Blog Content Analysis Data:
-{{blog_content_data}}
+{blog_content_data}
+
+Blog Portfolio Analysis Data:
+{blog_portfolio_data}
 """
 
 CONTENT_QUALITY_STRUCTURE_PROMPT = """
@@ -617,15 +701,18 @@ Content Analysis Data:
 """
 
 COMPETITIVE_INTELLIGENCE_PROMPT = """
-You are generating a competitive intelligence report based on competitor content analysis and AI visibility data.
+You are generating a competitive intelligence report based on company blog content, competitor content analysis and deep research insights.
 
 Follow the provided output schema strictly. Do not include any example schema in your response.
 
-Competitor Analysis Data:
-{{competitor_data}}
+Blog Content Analysis:
+{blog_content_data}
 
-Company AI Visibility Data:
-{{ai_visibility_data}}
+Competitor Content Analysis:
+{competitor_data}
+
+Deep Research Insights:
+{deep_research_data}
 """
 
 CONTENT_GAP_ANALYSIS_PROMPT = """
@@ -634,25 +721,28 @@ You are performing a content gap analysis by comparing company content against c
 Follow the provided output schema strictly. Do not include any example schema in your response.
 
 Blog Content Analysis:
-{{blog_content_data}}
+{blog_content_data}
 
 Competitor Content Analysis:
-{{competitor_data}}
+{competitor_data}
 
 Deep Research Insights:
-{{deep_research_data}}
+{deep_research_data}
 """
 
 STRATEGIC_OPPORTUNITIES_PROMPT = """
-You are identifying strategic opportunities based on deep research and comprehensive market analysis.
+You are identifying strategic opportunities based on deep research, blog portfolio analysis, and comprehensive blog analysis.
 
 Follow the provided output schema strictly. Do not include any example schema in your response.
 
 Deep Research Data:
-{{deep_research_data}}
+{deep_research_data}  
 
-All Analysis Reports:
-{{all_reports_summary}}
+Blog Portfolio Analysis:
+{blog_portfolio_data}
+
+Blog Content Analysis:
+{blog_content_data}
 """
 
 COMPANY_ACTION_PLAN_PROMPT = """
@@ -661,13 +751,13 @@ You are creating a comprehensive company action plan based on all company analys
 Follow the provided output schema strictly. Do not include any example schema in your response.
 
 Company Reports Summary:
-- AI Visibility: {{ai_visibility_overview}}
-- Blog Performance: {{blog_performance}}
-- Technical SEO: {{technical_seo}}
-- Content Quality: {{content_quality}}
-- Competitive Intelligence: {{competitive_intel}}
-- Content Gaps: {{content_gaps}}
-- Strategic Opportunities: {{strategic_opps}}
+- AI Visibility: {ai_visibility_overview}
+- Blog Performance: {blog_performance}
+- Technical SEO: {technical_seo}
+- Content Quality: {content_quality}
+- Competitive Intelligence: {competitive_intel}
+- Content Gaps: {content_gaps}
+- Strategic Opportunities: {strategic_opps}
 """
 
 BUSINESS_IMPACT_PROJECTION_PROMPT = """
@@ -676,11 +766,11 @@ You are creating a business impact projection based on all executive and company
 Follow the provided output schema strictly. Do not include any example schema in your response.
 
 Executive Action Plan:
-{{executive_action_plan}}
+{executive_action_plan}
 
 Company Action Plan:
-{{company_action_plan}}
+{company_action_plan}
 
 All Reports Summary:
-{{all_reports}}
+{all_reports}
 """

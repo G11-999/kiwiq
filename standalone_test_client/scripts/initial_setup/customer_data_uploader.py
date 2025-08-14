@@ -8,7 +8,6 @@ from pydantic import BaseModel, Field
 from kiwi_client.customer_data_client import CustomerDataTestClient
 from kiwi_client.auth_client import AuthenticatedClient
 from kiwi_client.schemas.workflow_api_schemas import CustomerDataVersionedUpsert, CustomerDataVersionedUpsertResponse
-from scripts.initial_setup.document_config import DocumentConfigManager
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -132,8 +131,6 @@ class SimpleDataUploader:
             await self.authenticate()
 
         try:
-            # Get configuration from DocumentConfigManager
-            namespace, config = DocumentConfigManager.get_config(docname, user_id, data)
             
             # Use custom class that ensures proper JSON serialization
             payload = JSONSerializableCustomerDataVersionedUpsert(version=version, **config)

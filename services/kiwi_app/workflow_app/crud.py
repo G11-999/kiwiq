@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import List, Optional, Type, TypeVar, Generic, Any, Dict, Sequence, Union, Tuple
 import copy
 import json
+import hashlib
 
 from sqlalchemy import select, update, delete, func, or_, and_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -461,6 +462,16 @@ class WorkflowRunDAO(BaseDAO[models.WorkflowRun, schemas.WorkflowRunCreate, sche
         parent_run_id: Optional[uuid.UUID] = None
     ) -> models.WorkflowRun:
         """Creates a new workflow run record."""
+        # Compute deterministic input hash for caching
+        input_hash: Optional[str] = None
+        if inputs is not None:
+            try:
+                normalized = json.dumps(inputs, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+                input_hash = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+            except Exception:
+                # If hashing fails for any reason, leave hash as None (do not block run creation)
+                input_hash = None
+
         db_obj = self.model(
             workflow_id=workflow_id,
             owner_org_id=owner_org_id,
@@ -472,6 +483,7 @@ class WorkflowRunDAO(BaseDAO[models.WorkflowRun, schemas.WorkflowRunCreate, sche
             tag=tag,
             applied_workflow_config_overrides=applied_workflow_config_overrides,
             parent_run_id=parent_run_id,
+            input_hash=input_hash,
         )
         db.add(db_obj)
         await db.commit()
@@ -646,6 +658,78 @@ class WorkflowRunDAO(BaseDAO[models.WorkflowRun, schemas.WorkflowRunCreate, sche
         order_by = filters.get("order_by", "created_at") if filters else "created_at"
         order_dir = filters.get("order_dir", "desc") if filters else "desc"
         return await self.get_multi_filtered(db, filters=combined_filters, skip=skip, limit=limit, order_by=order_by, order_dir=order_dir)
+    
+    async def find_recent_completed_runs_by_input_hash(
+        self,
+        db: AsyncSession,
+        *,
+        workflow_id: uuid.UUID,
+        owner_org_id: uuid.UUID,
+        input_hash: str,
+        since_ts: datetime,
+        limit: int = 5,
+    ) -> Sequence[models.WorkflowRun]:
+        """
+        Find recent successful workflow runs that match the same input hash within a lookback window.
+
+        Args:
+            db: AsyncSession
+            workflow_id: Workflow ID to match
+            owner_org_id: Org context
+            input_hash: Deterministic hash of normalized inputs
+            since_ts: Only consider runs created at or after this timestamp
+            limit: Max number of runs to return (ordered newest first)
+
+        Returns:
+            A sequence of matching WorkflowRun objects.
+        """
+        conditions = [
+            self.model.workflow_id == workflow_id,
+            self.model.owner_org_id == owner_org_id,
+            self.model.input_hash == input_hash,
+            self.model.status == WorkflowRunStatus.COMPLETED,
+            or_(self.model.error_message == None, self.model.error_message == ""),
+            self.model.created_at >= since_ts,
+        ]
+        stmt = (
+            select(self.model)
+            .where(and_(*conditions))
+            .order_by(self.model.created_at.desc())
+            .limit(limit)
+        )
+        result = await db.exec(stmt)
+        return result.scalars().all()
+
+    async def find_recent_completed_runs_by_name_and_input_hash(
+        self,
+        db: AsyncSession,
+        *,
+        workflow_name: str,
+        owner_org_id: uuid.UUID,
+        input_hash: str,
+        since_ts: datetime,
+        limit: int = 5,
+    ) -> Sequence[models.WorkflowRun]:
+        """
+        Find recent successful workflow runs for a workflow name that match the same input hash.
+        Uses the name-based composite index for speed.
+        """
+        conditions = [
+            self.model.workflow_name == workflow_name,
+            self.model.owner_org_id == owner_org_id,
+            self.model.input_hash == input_hash,
+            self.model.status == WorkflowRunStatus.COMPLETED,
+            or_(self.model.error_message == None, self.model.error_message == ""),
+            self.model.created_at >= since_ts,
+        ]
+        stmt = (
+            select(self.model)
+            .where(and_(*conditions))
+            .order_by(self.model.created_at.desc())
+            .limit(limit)
+        )
+        result = await db.exec(stmt)
+        return result.scalars().all()
 
 # --- Base Template DAO --- #
 

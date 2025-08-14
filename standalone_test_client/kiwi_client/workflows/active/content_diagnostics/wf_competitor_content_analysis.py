@@ -34,7 +34,6 @@ from kiwi_client.schemas.workflow_constants import WorkflowRunStatus
 from kiwi_client.workflows.active.document_models.customer_docs import (
     BLOG_COMPANY_DOCNAME,
     BLOG_COMPANY_NAMESPACE_TEMPLATE,
-    BLOG_COMPANY_IS_VERSIONED,
     BLOG_COMPETITOR_CONTENT_ANALYSIS_DOCNAME,
     BLOG_COMPETITOR_CONTENT_ANALYSIS_NAMESPACE_TEMPLATE,
 )
@@ -66,11 +65,6 @@ workflow_graph_schema = {
                         "type": "str",
                         "required": True,
                         "description": "Name of the company for document operations"
-                    },
-                    "company_doc_config": {
-                        "type": "dict",
-                        "required": True,
-                        "description": "Document configuration for loading company context document"
                     }
                 }
             }
@@ -82,7 +76,16 @@ workflow_graph_schema = {
             "node_name": "load_customer_data",
             "node_config": {
                 # Use dynamic configuration from input
-                "load_configs_input_path": "company_doc_config",
+                "load_paths": [
+                    {
+                        "filename_config": {
+                            "input_namespace_field_pattern": BLOG_COMPANY_NAMESPACE_TEMPLATE,
+                            "input_namespace_field": "company_name",
+                            "static_docname": BLOG_COMPANY_DOCNAME,
+                        },
+                    "output_field_name": "company_doc"
+                    }
+                ],
                 "global_is_shared": False,
                 "global_is_system_entity": False,
                 "global_schema_options": {"load_schema": False}
@@ -157,26 +160,6 @@ workflow_graph_schema = {
              }
          },
         
-
-        
-        # 6. Join Competitor Data with Analysis Results
-        "join_competitor_data": {
-            "node_id": "join_competitor_data",
-            "node_name": "data_join_data",
-            "node_config": {
-                "joins": [
-                    {
-                        "primary_list_path": "company_doc.competitors",
-                        "secondary_list_path": "all_analysis_results",
-                        "primary_join_key": "website_url",
-                        "secondary_join_key": "website_url",
-                        "output_nesting_field": "analysis_output",
-                        "join_type": "one_to_one"
-                    }
-                ]
-            }
-        },
-        
         # 7. Route Structured Data for Saving
         "route_for_saving": {
             "node_id": "route_for_saving",
@@ -185,7 +168,7 @@ workflow_graph_schema = {
                 "choices": ["save_competitor_analysis"],
                 "map_targets": [
                     {
-                        "source_path": "mapped_data.company_doc.competitors",
+                        "source_path": "all_competitor_analysis_results",
                         "destinations": ["save_competitor_analysis"],
                         "batch_size": 1,
                         "batch_field_name": "competitor_data"
@@ -239,7 +222,6 @@ workflow_graph_schema = {
             "dst_node_id": "$graph_state",
             "mappings": [
                 {"src_field": "company_name", "dst_field": "company_name"},
-                {"src_field": "company_doc_config", "dst_field": "company_doc_config"}
             ]
         },
         
@@ -248,8 +230,7 @@ workflow_graph_schema = {
             "src_node_id": "input_node",
             "dst_node_id": "load_company_doc",
             "mappings": [
-                {"src_field": "company_name", "dst_field": "company_name"},
-                {"src_field": "company_doc_config", "dst_field": "company_doc_config"}
+                {"src_field": "company_name", "dst_field": "company_name"}
             ]
         },
         
@@ -300,57 +281,29 @@ workflow_graph_schema = {
                 {"src_field": "competitor_analysis_system_prompt", "dst_field": "system_prompt"}
             ]
         },
-        
-        # State -> Analyze Competitor Content (Message History)
-        {
-            "src_node_id": "$graph_state",
-            "dst_node_id": "analyze_competitor_content",
-            "mappings": [
-                {"src_field": "analyze_competitor_content_messages_history", "dst_field": "messages_history"}
-            ]
-        },
-        
-        # Analyze Competitor Content -> State (Collect Results and Update Message History)
+
+        # Analyze Competitor Content -> Merge analysis with competitor metadata
         {
             "src_node_id": "analyze_competitor_content",
             "dst_node_id": "$graph_state",
             "mappings": [
-                {"src_field": "structured_output", "dst_field": "all_analysis_results", "description": "Collect analysis results from each competitor."},
-                {"src_field": "current_messages", "dst_field": "analyze_competitor_content_messages_history", "description": "Update message history with analysis interaction."}
+                {"src_field": "structured_output", "dst_field": "all_competitor_analysis_results"}
             ]
         },
-        
-        # Analyze Competitor Content -> Join Competitor Data (Direct connection)
+
+        # Merge analysis with metadata -> Route for Saving
         {
             "src_node_id": "analyze_competitor_content",
-            "dst_node_id": "join_competitor_data",
-            "mappings": []
-        },
-        {
-            "src_node_id": "$graph_state",
-            "dst_node_id": "join_competitor_data",
-            "mappings": [
-                {"src_field": "company_doc", "dst_field": "company_doc"},
-                {"src_field": "all_analysis_results", "dst_field": "all_analysis_results"}
-            ]
-        },
-        
-        # Join Competitor Data -> Route for Saving
-        {
-            "src_node_id": "join_competitor_data",
             "dst_node_id": "route_for_saving",
             "mappings": [
-                {"src_field": "mapped_data", "dst_field": "mapped_data"}
             ]
         },
         {
             "src_node_id": "$graph_state",
             "dst_node_id": "route_for_saving",
             "mappings": [
-                {"src_field": "company_name", "dst_field": "company_name"}
-            ]
+                {"src_field": "all_competitor_analysis_results", "dst_field": "all_competitor_analysis_results"}            ]
         },
-        
         # Route for Saving -> Save Analysis
         {
             "src_node_id": "route_for_saving",
@@ -382,7 +335,7 @@ workflow_graph_schema = {
         "$graph_state": {
             "reducer": {
                 "company_doc": "replace",
-                "all_analysis_results": "collect_values",
+                "all_competitor_analysis_results": "collect_values",
                 "analyze_competitor_content_messages_history": "add_messages"
             }
         }
@@ -426,92 +379,83 @@ async def main_test_competitor_analysis_workflow():
     print(f"--- Starting {test_name} ---")
     
     # Test parameters
-    test_company_name = "Writer"
+    test_company_name = "momentum"
     
     # Create test company document data
-    company_data = {
-  "company_name": "Writer",
-  "website_url": "https://writer.com",
-  "positioning_headline": "Writer is an AI writing platform built for teams, helping enterprises ensure consistent, on-brand, and high-quality content across all departments.",
-  "icp": {
-    "icp_name": "Enterprise Marketing and Operations Teams",
-    "target_industry": "Technology, Financial Services, Healthcare, and Professional Services",
-    "company_size": "Mid-market to Enterprise (500+ employees)",
-    "buyer_persona": "CMO, Head of Content, VP of Marketing, Operations Lead",
-    "pain_points": [
-      "Inconsistent brand voice across departments",
-      "Low content velocity",
-      "Difficulty scaling content creation while maintaining quality",
-      "Inefficiencies in cross-functional communication and documentation"
-    ],
-    "goals": [
-      "Standardize brand voice across all content",
-      "Improve writing quality at scale",
-      "Enable all team members to write clearly and efficiently",
-      "Speed up content production processes"
-    ]
-  },
-  "content_distribution_mix": {
-    "awareness_percent": 40.0,
-    "consideration_percent": 30.0,
-    "purchase_percent": 20.0,
-    "retention_percent": 10.0
-  },
-  "competitors": [
-    {
-      "website_url": "https://grammarly.com",
-      "name": "Grammarly Business"
-    },
-    {
-      "website_url": "https://jasper.ai",
-      "name": "Jasper"
-    },
-    {
-      "website_url": "https://copy.ai",
-      "name": "Copy.ai"
-    }
-  ]
-}
+#     company_data = {
+#   "company_name": "Writer",
+#   "website_url": "https://writer.com",
+#   "positioning_headline": "Writer is an AI writing platform built for teams, helping enterprises ensure consistent, on-brand, and high-quality content across all departments.",
+#   "icp": {
+#     "icp_name": "Enterprise Marketing and Operations Teams",
+#     "target_industry": "Technology, Financial Services, Healthcare, and Professional Services",
+#     "company_size": "Mid-market to Enterprise (500+ employees)",
+#     "buyer_persona": "CMO, Head of Content, VP of Marketing, Operations Lead",
+#     "pain_points": [
+#       "Inconsistent brand voice across departments",
+#       "Low content velocity",
+#       "Difficulty scaling content creation while maintaining quality",
+#       "Inefficiencies in cross-functional communication and documentation"
+#     ],
+#     "goals": [
+#       "Standardize brand voice across all content",
+#       "Improve writing quality at scale",
+#       "Enable all team members to write clearly and efficiently",
+#       "Speed up content production processes"
+#     ]
+#   },
+#   "content_distribution_mix": {
+#     "awareness_percent": 40.0,
+#     "consideration_percent": 30.0,
+#     "purchase_percent": 20.0,
+#     "retention_percent": 10.0
+#   },
+#   "competitors": [
+#     {
+#       "website_url": "https://grammarly.com",
+#       "name": "Grammarly Business"
+#     },
+#     {
+#       "website_url": "https://jasper.ai",
+#       "name": "Jasper"
+#     },
+#     {
+#       "website_url": "https://copy.ai",
+#       "name": "Copy.ai"
+#     }
+#   ]
+# }
     
     # Create company document configuration
-    company_doc_config = {
-        "filename_config": {
-            "input_namespace_field_pattern": BLOG_COMPANY_NAMESPACE_TEMPLATE,
-            "input_namespace_field": "company_name",
-            "static_docname": BLOG_COMPANY_DOCNAME,
-        },
-        "output_field_name": "company_doc"
-    }
     
     # Test inputs
     test_inputs = {
-        "company_name": test_company_name,
-        "company_doc_config": company_doc_config
-    }
+        "company_name": test_company_name
+                }
     
     # Setup test documents
-    setup_docs: List[SetupDocInfo] = [
-        {
-            'namespace': f"blog_company_profile_{test_company_name}",
-            'docname': BLOG_COMPANY_DOCNAME,
-            'initial_data': company_data,
-            'is_shared': False,
-            'is_versioned': BLOG_COMPANY_IS_VERSIONED,
-            'initial_version': "default",
-            'is_system_entity': False
-        }
-    ]
+    # setup_docs: List[SetupDocInfo] = [
+    #     {
+    #         'namespace': f"blog_company_profile_{test_company_name}",
+    #         'docname': BLOG_COMPANY_DOCNAME,
+    #         'initial_data': company_data,
+    #         'is_shared': False,
+    #         'is_versioned': BLOG_COMPANY_IS_VERSIONED,
+    #         'initial_version': "default",
+    #         'is_system_entity': False
+    #     }
+    # ]
     
-    # Cleanup configuration
-    cleanup_docs: List[CleanupDocInfo] = [
-        {
-            'namespace': f"blog_company_profile_{test_company_name}",
-            'docname': BLOG_COMPANY_DOCNAME,
-            'is_shared': False,
-            'is_versioned': BLOG_COMPANY_IS_VERSIONED,
-            'is_system_entity': False
-        }
-    ]
+    # # Cleanup configuration
+    # cleanup_docs: List[CleanupDocInfo] = [
+    #     {
+    #         'namespace': f"blog_company_profile_{test_company_name}",
+    #         'docname': BLOG_COMPANY_DOCNAME,
+    #         'is_shared': False,
+    #         'is_versioned': BLOG_COMPANY_IS_VERSIONED,
+    #         'is_system_entity': False
+    #     }
+    # ]
     
     # No HITL inputs needed for this workflow
     predefined_hitl_inputs = []
@@ -523,8 +467,8 @@ async def main_test_competitor_analysis_workflow():
         initial_inputs=test_inputs,
         expected_final_status=WorkflowRunStatus.COMPLETED,
         hitl_inputs=predefined_hitl_inputs,
-        setup_docs=setup_docs,
-        cleanup_docs=cleanup_docs,
+        # setup_docs=setup_docs,
+        # cleanup_docs=cleanup_docs,
         cleanup_docs_created_by_setup=False,
         validate_output_func=validate_competitor_analysis_workflow_output,
         stream_intermediate_results=True,

@@ -216,6 +216,10 @@ PYTHONPATH=$(pwd):$(pwd)/services poetry run alembic -c libs/src/db/alembic.ini 
 # migration #29
 PYTHONPATH=$(pwd):$(pwd)/services poetry run alembic -c libs/src/db/alembic.ini revision --autogenerate -m "Add parent workflow run ID field to WorkflowRun model"
 
+# migration #29
+PYTHONPATH=$(pwd):$(pwd)/services poetry run alembic -c libs/src/db/alembic.ini revision --autogenerate -m "Add input hash field to WorkflowRun model"
+
+
 ```
 
 7. apply migration script

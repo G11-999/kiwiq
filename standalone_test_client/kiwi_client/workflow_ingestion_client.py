@@ -556,8 +556,8 @@ async def main():
         # },
 
         {
-            "workflow_key": "blog_content_playbook_workflow",
-            "module_path": "kiwi_client.workflows_for_blog_teammate.wf_blog_content_playbook_generation",
+            "workflow_key": "blog_competitor_content_analysis_workflow",
+            "module_path": "kiwi_client.workflows.active.content_diagnostics.wf_competitor_content_analysis",
         },
         # {
         #     "workflow_key": "linkedin_user_input_to_brief_workflow",

@@ -118,78 +118,53 @@ class SalesFunnelStage(str, Enum):
     PURCHASE = "purchase"
     RETENTION = "retention"
 
-class ContentCategory(str, Enum):
-    PRODUCT_FEATURES = "product_features"
-    CASE_STUDIES = "case_studies"
-    CUSTOMER_TESTIMONIALS = "customer_testimonials"
-    PRICING = "pricing"
-    COMPARISONS = "comparisons"
-    THOUGHT_LEADERSHIP = "thought_leadership"
-    COMPANY_NEWS = "company_news"
-    EDUCATIONAL = "educational"
+# -----------------------------------------------------------------------------
+# Group-level schemas (referenced from blog_content_analysis.py)
+# -----------------------------------------------------------------------------
+class EEATAnalysisSchema(BaseModel):
+    expertise_signals: List[str] = Field(description="Specific expertise signals identified across content")
+    authority_indicators: List[str] = Field(description="Authority indicators present")
+    trust_elements: List[str] = Field(description="Trust-building elements found")
 
-class UserIntent(str, Enum):
-    INFORMATIONAL = "informational"
-    NAVIGATIONAL = "navigational"
-    TRANSACTIONAL = "transactional"
-    COMMERCIAL = "commercial"
-    COMPARISON = "comparison"
-    RESEARCH = "research"
-    PROBLEM_SOLVING = "problem_solving"
+class ContentQualityScoringSchema(BaseModel):
+    information_density: str = Field(description="Information density assessment (sparse/moderate/dense)")
+    writing_quality: str = Field(description="Overall writing quality assessment")
 
-# PART 1: CONTENT STRATEGY ANALYSIS
-class CategoryTopicsSchema(BaseModel):
-    """Topics covered within a specific content category"""
-    category: ContentCategory = Field(description="Content category")
-    topics_covered: List[str] = Field(description="List of topics covered in this category")
-    post_count: int = Field(description="Number of posts in this category")
-    target_keywords: List[str] = Field(description="Primary keywords targeted in this category")
+class QuestionAnswerExtractionSchema(BaseModel):
+    featured_snippet_potential: List[str] = Field(description="Content sections with featured snippet potential")
 
-class SalesFunnelContentSchema(BaseModel):
-    """Content analysis for a specific sales funnel stage"""
-    funnel_stage: SalesFunnelStage = Field(description="Sales funnel stage")
-    total_posts: int = Field(description="Total posts targeting this funnel stage")
-    categories: List[CategoryTopicsSchema] = Field(description="Content categories and their topics within this funnel stage")
-    user_intents_served: List[UserIntent] = Field(description="User intents addressed in this funnel stage")
+class ContentStructureElementsSchema(BaseModel):
+    storytelling_elements: List[str] = Field(description="Storytelling elements used (problem/solution/case study/data)")
+    supporting_evidence_types: List[str] = Field(description="Types of supporting evidence (stats/quotes/examples/research)")
 
-class ContentStrategyAnalysis(BaseModel):
-    """Complete content strategy analysis across sales funnel"""
-    total_posts: int = Field(description="Total number of posts analyzed")
-    funnel_stages: List[SalesFunnelContentSchema] = Field(description="Content analysis by sales funnel stage")
-    
-    # Summary metrics
-    most_covered_topics: List[str] = Field(description="Top 10 most frequently covered topics")
-    primary_keywords_targeted: List[str] = Field(description="Main keywords being targeted across content")
-    content_distribution: Dict[SalesFunnelStage, int] = Field(description="Number of posts per funnel stage")
+class LogicalFlowReadabilitySchema(BaseModel):
+    paragraph_transitions: str = Field(description="Quality of paragraph transitions (poor/good/excellent)")
+    heading_hierarchy: str = Field(description="Heading hierarchy organization (poor/good/excellent)")
+    content_scanability: str = Field(description="How easily content can be scanned (low/medium/high)")
 
-# PART 2: SEO & CONTENT OPTIMIZATION ANALYSIS
-class ContentStructureMetrics(BaseModel):
-    """Content structure and organization metrics"""
-    # Content length and structure
-    average_word_count: int = Field(description="Average word count across posts")
-    posts_with_proper_hierarchy: bool = Field(description="Posts with proper H1-H6 hierarchy")
+class ContentThemesSchema(BaseModel):
+    primary_narratives: List[str] = Field(description="The main list of narratives or stories being told")
+    topic_clusters: List[str] = Field(description="Key topic clusters identified")
+    content_strategy: str = Field(description="Inferred content strategy approach")
+    unique_angles: List[str] = Field(description="Unique angles or perspectives taken")
 
-    # FAQ implementation
-    posts_with_faq: bool = Field(description="Posts with FAQ sections")
-    total_faq_questions: int = Field(description="Total FAQ questions across all content")
-    
-    # Content organization
-    posts_with_lists: bool = Field(description="Posts using numbered or bullet lists")
-    posts_with_toc: bool = Field(description="Posts with table of contents")
-    average_sections_per_post: float = Field(description="Average number of sections/headings per post")
+class FunnelStageGroupAnalysis(BaseModel):
+    """Analysis for a single sales funnel stage (group-level)."""
+    total_posts_analyzed: int = Field(description="Total number of posts analyzed in this stage")
+    content_themes: ContentThemesSchema = Field(description="Content themes analysis for the stage")
+    eeat_analysis: EEATAnalysisSchema = Field(description="E-E-A-T analysis for the stage")
+    content_quality_scoring: ContentQualityScoringSchema = Field(description="Content quality scoring for the stage")
+    question_answer_extraction: QuestionAnswerExtractionSchema = Field(description="QA/featured snippet potential")
+    content_structure_elements: ContentStructureElementsSchema = Field(description="Content structure elements used")
+    logical_flow_readability: LogicalFlowReadabilitySchema = Field(description="Logical flow and readability assessment")
 
-    average_title_length: int = Field(description="Average title tag length")
-
-# MASTER SCHEMA - COMPLETE CONTENT ANALYSIS
-class CompleteContentAnalysis(BaseModel):
-    """Master schema for complete content portfolio analysis"""
-    
-    # Part 1: Content Strategy Analysis
-    content_strategy: ContentStrategyAnalysis = Field(description="Sales funnel → Categories → Topics analysis")
-    
-    # Part 2: SEO & Content Optimization Analysis  
-    seo_analysis: ContentStructureMetrics = Field(description="SEO structure, optimization, and technical metrics")
-    
+class FunnelStagesPortfolioAnalysis(BaseModel):
+    """Unified analysis across all four sales funnel stages in a single schema."""
+    name: str = Field(description="Name of the competitor")
+    awareness: FunnelStageGroupAnalysis = Field(description="Analysis for awareness stage")
+    consideration: FunnelStageGroupAnalysis = Field(description="Analysis for consideration stage")
+    purchase: FunnelStageGroupAnalysis = Field(description="Analysis for purchase stage")
+    retention: FunnelStageGroupAnalysis = Field(description="Analysis for retention stage")
 
 # Convert Pydantic models to JSON schemas for LLM use
-COMPETITOR_CONTENT_ANALYSIS_OUTPUT_SCHEMA = CompleteContentAnalysis.model_json_schema() 
+COMPETITOR_CONTENT_ANALYSIS_OUTPUT_SCHEMA = FunnelStagesPortfolioAnalysis.model_json_schema() 

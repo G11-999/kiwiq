@@ -83,6 +83,22 @@ class WorkflowRunnerConfig(BaseNodeConfig):
         description="Maximum time in seconds to wait for workflow completion before timing out."
     )
     
+    # Caching settings
+    enable_workflow_cache: bool = Field(
+        default=True,
+        description="If True, attempts to reuse outputs from recent successful runs with identical inputs."
+    )
+    cache_lookback_period: int = Field(
+        default=7,
+        ge=1,
+        le=90,
+        description="Number of days to look back for matching successful runs."
+    )
+    check_error_free_logs: bool = Field(
+        default=True,
+        description="When True, only reuse cached runs that have no error logs. When False, pick the recent run with the fewest error logs."
+    )
+    
     # Error handling
     fail_on_workflow_error: bool = Field(
         default=True,
@@ -479,6 +495,46 @@ class WorkflowRunnerNode(BaseDynamicNode):  # [WorkflowRunnerInput, WorkflowRunn
                 filtered_outputs[field] = workflow_outputs[field]
         
         return filtered_outputs
+
+    def _compute_input_hash(self, inputs: Dict[str, Any]) -> Optional[str]:
+        """
+        Compute a deterministic hash of the mapped workflow inputs.
+        Uses compact JSON with sorted keys to ensure stable hashing.
+        Returns None if serialization fails.
+        """
+        try:
+            import hashlib
+            normalized = json.dumps(inputs, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+            return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+        except Exception:
+            return None
+
+    async def _has_error_logs_for_run(self, *, workflow_service: 'WorkflowService', run: models.WorkflowRun, user) -> bool:
+        """
+        Use service method to retrieve Prefect logs and detect any error-level entries.
+        Returns True if error logs are present.
+        """
+        try:
+            async with get_async_db_as_manager() as db:
+                logs_schema = await workflow_service.get_run_logs(db=db, run=run, skip=0, limit=10000)
+        except Exception:
+            # If logs cannot be retrieved, be conservative and treat as errors
+            return True
+
+        if not logs_schema or not getattr(logs_schema, 'logs', None):
+            return False
+
+        for entry in logs_schema.logs:
+            level = (entry.level if hasattr(entry, 'level') else str(entry.get('level', '') if isinstance(entry, dict) else '')).upper()
+            if level in {"ERROR", "CRITICAL"}:
+                return True
+            # Fallback on message scanning to catch stacktraces logged at WARNING
+            message = entry.message if hasattr(entry, 'message') else (entry.get('message', '') if isinstance(entry, dict) else '')
+            if isinstance(message, str):
+                low = message.lower()
+                if 'traceback' in low or 'exception' in low:
+                    return True
+        return False
     
     async def _poll_for_completion(
         self,
@@ -672,12 +728,16 @@ class WorkflowRunnerNode(BaseDynamicNode):  # [WorkflowRunnerInput, WorkflowRunn
             # context = {k: v for k, v in context.items() if k not in ["task_run_context"]}  # "flow_run_context", 
             # self.warning(f"Context json {json.dumps(context, indent=4, default=str)}")
             # context = {"logger_name": get_run_logger().name}
-            p = run_flow_in_subprocess(
-                flow=workflow_execution_flow,
+            p = await asyncio.to_thread(run_flow_in_subprocess, flow=workflow_execution_flow,
                 parameters={"run_job": run_job.model_dump()},
-                context=context,
-            )
-            p.join()
+                context=context,)
+            # p = run_flow_in_subprocess(
+            #     flow=workflow_execution_flow,
+            #     parameters={"run_job": run_job.model_dump()},
+            #     context=context,
+            # )
+            await asyncio.to_thread(p.join)
+            # p.join()
             
             self.info(f"Subprocess submitted for workflow run {workflow_run.id}")
             
@@ -895,6 +955,119 @@ class WorkflowRunnerNode(BaseDynamicNode):  # [WorkflowRunnerInput, WorkflowRunn
                 workflow_inputs_spec=workflow_inputs_spec,
                 input_mapping=self.config.input_mapping
             )
+
+            # Attempt cache lookup if enabled
+            cached_result = None
+            if self.config.enable_workflow_cache:
+                # Compute input hash (same scheme used by DAO when creating runs)
+                input_hash = self._compute_input_hash(mapped_inputs)
+                if input_hash:
+                    # Determine lookback window
+                    lookback_days = max(1, int(self.config.cache_lookback_period))
+                    from datetime import timedelta
+                    since_ts = datetime.now(timezone.utc) - timedelta(days=lookback_days)
+                    # Query recent successful runs by input hash, preferring name-based search
+                    try:
+                        async with get_async_db_as_manager() as db:
+                            recent_runs = []
+                            if workflow.name:
+                                recent_runs = await workflow_service.workflow_run_dao.find_recent_completed_runs_by_name_and_input_hash(
+                                    db=db,
+                                    workflow_name=workflow.name,
+                                    owner_org_id=org_id,
+                                    input_hash=input_hash,
+                                    since_ts=since_ts,
+                                    limit=5,
+                                )
+                            if not recent_runs:
+                                # Fallback to workflow_id-based search
+                                recent_runs = await workflow_service.workflow_run_dao.find_recent_completed_runs_by_input_hash(
+                                    db=db,
+                                    workflow_id=workflow.id,
+                                    owner_org_id=org_id,
+                                    input_hash=input_hash,
+                                    since_ts=since_ts,
+                                    limit=5,
+                                )
+                        # Evaluate candidates
+                        if self.config.check_error_free_logs:
+                            # Strict: pick the first candidate with zero error logs
+                            for past_run in recent_runs:
+                                has_errors = await self._has_error_logs_for_run(
+                                    workflow_service=workflow_service,
+                                    run=past_run,
+                                    user=user,
+                                )
+                                if not has_errors and past_run.outputs:
+                                    cached_result = {
+                                        "run_id": str(past_run.id),
+                                        "status": "completed",
+                                        "outputs": past_run.outputs,
+                                        "error": None,
+                                        "started_at": past_run.started_at.isoformat() if past_run.started_at else None,
+                                        "completed_at": past_run.ended_at.isoformat() if past_run.ended_at else None,
+                                    }
+                                    break
+                        else:
+                            # Lenient: pick the recent run with the fewest error logs (prefer 0 if any)
+                            best_tuple = None  # (error_count, ended_at, run)
+                            for past_run in recent_runs:
+                                try:
+                                    async with get_async_db_as_manager() as db:
+                                        logs = await workflow_service.get_run_logs(db=db, run=past_run, skip=0, limit=5000)
+                                except Exception:
+                                    # If logs retrieval fails, penalize with high error count
+                                    error_count = 10**9
+                                else:
+                                    error_count = 0
+                                    for entry in getattr(logs, 'logs', []) or []:
+                                        level = (entry.level if hasattr(entry, 'level') else str(entry.get('level', '') if isinstance(entry, dict) else '')).upper()
+                                        if level in {"ERROR", "CRITICAL"}:
+                                            error_count += 1
+                                ended_at = getattr(past_run, 'ended_at', None) or datetime.now(timezone.utc)
+                                candidate = (error_count, ended_at, past_run)
+                                if best_tuple is None or candidate < best_tuple:
+                                    best_tuple = candidate
+                            if best_tuple and best_tuple[0] < 10**9:
+                                chosen = best_tuple[2]
+                                if chosen and chosen.outputs:
+                                    cached_result = {
+                                        "run_id": str(chosen.id),
+                                        "status": "completed",
+                                        "outputs": chosen.outputs,
+                                        "error": None,
+                                        "started_at": chosen.started_at.isoformat() if chosen.started_at else None,
+                                        "completed_at": ended_at.isoformat() if ended_at else None,
+                                    }
+                    except Exception as cache_err:
+                        self.warning(f"Cache lookup skipped due to error: {cache_err}")
+
+            if cached_result is not None:
+                # Use cached outputs without running the workflow
+                end_time = datetime.now(timezone.utc)
+                duration = (end_time - start_time).total_seconds()
+                workflow_outputs = await self._filter_outputs(
+                    workflow_outputs=cached_result.get("outputs"),
+                    output_fields=self.config.output_fields,
+                ) if cached_result.get("outputs") else None
+
+                self.info(f"Using cached result for workflow <{workflow.name}> from workflow run: {cached_result.get('run_id')} executed at {cached_result.get('started_at')}")
+
+                return WorkflowRunnerOutput(
+                    workflow_id=str(workflow.id),
+                    workflow_name=workflow.name,
+                    workflow_version=workflow.version_tag,
+                    run_id=cached_result.get("run_id", "unknown"),
+                    status=cached_result.get("status", "completed"),
+                    workflow_outputs=workflow_outputs,
+                    execution_mode=self.config.execution_mode.value,
+                    started_at=start_time.isoformat(),
+                    completed_at=end_time.isoformat(),
+                    duration_seconds=duration,
+                    error_message=None,
+                    error_details=None,
+                    parent_run_id=str(parent_run_id) if self.config.execution_mode == ExecutionMode.SUBPROCESS else None,
+                )
             
             # Parse thread_id if provided
             thread_id_str = uuid.UUID(thread_id_str) if thread_id_str else None

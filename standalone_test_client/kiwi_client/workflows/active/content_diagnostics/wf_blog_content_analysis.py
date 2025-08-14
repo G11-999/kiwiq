@@ -59,7 +59,6 @@ from kiwi_client.workflows.active.document_models.customer_docs import (
 )
 
 from kiwi_client.workflows.active.content_diagnostics.llm_inputs.blog_content_analysis import (
-    SALES_FUNNEL_STAGES,
     BATCH_CLASSIFICATION_SCHEMA,
     FUNNEL_STAGE_ANALYSIS_SCHEMA,
     POST_CLASSIFICATION_USER_PROMPT_TEMPLATE,
@@ -83,17 +82,19 @@ from typing import List, Optional, Dict, Any, Literal
 
 # --- Workflow Constants ---
 LLM_PROVIDER = "openai"
-LLM_PROVIDER_2 = "anthropic"
-CLASSIFICATION_MODEL = "gpt-4o"
-ANALYSIS_MODEL = "gpt-4o"
+CLASSIFICATION_MODEL = "gpt-5"
+ANALYSIS_MODEL = "gpt-5"
 LLM_TEMPERATURE = 0.5
-LLM_MAX_TOKENS_CLASSIFY = 3000
-LLM_MAX_TOKENS_ANALYSIS = 4000
+LLM_MAX_TOKENS_CLASSIFY = 20000
+LLM_MAX_TOKENS_ANALYSIS = 20000
 # New model for portfolio analysis with code execution
-PORTFOLIO_ANALYSIS_MODEL = "claude-sonnet-4-20250514"
+PORTFOLIO_ANALYSIS_MODEL = "gpt-5-mini"
+LLM_MAX_TOKENS_PORTFOLIO_ANALYSIS = 20000
 
-POST_BATCH_SIZE = 15
+POST_BATCH_SIZE = 10
 POST_BATCH_SIZE_ANALYSIS = 20
+
+
 
 # --- Workflow Graph Definition ---
 workflow_graph_schema = {
@@ -113,6 +114,12 @@ workflow_graph_schema = {
                     "funnel_stages_input": {
                         "type": "list",
                         "required": False,
+                        "default": [
+    {"stage_id": "awareness", "stage_name": "Awareness", "stage_description": "Top of funnel - building brand awareness"},
+    {"stage_id": "consideration", "stage_name": "Consideration", "stage_description": "Middle of funnel - evaluating solutions"},
+    {"stage_id": "purchase", "stage_name": "Purchase", "stage_description": "Bottom of funnel - ready to buy"},
+    {"stage_id": "retention", "stage_name": "Retention", "stage_description": "Post-purchase - customer success"}
+],
                         "description": "Optional override list of funnel stages to use for grouping"
                     },
                     "start_urls": {
@@ -303,7 +310,7 @@ workflow_graph_schema = {
                 "global_is_shared": False,
                 "store_configs": [
                     {
-                        "input_field_path": "mapped_data.raw_posts_data",
+                        "input_field_path": "mapped_data.merged_data.flat_classifications.flat_list",
                         "target_path": {
                             "filename_config": {
                                 "input_namespace_field_pattern": BLOG_CLASSIFIED_POSTS_NAMESPACE_TEMPLATE,
@@ -372,6 +379,7 @@ workflow_graph_schema = {
             "node_id": "preprocess_stage_group_sort_posts",
             "node_name": "merge_aggregate",
             "private_input_mode": True,
+            "output_private_output_to_central_state": True,
             "private_output_mode": True,
             "node_config": {
                 "operations": [
@@ -392,29 +400,31 @@ workflow_graph_schema = {
         },
 
         # --- 10b.5. Promote Stage Group After Sort (avoid dot paths in edges) ---
-        "promote_stage_group_after_sort": {
-            "node_id": "promote_stage_group_after_sort",
-            "node_name": "transform_data",
-            "private_input_mode": True,
-            "private_output_mode": True,
-            "node_config": {
-                "mappings": [
-                    {"source_path": "merged_data.stage_group", "destination_path": "stage_group"}
-                ]
-            }
-        },
+        # "promote_stage_group_after_sort": {
+        #     "node_id": "promote_stage_group_after_sort",
+        #     "node_name": "transform_data",
+        #     "private_input_mode": True,
+        #     "output_private_output_to_central_state": True,
+        #     "private_output_mode": True,
+        #     "node_config": {
+        #         "mappings": [
+        #             {"source_path": "merged_data.stage_group", "destination_path": "stage_group"}
+        #         ]
+        #     }
+        # },
 
         # --- 10b. Preprocess Stage Group: Limit to top 20 posts ---
         "preprocess_stage_group_limit_posts": {
             "node_id": "preprocess_stage_group_limit_posts",
             "node_name": "merge_aggregate",
             "private_input_mode": True,
+            "output_private_output_to_central_state": True,
             "private_output_mode": True,
             "node_config": {
                 "operations": [
                     {
                         "output_field_name": "stage_group",
-                        "select_paths": ["funnel_stage_group"],
+                        "select_paths": ["funnel_stage_group.stage_group"],
                         "merge_strategy": {
                             "post_merge_transformations": {
                                 "stage_posts": {
@@ -429,17 +439,18 @@ workflow_graph_schema = {
         },
 
         # --- 10b.9. Promote Stage Group After Limit (avoid dot paths in edges) ---
-        "promote_stage_group_after_limit": {
-            "node_id": "promote_stage_group_after_limit",
-            "node_name": "transform_data",
-            "private_input_mode": True,
-            "private_output_mode": True,
-            "node_config": {
-                "mappings": [
-                    {"source_path": "merged_data.stage_group", "destination_path": "stage_group"}
-                ]
-            }
-        },
+        # "promote_stage_group_after_limit": {
+        #     "node_id": "promote_stage_group_after_limit",
+        #     "node_name": "transform_data",
+        #     "private_input_mode": True,
+        #     "output_private_output_to_central_state": True,
+        #     "private_output_mode": True,
+        #     "node_config": {
+        #         "mappings": [
+        #             {"source_path": "merged_data.stage_group", "destination_path": "stage_group"}
+        #         ]
+        #     }
+        # },
 
         # --- 10. Route Funnel Stage Groups for Analysis ---
         
@@ -458,17 +469,17 @@ workflow_graph_schema = {
                         "template": FUNNEL_STAGE_ANALYSIS_USER_PROMPT_TEMPLATE,
                         "variables": {
                             "funnel_stage": None,
-                            "posts_group_json": None                        },
+                            "posts_group_json": None
+                            },
                         "construct_options": {
-                            "funnel_stage": "funnel_stage_group.stage_name",
-                            "posts_group_json": "funnel_stage_group.stage_posts"                        }
+                            "funnel_stage": "funnel_stage_group.stage_group.stage_name",
+                            "posts_group_json": "funnel_stage_group.stage_group.stage_posts"
+                            }
                     },
                     "analyze_system_prompt": {
                         "id": "analyze_system_prompt",
                         "template": FUNNEL_STAGE_ANALYSIS_SYSTEM_PROMPT_TEMPLATE,
-                        "variables": {
-                            "schema": json.dumps(FUNNEL_STAGE_ANALYSIS_SCHEMA, indent=2)
-                        },
+                        "variables": {},
                         "construct_options": {}
                     }
                 }
@@ -484,7 +495,8 @@ workflow_graph_schema = {
                 "llm_config": {
                     "model_spec": {"provider": LLM_PROVIDER, "model": ANALYSIS_MODEL},
                     "temperature": LLM_TEMPERATURE,
-                    "max_tokens": LLM_MAX_TOKENS_ANALYSIS
+                    "max_tokens": LLM_MAX_TOKENS_ANALYSIS,
+                    "reasoning_effort_class": "low"
                 },
                 "output_schema": {
                     "schema_definition": FUNNEL_STAGE_ANALYSIS_SCHEMA,
@@ -560,14 +572,15 @@ workflow_graph_schema = {
             "output_private_output_to_central_state": True,
             "node_config": {
                 "llm_config": {
-                    "model_spec": {"provider": LLM_PROVIDER_2, "model": PORTFOLIO_ANALYSIS_MODEL},
+                    "model_spec": {"provider": LLM_PROVIDER, "model": PORTFOLIO_ANALYSIS_MODEL},
                     "temperature": LLM_TEMPERATURE,
-                    "max_tokens": 4000,
+                    "max_tokens": LLM_MAX_TOKENS_ANALYSIS,
+                    # "reasoning_tokens_budget": 2048,
                 },
-                # "tool_calling_config": {"enable_tool_calling": True},
-                # "tools": [
-                #     {"tool_name": "code_execution", "is_provider_inbuilt_tool": True, "provider_inbuilt_user_config": None}
-                # ],
+                "tool_calling_config": {"enable_tool_calling": True, "parallel_tool_calls": True},
+                "tools": [
+                    {"tool_name": "code_interpreter", "is_provider_inbuilt_tool": True, "provider_inbuilt_user_config": None}
+                ],
                 "output_schema": {"schema_definition": FINAL_ANALYSIS_SCHEMA, "convert_loaded_schema_to_pydantic": False}
             }
         },
@@ -635,15 +648,15 @@ workflow_graph_schema = {
             # "output_private_output_to_central_state": True,
             "node_config": {
                 "llm_config": {
-                    "model_spec": {"provider": LLM_PROVIDER_2, "model": PORTFOLIO_ANALYSIS_MODEL},
+                    "model_spec": {"provider": LLM_PROVIDER, "model": PORTFOLIO_ANALYSIS_MODEL},
                     "temperature": LLM_TEMPERATURE,
-                    "max_tokens": 5000,
-                    "reasoning_tokens_budget": 2048,
+                    "max_tokens": LLM_MAX_TOKENS_PORTFOLIO_ANALYSIS,
+                    # "reasoning_tokens_budget": 2048,
                 },
-                "tool_calling_config": {"enable_tool_calling": False},
-                # "tools": [
-                #     {"tool_name": "code_execution", "is_provider_inbuilt_tool": True, "provider_inbuilt_user_config": None}
-                # ],
+                "tool_calling_config": {"enable_tool_calling": True, "parallel_tool_calls": True},
+                "tools": [
+                    {"tool_name": "code_interpreter", "is_provider_inbuilt_tool": True, "provider_inbuilt_user_config": None}
+                ],
                 "output_schema": {"schema_definition": FINAL_ANALYSIS_SCHEMA, "convert_loaded_schema_to_pydantic": False}
             }
         },
@@ -730,7 +743,7 @@ workflow_graph_schema = {
                 "llm_config": {
                     "model_spec": {"provider": LLM_PROVIDER, "model": CLASSIFICATION_MODEL},
                     "temperature": LLM_TEMPERATURE,
-                    "max_tokens": 2000
+                    "max_tokens": LLM_MAX_TOKENS_CLASSIFY
                 },
                 "output_schema": {
                     "schema_definition": TECHNICAL_SEO_REPORT_SCHEMA,
@@ -892,21 +905,16 @@ workflow_graph_schema = {
         ]},
 
         {"src_node_id": "route_funnel_stage_groups", "dst_node_id": "preprocess_stage_group_sort_posts", "mappings": []},
-        {"src_node_id": "preprocess_stage_group_sort_posts", "dst_node_id": "promote_stage_group_after_sort", "mappings": [
-            {"src_field": "merged_data", "dst_field": "merged_data"}
+        {"src_node_id": "preprocess_stage_group_sort_posts", "dst_node_id": "preprocess_stage_group_limit_posts", "mappings": [
+            {"src_field": "merged_data", "dst_field": "funnel_stage_group"}
         ]},
 
-
-        {"src_node_id": "promote_stage_group_after_sort", "dst_node_id": "preprocess_stage_group_limit_posts", "mappings": [
-            {"src_field": "stage_group", "dst_field": "funnel_stage_group"}
+        {"src_node_id": "preprocess_stage_group_limit_posts", "dst_node_id": "construct_analysis_prompt", "mappings": [
+            {"src_field": "merged_data", "dst_field": "funnel_stage_group"}
         ]},
-
-        {"src_node_id": "preprocess_stage_group_limit_posts", "dst_node_id": "promote_stage_group_after_limit", "mappings": [
-            {"src_field": "merged_data", "dst_field": "merged_data"}
-        ]},
-        {"src_node_id": "promote_stage_group_after_limit", "dst_node_id": "construct_analysis_prompt", "mappings": [
-            {"src_field": "stage_group", "dst_field": "funnel_stage_group"}
-        ]},
+        # {"src_node_id": "promote_stage_group_after_limit", "dst_node_id": "construct_analysis_prompt", "mappings": [
+        #     {"src_field": "transformed_data", "dst_field": "funnel_stage_group"}
+        # ]},
         {"src_node_id": "construct_analysis_prompt", "dst_node_id": "analyze_funnel_stage_group", "mappings": [
             {"src_field": "analyze_user_prompt", "dst_field": "user_prompt"},
             {"src_field": "analyze_system_prompt", "dst_field": "system_prompt"}
@@ -1003,12 +1011,12 @@ logger = logging.getLogger(__name__)
 # Example Input
 TEST_INPUTS = {
     "company_name": "test_company",
-    "funnel_stages_input": [
-        {"stage_id": "awareness", "stage_name": "Awareness", "stage_description": "Top of funnel - building brand awareness"},
-        {"stage_id": "consideration", "stage_name": "Consideration", "stage_description": "Middle of funnel - evaluating solutions"},
-        {"stage_id": "purchase", "stage_name": "Purchase", "stage_description": "Bottom of funnel - ready to buy"},
-        {"stage_id": "retention", "stage_name": "Retention", "stage_description": "Post-purchase - customer success"}
-    ],
+    # "funnel_stages_input": [
+    #     {"stage_id": "awareness", "stage_name": "Awareness", "stage_description": "Top of funnel - building brand awareness"},
+    #     {"stage_id": "consideration", "stage_name": "Consideration", "stage_description": "Middle of funnel - evaluating solutions"},
+    #     {"stage_id": "purchase", "stage_name": "Purchase", "stage_description": "Bottom of funnel - ready to buy"},
+    #     {"stage_id": "retention", "stage_name": "Retention", "stage_description": "Post-purchase - customer success"}
+    # ],
     "start_urls": "https://www.momentum.io",
     # "allowed_domains": ["prefect.io"],  # optional
     # "max_processed_urls_per_domain": 10,

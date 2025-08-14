@@ -758,6 +758,75 @@ class WorkflowService:
             logger.error(f"Error fetching event stream from MongoDB for run {run.id}: {e}")
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to fetch run stream")
 
+    async def get_run_logs(
+        self,
+        db: AsyncSession,
+        *,
+        run: models.WorkflowRun,
+        skip: int = 0,
+        limit: int = 10000,
+    ) -> schemas.WorkflowRunLogs:
+        """
+        Retrieve Prefect logs for all flow runs associated with this workflow run.
+
+        Returns a list of simplified LogEntry items (level, message, timestamp, flow_run_id).
+        """
+        try:
+            # Lazy import to avoid optional dependency issues at import time
+            from prefect import get_client as _get_client
+            from prefect.client.schemas.filters import LogFilter as _LogFilter, LogFilterFlowRunId as _LogFilterFlowRunId
+        except Exception:
+            # Prefect client not available; return empty logs instead of failing
+            return schemas.WorkflowRunLogs(logs=[])
+
+        try:
+            if not run or not run.prefect_run_ids:
+                return schemas.WorkflowRunLogs(logs=[])
+            try:
+                prefect_run_ids = [uuid.UUID(_id) for _id in run.prefect_run_ids.split(",") if _id.strip()]
+            except Exception:
+                return schemas.WorkflowRunLogs(logs=[])
+            if not prefect_run_ids:
+                return schemas.WorkflowRunLogs(logs=[])
+
+            flow_logs = []
+            async with _get_client() as client:
+                remaining = max(1, int(limit))
+                current_offset = max(0, int(skip))
+                while remaining > 0:
+                    batch_limit = 200 if remaining > 200 else remaining
+                    batch = await client.read_logs(
+                        log_filter=_LogFilter(flow_run_id=_LogFilterFlowRunId(any_=prefect_run_ids)),
+                        limit=batch_limit,
+                        offset=current_offset,
+                    )
+                    if not batch:
+                        break
+                    flow_logs.extend(batch)
+                    fetched = len(batch)
+                    remaining -= fetched
+                    current_offset += fetched
+                    if fetched < batch_limit:
+                        break
+
+            flow_logs.sort(key=lambda log: getattr(log, 'timestamp', datetime_now_utc()), reverse=True)
+
+            level_map = {50: "CRITICAL", 40: "ERROR", 30: "WARNING", 20: "INFO", 10: "DEBUG"}
+            formatted_logs = [
+                schemas.LogEntry(
+                    level=level_map.get(getattr(log, 'level', None), "UNKNOWN"),
+                    message=getattr(log, 'message', ""),
+                    timestamp=getattr(log, 'timestamp', datetime_now_utc()),
+                    flow_run_id=getattr(log, 'flow_run_id', None),
+                )
+                for log in flow_logs
+            ]
+
+            return schemas.WorkflowRunLogs(logs=formatted_logs)
+        except Exception as e:
+            logger.error(f"Error fetching Prefect logs for workflow run {getattr(run, 'id', None)}: {e}", exc_info=True)
+            return schemas.WorkflowRunLogs(logs=[])
+
 
     async def cancel_run(
         self,
