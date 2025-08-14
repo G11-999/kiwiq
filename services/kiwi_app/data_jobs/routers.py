@@ -85,7 +85,7 @@ async def trigger_rag_ingestion_flow(
 
 # --- Job Management Endpoints --- #
 
-# @data_jobs_admin_router.post("/", response_model=schemas.DataJobRead)
+# @data_jobs_admin_router.post("", response_model=schemas.DataJobRead)
 # async def create_data_job(
 #     job_data: schemas.DataJobCreate,
 #     current_user: User = Depends(get_current_active_superuser),

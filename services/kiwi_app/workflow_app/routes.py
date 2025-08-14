@@ -2215,7 +2215,7 @@ async def get_asset_type_info(
     return asset_service.get_asset_type_info(asset_type)
 
 
-@asset_router.post("/", response_model=schemas.AssetRead, dependencies=[Depends(wf_deps.RequireAssetCreateActiveOrg)])
+@asset_router.post("", response_model=schemas.AssetRead, dependencies=[Depends(wf_deps.RequireAssetCreateActiveOrg)])
 async def create_asset(
     asset_in: schemas.AssetCreate,
     db: AsyncSession = Depends(get_async_db_dependency),
@@ -2411,7 +2411,7 @@ async def list_all_org_assets(
     )
 
 
-@asset_router.get("/", response_model=List[schemas.AssetRead], dependencies=[Depends(wf_deps.RequireAssetReadActiveOrg)])
+@asset_router.get("", response_model=List[schemas.AssetRead], dependencies=[Depends(wf_deps.RequireAssetReadActiveOrg)])
 async def list_assets(
     query: schemas.AssetListQuery = Depends(),
     db: AsyncSession = Depends(get_async_db_dependency),
@@ -2447,7 +2447,7 @@ async def list_assets(
 
 # === UserAppResumeMetadata Endpoints ===
 
-@user_app_resume_router.post("/", response_model=schemas.UserAppResumeMetadataRead, dependencies=[Depends(wf_deps.RequireOrgDataWriteActiveOrg)])
+@user_app_resume_router.post("", response_model=schemas.UserAppResumeMetadataRead, dependencies=[Depends(wf_deps.RequireOrgDataWriteActiveOrg)])
 async def create_user_app_resume_metadata(
     metadata_in: schemas.UserAppResumeMetadataCreate,
     db: AsyncSession = Depends(get_async_db_dependency),
@@ -2521,7 +2521,7 @@ async def delete_user_app_resume_metadata(
     return None
 
 
-@user_app_resume_router.get("/", response_model=List[schemas.UserAppResumeMetadataRead], dependencies=[Depends(wf_deps.RequireOrgDataReadActiveOrg)])
+@user_app_resume_router.get("", response_model=List[schemas.UserAppResumeMetadataRead], dependencies=[Depends(wf_deps.RequireOrgDataReadActiveOrg)])
 async def list_user_app_resume_metadata(
     query: schemas.UserAppResumeMetadataListQuery = Depends(),
     db: AsyncSession = Depends(get_async_db_dependency),

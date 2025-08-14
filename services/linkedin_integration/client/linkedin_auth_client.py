@@ -266,7 +266,7 @@ async def oauth_callback(request: Request):
     else:
         return {"error": "missing_auth_code", "description": "No authorization code provided"}
 
-@app.get("/")
+@app.get("")
 async def root():
     """
     Root endpoint showing current authentication status.

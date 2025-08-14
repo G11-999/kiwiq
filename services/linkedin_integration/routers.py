@@ -923,7 +923,7 @@ async def linkedin_integration_callback(
     return result
 
 
-@linkedin_integration_router.get("/", response_model=schemas.LinkedinIntegrationListResponse)
+@linkedin_integration_router.get("", response_model=schemas.LinkedinIntegrationListResponse)
 async def list_user_integrations(
     current_user: User = Depends(get_current_active_verified_user),
     db: AsyncSession = Depends(get_async_db_dependency),

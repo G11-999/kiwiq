@@ -720,7 +720,7 @@ app.include_router(data_jobs_routers.data_jobs_admin_router, prefix=settings.API
 
 # ... rest of your app setup ...
 
-# @app.get("/")
+# @app.get("")
 # async def root():
 #     kiwi_logger.debug("Root endpoint requested.") # Example debug log
 #     return {"message": "Welcome to KiwiQ API"} 
