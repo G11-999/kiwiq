@@ -999,7 +999,7 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
       "name": "linkedin_brief_to_post_draft_workflow",
       "version": null,
       "inputs": {
-          "post_uuid": null,
+        "post_uuid": null,
         "entity_username": null,
         "brief_docname": null
       },
@@ -1059,16 +1059,33 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
       "user_documents_config_variables": {},
       "template_specific": false
     },
-    "ai_visibility_workflow": {
-      "name": "ai_visibility_workflow",
+    "company_ai_visibility_workflow": {
+      "name": "company_ai_visibility_workflow",
       "version": null,
       "inputs": {
         "company_name": null,
-        "entity_username": null,
-        "run_blog_analysis": null,
-        "run_linkedin_exec": null,
         "enable_cache": true,
         "cache_lookback_days": 7
+        },
+      "user_documents_config_variables": {},
+      "template_specific": false
+    },
+    "executive_ai_visibility_workflow": {
+      "name": "executive_ai_visibility_workflow",
+      "version": null,
+      "inputs": {
+        "entity_username": null,
+        "enable_cache": true,
+        "cache_lookback_days": 7
+        },
+      "user_documents_config_variables": {},
+      "template_specific": false
+    },
+    "blog_competitor_content_analysis_workflow": {
+      "name": "blog_competitor_content_analysis_workflow",
+      "version": null,
+      "inputs": {
+        "company_name": null
         },
       "user_documents_config_variables": {},
       "template_specific": false
