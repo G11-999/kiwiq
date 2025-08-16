@@ -357,7 +357,7 @@ class WorkflowRunnerNode(BaseDynamicNode):  # [WorkflowRunnerInput, WorkflowRunn
                         version_tag=workflow_version,
                         owner_org_id=org_id,
                         include_public=True,
-                        include_system_entities=True,
+                        include_system_entities=False,
                         include_public_system_entities=True,
                         user=user,
                     )
