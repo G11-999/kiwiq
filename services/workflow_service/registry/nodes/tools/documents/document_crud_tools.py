@@ -42,6 +42,7 @@ from db.session import get_async_db_as_manager
 from services.workflow_service.registry.nodes.tools.documents.document_crud_funcs import (
     DocumentIdentifier,
     DocumentListFilter,
+    ValueFilter,
     identify_document,
     build_list_query
 )
@@ -1184,6 +1185,7 @@ class DocumentViewerInputSchema(BaseDocumentInputSchema):
     - 'doc_key' OR 'namespace_of_doc_key': Filter by document type or namespace
     - Optional date filters: scheduled_date_range_start/end, created_at_range_start/end
     - Results are limited to 5 documents by default (max 10) for viewing purposes
+    - Optional exact value filtering with 'value_filter': a list of {key, value} pairs to match against the document data. Keys support dot-notation (e.g., 'metadata.category'). These are equality matches only and are merged with date filters when listing.
     
     Example Usage:
     1. View single document by name:
@@ -1205,10 +1207,15 @@ class DocumentViewerInputSchema(BaseDocumentInputSchema):
          scheduled_date_range_end: "2024-01-22T00:00:00Z"
        }
     
+    6. List concepts with exact value filters (optional):
+       list_filter: {doc_key: "concept"}
+       value_filter: [{"key": "status", "value": "published"}, {"key": "metadata.category", "value": "b2b"}]
+    
     Notes:
     - View context format: {"concept_45_2": {"docname": "actual_name", "version": "default"}}
     - Pagination may not be 100% accurate due to versioning metadata documents being filtered out
     - Results include both user-specific and shared documents
+    - value_filter is optional; omit it when you don't need additional equality filters
     """
     # Single document identification
     document_identifier: Optional[DocumentIdentifier] = Field(
@@ -1230,6 +1237,16 @@ class DocumentViewerInputSchema(BaseDocumentInputSchema):
             "- 'namespace_of_doc_key': To list all documents in a namespace\n"
             "Can also include date filters and pagination options.\n"
             "Use this for viewing multiple documents at once."
+        )
+    )
+
+    # Exact value filters to post-filter documents after RAG search
+    value_filter: Optional[List[ValueFilter]] = Field(
+        None,
+        description=(
+            "List of exact key/value filters to apply to full documents after listing, only used with list_filter. "
+            "Each item specifies a 'key' (dot-notation supported) and a 'value'. "
+            "Only documents whose contents contain all given key/value pairs will be returned."
         )
     )
     
@@ -1511,6 +1528,21 @@ class DocumentViewerTool(BaseNode[DocumentViewerInputSchema, DocumentViewerOutpu
                     value_filter["created_at"]["$gte"] = created_at_range_start
                 if created_at_range_end:
                     value_filter["created_at"]["$lte"] = created_at_range_end
+
+            # Merge exact value filters from input if provided (list of ValueFilter)
+            if input_data.value_filter:
+                try:
+                    explicit_value_filters_map = {vf.key: vf.value for vf in input_data.value_filter}
+                except Exception:
+                    explicit_value_filters_map = {}
+                for k, v in explicit_value_filters_map.items():
+                    # If the key already exists (e.g., created_at), only add if not a dict/range
+                    if k not in value_filter:
+                        value_filter[k] = v
+                    else:
+                        # Prefer explicit equality filters for non-date keys; keep ranges for date keys
+                        if not isinstance(value_filter[k], dict):
+                            value_filter[k] = v
             
             # Use search_documents from customer data service
             search_results = await customer_data_service.search_documents(
@@ -1607,6 +1639,10 @@ class DocumentSearchInputSchema(BaseDocumentInputSchema):
     Search Options:
     - 'limit': Maximum results to return (1-10, default 10)
     - 'offset': Skip results for pagination
+    - Optional exact value filtering with 'value_filter': a list of {key, value} pairs to match against the full
+      document contents after search. Keys support dot-notation (e.g., 'metadata.category'). These are equality
+      matches only. The tool over-fetches (up to 100 when 10 are requested) from RAG, fetches full docs as needed,
+      applies the filters, and returns up to 'limit' results that match.
     
     Example Usage:
     1. Search in specific document by name:
@@ -1625,9 +1661,15 @@ class DocumentSearchInputSchema(BaseDocumentInputSchema):
        search_query: "artificial intelligence"
        list_filter: {doc_key: "concept", created_at_range_start: "2024-01-01T00:00:00Z"}
     
+    5. Search concepts with value filters (optional post-filtering):
+       search_query: "Q4 goals"
+       list_filter: {doc_key: "concept"}
+       value_filter: [{"key": "status", "value": "published"}, {"key": "metadata.category", "value": "b2b"}]
+    
     Notes:
     - Search uses hybrid search (vector + keyword) for best results. Since vector search is used, relatively longer search queries may also be used for hybrid semantic search optionally.
     - Results include the entire document, content previews and relevance scores
+    - value_filter is optional; omit it when you don't need additional equality filters
     """
     # Search query
     search_query: str = Field(
@@ -1652,6 +1694,16 @@ class DocumentSearchInputSchema(BaseDocumentInputSchema):
             "- 'doc_key': To search all documents of a specific type\n"
             "- 'namespace_of_doc_key': To search all documents in a namespace\n"
             "Use this to search across many documents at once."
+        )
+    )
+
+    # Exact value filters to post-filter documents after RAG search
+    value_filter: Optional[List[ValueFilter]] = Field(
+        None,
+        description=(
+            "Optional list of exact key/value filters to apply to full documents after search. "
+            "Each item specifies a 'key' (dot-notation supported) and a 'value'. "
+            "Only documents whose contents contain all given key/value pairs will be returned."
         )
     )
 
@@ -1914,11 +1966,15 @@ class DocumentSearchTool(BaseNode[DocumentSearchInputSchema, DocumentSearchOutpu
 
                 
             
-            # Create RAG search request
+            # Create RAG search request (over-fetch if value_filter is provided)
+            rag_fetch_limit = input_data.limit
+            if input_data.value_filter:
+                rag_fetch_limit = 100 if input_data.limit <= 100 else input_data.limit
+
             rag_request = RAGSearchRequest(
                 query=input_data.search_query,
                 search_type=SearchType.HYBRID,  # Use hybrid search for best results
-                limit=input_data.limit,
+                limit=rag_fetch_limit,
                 offset=input_data.offset,
                 org_id=org_id,
                 user_id=user.id,
@@ -1950,6 +2006,16 @@ class DocumentSearchTool(BaseNode[DocumentSearchInputSchema, DocumentSearchOutpu
                     docs_chunks[doc_id] = []
                 docs_chunks[doc_id].append(rag_result)
             
+            # Prepare value_filter map if provided
+            value_filter_map: Optional[Dict[str, Any]] = None
+            if input_data.value_filter:
+                value_filter_map = {vf.key: vf.value for vf in input_data.value_filter}
+            # elif input_data.list_filter and getattr(input_data.list_filter, 'value_filter', None):
+            #     try:
+            #         value_filter_map = {vf.key: vf.value for vf in input_data.list_filter.value_filter}
+            #     except Exception:
+            #         value_filter_map = None
+
             # Process each document's chunks
             index = 1
             doc_results = []
@@ -1982,8 +2048,8 @@ class DocumentSearchTool(BaseNode[DocumentSearchInputSchema, DocumentSearchOutpu
                 avg_score = sum(c.score or 0.0 for c in chunks) / len(chunks) if chunks else 0.0
 
                 document_contents = None
-                if self.config.return_full_document_contents:                
-                    # Fetch full document content
+                # Fetch full document if requested or required for post-filtering
+                if self.config.return_full_document_contents or value_filter_map:
                     document_contents = await fetch_document_content(
                         document_info=doc_metadata,
                         customer_data_service=customer_data_service,
@@ -1995,7 +2061,39 @@ class DocumentSearchTool(BaseNode[DocumentSearchInputSchema, DocumentSearchOutpu
             
             # Sort results by score
             doc_results.sort(key=lambda x: x[0], reverse=True)
-            
+
+            # Apply post-filtering by value_filter if provided and limit the final size
+            if value_filter_map:
+                def _get_nested_value(payload: Any, dotted_key: str) -> Any:
+                    current = payload
+                    for part in dotted_key.split('.'):
+                        if isinstance(current, dict) and part in current:
+                            current = current[part]
+                        else:
+                            return None
+                    return current
+
+                filtered_results = []
+                for score, doc_metadata, content_preview, document_contents in doc_results:
+                    if document_contents is None:
+                        continue
+                    try:
+                        matches_all = True
+                        for k, v in value_filter_map.items():
+                            actual = _get_nested_value(document_contents, k)
+                            if actual != v:
+                                matches_all = False
+                                break
+                        if matches_all:
+                            if not self.config.return_full_document_contents:
+                                document_contents = None
+                            filtered_results.append((score, doc_metadata, content_preview, document_contents))
+                    except Exception:
+                        continue
+                doc_results = filtered_results[: input_data.limit]
+            # else:
+            #     doc_results = doc_results[: input_data.limit]
+
             # Build final results dictionary
             for score, doc_metadata, content_preview, document_contents in doc_results:
                 # Generate serial number
@@ -2063,6 +2161,9 @@ class ListDocumentsInputSchema(BaseDocumentInputSchema):
     - Date ranges: Filter by scheduled dates or creation dates
       * scheduled_date_range_start/end: For time-sensitive docs like briefs
       * created_at_range_start/end: Filter by when documents were created
+    - Optional exact value filtering with 'value_filter': a list of {key, value} pairs to match against the
+      document data. Keys support dot-notation (e.g., 'metadata.category'). These are equality matches only and
+      are merged with date filters internally. This is an additional convenience alongside date filters.
     
     Pagination:
     - 'limit': Number of documents to return (1-10, default 10)
@@ -2095,6 +2196,7 @@ class ListDocumentsInputSchema(BaseDocumentInputSchema):
     - Results include both user-specific and shared documents
     - Pagination may not be 100% accurate due to versioning metadata documents being filtered out
     - Dates should be in ISO format: YYYY-MM-DDTHH:MM:SSZ
+    - value_filter is optional; omit it when you don't need additional equality filters
     """
     # Required list filter
     list_filter: DocumentListFilter = Field(
@@ -2107,6 +2209,16 @@ class ListDocumentsInputSchema(BaseDocumentInputSchema):
             "- scheduled_date_range_start/end: Filter by scheduled dates (for briefs/posts)\n"
             "- created_at_range_start/end: Filter by creation dates\n"
             "Dates should be in ISO format: YYYY-MM-DDTHH:MM:SSZ"
+        )
+    )
+
+    # Exact value filters to post-filter documents after RAG search
+    value_filter: Optional[List[ValueFilter]] = Field(
+        None,
+        description=(
+            "List of exact key/value filters to apply to full documents during listing. "
+            "Each item specifies a 'key' (dot-notation supported) and a 'value'. "
+            "Only documents whose contents contain all given key/value pairs will be listed."
         )
     )
     
@@ -2278,6 +2390,21 @@ class ListDocumentsTool(BaseNode[ListDocumentsInputSchema, ListDocumentsOutputSc
                     value_filter["created_at"]["$gte"] = created_at_range_start
                 if created_at_range_end:
                     value_filter["created_at"]["$lte"] = created_at_range_end
+            
+            # Merge exact value filters from list_filter if provided
+            if input_data.value_filter:
+                try:
+                    explicit_value_filters_map = {vf.key: vf.value for vf in input_data.value_filter}
+                except Exception:
+                    explicit_value_filters_map = {}
+                for k, v in explicit_value_filters_map.items():
+                    # If the key already exists (e.g., created_at), only add if not a dict/range
+                    if k not in value_filter:
+                        value_filter[k] = v
+                    else:
+                        # Prefer explicit equality filters for non-date keys; keep ranges for date keys
+                        if not isinstance(value_filter[k], dict):
+                            value_filter[k] = v
             
             # Use search_documents from customer data service
             search_results = await customer_data_service.search_documents(

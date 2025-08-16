@@ -236,6 +236,29 @@ class DocumentIdentifier(BaseModel):
 
 # --- Schemas for Listing and Filtering ---
 
+class ValueFilter(BaseModel):
+    """
+    Exact key/value filter to apply when listing or searching documents.
+    Only documents whose contents contain all given key/value pairs will be returned / listed.
+    
+    - key: Document data key to match (supports dot-notation for nested fields)
+    - value: Exact value to match against the field
+    """
+    # --- Exact value filters ---
+    # These are applied as exact matches on document data fields (e.g., {"status": "published"}).
+    # Keys refer to top-level keys inside the stored JSON document (without the implicit "data." prefix).
+    # Only equality checks are supported here; for range/date filters, use the dedicated fields below.
+    #
+    # NOTE: For nested dictionaries, dot-notation is supported (e.g., "metadata.category").
+    # However, only equality comparisons are supported for nested paths as well.
+    # The storage client will receive a dict mapping keys to values and will construct the
+    # appropriate MongoDB filter as {f"data.{k}": v}.
+    #
+    # These filters will be merged with date-range filters when constructing the query for
+    # the underlying search in `ListDocumentsTool` / `DocumentViewerTool`.
+    key: str = Field(..., description="Document data key to match (dot-notation supported, e.g., 'metadata.category')")
+    value: Optional[Union[str, int, float, bool]] = Field(None, description="Exact value to match for the specified key")  # Any  Optional[Union[str, int, float, bool, Dict[str, Any], List[Union[str, Dict[str, Any], int, float, bool]]]]    
+
 class DocumentListFilter(BaseModel):
     """
     Combined schema for listing and filtering documents.
@@ -248,7 +271,7 @@ class DocumentListFilter(BaseModel):
         None, 
         description="Mention the doc key whose namespace will be used for filtering. This will automatically resolve the correct namespace including template vars, given the correct doc key."
     )
-    
+
     # Date range filters
     scheduled_date_range_start: Optional[datetime] = Field(
         None,
@@ -349,6 +372,10 @@ class DocumentListFilter(BaseModel):
             params["created_after"] = self.created_at_range_start
         if self.created_at_range_end:
             params["created_before"] = self.created_at_range_end
+        
+        # # Add exact value filters, if any
+        # if self.value_filter:
+        #     params["value_filter"] = {vf.key: vf.value for vf in self.value_filter}
         
         return params
 

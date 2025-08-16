@@ -34,27 +34,21 @@ from kiwi_client.test_run_workflow_client import (
 from kiwi_client.schemas.workflow_constants import WorkflowRunStatus
 
 # Import document model constants
-from kiwi_client.workflows.document_models.customer_docs import (
-    # User documents for testing
-    USER_DNA_DOCNAME,
-    USER_DNA_NAMESPACE_TEMPLATE,
-    USER_DNA_IS_VERSIONED,
-)
 
-from kiwi_client.workflows.llm_inputs.natural_language_editing import (
+from kiwi_client.workflows.deprecated.llm_inputs.natural_language_editing import (
     DOCUMENT_EDITING_SYSTEM_PROMPT,
     DOCUMENT_EDITING_USER_PROMPT_TEMPLATE,
     WORKFLOW_CONTROL_SCHEMA,
     DOCUMENTS_KEY_TO_DOCUMENT_CONFIG_MAPPING,
 )
 
-from kiwi_client.workflows.llm_inputs.natural_language_editing_all_schemas import (
+from kiwi_client.workflows.deprecated.llm_inputs.natural_language_editing_all_schemas import (
     ALL_DOCUMENT_SCHEMAS,
 )
 
 # Configuration constants
-LLM_PROVIDER = "anthropic"  # anthropic    openai
-LLM_MODEL = "claude-sonnet-4-20250514"  # o4-mini   gpt-4.1    claude-sonnet-4-20250514
+LLM_PROVIDER = "openai"  # anthropic    openai
+LLM_MODEL = "gpt-5"  # o4-mini   gpt-4.1    claude-sonnet-4-20250514   gpt-5
 TEMPERATURE = 0.7
 MAX_TOKENS = 2000
 MAX_TOOL_CALLS = 25  # Maximum total tool calls allowed
@@ -1331,9 +1325,18 @@ async def main_test_natural_language_editing():
             "name": "search system doc",
             "initial_inputs": {
                 "entity_username": test_entity_username,
+                "user_request": "Search all playbooks for 'Myth-busting posts' and also having key 'formats' with value 'Myth-busting posts'"
+            },
+        },
+
+        {
+            "name": "search system doc",
+            "initial_inputs": {
+                "entity_username": test_entity_username,
                 "user_request": "Search playbooks for 'Myth-busting posts'"
             },
         },
+        
 
         # {
         #     "name": "Show system doc",
@@ -1351,13 +1354,13 @@ async def main_test_natural_language_editing():
         #     },
         # },
 
-        {
-            "name": "Summarize future scheduled posts",
-            "initial_inputs": {
-                "entity_username": test_entity_username,
-                "user_request": ""
-            },
-        },
+        # {
+        #     "name": "Summarize future scheduled posts",
+        #     "initial_inputs": {
+        #         "entity_username": test_entity_username,
+        #         "user_request": ""
+        #     },
+        # },
 
         # {
         #     "name": "Edit strategy doc",
