@@ -1132,10 +1132,12 @@ async def list_runs(
 )
 async def get_run_logs(
     # Fetch run and ensure it belongs to active org
-    run: models.WorkflowRun = Depends(wf_deps.get_workflow_run_for_org),
+    # run: models.WorkflowRun = Depends(wf_deps.get_workflow_run_for_org),
+    run_id: uuid.UUID = Path(..., description="The ID of the workflow run"),
+    run_dao: wf_crud.WorkflowRunDAO = Depends(wf_deps.get_workflow_run_dao),
     db: AsyncSession = Depends(get_async_db_dependency),
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
-    current_user: User = Depends(wf_deps.RequireRunReadActiveOrg),
+    current_superuser: User = Depends(auth_deps.get_current_active_superuser),
     skip: int = Query(0, ge=0, description="Number of items to skip"),
     limit: int = Query(10000, ge=1, le=10000, description="Maximum number of items to return"),
 ):
@@ -1150,6 +1152,9 @@ async def get_run_logs(
     - Requires `run:read` permission on the active organization.
     """
     try:
+        run = await run_dao.get(db, id=run_id)
+        if not run:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workflow run not found")
         logs = await workflow_service.get_run_logs(
             db=db,
             run=run,
