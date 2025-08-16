@@ -23,6 +23,7 @@ from workflow_service.registry.nodes.db.customer_data import (
     LoadCustomerDataNode,
     StoreCustomerDataNode,
 )
+from workflow_service.registry.nodes.db.delete_customer_data_node import DeleteCustomerDataNode
 from workflow_service.registry.nodes.db.load_multiple_customer_node import (
     LoadMultipleCustomerDataNode,
 )
@@ -63,6 +64,7 @@ async def register_node_templates(db_registry: DBRegistry):
         LoadCustomerDataNode,
         StoreCustomerDataNode,
         LoadMultipleCustomerDataNode,
+        DeleteCustomerDataNode,
         # LLM
         LLMNode,
         PromptConstructorNode,

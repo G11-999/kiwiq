@@ -2606,6 +2606,10 @@ class CustomerDataService:
         limit: int = 1000,
         sort_by: Optional[schemas.CustomerDataSortBy] = None,
         sort_order: Optional[schemas.SortOrder] = schemas.SortOrder.DESC,
+        is_called_from_workflow: bool = False,
+        user: Optional[User] = None,
+        org_id: Optional[uuid.UUID] = None,
+        search_used_for_mutation: bool = False,
     ) -> List[schemas.CustomerDocumentSearchResult]:
         """
         System-level search for documents across all organizations and users.
@@ -2623,7 +2627,11 @@ class CustomerDataService:
             limit: Maximum number of documents to return (default: 1000)
             sort_by: Field to sort results by
             sort_order: Order to sort results (ASC or DESC)
-            
+            is_called_from_workflow: Whether this operation is called from a workflow
+            user: User object Optional
+            org_id: Organization ID Optional
+            search_used_for_mutation: Whether this search is used for a mutation operation on the resulting documents
+
         Returns:
             List of document search results without permission filtering
         """
@@ -2638,10 +2646,23 @@ class CustomerDataService:
             
             # Pattern for all organization documents (both shared and user-specific)
             # Format: [org_id, user_id, namespace, docname]
+            allowed_prefixes = None
+            
+            if user is not None:
+                allowed_prefixes = self._get_allowed_prefixes(
+                    org_id=org_id,
+                    user=user,
+                    is_mutation=search_used_for_mutation,  # Searching is not a mutation operation
+                    is_system_entity=False,  # Basic prefixes, specific system patterns added below
+                    is_called_from_workflow=is_called_from_workflow,
+                )
+                self.logger.debug(f"Allowed prefixes: {allowed_prefixes}")
+
             patterns.append(["*", "*", namespace_pattern, docname_pattern])
             
             # Also include system documents
-            patterns.append([CustomerDataService.SYSTEM_DOC_PLACEHOLDER, "*", namespace_pattern, docname_pattern])
+            if (user is None) or (user.is_superuser):
+                patterns.append([CustomerDataService.SYSTEM_DOC_PLACEHOLDER, "*", namespace_pattern, docname_pattern])
             
             # Define sort options
             sort_direction = 1 if sort_order == schemas.SortOrder.ASC else -1
@@ -2667,7 +2688,7 @@ class CustomerDataService:
                 key_pattern=key_patterns,
                 text_search_query=text_search_query,
                 value_filter=value_filter,
-                allowed_prefixes=None,  # No permission filtering for system searches
+                allowed_prefixes=allowed_prefixes,  # No permission filtering for system searches
                 skip=skip,
                 limit=limit,
                 value_sort_by=value_sort_by
