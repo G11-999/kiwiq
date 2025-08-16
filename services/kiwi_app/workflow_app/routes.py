@@ -147,8 +147,8 @@ async def get_node_template(
     """
     # NOTE: if we disallow this, non superusers will not be able to modify workflow configs since they won't know what to validate!
     # # NOTE: workflow builder is not available publically so only allow superusers to list node templates!
-    # if not user.is_superuser:
-    #     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Node templates are not accessible to regular users before workflow builder is released.")
+    if not user.is_superuser:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Node templates are not accessible to regular users before workflow builder is released.")
     try:
         # NOTE: this can only be implemented via the registry!
         if version == "latest":
@@ -749,6 +749,8 @@ async def list_workflows(
 
     NOTE: when a user modifies configuration of a system workflow to execute it, it needs to be saved as a new workflow here!
     """
+    if not current_user.is_superuser:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Workflows are not accessible to regular users before workflow builder is released.")
     try:
         list_org_id = active_org_id
         # Allow superuser to list workflows for other orgs
@@ -821,7 +823,13 @@ async def search_workflows(
             user=current_user
         )
         workflow_logger.info(f"User {current_user.id} searched for workflows with name '{search_params.name}' in org {active_org_id}")
-        return workflows
+        schema_workflows = []
+        for workflow in workflows:
+            workflow_schema_obj = schemas.WorkflowRead(**workflow.model_dump())
+            if not current_user.is_superuser:
+                workflow_schema_obj.graph_config = {}
+            schema_workflows.append(workflow_schema_obj)
+        return schema_workflows
     except Exception as e:
         workflow_logger.error(f"Error searching workflows for org {active_org_id}: {str(e)}", exc_info=True)
         if isinstance(e, HTTPException):
@@ -853,7 +861,10 @@ async def get_workflow(
     # include_system_entities = False
     # if current_user.is_superuser:
     #     include_system_entities = True
+    
     include_system_entities = True
+    if not current_user.is_superuser:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Workflows are not accessible to regular users before workflow builder is released.")
     try:
         workflow = await workflow_service.get_workflow(
             db=db,
@@ -1292,6 +1303,8 @@ async def get_run_stream(
     - Supports pagination using `skip` and `limit`.
     - Requires `run:read` permission on the active organization.
     """
+    if not current_user.is_superuser:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Workflow run event stream is not accessible to regular users before workflow builder is released.")
     try:
         # Dependency handles fetch and access check
         events = await workflow_service.get_run_stream(db=db, run=run,

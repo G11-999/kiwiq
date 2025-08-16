@@ -622,13 +622,26 @@ class WorkflowService:
             # NOTE: TODO: FIXME: this is a compound index in mongo DB which is most efficient for hierarchical retrieval, so it may make sense for setting up the prefix keys too!
             mongo_runs_events_pattern = ["*", "*", str(run.id), "*"]
 
+            allowed_event_schemas = [event_schemas.WorkflowRunNodeOutputEvent, event_schemas.WorkflowRunStatusUpdateEvent]
+            allowed_event_keys = set()
+            for event_schema in allowed_event_schemas:
+                allowed_event_keys.update(list(event_schema.model_fields.keys()))
+            
+            if not user.is_superuser:
+                if "payload" in allowed_event_keys:
+                    allowed_event_keys.remove("payload")
+
+            include_fields = [f"data.{k}" for k in allowed_event_keys]
+            allowed_event_types = [event_schemas.WorkflowEvent.NODE_OUTPUT.value, event_schemas.WorkflowEvent.WORKFLOW_RUN_STATUS.value]
+
             # Find all events for this run, sorted by sequence number, respecting permissions
             event_dicts = await self.mongo_client.search_objects(
                 key_pattern=mongo_runs_events_pattern,
                 # filter_query={}, # Get all events for the run
                 value_sort_by=[("timestamp", -1), ("sequence_i", -1)], # Sort by timestamp descending, then sequence descending
                 allowed_prefixes=allowed_prefixes, # Apply permission check
-                value_filter={"event_type": {"$in": [event_schemas.WorkflowEvent.NODE_OUTPUT.value, event_schemas.WorkflowEvent.WORKFLOW_RUN_STATUS.value]}}
+                value_filter={"event_type": {"$in": allowed_event_types}},
+                include_fields=include_fields,
             )
 
             # Validate and structure events

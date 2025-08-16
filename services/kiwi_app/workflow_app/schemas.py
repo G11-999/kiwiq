@@ -416,7 +416,7 @@ class BaseSearchQuery(BaseModel):
     name: str = Field(..., description="Name of the Entity to search for")
     include_public: bool = Field(True, description="Include public entities in the results")
     include_system_entities: bool = Field(False, description="Include system entities (superuser only)")
-    include_public_system_entities: bool = Field(False, description="Include public system entities")
+    include_public_system_entities: bool = Field(True, description="Include public system entities")
     sort_by: SearchSortBy = Field(SearchSortBy.CREATED_AT, description="Field to sort by")
     sort_order: SortOrder = Field(SortOrder.DESC, description="Sort order ('asc' or 'desc'). Note: SELF_OWNED_FIRST sort order is always OWNED entities first.")
 

@@ -9,6 +9,7 @@ from enum import Enum
 
 from kiwi_app.workflow_app.constants import WorkflowRunStatus
 
+
 class WorkflowEvent(str, Enum):
     NODE_OUTPUT = "node_output"
     MESSAGE_CHUNK = "message_chunk"
@@ -29,12 +30,13 @@ class WorkflowBaseEvent(BaseModel):
     timestamp: Optional[datetime] = None
     payload: Optional[Dict[str, Any]] = None
 
+
 class HITLRequestEvent(WorkflowBaseEvent):
     """Event emitted when a node outputs data."""
     event_type: WorkflowEvent = WorkflowEvent.HITL_REQUEST
     request_data_schema: Dict[str, Any]
     user_prompt: Dict[str, Any]
-    
+
 
 class WorkflowRunNodeOutputEvent(WorkflowBaseEvent):
     """Event emitted when a node outputs data."""
@@ -53,6 +55,7 @@ class MessageStreamChunk(WorkflowBaseEvent):
     """Event emitted when a node outputs a message chunk."""
     event_type: WorkflowEvent = WorkflowEvent.MESSAGE_CHUNK
     message: AnyMessage
+
 
 class WorkflowRunStatusUpdateEvent(WorkflowBaseEvent):
     """Event emitted when a workflow run status changes."""
