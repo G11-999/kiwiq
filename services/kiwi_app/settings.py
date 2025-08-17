@@ -108,7 +108,7 @@ class Settings(GlobalSettings):
     CSRF_TOKEN_HEADER_NAME: str = "X-XSRF-TOKEN"
     CSRF_TOKEN_LENGTH: int = 32  # Length in bytes for token generation
     COOKIE_SECURE: bool = global_settings.APP_ENV in ["PROD", "STAGE"] # Set to False for local HTTP development ONLY
-    COOKIE_DOMAIN: Optional[str] = ".kiwiq.ai" if global_settings.APP_ENV in ["PROD", "STAGE"] else None
+    COOKIE_DOMAIN: Optional[str] = "beta.kiwiq.ai" if global_settings.APP_ENV in ["PROD", "STAGE"] else None
     COOKIE_HTTPONLY: bool = True
     COOKIE_SAMESITE: str = "lax" # Or "strict"
 
