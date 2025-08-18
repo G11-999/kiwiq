@@ -1637,7 +1637,8 @@ class StoreCustomerDataNode(BaseDynamicNode):
 
 
         if any_failures:
-             self.warning("One or more documents failed to store or were skipped.")
+            #  self.error("One or more documents failed to store or were skipped.")
+             raise Exception("One or more documents failed to store or were skipped.")
 
         # Instantiate output using class reference
         output_cls = self.__class__.output_schema_cls

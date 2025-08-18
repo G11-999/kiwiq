@@ -79,6 +79,7 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
     
     dynamic_schemas: ClassVar[bool] = False
     node_is_tool: ClassVar[bool] = False
+    node_default_timeout_seconds: ClassVar[int] = 3600
     # Schema class references to be overridden by subclasses
     input_schema_cls: ClassVar[Optional[Type[InputSchemaT]]] = None
     output_schema_cls: ClassVar[Optional[Type[OutputSchemaT]]] = None
@@ -418,7 +419,7 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
 
             # Process the input data
             if self.prefect_mode:
-                output_data = await task(name=f"Node Name: `{self.node_name}` - Node ID: `{self.node_id}`", cache_policy=NO_CACHE)(self.process)(input_data, config, *args, **kwargs)
+                output_data = await task(name=f"Node Name: `{self.node_name}` - Node ID: `{self.node_id}`", cache_policy=NO_CACHE, timeout_seconds=self.__class__.node_default_timeout_seconds)(self.process)(input_data, config, *args, **kwargs)
             else:
                 output_data = await self.process(input_data, config, *args, **kwargs)
             # print("\n\n\n\n#### output_data (in run)", output_data, "\n\n\n\n")
