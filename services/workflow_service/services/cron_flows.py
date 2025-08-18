@@ -99,8 +99,9 @@ DEFAULT_INGESTION_DOCUMENT_PATTERNS = [
     
     # Blog content creation and delivery documents
     ("blog_spark_delivery_*", "*"),
-    ("blog_content_creation_*", "*"),
-    ("blog_posts_draft_*", "blog_post_draft_*"),
+    ("blog_ideas_namespace_*", "*"),
+    ("blog_brief_namespace_*", "*"),
+    ("blog_posts_draft_namespace_*", "blog_post_draft_*"),
     
     # System strategy documents (important for RAG context)
     ("blog_playbook_sys", "*"),
