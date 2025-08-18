@@ -210,7 +210,7 @@ class ScrapingSettings(Settings):
     # Billing configuration
     AI_ANSWER_ENGINE_PRICE_PER_QUERY: float = 0.03  # 3 cents per query (any provider)
     CRAWLER_SCRAPER_PRICE_PER_URL: float = 0.003  # 1 cent / 5 URLs = 0.2 cents per URL
-    CLEANUP_SCRAPELESS_REDIS_POOL_ON_STARTUP: bool = True
+    CLEANUP_SCRAPELESS_REDIS_POOL_ON_STARTUP: bool = False
 
     # Blog classifier configuration
     # Default OpenAI model used for the blog classifier. Must support structured output.
