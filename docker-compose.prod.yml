@@ -232,12 +232,14 @@ services:
       - prod_network
     command: |
       mongod
-      --wiredTigerCacheSizeGB=5              # ⬆️ from 2.5GB (optimized for 8GB memory)
+      --wiredTigerCacheSizeGB=5
       --wiredTigerJournalCompressor=snappy
       --wiredTigerCollectionBlockCompressor=snappy
       --journalCommitInterval=50
-      --maxConns=800                         # ⬆️ from 200 (4x for 60 concurrent workflows)
+      --maxConns=800
       --quiet
+    # ⬆️ from 2.5GB (optimized for 8GB memory)
+    # ⬆️ from 200 (4x for 60 concurrent workflows) 
     # No ports exposed externally
     # Optional: Add basic healthcheck for Mongo if needed
     # healthcheck:
