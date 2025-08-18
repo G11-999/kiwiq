@@ -150,7 +150,7 @@ DELETE_BY_PATTERN_URL = f"{CUSTOMER_DATA_BASE_URL}/delete-by-pattern"
 WS_RUN_BASE_URL = lambda run_id: API_BASE_URL.replace("https", "wss").replace("http", "ws") + f"/ws/runs/{run_id}"
 # WS_NOTIFICATIONS_URL = API_BASE_URL.replace("https", "wss").replace("http", "ws") + "/ws/notifications"
 WS_NOTIFICATIONS_URL = API_BASE_URL.replace("https", "wss").replace("http", "ws") + "/ws/notifications"
-
+# print(WS_NOTIFICATIONS_URL)
 # --- URL Definitions ---
 # These should ideally come from test_config.py or a shared configuration module.
 # For demonstration, they are constructed here.

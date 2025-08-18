@@ -362,7 +362,8 @@ class InteractiveWorkflowRunClient:
         timeout_sec: int = 300,
         stream_intermediate_results: bool = False,
         on_behalf_of_user_id: Optional[uuid.UUID] = None,
-        thread_id: Optional[uuid.UUID] = None
+        thread_id: Optional[uuid.UUID] = None,
+        tag: Optional[str] = None
     ) -> Tuple[Optional[wf_schemas.WorkflowRunRead], Optional[Dict[str, Any]]]:
         """
         Submits a workflow run and monitors its execution until completion,
@@ -396,6 +397,7 @@ class InteractiveWorkflowRunClient:
                                  used by superusers/admins to perform operations as if they
                                  were another user.
             thread_id: Optional thread ID to resume from existing thread to retain message history.
+            tag: Optional tag to associate with the workflow run.
 
         Returns:
             A tuple containing:
@@ -472,7 +474,8 @@ class InteractiveWorkflowRunClient:
                 workflow_id=workflow_id_to_run, 
                 inputs=inputs,
                 on_behalf_of_user_id=on_behalf_of_user_id,
-                thread_id=thread_id
+                thread_id=thread_id,
+                tag=tag
             )
             if not submitted_run:
                 logger.error(f"Failed to submit initial workflow run for workflow {workflow_id_to_run}.")
@@ -669,7 +672,8 @@ async def run_workflow_test(
     poll_interval_sec: int = 3,
     timeout_sec: int = 600,
     on_behalf_of_user_id: Optional[uuid.UUID] = None,
-    thread_id: Optional[uuid.UUID] = None
+    thread_id: Optional[uuid.UUID] = None,
+    tag: Optional[str] = None
 ) -> Tuple[Optional[wf_schemas.WorkflowRunRead], Optional[Dict[str, Any]]]:
     """
     Runs a complete workflow test, including setup, execution, validation, and cleanup.
@@ -727,6 +731,7 @@ async def run_workflow_test(
                              used by superusers/admins to perform operations as if they
                              were another user.
         thread_id: Optional thread ID to resume from existing thread to retain message history.
+        tag: Optional tag to associate with the workflow run.
 
     Returns:
         A tuple containing:
@@ -1143,7 +1148,8 @@ async def run_workflow_test(
                 timeout_sec=timeout_sec,
                 stream_intermediate_results=stream_intermediate_results,
                 on_behalf_of_user_id=on_behalf_of_user_id,
-                thread_id=thread_id
+                thread_id=thread_id,
+                tag=tag
             )
 
             # --- 3. Validation Phase --- #

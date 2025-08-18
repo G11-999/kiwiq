@@ -81,6 +81,7 @@ class WorkflowRunTestClient:
                          on_behalf_of_user_id: Optional[Union[str, uuid.UUID]] = None,
                          thread_id: Optional[Union[str, uuid.UUID]] = None,
                          streaming_mode: Optional[bool] = True,
+                         tag: Optional[str] = None,
                          ) -> Optional[wf_schemas.WorkflowRunRead]:
         """
         Tests submitting a new workflow run via POST /runs/.
@@ -99,6 +100,7 @@ class WorkflowRunTestClient:
             on_behalf_of_user_id (Optional[Union[str, uuid.UUID]]): User ID to act on behalf of (requires superuser privileges).
             thread_id (Optional[Union[str, uuid.UUID]]): Thread ID to resume from existing thread to retain message history.
             streaming_mode (Optional[bool]): Whether to stream the LLM tokens.
+            tag (Optional[str]): Optional tag to associate with the workflow run.
 
         Returns:
             Optional[wf_schemas.WorkflowRunRead]: The parsed and validated response body of the submitted run
@@ -137,6 +139,11 @@ class WorkflowRunTestClient:
             payload["thread_id"] = str(thread_id)  # Ensure string for JSON
             logger.info(f"Run will be submitted with thread ID: {thread_id}")
 
+        # Add tag to payload if provided
+        if tag:
+            payload["tag"] = tag
+            logger.info(f"Run will be submitted with tag: {tag}")
+
         try:
             # Endpoint returns 202 Accepted, body contains WorkflowRunRead schema
             response = await self._client.post(RUNS_URL, json=payload)
@@ -169,9 +176,11 @@ class WorkflowRunTestClient:
                         skip: int = 0,
                         limit: int = 10,
                         workflow_id: Optional[Union[str, uuid.UUID]] = None,
+                        workflow_name: Optional[str] = None,
                         status: Optional[WorkflowRunStatus] = None,
                         triggered_by_user_id: Optional[Union[str, uuid.UUID]] = None,
-                        owner_org_id: Optional[Union[str, uuid.UUID]] = None # For superuser testing
+                        owner_org_id: Optional[Union[str, uuid.UUID]] = None, # For superuser testing
+                        tag: Optional[str] = None
                         ) -> Optional[List[wf_schemas.WorkflowRunRead]]:
         """
         Tests listing workflow runs via GET /runs/.
@@ -182,9 +191,11 @@ class WorkflowRunTestClient:
             skip (int): Number of runs to skip.
             limit (int): Maximum number of runs to return.
             workflow_id (Optional[Union[str, uuid.UUID]]): Filter by workflow ID.
+            workflow_name (Optional[str]): Filter by workflow name.
             status (Optional[WorkflowRunStatus]): Filter by run status.
             triggered_by_user_id (Optional[Union[str, uuid.UUID]]): Filter by user ID (requires superuser for others).
             owner_org_id (Optional[Union[str, uuid.UUID]]): Filter by org ID (requires superuser).
+            tag (Optional[str]): Filter by tag associated with the workflow run.
 
         Returns:
             Optional[List[wf_schemas.WorkflowRunRead]]: A list of parsed and validated workflow runs,
@@ -194,9 +205,11 @@ class WorkflowRunTestClient:
         # Prepare query parameters matching schemas.WorkflowRunListQuery
         params: Dict[str, Any] = {"skip": skip, "limit": limit}
         if workflow_id: params["workflow_id"] = str(workflow_id)
+        if workflow_name: params["workflow_name"] = workflow_name
         if status: params["status"] = status.value
         if triggered_by_user_id: params["triggered_by_user_id"] = str(triggered_by_user_id)
         if owner_org_id: params["owner_org_id"] = str(owner_org_id)
+        if tag: params["tag"] = tag
 
         try:
             # Endpoint returns 200 OK, body is List[WorkflowRunRead]
