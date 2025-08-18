@@ -1,5 +1,6 @@
 import asyncio
 import random
+from typing import Optional
 # from workflow_service.services.scraping.settings import scraping_settings
 from playwright.async_api import Page, BrowserContext, Browser, ElementHandle
 from time import monotonic
@@ -46,7 +47,7 @@ class BaseBrowserActor:
         # print(f"Clicked at position: ({click_x}, {click_y})")
         # print(f"Random offset applied: {random_offset} pixels")
 
-    async def wait_and_click(self, selector: str, timeout: int = 30000) -> str:
+    async def wait_and_click(self, selector: str, timeout: int = 30000, delay: Optional[int] = None) -> str:
         """
         Wait for a CSS selector to appear then click it.
 
@@ -65,7 +66,7 @@ class BaseBrowserActor:
             # TODO: wait for some other event or use playwright's code to find selector instead since this sometimes don't trigger or use force click!
 
             await self.page.wait_for_selector(selector, timeout=timeout)
-            await self.page.click(selector, delay=random.randint(5, 10))  # , timeout=timeout
+            await self.page.click(selector, delay=delay or random.randint(5, 10))  # , timeout=timeout
             return self.page.url
         except Exception as e:
             raise Exception(f"Failed to click selector '{selector}': {e}")

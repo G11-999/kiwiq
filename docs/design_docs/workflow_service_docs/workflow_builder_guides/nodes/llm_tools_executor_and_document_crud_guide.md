@@ -64,7 +64,8 @@ The `ToolExecutorNode` offers extensive configuration to control how tools are e
             },
             "map_executor_input_fields_to_tool_input": true, // Override global mapping
             "mappings": {                  // Custom field mappings
-              "user_id": "entity_username",
+              "user_id": "entity_username",   // or map to company_name for blog/company docs
+              "company": "company_name",
               "context": "view_context"
             }
           }
@@ -113,7 +114,7 @@ The Tool Executor receives tool calls and additional context:
 - **Additional Fields**: Any extra fields you provide will be mapped to tool inputs if field mapping is enabled
 
 **Critical for Document Tools:**
-- **`entity_username`** (str): Required by document tools, automatically mapped from workflow state
+- **`entity_username`** (str) / **`company_name`** (str): One of these is required by document tools depending on document family (LinkedIn/user vs blog/company). Automatically mapped from workflow state.
 - **`view_context`** (Dict): Document serial number mappings, automatically mapped from workflow state
 
 ### Tool Call Format
@@ -325,6 +326,7 @@ The following example shows a complete AI agent workflow that uses the Tool Exec
       "mappings": [
         {"src_field": "latest_tool_calls", "dst_field": "tool_calls"},
         {"src_field": "entity_username", "dst_field": "entity_username"},
+        {"src_field": "company_name", "dst_field": "company_name"},
         {"src_field": "view_context", "dst_field": "view_context"}
       ]
     },
@@ -346,13 +348,14 @@ The following example shows a complete AI agent workflow that uses the Tool Exec
 
 **1. Context Mapping for Document Tools:**
 ```json
-// Document tools require entity_username and view_context
+// Document tools require entity_username/company_name and view_context
 // These are hidden from LLM but provided by workflow
 {
   "src_node_id": "$graph_state",
   "dst_node_id": "tool_executor", 
   "mappings": [
     {"src_field": "entity_username", "dst_field": "entity_username"},
+    {"src_field": "company_name", "dst_field": "company_name"},
     {"src_field": "view_context", "dst_field": "view_context"}
   ]
 }
@@ -753,7 +756,7 @@ The workflow system includes several built-in document management tools:
     "default_timeout": 30.0,
     "max_concurrent_executions": 3,     // Balanced for document I/O
     "continue_on_error": true,           // Don't stop entire workflow on single failure
-    "map_executor_input_fields_to_tool_input": true  // Auto-pass entity_username and view_context
+    "map_executor_input_fields_to_tool_input": true  // Auto-pass entity_username/company_name and view_context
   },
   // State management for multi-turn conversations
   "metadata": {
@@ -903,11 +906,14 @@ Based on production usage, here are common issues and solutions:
 
 **Missing Context Fields:**
 ```
-Problem: "Tool 'edit_document' failed: Missing required field 'entity_username'"
-Solution: Ensure field mapping is enabled and state provides entity_username:
+Problem: "Tool 'edit_document' failed: Missing required field 'entity_username' or 'company_name'"
+Solution: Ensure field mapping is enabled and state provides the appropriate context field:
 {
   "map_executor_input_fields_to_tool_input": true,
-  "mappings": [{"src_field": "entity_username", "dst_field": "entity_username"}]
+  "mappings": [
+    {"src_field": "entity_username", "dst_field": "entity_username"},
+    {"src_field": "company_name", "dst_field": "company_name"}
+  ]
 }
 ```
 
@@ -958,7 +964,7 @@ Based on the real natural language editing workflow:
 
 ## Notes for Product Teams
 
-- **Field Mapping is Critical**: Document tools require `entity_username` and `view_context` - these are automatically mapped from workflow state
+- **Field Mapping is Critical**: Document tools require `entity_username` or `company_name` (depending on doc family) and `view_context` - these are automatically mapped from workflow state
 - **State Management**: Use `$graph_state` with `merge_dicts` reducer for `view_context` to maintain document references across iterations
 - **HITL is Essential**: Production workflows need human approval for document edits - users expect to review changes
 - **Serial Numbers**: Document tools use a serial number system (`content_pillars_doc_1`) to reference documents across conversation turns

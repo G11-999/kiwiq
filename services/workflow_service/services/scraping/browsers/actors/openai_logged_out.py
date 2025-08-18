@@ -46,8 +46,12 @@ class OpenAIBrowserActor(BaseBrowserActor):
         stable_iterations    = 0
         STABLE_REQUIRED      = 2           # need the same length twice in a row
 
+        retry_count = 0
         while True:
             if await self.retry_button(timeout=3000):
+                retry_count += 1
+                if retry_count > 3:
+                    raise Exception("Too many retries, giving up this session")
                 continue
             await self.stay_logged_out(timeout=close_popup_after_timeout)
             

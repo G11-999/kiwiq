@@ -23,27 +23,229 @@ class PerplexityBrowserActor(BaseBrowserActor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
     
-    async def close_popup(self, timeout=1000) -> bool:
+    async def close_popup(self, timeout=5000, popup: bool = True, popup_floater: bool = True) -> tuple[bool, bool]:
         """
         Attempts to close any popup that might appear on Perplexity.
         
         Returns:
             bool: True if a popup was found and closed, False otherwise.
         """
+        closed_popup = False
+        closed_popup_floater = False
+        if popup:
+            try:
+                # Wait a short time for popup to potentially appear
+                await self.wait_and_click(PERPLEXITY_SELECTORS["close_popup"], timeout=timeout, delay=50)  # , timeout=timeout
+                closed_popup = True
+            except Exception as e:
+                # No popup found or couldn't close it - this is fine
+                self.logger.error(f"Error closing popup: {e}", exc_info=True)
+        
+        if popup_floater:
+            try:
+                # Wait a short time for popup to potentially appear
+                await self.wait_and_click(PERPLEXITY_SELECTORS["close_popup_floater"], timeout=timeout, delay=50)
+                closed_popup_floater = True
+            except Exception as e:
+                # No popup found or couldn't close it - this is fine
+                self.logger.error(f"Error closing FLOATING popup: {e}", exc_info=True)
+        
+        return closed_popup, closed_popup_floater
+
+    async def wait_for_generation_start(
+        self,
+        timeout: float = 30.0,
+    ) -> bool:
+        """
+        Wait until Perplexity starts generating a response.
+
+        Strategy:
+        - Wait for presence of a div with class "prose" which wraps the streaming
+          answer content in Perplexity UI.
+
+        Args:
+            timeout: Maximum seconds to wait before giving up.
+
+        Returns:
+            True when the response container appears.
+
+        Raises:
+            TimeoutError if the response container is not detected within `timeout`.
+        """
         try:
-            # Wait a short time for popup to potentially appear
-            await self.page.wait_for_selector(PERPLEXITY_SELECTORS["close_popup"], timeout=timeout)
-            await self.page.click(PERPLEXITY_SELECTORS["close_popup"], delay=random.randint(5, 10))  # , timeout=timeout
+            # Use Playwright to wait for any element with class 'prose'
+            # which indicates the answer content is rendering/streaming.
+            await self.page.wait_for_selector(PERPLEXITY_SELECTORS["answer_marker"], timeout=int(timeout * 1000))
             return True
         except Exception as e:
-            # No popup found or couldn't close it - this is fine
-            self.logger.error(f"Error closing popup: {e}", exc_info=True)
-            return False
+            raise TimeoutError(f"Did not detect Perplexity response container ({PERPLEXITY_SELECTORS['answer_marker']}) in time: {e}")
+
+    async def scroll_to_bottom_once(self) -> None:
+        """
+        Scroll to the bottom of the page one time.
+
+        Useful for revealing toolbars like the Copy button that are positioned
+        near the turn footer.
+        """
+        try:
+            await self.page.evaluate("() => window.scrollTo(0, document.body.scrollHeight)")
+        except Exception as e:
+            self.logger.info(f"Single scroll to bottom failed (non-fatal): {e}")
+
+    def parse_links_and_citations_from_copied_text(self, copied_text: str) -> tuple[list[dict], dict[str, str]]:
+        """
+        Parse numbered link references from copied text and build citations that
+        correspond only to the numbers shown to the left of each URL.
+
+        Expected trailing format:
+            [1] https://example.com/foo
+            [2] https://another.example/bar
+
+        Returns:
+            (links, citations)
+            - links: list of dicts with keys: url
+            - citations: list of bracketed reference numbers, e.g., ["[1]", "[2]"]
+              in the same order as the links list so they can be joined later by
+              citation indices in text.
+
+        Note:
+            We intentionally do NOT parse other inline citations from the body.
+            Only the explicit reference list at the end is used to build citations.
+        """
+        if not copied_text:
+            return [], []
+
+        # Build mapping and ordered list from reference number to URL from the
+        # reference list at the end, preserving original order of appearance.
+        ref_pattern = re.compile(r"^\[(\d+)\]\s+(https?://\S+)", re.MULTILINE)
+        num_to_url: dict[str, str] = {}
+        ref_order: list[str] = []
+        for match in ref_pattern.finditer(copied_text):
+            ref_num = match.group(1).strip()
+            url = match.group(2).strip()
+            # Strip trailing punctuation that might be captured
+            url = url.rstrip(').,;')
+            num_to_url[ref_num] = url
+            ref_order.append(ref_num)
+
+        # Construct links in the same order as their reference numbers
+        links: list[dict] = []
+        for ref_num in ref_order:
+            url = num_to_url.get(ref_num, "")
+            if not url:
+                continue
+            try:
+                links.append({
+                    "url": url,
+                })
+            except Exception:
+                continue
+
+        # Citations strictly derived from the reference list, formatted with brackets
+        citations = num_to_url
+
+        return links, citations
+
+    async def extract_via_copy_button_after_start(
+        self,
+        query: str,
+        wait_timeout: int = 10,
+        copied: bool = False,
+        iteration: int = 0,
+    ) -> tuple[Optional[Dict[str, str]], bool]:
+        """
+        Extraction strategy: once generation starts, scroll to bottom once, then
+        wait for the Copy button and click it. Attempt to read the copied content
+        from clipboard and return it.
+
+        This does not wait for response completion; it captures whatever is
+        available at click time. Upstream callers may still fall back to the
+        DOM-based stable extraction for a complete answer.
+
+        Args:
+            query: The user query associated with this answer.
+            wait_timeout: Timeout (s) to wait for the Copy button.
+
+        Returns:
+            A dict payload conforming to the existing extraction format, or None
+            if clipboard read fails or button is not found.
+            Copied: True if the copy button was clicked, False otherwise.
+        """
+        try:
+            # 1) Wait for any signal that generation has started
+            if not iteration:
+                await self.wait_for_generation_start()
+
+            # 2) Reveal tools that may sit near the footer
+            await self.scroll_to_bottom_once()
+
+            # 3) Wait for and click the Copy button
+            if not copied:
+                try:
+                    # await self.page.wait_for_selector(PERPLEXITY_SELECTORS["copy_button"], timeout=int(wait_timeout * 1000))
+                    await self.wait_and_click(PERPLEXITY_SELECTORS["copy_button"], timeout=int(wait_timeout * 1000), delay=50)
+                    copied = True
+                    await self.wait_for_seconds(1)
+                except Exception as e:
+                    self.logger.info(f"Copy button not found/clickable yet: {e}")
+                    return None, copied
+            
+            # raw_html  = await self.page.evaluate("() => document.documentElement.outerHTML")
+            # full_html = "<!DOCTYPE html>\n" + raw_html
+
+            # 4) Brief pause to allow clipboard operation to resolve
+            
+
+            # 5) Try to read copied content from clipboard
+            try:
+                # self.logger.info(f"Attempting to read clipboard...")
+                copied_text = await self.page.evaluate(
+                    """
+                    async () => {
+                        try {
+                            const text = await navigator.clipboard.readText();
+                            return (text || '').trim();
+                        } catch (err) {
+                            // console.error('navigator.clipboard.readText failed', err);
+                            return '';
+                        }
+                    }
+                    """
+                )
+                if not copied_text:
+                    self.logger.info(f"Clipboard read failed!")
+                # else:
+                #     self.logger.info(f"Copied SUCCESS: {copied_text}")
+            except Exception as e:
+                self.logger.info(f"Clipboard read failed: {e}")
+                copied_text = ""
+
+            if copied_text:
+                links, citations = self.parse_links_and_citations_from_copied_text(copied_text)
+                payload = {
+                    "query": query,
+                    "text": copied_text,
+                    "html": "",
+                    "links": links,
+                    "citations": citations,
+                    "markdown": copied_text,
+                }
+                return payload, copied
+
+            return None, copied
+
+        except Exception as e:
+            # Do not fail the overall flow if this quick strategy fails
+            self.logger.info(f"Copy-button extraction strategy failed (non-fatal): {e}")
+            return None, copied
 
     async def wait_until_perplexity_response_complete(
         self,
-        poll_every: float = 8.0,
+        query: Optional[str] = None,
+        poll_every: float = 2.0,
         timeout: float = 200.0,
+        closed_popup: bool = False,
+        closed_popup_floater: bool = False,
     ) -> List[Dict[str, str]]:
         """
         Poll `extract_response_from_perplexity_page()` until the combined
@@ -53,8 +255,11 @@ class PerplexityBrowserActor(BaseBrowserActor):
         Prints a short status line each time new content appears.
 
         Args:
+            query:      the query that was sent to Perplexity.
             poll_every: seconds between polls.
             timeout:    maximum seconds to wait.
+            closed_popup:       True if the popup was closed, False otherwise.
+            closed_popup_floater: True if the floating popup was closed, False otherwise.
 
         Returns:
             Final list of answer segment dictionaries with 'text', 'html', 'links', and 'citations' keys.
@@ -68,35 +273,46 @@ class PerplexityBrowserActor(BaseBrowserActor):
         STABLE_REQUIRED     = 2      # must see same length twice
 
         self.logger.debug(" Waiting for Perplexity to finish streaming…")
+        copied = False
+        # closed_popup = False
+        # closed_popup_floater = False
+        iteration = 0
 
         while True:
             
             # 1. grab full HTML
-            raw_html  = await self.page.evaluate("() => document.documentElement.outerHTML")
-            full_html = "<!DOCTYPE html>\n" + raw_html
-            self.logger.info(f"full_html extracted!")
-            segments = await asyncio.to_thread(self.extract_response_from_perplexity_page, full_html)
-            self.logger.info(f"segments extracted!")
+            # raw_html  = await self.page.evaluate("() => document.documentElement.outerHTML")
+            # full_html = "<!DOCTYPE html>\n" + raw_html
+            # self.logger.info(f"full_html extracted!")
+            if (not closed_popup_floater) or (not closed_popup):
+                closed_popup, closed_popup_floater = await self.close_popup(popup=(not closed_popup), popup_floater=(not closed_popup_floater))
+                # overwrite closed_popup, we don't want to try it again!
+                closed_popup = True
+            payload, copied = await self.extract_via_copy_button_after_start(query, wait_timeout=poll_every, copied=copied, iteration=iteration)
+            if payload:
+                return [payload]
+            # segments = await asyncio.to_thread(self.extract_response_from_perplexity_page, full_html)
+            # self.logger.info(f"segments extracted!")
 
-            total    = sum(len(s["text"]) for s in segments)
+            # total    = sum(len(s["text"]) for s in segments)
 
-            #  growth check
-            if total == last_char_count:
-                stable_iterations += 1
-            else:
-                stable_iterations  = 0
-                self.logger.debug(f"… still generating ({total} chars captured)")  # progress
+            # #  growth check
+            # if total == last_char_count:
+            #     stable_iterations += 1
+            # else:
+            #     stable_iterations  = 0
+            #     self.logger.debug(f"… still generating ({total} chars captured)")  # progress
 
-            # done?
-            if stable_iterations >= STABLE_REQUIRED:
-                self.logger.debug("Perplexity response complete.")
-                return segments
+            # # done?
+            # if stable_iterations >= STABLE_REQUIRED:
+            #     self.logger.debug("Perplexity response complete.")
+            #     return segments
 
             # timeout guard
             if monotonic() - start_time > timeout:
                 raise TimeoutError("Perplexity answer did not stabilise in time")
 
-            last_char_count = total
+            # last_char_count = total
             await asyncio.sleep(poll_every)
     
     def extract_response_from_perplexity_page(self, full_html: str) -> list[dict]:
@@ -203,49 +419,58 @@ class PerplexityBrowserActor(BaseBrowserActor):
     async def single_query(self, query: str) -> List[Dict[str, str]]:
         async def short_prompt_focus_sequence():
             try:
-                await self.wait_and_click(PERPLEXITY_SELECTORS["close_popup"], timeout=500)
-                await self.wait_for_seconds(0.1)
+                # await self.wait_and_click(PERPLEXITY_SELECTORS["close_popup"], timeout=500)
+                closed_popup, closed_popup_floater = await self.close_popup()
+                if closed_popup or closed_popup_floater:
+                    await self.wait_for_seconds(0.1)
             except Exception as e:
                 self.logger.info(f" close popup not found: {e}")
             
             try:
-                await self.wait_and_click(PERPLEXITY_SELECTORS["prompt_input"], timeout=500)
-                return True
+                await self.wait_and_click(PERPLEXITY_SELECTORS["prompt_input"], timeout=5000, delay=50)
+                return True, closed_popup, closed_popup_floater
             except Exception as e:
                 self.logger.info(f" prompt input not found: {e}")
             
-            return False
+            return False, closed_popup, closed_popup_floater
             
         clicked = False
         try:
-            await self.go_to_page(PERPLEXITY_SELECTORS["base_url"], timeout=10000)
+            await self.go_to_page(PERPLEXITY_SELECTORS["base_url"], timeout=15000)
         except Exception as e:
             self.logger.error(f"Error going to page: {e}")
-            clicked = await short_prompt_focus_sequence()
+            clicked, closed_popup, closed_popup_floater = await short_prompt_focus_sequence()
+
             if not clicked:
                 try:
-                    await self.go_to_page(PERPLEXITY_SELECTORS["base_url"], timeout=20000)
+                    current_url = self.page.url
+                    self.logger.info(f"Current URL: {current_url}")
+                    if (not current_url.strip(" /").startswith(PERPLEXITY_SELECTORS["base_url"].strip(" /"))):  #  (not current_url) or  current_url != OPENAI_SELECTORS["base_url"]
+                        await self.go_to_page(PERPLEXITY_SELECTORS["base_url"], timeout=10000)
                 except Exception as e:
                     self.logger.error(f"Error going to page: {e}")
         
         if not clicked:
-            clicked = await short_prompt_focus_sequence()
+            clicked, closed_popup, closed_popup_floater = await short_prompt_focus_sequence()
+        
+        await self.wait_for_seconds(1)
         
         await self.page.keyboard.type(query, delay=random.randint(1, 5))
 
         # Press Enter to submit
         await self.page.keyboard.press("Enter")
 
-        try:
-            await self.wait_and_click(PERPLEXITY_SELECTORS["close_popup"], timeout=1000)
-            await self.wait_for_seconds(0.1)
-        except Exception as e:
-            self.logger.info(f" close popup not found: {e}")
+        # try:
+        #     # await self.wait_and_click(PERPLEXITY_SELECTORS["close_popup"], timeout=1000)
+        #     await self.wait_for_seconds(0.5)
+        #     await self.close_popup(timeout=3000)
+        #     await self.wait_for_seconds(0.1)
+        # except Exception as e:
+        #     self.logger.info(f" close popup not found: {e}")
         
-        
-        answers = await self.wait_until_perplexity_response_complete()
-        if answers and isinstance(answers[-1], dict) and "query" not in answers[-1]:
-            answers[-1]["query"] = query
+        answers = await self.wait_until_perplexity_response_complete(query, closed_popup=closed_popup, closed_popup_floater=closed_popup_floater)
+        # if answers and isinstance(answers[-1], dict) and "query" not in answers[-1]:
+        #     answers[-1]["query"] = query
         
         return answers
     
@@ -270,7 +495,7 @@ class PerplexityBrowserActor(BaseBrowserActor):
         print(answers)
         
         # Try to close popup after first response
-        await self.close_popup()
+        # await self.close_popup()
         
         # await self.wait_and_fill(PERPLEXITY_SELECTORS['prompt_input'], Q2)
         await self.wait_and_click(PERPLEXITY_SELECTORS["prompt_input"]) 
@@ -283,7 +508,7 @@ class PerplexityBrowserActor(BaseBrowserActor):
         print(answers)
         
         # Try to close popup after second response
-        await self.close_popup()
+        # await self.close_popup()
         
         # await self.wait_and_fill(PERPLEXITY_SELECTORS['prompt_input'], Q3)
         await self.wait_and_click(PERPLEXITY_SELECTORS["prompt_input"]) 
@@ -296,7 +521,7 @@ class PerplexityBrowserActor(BaseBrowserActor):
         print(answers)
         
         # Try to close popup after third response
-        await self.close_popup()
+        # await self.close_popup()
 
         # # pause_until_confirm()
         # import ipdb; ipdb.set_trace()
@@ -308,6 +533,7 @@ if __name__ == "__main__":
         async with ScrapelessBrowser() as browser:  # profile_id="39fd01df-7bf9-44b5-befb-4ea5d238caf8", persist_profile=True
             live_url = await browser.get_live_url()
             print("\n\nlive_url: ---> ",live_url)
+            import ipdb; ipdb.set_trace()
             actor = PerplexityBrowserActor(browser=browser.browser, context=browser.context, page=browser.page, live_url=live_url)
             result = await actor.single_query("What is the capital of France?")
             import json

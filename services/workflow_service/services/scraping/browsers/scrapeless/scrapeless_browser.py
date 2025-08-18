@@ -107,6 +107,25 @@ class ScrapelessBrowser:
         self.logger.info(f"Connection URL: {url}")
         return url
 
+    async def _setup_clipboard_permissions(self) -> None:
+        """
+        Set up clipboard read/write permissions for the browser context.
+        
+        This method grants the browser context permission to:
+        - Read from the system clipboard
+        - Write to the system clipboard
+        
+        This is essential for workflows that need to interact with clipboard content
+        or perform copy/paste operations programmatically.
+        """
+        try:
+            # Grant clipboard permissions to the browser context
+            await self.context.grant_permissions(['clipboard-read', 'clipboard-write'])
+            self.logger.debug("Clipboard read/write permissions granted to browser context")
+        except Exception as e:
+            self.logger.error(f"Failed to grant clipboard permissions: {e}")
+            # Don't raise the exception as this is not critical for basic functionality
+    
     async def _setup_resource_blocking(self) -> None:
         """
         Set up resource blocking for images and media based on intercept settings.
@@ -196,6 +215,9 @@ class ScrapelessBrowser:
             self.browser = await self.playwright.chromium.connect_over_cdp(self.connection_url)
             self.context = self.browser.contexts[0]
             self.page = self.context.pages[0] if self.context.pages else await self.context.new_page()
+            
+            # Set up clipboard permissions for the browser context
+            await self._setup_clipboard_permissions()
             
             # Set up resource blocking if intercept options are enabled
             await self._setup_resource_blocking()

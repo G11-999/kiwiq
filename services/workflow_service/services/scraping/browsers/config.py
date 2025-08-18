@@ -47,6 +47,10 @@ PERPLEXITY_SELECTORS = {
     "new_thread":"svg.tabler-icon-plus",
     "model_switcher_button"  : "svg.tabler-icon-cpu",
 
+    "copy_button": 'button[aria-label="Copy"]',
+    "answer_marker": 'div:has-text("Answer")',  #  'div.prose',
+    "answer_container": 'div.prose',
+
     "model_sonar"            : 'div[class="group/item md:h-full"] >> nth=1',
     "model_claude_4.0_sonnet"    :'div[class="group/item md:h-full"] >> nth=2',
     "model_gpt_4.1"           : 'div[class="group/item md:h-full"] >> nth=3',

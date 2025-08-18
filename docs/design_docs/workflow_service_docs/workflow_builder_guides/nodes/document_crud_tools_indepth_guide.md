@@ -38,7 +38,8 @@ Before using the tools, a few shared concepts help everything click.
 - **System documents**:
   - Curated, organization‑wide content (e.g., playbooks, guidelines). They are discoverable and searchable. Editing is typically disabled in production (configurable) and should be routed through approval if allowed.
 - **Context provisioning**:
-  - The workflow typically passes `entity_username` and the evolving `view_context` automatically to tools. You should not ask LLMs to invent these.
+  - The workflow typically passes `entity_username` and/or `company_name` (depending on doc family) and the evolving `view_context` automatically to tools. You should not ask LLMs to invent these.
+  - Use `entity_username` for LinkedIn/user‑centric docs; use `company_name` for blog/company‑centric docs. Both are supported and only the relevant one is used by each template.
 
 
 ## Quick “which tool do I use?”
@@ -69,11 +70,13 @@ Two modes:
 Key input fields:
 
 - `document_identifier`: Uses `DocumentIdentifier` (see Core concepts). For high cardinality docs, prefer a prior list/search to generate a serial number, then reference it here.
+- Context: Provide `entity_username` (LinkedIn/user-centric) or `company_name` (blog/company-centric) as applicable; both are supported and provided by the workflow, not by LLMs.
 - `list_filter`: Uses `DocumentListFilter`:
   - Provide either `doc_key` or `namespace_of_doc_key` (not both).
   - Optional date ranges:
     - `scheduled_date_range_start/end` (for doc types that support scheduling)
     - `created_at_range_start/end`
+- Context: Provide `entity_username` or `company_name` based on the target doc family; the underlying resolver uses the relevant one.
 - `limit`, `offset`: Pagination for list mode. `limit` is capped at 10.
 
 Output:
@@ -258,7 +261,7 @@ Example — search concepts with value filters (post-filtering):
 }
 ```
 
-When to use: To quickly locate relevant content, then hand off to `view_documents` to read fully or to `edit_document` to modify.
+When to use: To quickly locate relevant content, then hand off to `view_documents` to read fully or to `edit_document` to modify. Provide `entity_username` or `company_name` depending on the doc family; the resolver uses whichever is relevant.
 
 
 ### 4) Edit Document (`edit_document`)

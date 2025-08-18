@@ -1238,6 +1238,7 @@ async def get_run_state(
     - May attempt to augment the state with the latest update from the event stream (MongoDB) if available.
     - Requires `run:read` permission on the active organization.
     """
+    run = None
     try:
         run = await run_dao.get(db, id=run_id)
         if not run:
@@ -1246,6 +1247,8 @@ async def get_run_state(
         workflow_logger.info(f"Retrieved workflow run state for run {run.id}")
         return state
     except Exception as e:
+        if not run:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workflow run not found")
         workflow_logger.error(f"Error retrieving workflow run state for run {run.id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An error occurred while retrieving the workflow run state")
 
