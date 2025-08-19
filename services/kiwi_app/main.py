@@ -404,8 +404,8 @@ app = FastAPI(
     title="KiwiQ Backend - Refactored Auth",
     lifespan=lifespan,
     docs_url=None,  # Disable built-in docs, we'll create our own
-    redoc_url="/kiwis-starsecret-redoc",
-    openapi_url="/kiwis-starsecret-openapi.json",
+    redoc_url="/kQ-secret-redoc",
+    openapi_url="/kQ-secret-openapi.json",
     openapi_tags=tags_metadata,
 )
 
@@ -414,7 +414,7 @@ app = FastAPI(
 #     lifespan=lifespan,
 #     docs_url="/docs",
 #     redoc_url="/redoc",
-#     openapi_url="/kiwis-starsecret-openapi.json",
+#     openapi_url="/kQ-secret-openapi.json",
 #     openapi_tags=tags_metadata,
 #     swagger_ui_parameters={
 #         "withCredentials": True,
@@ -422,7 +422,7 @@ app = FastAPI(
 # )
 
 # --- Custom Swagger UI Route --- #
-@app.get("/kiwis-starsecret-docs", include_in_schema=False)
+@app.get("/kQ-secret-docs", include_in_schema=False)
 async def custom_swagger_ui_html(req: Request):
     """
     Custom Swagger UI route with proper CSRF support.
@@ -431,12 +431,12 @@ async def custom_swagger_ui_html(req: Request):
     requestInterceptor works correctly as a JavaScript function.
     """
     return get_swagger_ui_html(
-        openapi_url="/kiwis-starsecret-openapi.json",
+        openapi_url="/kQ-secret-openapi.json",
         title=app.title,
-        oauth2_redirect_url="/kiwis-starsecret-docs/oauth2-redirect",
+        oauth2_redirect_url="/kQ-secret-docs/oauth2-redirect",
     )
 
-@app.get("/kiwis-starsecret-docs/oauth2-redirect", include_in_schema=False)
+@app.get("/kQ-secret-docs/oauth2-redirect", include_in_schema=False)
 async def swagger_ui_oauth2_redirect():
     """
     OAuth2 redirect handler for Swagger UI authentication flows.
