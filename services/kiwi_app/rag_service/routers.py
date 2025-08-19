@@ -250,7 +250,11 @@ async def ingest_documents(
 ):
     """
     Ingest or reingest documents into the vector database.
-    
+
+    eg doc ID: 6d4f8ba9-e275-4846-8e5b-4d7f5ca14eef:::e0545083-938f-4231-a2f4-dfa0840d6dfb:::blog_analysis_momentum:::blog_ai_visibility_test_doc
+    <org_id or system_doc_placeholder> ::: <user_id or shared_placeholder> ::: <namespace> ::: <docname> ::: <version>
+    <version> is optional, if not provided, the active version is used automatically if the document is versioned.
+
     This endpoint processes documents from MongoDB and creates or updates their
     vector representations in the Weaviate database.
     
