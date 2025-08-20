@@ -180,7 +180,8 @@ class WorkflowRunTestClient:
                         status: Optional[WorkflowRunStatus] = None,
                         triggered_by_user_id: Optional[Union[str, uuid.UUID]] = None,
                         owner_org_id: Optional[Union[str, uuid.UUID]] = None, # For superuser testing
-                        tag: Optional[str] = None
+                        tag: Optional[str] = None,
+                        parent_run_id: Optional[Union[str, uuid.UUID]] = None  # Filter by parent run ID
                         ) -> Optional[List[wf_schemas.WorkflowRunRead]]:
         """
         Tests listing workflow runs via GET /runs/.
@@ -196,6 +197,7 @@ class WorkflowRunTestClient:
             triggered_by_user_id (Optional[Union[str, uuid.UUID]]): Filter by user ID (requires superuser for others).
             owner_org_id (Optional[Union[str, uuid.UUID]]): Filter by org ID (requires superuser).
             tag (Optional[str]): Filter by tag associated with the workflow run.
+            parent_run_id (Optional[Union[str, uuid.UUID]]): Filter by parent run ID to get child runs.
 
         Returns:
             Optional[List[wf_schemas.WorkflowRunRead]]: A list of parsed and validated workflow runs,
@@ -210,6 +212,7 @@ class WorkflowRunTestClient:
         if triggered_by_user_id: params["triggered_by_user_id"] = str(triggered_by_user_id)
         if owner_org_id: params["owner_org_id"] = str(owner_org_id)
         if tag: params["tag"] = tag
+        if parent_run_id: params["parent_run_id"] = str(parent_run_id)
 
         try:
             # Endpoint returns 200 OK, body is List[WorkflowRunRead]

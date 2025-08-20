@@ -346,6 +346,8 @@ class WorkflowRunListQuery(CommonListQuery):
     triggered_by_user_id: Optional[uuid.UUID] = Field(None, description="Filter runs by triggering user ID (Superuser only)")
     owner_org_id: Optional[uuid.UUID] = Field(None, description="Filter by owning organization ID (Superuser only)")
     workflow_name: Optional[str] = Field(None, description="Name of the workflow this run belongs to")
+    tag: Optional[str] = Field(None, description="Filter runs by experiment tag")
+    parent_run_id: Optional[uuid.UUID] = Field(None, description="Filter runs by parent run ID to get child runs")
 
 class HITLJobListQuery(CommonListQuery):
     """Query parameters for listing HITL jobs."""
