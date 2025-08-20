@@ -39,7 +39,7 @@ class PerplexityBrowserActor(BaseBrowserActor):
                 closed_popup = True
             except Exception as e:
                 # No popup found or couldn't close it - this is fine
-                self.logger.error(f"Error closing popup: {e}", exc_info=True)
+                self.logger.warning(f"Error closing popup: {e}", exc_info=True)
         
         if popup_floater:
             try:
@@ -48,7 +48,7 @@ class PerplexityBrowserActor(BaseBrowserActor):
                 closed_popup_floater = True
             except Exception as e:
                 # No popup found or couldn't close it - this is fine
-                self.logger.error(f"Error closing FLOATING popup: {e}", exc_info=True)
+                self.logger.warning(f"Error closing FLOATING popup: {e}", exc_info=True)
         
         return closed_popup, closed_popup_floater
 
@@ -440,7 +440,7 @@ class PerplexityBrowserActor(BaseBrowserActor):
         try:
             await self.go_to_page(PERPLEXITY_SELECTORS["base_url"], timeout=15000)
         except Exception as e:
-            self.logger.error(f"Error going to page: {e}")
+            self.logger.warning(f"Error going to page: {e}")
             clicked, closed_popup, closed_popup_floater = await short_prompt_focus_sequence()
 
             if not clicked:
@@ -450,7 +450,7 @@ class PerplexityBrowserActor(BaseBrowserActor):
                     if (not current_url.strip(" /").startswith(PERPLEXITY_SELECTORS["base_url"].strip(" /"))):  #  (not current_url) or  current_url != OPENAI_SELECTORS["base_url"]
                         await self.go_to_page(PERPLEXITY_SELECTORS["base_url"], timeout=10000)
                 except Exception as e:
-                    self.logger.error(f"Error going to page: {e}")
+                    self.logger.warning(f"Error going to page: {e}")
         
         if not clicked:
             clicked, closed_popup, closed_popup_floater = await short_prompt_focus_sequence()

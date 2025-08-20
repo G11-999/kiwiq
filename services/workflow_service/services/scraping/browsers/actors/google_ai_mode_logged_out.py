@@ -87,7 +87,7 @@ class GoogleAIModeBrowserActor(BaseBrowserActor):
             return soup, results
             
         except Exception as e:
-            self.logger.error(f"Error in DOM tree navigation for query '{query}': {e}", exc_info=True)
+            self.logger.warning(f"Error in DOM tree navigation for query '{query}': {e}", exc_info=True)
             return soup, []
     
     def process_response_elements_from_soup(self, soup_elements: list) -> list[dict]:
@@ -159,7 +159,7 @@ class GoogleAIModeBrowserActor(BaseBrowserActor):
             return soup, results
             
         except Exception as e:
-            self.logger.error(f"Error in turn selector extraction for query '{query}': {e}", exc_info=True)
+            self.logger.warning(f"Error in turn selector extraction for query '{query}': {e}", exc_info=True)
             return soup, []
     
     def process_aimode_element_from_soup(self, soup_element) -> dict:
@@ -254,7 +254,7 @@ class GoogleAIModeBrowserActor(BaseBrowserActor):
             }
             
         except Exception as e:
-            self.logger.error(f"Error processing soup element: {e}", exc_info=True)
+            self.logger.warning(f"Error processing soup element: {e}", exc_info=True)
             return {
                 "text": "",
                 "html": "",
@@ -271,7 +271,7 @@ class GoogleAIModeBrowserActor(BaseBrowserActor):
         try:
             await self.wait_and_click(AIMODE_SELECTORS['ai_mode_search_button'], timeout=30000)
         except Exception as e:
-            self.logger.error(f"Error clicking ai_mode_search_button: {e}", exc_info=True)
+            self.logger.warning(f"Error clicking ai_mode_search_button: {e}", exc_info=True)
             await self.page.keyboard.press("Enter")
             await self.wait_and_click(AIMODE_SELECTORS['ai_mode_button'])
 
@@ -297,7 +297,7 @@ class GoogleAIModeBrowserActor(BaseBrowserActor):
         try:
             await self.wait_and_click(AIMODE_SELECTORS['ai_mode_search_button'], timeout=30000)
         except Exception as e:
-            self.logger.error(f"Error clicking ai_mode_search_button: {e}", exc_info=True)
+            self.logger.warning(f"Error clicking ai_mode_search_button: {e}", exc_info=True)
             await self.page.keyboard.press("Enter")
             await self.wait_and_click(AIMODE_SELECTORS['ai_mode_button'])
 
@@ -432,7 +432,7 @@ class GoogleAIModeBrowserActor(BaseBrowserActor):
             return links, citations
             
         except Exception as e:
-            self.logger.error(f"Error extracting links and citations: {e}", exc_info=True)
+            self.logger.warning(f"Error extracting links and citations: {e}", exc_info=True)
             return [], []
     
     def get_all_page_links_filtered_from_soup(self, soup: BeautifulSoup) -> list[dict]:
@@ -480,7 +480,7 @@ class GoogleAIModeBrowserActor(BaseBrowserActor):
                     continue
                     
         except Exception as e:
-            self.logger.error(f"Error fetching page links from soup: {e}", exc_info=True)
+            self.logger.warning(f"Error fetching page links from soup: {e}", exc_info=True)
             
         return filtered_links
 
@@ -530,7 +530,7 @@ class GoogleAIModeBrowserActor(BaseBrowserActor):
                     continue
                     
         except Exception as e:
-            self.logger.error(f"Error fetching page links: {e}", exc_info=True)
+            self.logger.warning(f"Error fetching page links: {e}", exc_info=True)
             
         return filtered_links
     
@@ -563,7 +563,7 @@ class GoogleAIModeBrowserActor(BaseBrowserActor):
             }
             
         except Exception as e:
-            self.logger.error(f"Error processing element: {e}", exc_info=True)
+            self.logger.warning(f"Error processing element: {e}", exc_info=True)
             return {
                 "text": "",
                 "html": "",

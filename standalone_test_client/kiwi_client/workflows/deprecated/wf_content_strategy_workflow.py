@@ -15,7 +15,7 @@ from kiwi_client.test_run_workflow_client import (
 )
 from kiwi_client.schemas.workflow_constants import WorkflowRunStatus
 
-from kiwi_client.workflows.document_models.customer_docs import (
+from kiwi_client.workflows.deprecated.document_models.older_customer_docs import (
     # Content Strategy
     CONTENT_STRATEGY_DOCNAME,
     CONTENT_STRATEGY_NAMESPACE_TEMPLATE,
@@ -52,7 +52,7 @@ from kiwi_client.workflows.document_models.customer_docs import (
     BUILDING_BLOCKS_IS_SYSTEM_ENTITY,
 )
 
-from kiwi_client.workflows.llm_inputs.content_strategy import (
+from kiwi_client.workflows.deprecated.llm_inputs.content_strategy import (
     GENERATION_SCHEMA,
     USER_PROMPT_TEMPLATE,
     SYSTEM_PROMPT_TEMPLATE,

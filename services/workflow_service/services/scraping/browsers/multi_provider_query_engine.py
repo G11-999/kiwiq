@@ -268,7 +268,7 @@ class MultiProviderQueryEngine:
                     
                     # Handle exceptions that occurred during parallel execution
                     if isinstance(result, Exception):
-                        self.logger.error(f"❌ {provider_name.upper()} Query {metadata['query_index']+1} "
+                        self.logger.warning(f"❌ {provider_name.upper()} Query {metadata['query_index']+1} "
                                    f"failed with exception: {result}")
                         # Create a failure result for this query
                         failure_result = {
@@ -445,7 +445,7 @@ class MultiProviderQueryEngine:
                     self.logger.debug(f"  ⏳ Retrying in {retry_delay:.1f}s...")
                     await asyncio.sleep(retry_delay)
                 else:
-                    self.logger.error(f"  ❌ All {provider_config.max_retries + 1} attempts failed", exc_info=True)
+                    self.logger.warning(f"  ❌ All {provider_config.max_retries + 1} attempts failed", exc_info=True)
         
         result["duration_seconds"] = time.time() - start_time
         result["end_time"] = datetime.now().isoformat()

@@ -470,7 +470,7 @@ class ScrapelessBrowserPool:
                 return None
                 
         except Exception as e:
-            self.logger.error(f"Error acquiring Redis resource: {e}", exc_info=True)
+            self.logger.warning(f"Error acquiring Redis resource: {e}", exc_info=True)
             return None
     
     async def _release_redis_resource(self, allocation_id: str) -> bool:
@@ -744,7 +744,7 @@ class ScrapelessBrowserPool:
                 
                 except Exception as e:
                     # Browser creation failed, cleanup
-                    self.logger.error(f"❌ Failed to create new browser: {e}", exc_info=True)
+                    self.logger.warning(f"❌ Failed to create new browser: {e}", exc_info=True)
                     await self._release_redis_resource(allocation_id)
                     # Release the local slot we reserved
                     async with self._lock:
@@ -753,7 +753,7 @@ class ScrapelessBrowserPool:
                 
             except Exception as e:
                 # Unexpected error, release the local slot
-                self.logger.error(f"Unexpected error during browser acquisition: {e}", exc_info=True)
+                self.logger.warning(f"Unexpected error during browser acquisition: {e}", exc_info=True)
                 async with self._lock:
                     self._local_active_count = max(0, self._local_active_count - 1)
             

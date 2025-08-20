@@ -16,6 +16,8 @@ This is useful for preparing data for subsequent nodes that expect a different s
 
 **Important:** This node creates a completely *new* output dictionary based on the mappings you define. It does *not* modify the original input data structure.
 
+**Nested paths inside lists (supported):** When reading from `source_path`, if traversal hits a list and the next path segment is not an integer index, the transformer will automatically traverse each list item and aggregate the results into a list. This implicit fan-out lets you fetch nested values across all items in a list without specifying indices. If multiple list levels are traversed without indices, the resulting value can be a nested list (e.g., list of lists).
+
 ## Configuration (`NodeConfig`)
 
 You configure the `TransformerNode` within the `node_config` field of its entry in the `GraphSchema`.
@@ -27,6 +29,7 @@ You configure the `TransformerNode` within the `node_config` field of its entry 
       "node_id": "restructure_user_data", // Unique ID for this node instance
       "node_name": "transform_data", // ** Must be "transform_data" **
       "node_config": { // This is the TransformerConfigSchema
+        "merge_conflicting_paths_as_list": false, // NEW: if true, conflicting writes to same destination are merged into a list
         "mappings": [ // List of copy instructions
           // --- Example 1: Simple field rename ---
           {
@@ -45,7 +48,7 @@ You configure the `TransformerNode` within the `node_config` field of its entry 
           },
           // --- Example 4: Extracting specific list item ---
           {
-            "source_path": "input_orders.0.order_id", // Get the ID of the *first* order in the list
+            "source_path": "input_orders.0.order_id", // Get the ID of the first order in the list (explicit numeric index)
             "destination_path": "latest_order_ref"
           },
           // --- Example 5: Overwriting (Last mapping wins) ---
@@ -66,6 +69,9 @@ You configure the `TransformerNode` within the `node_config` field of its entry 
 ### Key Configuration Sections:
 
 1.  **`mappings`** (List): **Required**. A list where each item defines a single copy operation from a source location to a destination location. Mappings are processed in the order they appear in the list.
+2.  **`merge_conflicting_paths_as_list`** (Boolean): Optional, defaults to `false`. If multiple mappings write to the exact same `destination_path`:
+    - When `false`, the last mapping wins and overwrites the previous value.
+    - When `true`, conflicting values are merged into a list at that path.
 2.  **Inside each `mapping` item**:
     *   **`source_path`** (String): **Required**. Dot-notation path indicating where to find the data *in the node's input*. Examples: `user.id`, `product.details.price`, `orders.0.items.1.sku` (accessing the second item in the items list of the first order).
     *   **`destination_path`** (String): **Required**. Dot-notation path indicating where to place the copied data *in the node's output*. Examples: `customer_id`, `item_price`, `order_item_sku`. If intermediate parts of the path (like `output_user` or `identifier` in Example 3) don't exist in the output being built, they will be created as dictionaries automatically.
@@ -74,6 +80,9 @@ You configure the `TransformerNode` within the `node_config` field of its entry 
 
 -   Use dots (`.`) to access fields inside objects (e.g., `user.profile.name`).
 -   Use integer numbers to access items within lists (e.g., `orders.0` for the first order, `orders.1.items.0` for the first item in the second order).
+-   If you do not provide an integer index for a list segment, the transformer implicitly fans out across the list and aggregates the subpath values into a list. Example: `orders.items.sku` can yield a list of lists of `sku` values (one inner list per order) when both `orders` and `items` are lists.
+-   Bracket syntax like `items[0]` is not supported; use `items.0`.
+-   User-specified wildcards (`*`), slices, and selector expressions are not supported; the fan-out behavior is implicit for non-indexed list segments.
 
 ### Behavior Notes:
 
@@ -81,6 +90,46 @@ You configure the `TransformerNode` within the `node_config` field of its entry 
 -   **Source Not Found:** If a `source_path` does not exist in the input data, that specific mapping is simply skipped. No error occurs, and nothing is added to the output for that mapping.
 -   **Creates New Output:** The node starts with an empty output dictionary `{}` and builds it up based *only* on the mappings provided. Data from the input is not included unless explicitly mapped.
 -   **Deep Copies:** The node copies the data. If you map a list or an object, the entire structure is copied, ensuring that changes to the output data won't accidentally affect the original input data.
+-   **Nested list traversal is supported:** If a list is encountered and the next path segment is not an integer index, the transformer traverses each list item and aggregates the results. Traversing multiple list layers without indices can produce nested lists (e.g., list of lists). Use explicit indices where you want a single item rather than an aggregated list.
+-   **Merging conflicting destinations:** If you set `merge_conflicting_paths_as_list=true`, values written to the same `destination_path` across multiple mappings will be combined into a list instead of being overwritten by the last value.
+
+#### Examples: Aggregating vs. Indexing through Lists
+
+-   `orders.items.sku` → If `orders` is a list and each order's `items` is a list, this yields a list of lists of `sku` values (one inner list per order) due to two levels of fan-out.
+-   `orders.0.items.sku` → Yields a list of `sku` values from the first order only (fan-out over `items`).
+-   `orders.items.0.sku` → Yields one `sku` per order (first item of each order's `items`).
+-   `orders.0.items.0.sku` → Yields a single `sku` (first order, first item).
+
+#### Example: Merging Conflicting Destination Paths
+
+When you want to collect multiple values into the same destination field, enable merging:
+
+```json
+{
+  "node_id": "collect_emails",
+  "node_name": "transform_data",
+  "node_config": {
+    "merge_conflicting_paths_as_list": true,
+    "mappings": [
+      { "source_path": "primary.email", "destination_path": "contact.emails" },
+      { "source_path": "secondary.email", "destination_path": "contact.emails" },
+      { "source_path": "backup.email", "destination_path": "contact.emails" }
+    ]
+  }
+}
+```
+
+Result example (assuming all sources exist):
+
+```json
+{
+  "transformed_data": {
+    "contact": {
+      "emails": ["a@x.com", "b@y.com", "c@z.com"]
+    }
+  }
+}
+```
 
 ## Input (`DynamicSchema`)
 
@@ -107,7 +156,7 @@ The node produces data matching the `TransformerOutputSchema`:
         "mappings": [
           { "source_path": "raw_user.data.id", "destination_path": "user_id" },
           { "source_path": "raw_user.data.profile.displayName", "destination_path": "name" },
-          { "source_path": "raw_user.data.contactPoints[0].value", "destination_path": "primary_email" } // Assuming contactPoints is a list
+          { "source_path": "raw_user.data.contactPoints.0.value", "destination_path": "primary_email" } // Assuming contactPoints is a list
         ]
       }
     },

@@ -219,7 +219,7 @@ class OpenAIBrowserActor(BaseBrowserActor):
         # try:
         #     await self.go_to_page(OPENAI_SELECTORS["base_url"], timeout=10000)
         # except Exception as e:
-        #     self.logger.error(f"Error going to page: {e}")
+        #     self.logger.warning(f"Error going to page: {e}")
         
         clicked = False
         iterations = 0
@@ -235,7 +235,7 @@ class OpenAIBrowserActor(BaseBrowserActor):
                     count_navigations += 1
                 # NOTE: here you can try short focus sequence again and wait 10-20s as last resort, to counter any captchas!
             except Exception as e:
-                self.logger.error(f"Error going to page: {e}")
+                self.logger.warning(f"Error going to page: {e}")
             clicked = await short_prompt_focus_sequence()
             iterations += 1
         
@@ -280,7 +280,7 @@ class OpenAIBrowserActor(BaseBrowserActor):
         try:
             await self.go_to_page(OPENAI_SELECTORS["base_url"], timeout=10000)
         except Exception as e:
-            self.logger.error(f"Error going to page: {e}")
+            self.logger.warning(f"Error going to page: {e}")
             await self.go_to_page(OPENAI_SELECTORS["base_url"], timeout=20000)
 
         # pause_until_confirm()
