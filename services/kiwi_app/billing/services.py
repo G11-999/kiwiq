@@ -1223,11 +1223,11 @@ class BillingService:
         """
         try:
             # Validate query parameters
-            if query_params.limit <= 0 or query_params.limit > 1000:
-                raise BillingException(
-                    status_code=400,
-                    detail="Limit must be between 1 and 1000"
-                )
+            # if query_params.limit <= 0 or query_params.limit > 1000:
+            #     raise BillingException(
+            #         status_code=400,
+            #         detail="Limit must be between 1 and 1000"
+            #     )
             
             if query_params.skip < 0:
                 raise BillingException(

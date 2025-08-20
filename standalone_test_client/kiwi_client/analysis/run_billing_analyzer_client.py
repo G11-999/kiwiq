@@ -12,11 +12,14 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 import uuid
 from pydantic import BaseModel
+from pathlib import Path
 
 from kiwi_client.auth_client import AuthenticatedClient
 from kiwi_client.run_client import WorkflowRunTestClient
 from kiwi_client.test_config import BILLING_DASHBOARD_USAGE_URL
 import kiwi_client.schemas.workflow_api_schemas as wf_schemas
+
+current_dir = Path(__file__).parent
 
 
 class ModelUsageStats(BaseModel):
@@ -771,7 +774,7 @@ class RunBillingAnalyzerClient:
     
     async def analyze_and_save(self, 
                               run_id: Union[str, uuid.UUID],
-                              output_dir: str = "billing_analysis",
+                              output_dir: str = current_dir.as_posix(),
                               include_raw_events: bool = False,
                               max_hierarchy_depth: int = 5) -> Tuple[RunBillingAnalysis, str, str]:
         """

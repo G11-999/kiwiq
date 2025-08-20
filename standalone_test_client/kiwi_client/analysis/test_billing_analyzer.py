@@ -44,7 +44,7 @@ async def test_billing_analyzer():
             # Save to files
             analysis, md_path, json_path = await analyzer.analyze_and_save(
                 run_id=run_id,
-                output_dir="billing_analysis_test",
+                # output_dir="billing_analysis_test",
                 max_hierarchy_depth=3
             )
             
@@ -129,7 +129,7 @@ async def test_billing_analyzer():
                     # Save full analysis
                     _, md_path, json_path = await analyzer.analyze_and_save(
                         run_id=selected_run.id,
-                        output_dir="billing_analysis_test",
+                        # output_dir="billing_analysis_test",
                         max_hierarchy_depth=3
                     )
                     
