@@ -2058,7 +2058,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
 
         if self.config.output_schema.is_output_str() and not tool_calls:
             if not raw_text:
-                raise ValueError("No raw text found in LLM response!")
+                raise ValueError("No raw text response found in LLM response!")
 
 
 

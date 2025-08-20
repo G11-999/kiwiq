@@ -7,11 +7,12 @@ This module provides nodes for:
 
 These nodes facilitate complex data manipulation within workflows.
 """
-
+from collections import defaultdict
 import copy
 import traceback
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union, ClassVar, Literal, Tuple, Set, Type
+
 
 # Use real imports
 from pydantic import Field, model_validator, field_validator, BaseModel, ValidationError, validator
@@ -27,7 +28,7 @@ from workflow_service.registry.nodes.core.flow_nodes import _get_nested_obj # Re
 # --- HELPER FUNCTIONS ---
 # ==============================================
 
-def _set_nested_obj(data: Dict[str, Any], path: str, value: Any, create_missing: bool = True) -> bool:
+def _set_nested_obj(data: Dict[str, Any], path: str, value: Any, create_missing: bool = True, merge_conflicting_paths_as_list: bool = False, paths_set_count: Dict[str, int] = {}) -> bool:
     """
     Sets a value at a specified path within a nested dictionary structure.
 
@@ -36,6 +37,8 @@ def _set_nested_obj(data: Dict[str, Any], path: str, value: Any, create_missing:
         path (str): Dot-notation path where the value should be set (e.g., "user.profile.email").
         value (Any): The value to set at the specified path.
         create_missing (bool): If True, create intermediate dictionaries if they don't exist. Defaults to True.
+        merge_conflicting_paths_as_list (bool): If True, merge conflicting paths as a list. If False, overwrite the value at the destination path.
+        done_paths (Set[str]): Set of paths that have already been processed.
 
     Returns:
         bool: True if the value was successfully set, False otherwise.
@@ -77,7 +80,16 @@ def _set_nested_obj(data: Dict[str, Any], path: str, value: Any, create_missing:
                             f"{'.'.join(parts[:i+1])} is not a dictionary (found type: {type(current_level[part]).__name__}).")
 
     # Set the value at the final key
-    current_level[final_key] = value
+    if merge_conflicting_paths_as_list:
+        if final_key in current_level:
+            if isinstance(current_level[final_key], list) and paths_set_count.get(path, 0) > 1:
+                current_level[final_key].append(value)
+            else:
+                current_level[final_key] = [current_level[final_key], value]
+        else:
+            current_level[final_key] = value
+    else:
+        current_level[final_key] = value
     return True
 
 # ==============================================
@@ -118,6 +130,10 @@ class TransformerConfigSchema(BaseNodeConfig):
         ...,
         min_length=1,
         description="List of source-to-destination path mappings."
+    )
+    merge_conflicting_paths_as_list: bool = Field(
+        default=False,
+        description="If True, merge conflicting paths as a list. If False, overwrite the value at the destination path."
     )
 
 class TransformerOutputSchema(BaseSchema):
@@ -209,19 +225,21 @@ class TransformerNode(BaseDynamicNode):
             active_config = self.config
 
             # Process each mapping in the defined order
+            paths_set_count: Dict[str, int] = defaultdict(int)
             for mapping in active_config.mappings:
                 source_path = mapping.source_path
                 destination_path = mapping.destination_path
 
                 # Retrieve the value from the source path in the input dictionary
-                value_to_copy, found = _get_nested_obj(input_dict, source_path)
+                value_to_copy, found = _get_nested_obj(input_dict, source_path, fetch_nested_list_items=True)
 
                 if found:
                     # Use deepcopy to prevent unintended modifications if the value is mutable (like lists or dicts)
                     copied_value = copy.deepcopy(value_to_copy)
                     # Set the copied value at the destination path in the output dictionary
                     try:
-                         success = _set_nested_obj(output_data, destination_path, copied_value, create_missing=True)
+                         success = _set_nested_obj(output_data, destination_path, copied_value, create_missing=True, merge_conflicting_paths_as_list=self.config.merge_conflicting_paths_as_list, paths_set_count=paths_set_count)
+                         paths_set_count[destination_path] += 1
                          if not success:
                              self.warning(f"Failed to set value for destination path '{destination_path}' from source '{source_path}'.")
                     except TypeError as e:
