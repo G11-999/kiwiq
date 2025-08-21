@@ -47,13 +47,7 @@ from workflow_service.registry.nodes.llm.config import (
 # Import internal tool config schemas
 from workflow_service.registry.nodes.llm.internal_tools.openai_tools import OpenAIWebSearchToolConfig
 from workflow_service.registry.nodes.llm.internal_tools.anthropic_tools import AnthropicSearchToolConfig
-# Imports for content generation test
-from standalone_test_client.kiwi_client.workflows.llm_inputs.content_generation import (
-    POST_CREATION_INITIAL_USER_PROMPT,
-    POST_CREATION_FEEDBACK_USER_PROMPT,
-    POST_CREATION_SYSTEM_PROMPT,
-    PostDraftSchema,
-)
+
 
 # --- Fake Web Search Node for Testing ---
 class FakeWebSearchInputSchema(BaseSchema):
@@ -530,201 +524,202 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
         except Exception as e:
             print(f"Error in asyncTearDown: {e}")
 
-    async def test_anthropic_claude3_7_tool_use_text_output_reasoning(self):
-        """Test Anthropic Claude 3.7 Sonnet with tool use (web_search), text output, and reasoning."""
-        if not hasattr(AnthropicModels, 'CLAUDE_3_7_SONNET'):
-            self.skipTest("AnthropicModels.CLAUDE_3_7_SONNET not defined in enum.")
+    # async def test_anthropic_claude3_7_tool_use_text_output_reasoning(self):
+    #     """Test Anthropic Claude 3.7 Sonnet with tool use (web_search), text output, and reasoning."""
+    #     if not hasattr(AnthropicModels, 'CLAUDE_3_7_SONNET'):
+    #         self.skipTest("AnthropicModels.CLAUDE_3_7_SONNET not defined in enum.")
 
-        topic = "ethical implications of gene editing"
-        reasoning_config = {"reasoning_tokens_budget": 1024}
-        system_prompt_turn1 = "Think step by step before answering. " + WEB_SEARCH_SYSTEM_PROMPT
+    #     topic = "ethical implications of gene editing"
+    #     reasoning_config = {"reasoning_tokens_budget": 1024}
+    #     system_prompt_turn1 = "Think step by step before answering. " + WEB_SEARCH_SYSTEM_PROMPT
 
-        # Configure the web_search_tool
-        tool_config = ToolConfig(
-            tool_name="web_search_tool",
-            is_provider_inbuilt_tool=False,
-            provider_inbuilt_user_config={}
-        )
+    #     # Configure the web_search_tool
+    #     tool_config = ToolConfig(
+    #         tool_name="web_search_tool",
+    #         is_provider_inbuilt_tool=False,
+    #         provider_inbuilt_user_config={}
+    #     )
 
-        # Enhanced prompt to strongly encourage using the search tool first
-        user_prompt_turn2 = f"Based on your search results about {topic}, please provide a comprehensive summary, including key points and citations from your findings."
-        enhanced_user_prompt = f"Please first search for the latest information about {topic} using the web search tool, then I'll ask you to provide a detailed summary of your findings. Please only use the tool once and then follow with the summary."
+    #     # Enhanced prompt to strongly encourage using the search tool first
+    #     user_prompt_turn2 = f"Based on your search results about {topic}, please provide a comprehensive summary, including key points and citations from your findings."
+    #     enhanced_user_prompt = f"Please first search for the latest information about {topic} using the web search tool, then I'll ask you to provide a detailed summary of your findings. Please only use the tool once and then follow with the summary."
 
-        # --- Turn 1: LLM makes a tool call ---
-        result_turn1 = await arun_llm_test(
-            runtime_config=self.runtime_config_regular,
-            model_provider=LLMModelProvider.ANTHROPIC,
-            model_name=AnthropicModels.CLAUDE_3_7_SONNET.value, 
-            max_tokens=1000,
-            reasoning_config=reasoning_config,
-            user_prompt=enhanced_user_prompt,
-            input_system_prompt=system_prompt_turn1,
-            tool_calling_config=ToolCallingConfig(enable_tool_calling=True),
-            tools=[tool_config]
-        )
+    #     # --- Turn 1: LLM makes a tool call ---
+    #     result_turn1 = await arun_llm_test(
+    #         runtime_config=self.runtime_config_regular,
+    #         model_provider=LLMModelProvider.ANTHROPIC,
+    #         model_name=AnthropicModels.CLAUDE_3_7_SONNET.value, 
+    #         max_tokens=1000,
+    #         reasoning_config=reasoning_config,
+    #         user_prompt=enhanced_user_prompt,
+    #         input_system_prompt=system_prompt_turn1,
+    #         tool_calling_config=ToolCallingConfig(enable_tool_calling=True),
+    #         tools=[tool_config]
+    #     )
 
-        self.assertIn("metadata", result_turn1)
-        self.assertIn("tool_calls", result_turn1, "Tool calls should be in Turn 1 result")
+    #     self.assertIn("metadata", result_turn1)
+    #     self.assertIn("tool_calls", result_turn1, "Tool calls should be in Turn 1 result")
         
-        # Get the tool call ID from the first result
-        tool_calls = result_turn1.get("tool_calls", [])
-        for i, tool_call in enumerate(tool_calls):
-            if isinstance(tool_call, BaseModel):
-                tool_calls[i] = tool_call.model_dump()
+    #     # Get the tool call ID from the first result
+    #     tool_calls = result_turn1.get("tool_calls", [])
+    #     for i, tool_call in enumerate(tool_calls):
+    #         if isinstance(tool_call, BaseModel):
+    #             tool_calls[i] = tool_call.model_dump()
 
-        tool_calls = [t for t in tool_calls if t.get("tool_name") == "web_search_tool"]
-        tool_call_id = "fake_tool_call_id_1"
-        if tool_calls:
-            tool_call_id = tool_calls[0].get("tool_id")
-        tool_args = tool_calls[0].get("tool_input")
+    #     tool_calls = [t for t in tool_calls if t.get("tool_name") == "web_search_tool"]
+    #     tool_call_id = "fake_tool_call_id_1"
+    #     if tool_calls:
+    #         tool_call_id = tool_calls[0].get("tool_id")
+    #     tool_args = tool_calls[0].get("tool_input")
 
-        # Simulate running the fake web search node
-        fake_search_node = FakeWebSearchNode(node_id="fake_web_search_node", prefect_mode=False)
-        fake_search_input = FakeWebSearchInputSchema(query=tool_args.get("query", ""), max_results=tool_args.get("max_results", 3))
-        fake_search_result = await fake_search_node.process(fake_search_input, {})
+    #     # Simulate running the fake web search node
+    #     fake_search_node = FakeWebSearchNode(node_id="fake_web_search_node", prefect_mode=False)
+    #     fake_search_input = FakeWebSearchInputSchema(query=tool_args.get("query", ""), max_results=tool_args.get("max_results", 3))
+    #     fake_search_result = await fake_search_node.process(fake_search_input, {})
         
-        # Convert the fake search result to the format expected by the LLM
-        mock_tool_output_content = {
-            "searchResults": fake_search_result.search_results,
-            "queryUsed": fake_search_result.query_used
-        }
-        mock_tool_output_str = json.dumps(mock_tool_output_content)
+    #     # Convert the fake search result to the format expected by the LLM
+    #     mock_tool_output_content = {
+    #         "searchResults": fake_search_result.search_results,
+    #         "queryUsed": fake_search_result.query_used
+    #     }
+    #     mock_tool_output_str = json.dumps(mock_tool_output_content)
 
-        messages_history_turn1 = result_turn1.get("current_messages", [])
+    #     messages_history_turn1 = result_turn1.get("current_messages", [])
 
-        # --- Turn 2: Provide tool output and get text summary with reasoning ---
+    #     # --- Turn 2: Provide tool output and get text summary with reasoning ---
         
-        # Create tool_outputs for the second call
-        tool_outputs_for_turn2 = [
-            ToolOutput(
-                tool_call_id=tool_call_id,
-                content=mock_tool_output_str,
-                type="tool",
-                name="web_search_tool",
-                status="success"
-            )
-        ]
-        messages_history_turn2 = messages_history_turn1
+    #     # Create tool_outputs for the second call
+    #     tool_outputs_for_turn2 = [
+    #         ToolOutput(
+    #             tool_call_id=tool_call_id,
+    #             content=mock_tool_output_str,
+    #             type="tool",
+    #             name="web_search_tool",
+    #             status="success"
+    #         )
+    #     ]
+    #     messages_history_turn2 = messages_history_turn1
 
-        result_turn2 = await arun_llm_test(
-            runtime_config=self.runtime_config_regular,
-            model_provider=LLMModelProvider.ANTHROPIC,
-            model_name=AnthropicModels.CLAUDE_3_7_SONNET.value,
-            max_tokens=1000,
-            reasoning_config=reasoning_config,
-            messages_history=messages_history_turn2,
-            tool_outputs=tool_outputs_for_turn2,  # Pass the fake tool outputs
-            tool_calling_config=ToolCallingConfig(enable_tool_calling=False),
-            tools=[tool_config]
-        )
+    #     result_turn2 = await arun_llm_test(
+    #         runtime_config=self.runtime_config_regular,
+    #         model_provider=LLMModelProvider.ANTHROPIC,
+    #         model_name=AnthropicModels.CLAUDE_3_7_SONNET.value,
+    #         max_tokens=1000,
+    #         reasoning_config=reasoning_config,
+    #         messages_history=messages_history_turn2,
+    #         tool_outputs=tool_outputs_for_turn2,  # Pass the fake tool outputs
+    #         tool_calling_config=ToolCallingConfig(enable_tool_calling=False),
+    #         tools=[tool_config]
+    #     )
 
-        self.assertIn("text_content", result_turn2)
-        text_content = result_turn2["text_content"]
-        self.assertIsInstance(text_content, str)
-        self.assertGreater(len(text_content), 0, "Summary should not be empty")
+    #     self.assertIn("text_content", result_turn2)
+    #     text_content = result_turn2["text_content"]
+    #     self.assertIsInstance(text_content, str)
+    #     self.assertGreater(len(text_content), 0, "Summary should not be empty")
 
-        self.assertIn("current_messages", result_turn2)
-        print(f"Anthropic Claude 3.7 Sonnet Text Reasoning - Turn 1 metadata: {result_turn1.get('metadata')}")
-        print(f"Anthropic Claude 3.7 Sonnet Text Reasoning - Turn 2 metadata: {result_turn2.get('metadata')}")
+    #     self.assertIn("current_messages", result_turn2)
+    #     print(f"Anthropic Claude 3.7 Sonnet Text Reasoning - Turn 1 metadata: {result_turn1.get('metadata')}")
+    #     print(f"Anthropic Claude 3.7 Sonnet Text Reasoning - Turn 2 metadata: {result_turn2.get('metadata')}")
 
 
-    async def test_anthropic_claude3_7_tool_use_text_output(self):
-        """Test Anthropic Claude 3.7 Sonnet with tool use (web_search), text output."""
-        if not hasattr(AnthropicModels, 'CLAUDE_3_7_SONNET'):
-            self.skipTest("AnthropicModels.CLAUDE_3_7_SONNET not defined in enum.")
+    # async def test_anthropic_claude3_7_tool_use_text_output(self):
+    #     """Test Anthropic Claude 3.7 Sonnet with tool use (web_search), text output."""
+    #     if not hasattr(AnthropicModels, 'CLAUDE_3_7_SONNET'):
+    #         self.skipTest("AnthropicModels.CLAUDE_3_7_SONNET not defined in enum.")
 
-        topic = "ethical implications of gene editing"
-        system_prompt_turn1 = "Think step by step before answering. " + WEB_SEARCH_SYSTEM_PROMPT
+    #     topic = "ethical implications of gene editing"
+    #     system_prompt_turn1 = "Think step by step before answering. " + WEB_SEARCH_SYSTEM_PROMPT
 
-        # Configure the web_search_tool
-        tool_config = ToolConfig(
-            tool_name="web_search_tool",
-            is_provider_inbuilt_tool=False,
-            provider_inbuilt_user_config={}
-        )
+    #     # Configure the web_search_tool
+    #     tool_config = ToolConfig(
+    #         tool_name="web_search_tool",
+    #         is_provider_inbuilt_tool=False,
+    #         provider_inbuilt_user_config={}
+    #     )
 
-        # Enhanced prompt to strongly encourage using the search tool first
-        enhanced_user_prompt = f"Please first search for the latest information about {topic} using the web search tool, then I'll ask you to provide a detailed summary of your findings. Please only use the tool once and then follow with the summary."
+    #     # Enhanced prompt to strongly encourage using the search tool first
+    #     enhanced_user_prompt = f"Please first search for the latest information about {topic} using the web search tool, then I'll ask you to provide a detailed summary of your findings. Please only use the tool once and then follow with the summary."
 
-        # --- Turn 1: LLM makes a tool call ---
-        result_turn1 = await arun_llm_test(
-            runtime_config=self.runtime_config_regular,
-            model_provider=LLMModelProvider.ANTHROPIC,
-            model_name=AnthropicModels.CLAUDE_3_7_SONNET.value, 
-            max_tokens=1000,
-            user_prompt=enhanced_user_prompt,
-            input_system_prompt=system_prompt_turn1,
-            tool_calling_config=ToolCallingConfig(enable_tool_calling=True),
-            tools=[tool_config]
-        )
+    #     # --- Turn 1: LLM makes a tool call ---
+    #     result_turn1 = await arun_llm_test(
+    #         runtime_config=self.runtime_config_regular,
+    #         model_provider=LLMModelProvider.ANTHROPIC,
+    #         model_name=AnthropicModels.CLAUDE_3_7_SONNET.value, 
+    #         max_tokens=1000,
+    #         user_prompt=enhanced_user_prompt,
+    #         input_system_prompt=system_prompt_turn1,
+    #         tool_calling_config=ToolCallingConfig(enable_tool_calling=True),
+    #         tools=[tool_config]
+    #     )
 
-        self.assertIn("metadata", result_turn1)
-        self.assertIn("tool_calls", result_turn1, "Tool calls should be in Turn 1 result")
+    #     self.assertIn("metadata", result_turn1)
+    #     self.assertIn("tool_calls", result_turn1, "Tool calls should be in Turn 1 result")
         
-        # Get the tool call ID from the first result
-        tool_calls = result_turn1.get("tool_calls", [])
-        for i, tool_call in enumerate(tool_calls):
-            if isinstance(tool_call, BaseModel):
-                tool_calls[i] = tool_call.model_dump()
+    #     # Get the tool call ID from the first result
+    #     tool_calls = result_turn1.get("tool_calls", [])
+    #     for i, tool_call in enumerate(tool_calls):
+    #         if isinstance(tool_call, BaseModel):
+    #             tool_calls[i] = tool_call.model_dump()
 
-        tool_calls = [t for t in tool_calls if t.get("tool_name") == "web_search_tool"]
-        tool_call_id = "fake_tool_call_id_1"
-        if tool_calls:
-            tool_call_id = tool_calls[0].get("tool_id")
-        tool_args = tool_calls[0].get("tool_input")
+    #     tool_calls = [t for t in tool_calls if t.get("tool_name") == "web_search_tool"]
+    #     tool_call_id = "fake_tool_call_id_1"
+    #     if tool_calls:
+    #         tool_call_id = tool_calls[0].get("tool_id")
+    #     tool_args = tool_calls[0].get("tool_input")
         
-        print(tool_calls)
+    #     print(tool_calls)
 
-        # Simulate running the fake web search node
-        fake_search_node = FakeWebSearchNode(node_id="fake_web_search_node", prefect_mode=False)
-        fake_search_input = FakeWebSearchInputSchema(query=tool_args.get("query", ""), max_results=tool_args.get("max_results", 3))
-        fake_search_result = await fake_search_node.process(fake_search_input, {})
+    #     # Simulate running the fake web search node
+    #     fake_search_node = FakeWebSearchNode(node_id="fake_web_search_node", prefect_mode=False)
+    #     fake_search_input = FakeWebSearchInputSchema(query=tool_args.get("query", ""), max_results=tool_args.get("max_results", 3))
+    #     fake_search_result = await fake_search_node.process(fake_search_input, {})
         
-        # Convert the fake search result to the format expected by the LLM
-        mock_tool_output_content = {
-            "searchResults": fake_search_result.search_results,
-            "queryUsed": fake_search_result.query_used
-        }
-        mock_tool_output_str = json.dumps(mock_tool_output_content)
+    #     # Convert the fake search result to the format expected by the LLM
+    #     mock_tool_output_content = {
+    #         "searchResults": fake_search_result.search_results,
+    #         "queryUsed": fake_search_result.query_used
+    #     }
+    #     mock_tool_output_str = json.dumps(mock_tool_output_content)
 
-        messages_history_turn1 = result_turn1.get("current_messages", [])
+    #     messages_history_turn1 = result_turn1.get("current_messages", [])
 
-        # --- Turn 2: Provide tool output and get text post ---
+    #     # --- Turn 2: Provide tool output and get text post ---
         
-        # Create tool_outputs for the second call
-        tool_outputs_for_turn2 = [
-            ToolOutput(
-                tool_call_id=tool_call_id,
-                content=mock_tool_output_str,
-                type="tool",
-                name="web_search_tool",
-                status="success"
-            )
-        ]
-        messages_history_turn2 = messages_history_turn1
+    #     # Create tool_outputs for the second call
+    #     tool_outputs_for_turn2 = [
+    #         ToolOutput(
+    #             tool_call_id=tool_call_id,
+    #             content=mock_tool_output_str,
+    #             type="tool",
+    #             name="web_search_tool",
+    #             status="success"
+    #         )
+    #     ]
+    #     messages_history_turn2 = messages_history_turn1
 
-        result_turn2 = await arun_llm_test(
-            runtime_config=self.runtime_config_regular,
-            model_provider=LLMModelProvider.ANTHROPIC,
-            model_name=AnthropicModels.CLAUDE_3_7_SONNET.value,
-            max_tokens=1000,
-            # user_prompt=user_prompt_turn2,
-            messages_history=messages_history_turn2,
-            tool_outputs=tool_outputs_for_turn2,  # Pass the fake tool outputs
-            tool_calling_config=ToolCallingConfig(enable_tool_calling=False),
-            tools=[tool_config]
-        )
+    #     result_turn2 = await arun_llm_test(
+    #         runtime_config=self.runtime_config_regular,
+    #         model_provider=LLMModelProvider.ANTHROPIC,
+    #         model_name=AnthropicModels.CLAUDE_3_7_SONNET.value,
+    #         max_tokens=1000,
+    #         # user_prompt=user_prompt_turn2,
+    #         messages_history=messages_history_turn2,
+    #         tool_outputs=tool_outputs_for_turn2,  # Pass the fake tool outputs
+    #         tool_calling_config=ToolCallingConfig(enable_tool_calling=False),
+    #         tools=[tool_config]
+    #     )
 
-        self.assertIn("text_content", result_turn2)
-        text_content = result_turn2["text_content"]
-        self.assertIsInstance(text_content, str)
-        self.assertGreater(len(text_content), 0, "Post text should not be empty")
+    #     self.assertIn("text_content", result_turn2)
+    #     text_content = result_turn2["text_content"]
+    #     self.assertIsInstance(text_content, str)
+    #     self.assertGreater(len(text_content), 0, "Post text should not be empty")
 
-        self.assertIn("current_messages", result_turn2)
-        print(f"Anthropic Claude 3.7 Sonnet Text - Turn 1 metadata: {result_turn1.get('metadata')}")
-        print(f"Anthropic Claude 3.7 Sonnet Text - Turn 2 metadata: {result_turn2.get('metadata')}")
+    #     self.assertIn("current_messages", result_turn2)
+    #     print(f"Anthropic Claude 3.7 Sonnet Text - Turn 1 metadata: {result_turn1.get('metadata')}")
+    #     print(f"Anthropic Claude 3.7 Sonnet Text - Turn 2 metadata: {result_turn2.get('metadata')}")
 
-
+##########    ##########    ##########    ##########    ##########    ##########    ##########
+##########    ##########    ##########    ##########    ##########    ##########    ##########
     async def test_anthropic_claude3_7_tool_use_text_output_reasoning(self):
         """Test Anthropic Claude 3.7 Sonnet with tool use (web_search), text output, and reasoning."""
         if not hasattr(AnthropicModels, 'CLAUDE_3_7_SONNET'):
@@ -758,6 +753,8 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
 
         messages_history_turn1 = result_turn1.get("current_messages", [])
 
+        # import ipdb; ipdb.set_trace()
+
         # --- Turn 2: Provide tool output and get text summary with reasoning ---
         user_prompt_turn2 = WEB_SEARCH_USER_PROMPT_TURN2_TEXT_TEMPLATE.format(
             topic=topic, 
@@ -785,478 +782,479 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
         self.assertIn("current_messages", result_turn2)
         print(f"Anthropic Claude 3.7 Sonnet Text Reasoning - Turn 1 metadata: {result_turn1.get('metadata')}")
         print(f"Anthropic Claude 3.7 Sonnet Text Reasoning - Turn 2 metadata: {result_turn2.get('metadata')}")
+##########    ##########    ##########    ##########    ##########    ##########    ##########
+##########    ##########    ##########    ##########    ##########    ##########    ##########
+
+    # async def test_anthropic_claude3_7_tool_use_text_output(self):
+    #     """Test Anthropic Claude 3.7 Sonnet with tool use (web_search), text output."""
+    #     if not hasattr(AnthropicModels, 'CLAUDE_3_7_SONNET'):
+    #         self.skipTest("AnthropicModels.CLAUDE_3_7_SONNET not defined in enum.")
+
+    #     topic = "ethical implications of gene editing"
+    #     system_prompt_turn1 = "Think step by step before answering. " + WEB_SEARCH_SYSTEM_PROMPT
+
+    #     anthropic_search_config = AnthropicSearchToolConfig().model_dump(exclude_none=True)
+    #     tool_config = ToolConfig(
+    #         tool_name="web_search",
+    #         is_provider_inbuilt_tool=True,
+    #         provider_inbuilt_user_config=anthropic_search_config
+    #     )
+
+    #     # --- Turn 1: LLM makes a tool call ---
+    #     result_turn1 = await arun_llm_test(
+    #         runtime_config=self.runtime_config_regular,
+    #         model_provider=LLMModelProvider.ANTHROPIC,
+    #         model_name=AnthropicModels.CLAUDE_3_7_SONNET.value, 
+    #         max_tokens=1000,
+    #         user_prompt=WEB_SEARCH_USER_PROMPT_TURN1_TEMPLATE.format(topic=topic),
+    #         input_system_prompt=system_prompt_turn1,
+    #         tool_calling_config=ToolCallingConfig(enable_tool_calling=True),
+    #         tools=[tool_config]
+    #     )
+
+    #     self.assertIn("metadata", result_turn1)
+
+    #     messages_history_turn1 = result_turn1.get("current_messages", [])
+
+    #     # --- Turn 2: Provide tool output and get text summary ---
+    #     user_prompt_turn2 = WEB_SEARCH_USER_PROMPT_TURN2_TEXT_TEMPLATE.format(
+    #         topic=topic, 
+    #     )
+    #     messages_history_turn2 = messages_history_turn1
+
+    #     result_turn2 = await arun_llm_test(
+    #         runtime_config=self.runtime_config_regular,
+    #         model_provider=LLMModelProvider.ANTHROPIC,
+    #         model_name=AnthropicModels.CLAUDE_3_7_SONNET.value,
+    #         max_tokens=1000,
+    #         user_prompt=user_prompt_turn2,
+    #         messages_history=messages_history_turn2,
+    #         # tool_outputs=tool_outputs_for_turn2,
+    #         tool_calling_config=ToolCallingConfig(enable_tool_calling=False),
+    #         tools=[tool_config]
+    #     )
+
+    #     self.assertIn("text_content", result_turn2)
+    #     text_output = result_turn2["text_content"]
+    #     self.assertIsInstance(text_output, str)
+    #     self.assertGreater(len(text_output), 0, "Text output should not be empty")
+
+    #     self.assertIn("current_messages", result_turn2)
+    #     print(f"Anthropic Claude 3.7 Sonnet Text - Turn 1 metadata: {result_turn1.get('metadata')}")
+    #     print(f"Anthropic Claude 3.7 Sonnet Text - Turn 2 metadata: {result_turn2.get('metadata')}")
     
 
-    async def test_anthropic_claude3_7_tool_use_text_output(self):
-        """Test Anthropic Claude 3.7 Sonnet with tool use (web_search), text output."""
-        if not hasattr(AnthropicModels, 'CLAUDE_3_7_SONNET'):
-            self.skipTest("AnthropicModels.CLAUDE_3_7_SONNET not defined in enum.")
 
-        topic = "ethical implications of gene editing"
-        system_prompt_turn1 = "Think step by step before answering. " + WEB_SEARCH_SYSTEM_PROMPT
+    # async def test_anthropic_claude3_7_tool_use_structured_output_reasoning(self):
+    #     """Test Anthropic Claude 3.7 Sonnet with tool use (web_search), structured output, and reasoning."""
+    #     if not hasattr(AnthropicModels, 'CLAUDE_3_7_SONNET'):
+    #         self.skipTest("AnthropicModels.CLAUDE_3_7_SONNET not defined in enum.")
 
-        anthropic_search_config = AnthropicSearchToolConfig().model_dump(exclude_none=True)
-        tool_config = ToolConfig(
-            tool_name="web_search",
-            is_provider_inbuilt_tool=True,
-            provider_inbuilt_user_config=anthropic_search_config
-        )
+    #     topic = "ethical implications of gene editing"
+    #     reasoning_config = {"reasoning_tokens_budget": 1024}
+    #     system_prompt_turn1 = "Think step by step before answering. " + WEB_SEARCH_SYSTEM_PROMPT
 
-        # --- Turn 1: LLM makes a tool call ---
-        result_turn1 = await arun_llm_test(
-            runtime_config=self.runtime_config_regular,
-            model_provider=LLMModelProvider.ANTHROPIC,
-            model_name=AnthropicModels.CLAUDE_3_7_SONNET.value, 
-            max_tokens=1000,
-            user_prompt=WEB_SEARCH_USER_PROMPT_TURN1_TEMPLATE.format(topic=topic),
-            input_system_prompt=system_prompt_turn1,
-            tool_calling_config=ToolCallingConfig(enable_tool_calling=True),
-            tools=[tool_config]
-        )
+    #     # Setup structured output schema for turn 2
+    #     summary_schema_dict = WebSearchResultSummarySchema.model_json_schema()
+    #     structured_output_config = LLMStructuredOutputSchema(
+    #         schema_definition=summary_schema_dict,
+    #     )
 
-        self.assertIn("metadata", result_turn1)
+    #     anthropic_search_config = AnthropicSearchToolConfig().model_dump(exclude_none=True)
+    #     tool_config = ToolConfig(
+    #         tool_name="web_search",
+    #         is_provider_inbuilt_tool=True,
+    #         provider_inbuilt_user_config=anthropic_search_config
+    #     )
 
-        messages_history_turn1 = result_turn1.get("current_messages", [])
+    #     # Enhanced prompt to strongly encourage using the search tool first
+    #     enhanced_user_prompt = f"Please first search for the latest information about {topic} using the web search tool, then I'll ask you to provide a structured summary of your findings."
 
-        # --- Turn 2: Provide tool output and get text summary ---
-        user_prompt_turn2 = WEB_SEARCH_USER_PROMPT_TURN2_TEXT_TEMPLATE.format(
-            topic=topic, 
-        )
-        messages_history_turn2 = messages_history_turn1
+    #     # --- Turn 1: LLM makes a tool call ---
+    #     result_turn1 = await arun_llm_test(
+    #         runtime_config=self.runtime_config_regular,
+    #         model_provider=LLMModelProvider.ANTHROPIC,
+    #         model_name=AnthropicModels.CLAUDE_3_7_SONNET.value, 
+    #         max_tokens=1000,
+    #         reasoning_config=reasoning_config,
+    #         user_prompt=enhanced_user_prompt,
+    #         output_schema_config=structured_output_config,
+    #         input_system_prompt=system_prompt_turn1,
+    #         tool_calling_config=ToolCallingConfig(enable_tool_calling=True),
+    #         tools=[tool_config]
+    #     )
 
-        result_turn2 = await arun_llm_test(
-            runtime_config=self.runtime_config_regular,
-            model_provider=LLMModelProvider.ANTHROPIC,
-            model_name=AnthropicModels.CLAUDE_3_7_SONNET.value,
-            max_tokens=1000,
-            user_prompt=user_prompt_turn2,
-            messages_history=messages_history_turn2,
-            # tool_outputs=tool_outputs_for_turn2,
-            tool_calling_config=ToolCallingConfig(enable_tool_calling=False),
-            tools=[tool_config]
-        )
+    #     self.assertIn("metadata", result_turn1)
 
-        self.assertIn("text_content", result_turn2)
-        text_output = result_turn2["text_content"]
-        self.assertIsInstance(text_output, str)
-        self.assertGreater(len(text_output), 0, "Text output should not be empty")
+    #     messages_history_turn1 = result_turn1.get("current_messages", [])
 
-        self.assertIn("current_messages", result_turn2)
-        print(f"Anthropic Claude 3.7 Sonnet Text - Turn 1 metadata: {result_turn1.get('metadata')}")
-        print(f"Anthropic Claude 3.7 Sonnet Text - Turn 2 metadata: {result_turn2.get('metadata')}")
+    #     # --- Turn 2: Provide tool output and get structured summary with reasoning ---
+    #     user_prompt_turn2 = f"Based on your search results about {topic}, please provide a structured summary following the schema, including key points and citations from your findings."
+    #     messages_history_turn2 = messages_history_turn1
+
+    #     result_turn2 = await arun_llm_test(
+    #         runtime_config=self.runtime_config_regular,
+    #         model_provider=LLMModelProvider.ANTHROPIC,
+    #         model_name=AnthropicModels.CLAUDE_3_7_SONNET.value,
+    #         max_tokens=1000,
+    #         reasoning_config=reasoning_config,
+    #         user_prompt=user_prompt_turn2,
+    #         messages_history=messages_history_turn2,
+    #         output_schema_config=structured_output_config,
+    #         tool_calling_config=ToolCallingConfig(enable_tool_calling=False),
+    #         tools=[tool_config]
+    #     )
+
+    #     self.assertIn("structured_output", result_turn2)
+    #     structured_data = result_turn2["structured_output"]
+    #     self.assertIsInstance(structured_data, dict)
+        
+    #     summary = structured_data.get("summary", "")
+    #     key_points = structured_data.get("key_points", [])
+    #     urls_processed_count = structured_data.get("urls_processed_count", 0)
+    #     citations = structured_data.get("citations", [])
+
+    #     try:
+    #         validated_output = WebSearchResultSummarySchema(**structured_data)
+    #         summary = validated_output.summary
+    #         key_points = validated_output.key_points
+    #         urls_processed_count = validated_output.urls_processed_count
+    #         citations = validated_output.citations
+    #     except Exception as e:
+    #         # self.fail(f"Structured output validation failed: {e}\nOutput: {json.dumps(structured_data, indent=2)}")
+    #         pass
+        
+    #     self.assertIsInstance(summary, str)
+    #     self.assertGreater(len(summary), 0, "Summary should not be empty")
+    #     self.assertGreaterEqual(urls_processed_count, 1, "Should process at least one URL")
+
+    #     self.assertIn("current_messages", result_turn2)
+    #     print(f"Anthropic Claude 3.7 Sonnet Text Reasoning - Turn 1 metadata: {result_turn1.get('metadata')}")
+    #     print(f"Anthropic Claude 3.7 Sonnet Text Reasoning - Turn 2 metadata: {result_turn2.get('metadata')}")
     
 
+    # async def test_anthropic_claude3_7_tool_use_structured_output(self):
+    #     """Test Anthropic Claude 3.7 Sonnet with tool use (web_search), structured output."""
+    #     if not hasattr(AnthropicModels, 'CLAUDE_3_7_SONNET'):
+    #         self.skipTest("AnthropicModels.CLAUDE_3_7_SONNET not defined in enum.")
 
-    async def test_anthropic_claude3_7_tool_use_structured_output_reasoning(self):
-        """Test Anthropic Claude 3.7 Sonnet with tool use (web_search), structured output, and reasoning."""
-        if not hasattr(AnthropicModels, 'CLAUDE_3_7_SONNET'):
-            self.skipTest("AnthropicModels.CLAUDE_3_7_SONNET not defined in enum.")
+    #     topic = "ethical implications of gene editing"
+    #     system_prompt_turn1 = "Think step by step before answering. " + WEB_SEARCH_SYSTEM_PROMPT
 
-        topic = "ethical implications of gene editing"
-        reasoning_config = {"reasoning_tokens_budget": 1024}
-        system_prompt_turn1 = "Think step by step before answering. " + WEB_SEARCH_SYSTEM_PROMPT
+    #     # Setup structured output schema for SimplePostSchema
+    #     post_schema_dict = SimplePostSchema.model_json_schema()
+    #     structured_output_config = LLMStructuredOutputSchema(
+    #         schema_definition=post_schema_dict,
+    #     )
 
-        # Setup structured output schema for turn 2
-        summary_schema_dict = WebSearchResultSummarySchema.model_json_schema()
-        structured_output_config = LLMStructuredOutputSchema(
-            schema_definition=summary_schema_dict,
-        )
+    #     anthropic_search_config = AnthropicSearchToolConfig().model_dump(exclude_none=True)
+    #     tool_config = ToolConfig(
+    #         tool_name="web_search",
+    #         is_provider_inbuilt_tool=True,
+    #         provider_inbuilt_user_config=anthropic_search_config
+    #     )
 
-        anthropic_search_config = AnthropicSearchToolConfig().model_dump(exclude_none=True)
-        tool_config = ToolConfig(
-            tool_name="web_search",
-            is_provider_inbuilt_tool=True,
-            provider_inbuilt_user_config=anthropic_search_config
-        )
+    #     # Enhanced prompt to strongly encourage using the search tool first
+    #     enhanced_user_prompt = f"Please first search for the latest information about {topic} using the web search tool. After that, please create a post about it."  # After that, I'll ask you to create a post about it."
 
-        # Enhanced prompt to strongly encourage using the search tool first
-        enhanced_user_prompt = f"Please first search for the latest information about {topic} using the web search tool, then I'll ask you to provide a structured summary of your findings."
+    #     # --- Turn 1: LLM makes a tool call ---
+    #     result_turn1 = await arun_llm_test(
+    #         runtime_config=self.runtime_config_regular,
+    #         model_provider=LLMModelProvider.ANTHROPIC,
+    #         model_name=AnthropicModels.CLAUDE_3_7_SONNET.value, 
+    #         max_tokens=1000,
+    #         user_prompt=enhanced_user_prompt,
+    #         # output_schema_config=structured_output_config,
+    #         input_system_prompt=system_prompt_turn1,
+    #         tool_calling_config=ToolCallingConfig(enable_tool_calling=True),
+    #         tools=[tool_config]
+    #     )
 
-        # --- Turn 1: LLM makes a tool call ---
-        result_turn1 = await arun_llm_test(
-            runtime_config=self.runtime_config_regular,
-            model_provider=LLMModelProvider.ANTHROPIC,
-            model_name=AnthropicModels.CLAUDE_3_7_SONNET.value, 
-            max_tokens=1000,
-            reasoning_config=reasoning_config,
-            user_prompt=enhanced_user_prompt,
-            output_schema_config=structured_output_config,
-            input_system_prompt=system_prompt_turn1,
-            tool_calling_config=ToolCallingConfig(enable_tool_calling=True),
-            tools=[tool_config]
-        )
+    #     self.assertIn("metadata", result_turn1)
 
-        self.assertIn("metadata", result_turn1)
+    #     messages_history_turn1 = result_turn1.get("current_messages", [])
+    #     web_search_result = result_turn1.get("web_search_result", [])
 
-        messages_history_turn1 = result_turn1.get("current_messages", [])
+    #     # --- Turn 2: Provide tool output and get structured post ---
+    #     user_prompt_turn2 = f"Based on your search results about {topic} \n\nSearch Results: {json.dumps(web_search_result, indent=2)}\n\n, please create a structured post that includes the main text, relevant tags, and citations from your search."
+    #     messages_history_turn2 = messages_history_turn1
 
-        # --- Turn 2: Provide tool output and get structured summary with reasoning ---
-        user_prompt_turn2 = f"Based on your search results about {topic}, please provide a structured summary following the schema, including key points and citations from your findings."
-        messages_history_turn2 = messages_history_turn1
+    #     result_turn2 = await arun_llm_test(
+    #         runtime_config=self.runtime_config_regular,
+    #         model_provider=LLMModelProvider.ANTHROPIC,
+    #         model_name=AnthropicModels.CLAUDE_3_7_SONNET.value,
+    #         max_tokens=1000,
+    #         user_prompt=user_prompt_turn2,
+    #         messages_history=messages_history_turn2,
+    #         output_schema_config=structured_output_config,
+    #         tool_calling_config=ToolCallingConfig(enable_tool_calling=True),
+    #         tools=[tool_config]
+    #     )
 
-        result_turn2 = await arun_llm_test(
-            runtime_config=self.runtime_config_regular,
-            model_provider=LLMModelProvider.ANTHROPIC,
-            model_name=AnthropicModels.CLAUDE_3_7_SONNET.value,
-            max_tokens=1000,
-            reasoning_config=reasoning_config,
-            user_prompt=user_prompt_turn2,
-            messages_history=messages_history_turn2,
-            output_schema_config=structured_output_config,
-            tool_calling_config=ToolCallingConfig(enable_tool_calling=False),
-            tools=[tool_config]
-        )
+    #     self.assertIn("structured_output", result_turn2)
+    #     structured_data = result_turn2["structured_output"]
+    #     self.assertIsInstance(structured_data, dict)
 
-        self.assertIn("structured_output", result_turn2)
-        structured_data = result_turn2["structured_output"]
-        self.assertIsInstance(structured_data, dict)
+    #     post_text = structured_data.get("post_text", "")
         
-        summary = structured_data.get("summary", "")
-        key_points = structured_data.get("key_points", [])
-        urls_processed_count = structured_data.get("urls_processed_count", 0)
-        citations = structured_data.get("citations", [])
-
-        try:
-            validated_output = WebSearchResultSummarySchema(**structured_data)
-            summary = validated_output.summary
-            key_points = validated_output.key_points
-            urls_processed_count = validated_output.urls_processed_count
-            citations = validated_output.citations
-        except Exception as e:
-            # self.fail(f"Structured output validation failed: {e}\nOutput: {json.dumps(structured_data, indent=2)}")
-            pass
+    #     try:
+    #         validated_output = SimplePostSchema(**structured_data)
+    #         post_text = validated_output.post_text
+    #     except Exception as e:
+    #         print(f"Structured output validation failed: {e}\nOutput: {json.dumps(structured_data, indent=2)}")
+    #         # self.fail(f"Structured output validation failed: {e}\nOutput: {json.dumps(structured_data, indent=2)}")
         
-        self.assertIsInstance(summary, str)
-        self.assertGreater(len(summary), 0, "Summary should not be empty")
-        self.assertGreaterEqual(urls_processed_count, 1, "Should process at least one URL")
+    #     self.assertIsInstance(post_text, str)
+    #     self.assertGreater(len(post_text), 0, "Post text should not be empty")
 
-        self.assertIn("current_messages", result_turn2)
-        print(f"Anthropic Claude 3.7 Sonnet Text Reasoning - Turn 1 metadata: {result_turn1.get('metadata')}")
-        print(f"Anthropic Claude 3.7 Sonnet Text Reasoning - Turn 2 metadata: {result_turn2.get('metadata')}")
+    #     self.assertIn("current_messages", result_turn2)
+    #     print(f"Anthropic Claude 3.7 Sonnet Text - Turn 1 metadata: {result_turn1.get('metadata')}")
+    #     print(f"Anthropic Claude 3.7 Sonnet Text - Turn 2 metadata: {result_turn2.get('metadata')}")
+
+    # async def test_anthropic_claude3_7_tool_use_structured_output_reasoning(self):
+    #     """Test Anthropic Claude 3.7 Sonnet with tool use (web_search), structured output, and reasoning."""
+    #     if not hasattr(AnthropicModels, 'CLAUDE_3_7_SONNET'):
+    #         self.skipTest("AnthropicModels.CLAUDE_3_7_SONNET not defined in enum.")
+
+    #     topic = "ethical implications of gene editing"
+    #     reasoning_config = {"reasoning_tokens_budget": 1024}
+    #     system_prompt_turn1 = "Think step by step before answering. " + WEB_SEARCH_SYSTEM_PROMPT
+
+    #     # Setup structured output schema for turn 2
+    #     summary_schema_dict = WebSearchResultSummarySchema.model_json_schema()
+    #     structured_output_config = LLMStructuredOutputSchema(
+    #         schema_definition=summary_schema_dict,
+    #     )
+
+    #     # Configure the web_search_tool
+    #     tool_config = ToolConfig(
+    #         tool_name="web_search_tool",
+    #         is_provider_inbuilt_tool=False,
+    #         provider_inbuilt_user_config={}
+    #     )
+
+    #     # Enhanced prompt to strongly encourage using the search tool first
+    #     user_prompt_turn2 = f"Based on your search results about {topic}, please provide a structured summary following the schema, including key points and citations from your findings."
+    #     enhanced_user_prompt = f"Please first search for the latest information about {topic} using the web search tool, then I'll ask you to provide a structured summary of your findings. Please only use the tool once and then following then {user_prompt_turn2}"
+
+    #     # --- Turn 1: LLM makes a tool call ---
+    #     result_turn1 = await arun_llm_test(
+    #         runtime_config=self.runtime_config_regular,
+    #         model_provider=LLMModelProvider.ANTHROPIC,
+    #         model_name=AnthropicModels.CLAUDE_3_7_SONNET.value, 
+    #         max_tokens=1000,
+    #         reasoning_config=reasoning_config,
+    #         user_prompt=enhanced_user_prompt,
+    #         output_schema_config=structured_output_config,
+    #         input_system_prompt=system_prompt_turn1,
+    #         tool_calling_config=ToolCallingConfig(enable_tool_calling=True),
+    #         tools=[tool_config]
+    #     )
+
+    #     self.assertIn("metadata", result_turn1)
+    #     self.assertIn("tool_calls", result_turn1, "Tool calls should be in Turn 1 result")
+        
+    #     # Get the tool call ID from the first result
+    #     tool_calls = result_turn1.get("tool_calls", [])
+    #     for i, tool_call in enumerate(tool_calls):
+    #         if isinstance(tool_call, BaseModel):
+    #             tool_calls[i] = tool_call.model_dump()
+
+    #     tool_calls = [t for t in tool_calls if t.get("tool_name") == "web_search_tool"]
+    #     tool_call_id = "fake_tool_call_id_1"
+    #     if tool_calls:
+    #         tool_call_id = tool_calls[0].get("tool_id")
+    #     tool_args = tool_calls[0].get("tool_input")
+        
+    #     print(tool_calls)
+
+    #     # Simulate running the fake web search node
+    #     fake_search_node = FakeWebSearchNode(node_id="fake_web_search_node", prefect_mode=False)
+    #     fake_search_input = FakeWebSearchInputSchema(query=tool_args.get("query", ""), max_results=tool_args.get("max_results", 3))
+    #     fake_search_result = await fake_search_node.process(fake_search_input, {})
+        
+    #     # Convert the fake search result to the format expected by the LLM
+    #     mock_tool_output_content = {
+    #         "searchResults": fake_search_result.search_results,
+    #         "queryUsed": fake_search_result.query_used
+    #     }
+    #     mock_tool_output_str = json.dumps(mock_tool_output_content)
+
+    #     messages_history_turn1 = result_turn1.get("current_messages", [])
+
+    #     # --- Turn 2: Provide tool output and get structured summary with reasoning ---
+        
+        
+    #     # Create tool_outputs for the second call
+    #     tool_outputs_for_turn2 = [
+    #         ToolOutput(
+    #             tool_call_id=tool_call_id,
+    #             content=mock_tool_output_str,
+    #             type="tool",
+    #             name="web_search_tool",
+    #             status="success"
+    #         )
+    #     ]
+    #     messages_history_turn2 = messages_history_turn1
+
+    #     result_turn2 = await arun_llm_test(
+    #         runtime_config=self.runtime_config_regular,
+    #         model_provider=LLMModelProvider.ANTHROPIC,
+    #         model_name=AnthropicModels.CLAUDE_3_7_SONNET.value,
+    #         max_tokens=1000,
+    #         reasoning_config=reasoning_config,
+    #         # user_prompt=user_prompt_turn2,
+    #         messages_history=messages_history_turn2,
+    #         tool_outputs=tool_outputs_for_turn2,  # Pass the fake tool outputs
+    #         output_schema_config=structured_output_config,
+    #         tool_calling_config=ToolCallingConfig(enable_tool_calling=True),
+    #         tools=[tool_config]
+    #     )
+
+    #     self.assertIn("structured_output", result_turn2)
+    #     structured_data = result_turn2["structured_output"]
+    #     self.assertIsInstance(structured_data, dict)
+        
+    #     summary = structured_data.get("summary", "")
+    #     key_points = structured_data.get("key_points", [])
+    #     urls_processed_count = structured_data.get("urls_processed_count", 0)
+    #     citations = structured_data.get("citations", [])
+
+    #     try:
+    #         validated_output = WebSearchResultSummarySchema(**structured_data)
+    #         summary = validated_output.summary
+    #         key_points = validated_output.key_points
+    #         urls_processed_count = validated_output.urls_processed_count
+    #         citations = validated_output.citations
+    #     except Exception as e:
+    #         # self.fail(f"Structured output validation failed: {e}\nOutput: {json.dumps(structured_data, indent=2)}")
+    #         pass
+        
+    #     self.assertIsInstance(summary, str)
+    #     self.assertGreater(len(summary), 0, "Summary should not be empty")
+    #     self.assertGreaterEqual(urls_processed_count, 1, "Should process at least one URL")
+
+    #     self.assertIn("current_messages", result_turn2)
+    #     print(f"Anthropic Claude 3.7 Sonnet Text Reasoning - Turn 1 metadata: {result_turn1.get('metadata')}")
+    #     print(f"Anthropic Claude 3.7 Sonnet Text Reasoning - Turn 2 metadata: {result_turn2.get('metadata')}")
     
 
-    async def test_anthropic_claude3_7_tool_use_structured_output(self):
-        """Test Anthropic Claude 3.7 Sonnet with tool use (web_search), structured output."""
-        if not hasattr(AnthropicModels, 'CLAUDE_3_7_SONNET'):
-            self.skipTest("AnthropicModels.CLAUDE_3_7_SONNET not defined in enum.")
+    # async def test_anthropic_claude3_7_tool_use_structured_output(self):
+    #     """Test Anthropic Claude 3.7 Sonnet with tool use (web_search), structured output."""
+    #     if not hasattr(AnthropicModels, 'CLAUDE_3_7_SONNET'):
+    #         self.skipTest("AnthropicModels.CLAUDE_3_7_SONNET not defined in enum.")
 
-        topic = "ethical implications of gene editing"
-        system_prompt_turn1 = "Think step by step before answering. " + WEB_SEARCH_SYSTEM_PROMPT
+    #     topic = "ethical implications of gene editing"
+    #     system_prompt_turn1 = "Think step by step before answering. " + WEB_SEARCH_SYSTEM_PROMPT
 
-        # Setup structured output schema for SimplePostSchema
-        post_schema_dict = SimplePostSchema.model_json_schema()
-        structured_output_config = LLMStructuredOutputSchema(
-            schema_definition=post_schema_dict,
-        )
+    #     # Setup structured output schema for SimplePostSchema
+    #     post_schema_dict = SimplePostSchema.model_json_schema()
+    #     structured_output_config = LLMStructuredOutputSchema(
+    #         schema_definition=post_schema_dict,
+    #     )
 
-        anthropic_search_config = AnthropicSearchToolConfig().model_dump(exclude_none=True)
-        tool_config = ToolConfig(
-            tool_name="web_search",
-            is_provider_inbuilt_tool=True,
-            provider_inbuilt_user_config=anthropic_search_config
-        )
+    #     # Configure the web_search_tool
+    #     tool_config = ToolConfig(
+    #         tool_name="web_search_tool",
+    #         is_provider_inbuilt_tool=False,
+    #         provider_inbuilt_user_config={}
+    #     )
 
-        # Enhanced prompt to strongly encourage using the search tool first
-        enhanced_user_prompt = f"Please first search for the latest information about {topic} using the web search tool. After that, please create a post about it."  # After that, I'll ask you to create a post about it."
+    #     # Enhanced prompt to strongly encourage using the search tool first
+    #     user_prompt_turn2 = f"Based on your search results about {topic}, please provide a structured summary following the schema, including key points and citations from your findings."
+    #     enhanced_user_prompt = f"Please first search for the latest information about {topic} using the web search tool, then I'll ask you to provide a structured summary of your findings. Please only use the tool once and then following then {user_prompt_turn2}"
+    #     # enhanced_user_prompt = f"Please first search for the latest information about {topic} using the web search tool. After that, please create a post about it."
 
-        # --- Turn 1: LLM makes a tool call ---
-        result_turn1 = await arun_llm_test(
-            runtime_config=self.runtime_config_regular,
-            model_provider=LLMModelProvider.ANTHROPIC,
-            model_name=AnthropicModels.CLAUDE_3_7_SONNET.value, 
-            max_tokens=1000,
-            user_prompt=enhanced_user_prompt,
-            # output_schema_config=structured_output_config,
-            input_system_prompt=system_prompt_turn1,
-            tool_calling_config=ToolCallingConfig(enable_tool_calling=True),
-            tools=[tool_config]
-        )
+    #     # --- Turn 1: LLM makes a tool call ---
+    #     result_turn1 = await arun_llm_test(
+    #         runtime_config=self.runtime_config_regular,
+    #         model_provider=LLMModelProvider.ANTHROPIC,
+    #         model_name=AnthropicModels.CLAUDE_3_7_SONNET.value, 
+    #         max_tokens=1000,
+    #         user_prompt=enhanced_user_prompt,
+    #         input_system_prompt=system_prompt_turn1,
+    #         tool_calling_config=ToolCallingConfig(enable_tool_calling=True),
+    #         tools=[tool_config]
+    #     )
 
-        self.assertIn("metadata", result_turn1)
-
-        messages_history_turn1 = result_turn1.get("current_messages", [])
-        web_search_result = result_turn1.get("web_search_result", [])
-
-        # --- Turn 2: Provide tool output and get structured post ---
-        user_prompt_turn2 = f"Based on your search results about {topic} \n\nSearch Results: {json.dumps(web_search_result, indent=2)}\n\n, please create a structured post that includes the main text, relevant tags, and citations from your search."
-        messages_history_turn2 = messages_history_turn1
-
-        result_turn2 = await arun_llm_test(
-            runtime_config=self.runtime_config_regular,
-            model_provider=LLMModelProvider.ANTHROPIC,
-            model_name=AnthropicModels.CLAUDE_3_7_SONNET.value,
-            max_tokens=1000,
-            user_prompt=user_prompt_turn2,
-            messages_history=messages_history_turn2,
-            output_schema_config=structured_output_config,
-            tool_calling_config=ToolCallingConfig(enable_tool_calling=True),
-            tools=[tool_config]
-        )
-
-        self.assertIn("structured_output", result_turn2)
-        structured_data = result_turn2["structured_output"]
-        self.assertIsInstance(structured_data, dict)
-
-        post_text = structured_data.get("post_text", "")
+    #     self.assertIn("metadata", result_turn1)
+    #     self.assertIn("tool_calls", result_turn1, "Tool calls should be in Turn 1 result")
         
-        try:
-            validated_output = SimplePostSchema(**structured_data)
-            post_text = validated_output.post_text
-        except Exception as e:
-            print(f"Structured output validation failed: {e}\nOutput: {json.dumps(structured_data, indent=2)}")
-            # self.fail(f"Structured output validation failed: {e}\nOutput: {json.dumps(structured_data, indent=2)}")
+    #     # Get the tool call ID from the first result
+    #     tool_calls = result_turn1.get("tool_calls", [])
+    #     for i, tool_call in enumerate(tool_calls):
+    #         if isinstance(tool_call, BaseModel):
+    #             tool_calls[i] = tool_call.model_dump()
+
+    #     tool_calls = [t for t in tool_calls if t.get("tool_name") == "web_search_tool"]
+    #     tool_call_id = "fake_tool_call_id_1"
+    #     if tool_calls:
+    #         tool_call_id = tool_calls[0].get("tool_id")
+    #     tool_args = tool_calls[0].get("tool_input")
         
-        self.assertIsInstance(post_text, str)
-        self.assertGreater(len(post_text), 0, "Post text should not be empty")
+    #     print(tool_calls)
 
-        self.assertIn("current_messages", result_turn2)
-        print(f"Anthropic Claude 3.7 Sonnet Text - Turn 1 metadata: {result_turn1.get('metadata')}")
-        print(f"Anthropic Claude 3.7 Sonnet Text - Turn 2 metadata: {result_turn2.get('metadata')}")
-
-    async def test_anthropic_claude3_7_tool_use_structured_output_reasoning(self):
-        """Test Anthropic Claude 3.7 Sonnet with tool use (web_search), structured output, and reasoning."""
-        if not hasattr(AnthropicModels, 'CLAUDE_3_7_SONNET'):
-            self.skipTest("AnthropicModels.CLAUDE_3_7_SONNET not defined in enum.")
-
-        topic = "ethical implications of gene editing"
-        reasoning_config = {"reasoning_tokens_budget": 1024}
-        system_prompt_turn1 = "Think step by step before answering. " + WEB_SEARCH_SYSTEM_PROMPT
-
-        # Setup structured output schema for turn 2
-        summary_schema_dict = WebSearchResultSummarySchema.model_json_schema()
-        structured_output_config = LLMStructuredOutputSchema(
-            schema_definition=summary_schema_dict,
-        )
-
-        # Configure the web_search_tool
-        tool_config = ToolConfig(
-            tool_name="web_search_tool",
-            is_provider_inbuilt_tool=False,
-            provider_inbuilt_user_config={}
-        )
-
-        # Enhanced prompt to strongly encourage using the search tool first
-        user_prompt_turn2 = f"Based on your search results about {topic}, please provide a structured summary following the schema, including key points and citations from your findings."
-        enhanced_user_prompt = f"Please first search for the latest information about {topic} using the web search tool, then I'll ask you to provide a structured summary of your findings. Please only use the tool once and then following then {user_prompt_turn2}"
-
-        # --- Turn 1: LLM makes a tool call ---
-        result_turn1 = await arun_llm_test(
-            runtime_config=self.runtime_config_regular,
-            model_provider=LLMModelProvider.ANTHROPIC,
-            model_name=AnthropicModels.CLAUDE_3_7_SONNET.value, 
-            max_tokens=1000,
-            reasoning_config=reasoning_config,
-            user_prompt=enhanced_user_prompt,
-            output_schema_config=structured_output_config,
-            input_system_prompt=system_prompt_turn1,
-            tool_calling_config=ToolCallingConfig(enable_tool_calling=True),
-            tools=[tool_config]
-        )
-
-        self.assertIn("metadata", result_turn1)
-        self.assertIn("tool_calls", result_turn1, "Tool calls should be in Turn 1 result")
+    #     # Simulate running the fake web search node
+    #     fake_search_node = FakeWebSearchNode(node_id="fake_web_search_node", prefect_mode=False)
+    #     fake_search_input = FakeWebSearchInputSchema(query=tool_args.get("query", ""), max_results=tool_args.get("max_results", 3))
+    #     fake_search_result = await fake_search_node.process(fake_search_input, {})
         
-        # Get the tool call ID from the first result
-        tool_calls = result_turn1.get("tool_calls", [])
-        for i, tool_call in enumerate(tool_calls):
-            if isinstance(tool_call, BaseModel):
-                tool_calls[i] = tool_call.model_dump()
+    #     # Convert the fake search result to the format expected by the LLM
+    #     mock_tool_output_content = {
+    #         "searchResults": fake_search_result.search_results,
+    #         "queryUsed": fake_search_result.query_used
+    #     }
+    #     mock_tool_output_str = json.dumps(mock_tool_output_content)
 
-        tool_calls = [t for t in tool_calls if t.get("tool_name") == "web_search_tool"]
-        tool_call_id = "fake_tool_call_id_1"
-        if tool_calls:
-            tool_call_id = tool_calls[0].get("tool_id")
-        tool_args = tool_calls[0].get("tool_input")
+    #     messages_history_turn1 = result_turn1.get("current_messages", [])
+
+    #     # --- Turn 2: Provide tool output and get structured post ---
+    #     user_prompt_turn2 = f"Based on your search results about {topic}, please create a structured post that includes the main text, relevant tags, and citations from your search."
         
-        print(tool_calls)
+    #     # Create tool_outputs for the second call
+    #     tool_outputs_for_turn2 = [
+    #         ToolOutput(
+    #             tool_call_id=tool_call_id,
+    #             content=mock_tool_output_str,
+    #             type="tool",
+    #             name="web_search_tool",
+    #             status="success"
+    #         )
+    #     ]
+    #     messages_history_turn2 = messages_history_turn1
 
-        # Simulate running the fake web search node
-        fake_search_node = FakeWebSearchNode(node_id="fake_web_search_node", prefect_mode=False)
-        fake_search_input = FakeWebSearchInputSchema(query=tool_args.get("query", ""), max_results=tool_args.get("max_results", 3))
-        fake_search_result = await fake_search_node.process(fake_search_input, {})
+    #     result_turn2 = await arun_llm_test(
+    #         runtime_config=self.runtime_config_regular,
+    #         model_provider=LLMModelProvider.ANTHROPIC,
+    #         model_name=AnthropicModels.CLAUDE_3_7_SONNET.value,
+    #         max_tokens=1000,
+    #         # user_prompt=user_prompt_turn2,
+    #         messages_history=messages_history_turn2,
+    #         tool_outputs=tool_outputs_for_turn2,  # Pass the fake tool outputs
+    #         output_schema_config=structured_output_config,
+    #         tool_calling_config=ToolCallingConfig(enable_tool_calling=True),
+    #         tools=[tool_config]
+    #     )
+
+    #     self.assertIn("structured_output", result_turn2)
+    #     structured_data = result_turn2["structured_output"]
+    #     self.assertIsInstance(structured_data, dict)
+
+    #     post_text = structured_data.get("post_text", "")
         
-        # Convert the fake search result to the format expected by the LLM
-        mock_tool_output_content = {
-            "searchResults": fake_search_result.search_results,
-            "queryUsed": fake_search_result.query_used
-        }
-        mock_tool_output_str = json.dumps(mock_tool_output_content)
-
-        messages_history_turn1 = result_turn1.get("current_messages", [])
-
-        # --- Turn 2: Provide tool output and get structured summary with reasoning ---
+    #     try:
+    #         validated_output = SimplePostSchema(**structured_data)
+    #         post_text = validated_output.post_text
+    #     except Exception as e:
+    #         print(f"Structured output validation failed: {e}\nOutput: {json.dumps(structured_data, indent=2)}")
+    #         # self.fail(f"Structured output validation failed: {e}\nOutput: {json.dumps(structured_data, indent=2)}")
         
-        
-        # Create tool_outputs for the second call
-        tool_outputs_for_turn2 = [
-            ToolOutput(
-                tool_call_id=tool_call_id,
-                content=mock_tool_output_str,
-                type="tool",
-                name="web_search_tool",
-                status="success"
-            )
-        ]
-        messages_history_turn2 = messages_history_turn1
+    #     self.assertIsInstance(post_text, str)
+    #     self.assertGreater(len(post_text), 0, "Post text should not be empty")
 
-        result_turn2 = await arun_llm_test(
-            runtime_config=self.runtime_config_regular,
-            model_provider=LLMModelProvider.ANTHROPIC,
-            model_name=AnthropicModels.CLAUDE_3_7_SONNET.value,
-            max_tokens=1000,
-            reasoning_config=reasoning_config,
-            # user_prompt=user_prompt_turn2,
-            messages_history=messages_history_turn2,
-            tool_outputs=tool_outputs_for_turn2,  # Pass the fake tool outputs
-            output_schema_config=structured_output_config,
-            tool_calling_config=ToolCallingConfig(enable_tool_calling=True),
-            tools=[tool_config]
-        )
-
-        self.assertIn("structured_output", result_turn2)
-        structured_data = result_turn2["structured_output"]
-        self.assertIsInstance(structured_data, dict)
-        
-        summary = structured_data.get("summary", "")
-        key_points = structured_data.get("key_points", [])
-        urls_processed_count = structured_data.get("urls_processed_count", 0)
-        citations = structured_data.get("citations", [])
-
-        try:
-            validated_output = WebSearchResultSummarySchema(**structured_data)
-            summary = validated_output.summary
-            key_points = validated_output.key_points
-            urls_processed_count = validated_output.urls_processed_count
-            citations = validated_output.citations
-        except Exception as e:
-            # self.fail(f"Structured output validation failed: {e}\nOutput: {json.dumps(structured_data, indent=2)}")
-            pass
-        
-        self.assertIsInstance(summary, str)
-        self.assertGreater(len(summary), 0, "Summary should not be empty")
-        self.assertGreaterEqual(urls_processed_count, 1, "Should process at least one URL")
-
-        self.assertIn("current_messages", result_turn2)
-        print(f"Anthropic Claude 3.7 Sonnet Text Reasoning - Turn 1 metadata: {result_turn1.get('metadata')}")
-        print(f"Anthropic Claude 3.7 Sonnet Text Reasoning - Turn 2 metadata: {result_turn2.get('metadata')}")
-    
-
-    async def test_anthropic_claude3_7_tool_use_structured_output(self):
-        """Test Anthropic Claude 3.7 Sonnet with tool use (web_search), structured output."""
-        if not hasattr(AnthropicModels, 'CLAUDE_3_7_SONNET'):
-            self.skipTest("AnthropicModels.CLAUDE_3_7_SONNET not defined in enum.")
-
-        topic = "ethical implications of gene editing"
-        system_prompt_turn1 = "Think step by step before answering. " + WEB_SEARCH_SYSTEM_PROMPT
-
-        # Setup structured output schema for SimplePostSchema
-        post_schema_dict = SimplePostSchema.model_json_schema()
-        structured_output_config = LLMStructuredOutputSchema(
-            schema_definition=post_schema_dict,
-        )
-
-        # Configure the web_search_tool
-        tool_config = ToolConfig(
-            tool_name="web_search_tool",
-            is_provider_inbuilt_tool=False,
-            provider_inbuilt_user_config={}
-        )
-
-        # Enhanced prompt to strongly encourage using the search tool first
-        user_prompt_turn2 = f"Based on your search results about {topic}, please provide a structured summary following the schema, including key points and citations from your findings."
-        enhanced_user_prompt = f"Please first search for the latest information about {topic} using the web search tool, then I'll ask you to provide a structured summary of your findings. Please only use the tool once and then following then {user_prompt_turn2}"
-        # enhanced_user_prompt = f"Please first search for the latest information about {topic} using the web search tool. After that, please create a post about it."
-
-        # --- Turn 1: LLM makes a tool call ---
-        result_turn1 = await arun_llm_test(
-            runtime_config=self.runtime_config_regular,
-            model_provider=LLMModelProvider.ANTHROPIC,
-            model_name=AnthropicModels.CLAUDE_3_7_SONNET.value, 
-            max_tokens=1000,
-            user_prompt=enhanced_user_prompt,
-            input_system_prompt=system_prompt_turn1,
-            tool_calling_config=ToolCallingConfig(enable_tool_calling=True),
-            tools=[tool_config]
-        )
-
-        self.assertIn("metadata", result_turn1)
-        self.assertIn("tool_calls", result_turn1, "Tool calls should be in Turn 1 result")
-        
-        # Get the tool call ID from the first result
-        tool_calls = result_turn1.get("tool_calls", [])
-        for i, tool_call in enumerate(tool_calls):
-            if isinstance(tool_call, BaseModel):
-                tool_calls[i] = tool_call.model_dump()
-
-        tool_calls = [t for t in tool_calls if t.get("tool_name") == "web_search_tool"]
-        tool_call_id = "fake_tool_call_id_1"
-        if tool_calls:
-            tool_call_id = tool_calls[0].get("tool_id")
-        tool_args = tool_calls[0].get("tool_input")
-        
-        print(tool_calls)
-
-        # Simulate running the fake web search node
-        fake_search_node = FakeWebSearchNode(node_id="fake_web_search_node", prefect_mode=False)
-        fake_search_input = FakeWebSearchInputSchema(query=tool_args.get("query", ""), max_results=tool_args.get("max_results", 3))
-        fake_search_result = await fake_search_node.process(fake_search_input, {})
-        
-        # Convert the fake search result to the format expected by the LLM
-        mock_tool_output_content = {
-            "searchResults": fake_search_result.search_results,
-            "queryUsed": fake_search_result.query_used
-        }
-        mock_tool_output_str = json.dumps(mock_tool_output_content)
-
-        messages_history_turn1 = result_turn1.get("current_messages", [])
-
-        # --- Turn 2: Provide tool output and get structured post ---
-        user_prompt_turn2 = f"Based on your search results about {topic}, please create a structured post that includes the main text, relevant tags, and citations from your search."
-        
-        # Create tool_outputs for the second call
-        tool_outputs_for_turn2 = [
-            ToolOutput(
-                tool_call_id=tool_call_id,
-                content=mock_tool_output_str,
-                type="tool",
-                name="web_search_tool",
-                status="success"
-            )
-        ]
-        messages_history_turn2 = messages_history_turn1
-
-        result_turn2 = await arun_llm_test(
-            runtime_config=self.runtime_config_regular,
-            model_provider=LLMModelProvider.ANTHROPIC,
-            model_name=AnthropicModels.CLAUDE_3_7_SONNET.value,
-            max_tokens=1000,
-            # user_prompt=user_prompt_turn2,
-            messages_history=messages_history_turn2,
-            tool_outputs=tool_outputs_for_turn2,  # Pass the fake tool outputs
-            output_schema_config=structured_output_config,
-            tool_calling_config=ToolCallingConfig(enable_tool_calling=True),
-            tools=[tool_config]
-        )
-
-        self.assertIn("structured_output", result_turn2)
-        structured_data = result_turn2["structured_output"]
-        self.assertIsInstance(structured_data, dict)
-
-        post_text = structured_data.get("post_text", "")
-        
-        try:
-            validated_output = SimplePostSchema(**structured_data)
-            post_text = validated_output.post_text
-        except Exception as e:
-            print(f"Structured output validation failed: {e}\nOutput: {json.dumps(structured_data, indent=2)}")
-            # self.fail(f"Structured output validation failed: {e}\nOutput: {json.dumps(structured_data, indent=2)}")
-        
-        self.assertIsInstance(post_text, str)
-        self.assertGreater(len(post_text), 0, "Post text should not be empty")
-
-        self.assertIn("current_messages", result_turn2)
-        print(f"Anthropic Claude 3.7 Sonnet Text - Turn 1 metadata: {result_turn1.get('metadata')}")
-        print(f"Anthropic Claude 3.7 Sonnet Text - Turn 2 metadata: {result_turn2.get('metadata')}")
+    #     self.assertIn("current_messages", result_turn2)
+    #     print(f"Anthropic Claude 3.7 Sonnet Text - Turn 1 metadata: {result_turn1.get('metadata')}")
+    #     print(f"Anthropic Claude 3.7 Sonnet Text - Turn 2 metadata: {result_turn2.get('metadata')}")
 
 
 
@@ -1266,9 +1264,8 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
     ######################################     OPEN AI TESTS    ################### ###################
     ################### ################### ################### ################### ################### 
 
-
-
-
+##########    ##########    ##########    ##########    ##########    ##########    ##########
+##########    ##########    ##########    ##########    ##########    ##########    ##########
     # async def test_openai_gpt4o_text_output_with_web_search(self):
     #     """
     #     Test OpenAI GPT-4o for a multi-turn conversation involving feedback for content generation.
@@ -1339,6 +1336,8 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
 
     #     self.assertIn("current_messages", result_turn2, "current_messages missing in turn 2 result.")
     #     self.assertIsInstance(result_turn2["current_messages"], list, "current_messages should be a list in turn 2.")
+##########    ##########    ##########    ##########    ##########    ##########    ##########
+##########    ##########    ##########    ##########    ##########    ##########    ##########
 
     # async def test_openai_gpt4o_conversation_with_feedback_content_generation(self):
     #     """

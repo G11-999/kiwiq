@@ -682,46 +682,46 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
     #     self.assertIsNotNone(result["web_search_result"])
     #     self.assertIsInstance(result["web_search_result"].get("citations"), list)
 
-    # async def test_perplexity_structured_output_reasoning_model(self):
-    #     """Test Perplexity Sonar Reasoning Pro with structured output and web search."""
-    #     if not hasattr(PerplexityModels, "SONAR_REASONING_PRO"):
-    #          self.skipTest("PerplexityModels.SONAR_REASONING_PRO not defined in enum.")
+    async def test_perplexity_structured_output_reasoning_model(self):
+        """Test Perplexity Sonar Reasoning Pro with structured output and web search."""
+        if not hasattr(PerplexityModels, "SONAR_REASONING_PRO"):
+             self.skipTest("PerplexityModels.SONAR_REASONING_PRO not defined in enum.")
 
-    #     # Define the structured output schema based on the user's example fields
-    #     dynamic_schema_spec = ConstructDynamicSchema(
-    #          schema_name="PerplexitySearchStructSchema",
-    #          fields={
-    #              "summary": DynamicSchemaFieldConfig(type="str", required=True, description="Content of the response"),
-    #              "key_findings": DynamicSchemaFieldConfig(type="list", items_type="str", required=True, description="List of key findings from the search"), # Changed to list
-    #              "citations": DynamicSchemaFieldConfig(type="list", items_type="str", required=True, description="List of citations from the search results") # Changed to list
-    #          }
-    #     )
-    #     schema_config = LLMStructuredOutputSchema(dynamic_schema_spec=dynamic_schema_spec)
+        # Define the structured output schema based on the user's example fields
+        dynamic_schema_spec = ConstructDynamicSchema(
+             schema_name="PerplexitySearchStructSchema",
+             fields={
+                 "summary": DynamicSchemaFieldConfig(type="str", required=True, description="Content of the response"),
+                 "key_findings": DynamicSchemaFieldConfig(type="list", items_type="str", required=True, description="List of key findings from the search"), # Changed to list
+                 "citations": DynamicSchemaFieldConfig(type="list", items_type="str", required=True, description="List of citations from the search results") # Changed to list
+             }
+        )
+        schema_config = LLMStructuredOutputSchema(dynamic_schema_spec=dynamic_schema_spec)
 
-    #     result = await arun_llm_test(
-    #         runtime_config=self.runtime_config_regular,
-    #         model_provider=LLMModelProvider.PERPLEXITY,
-    #         model_name=PerplexityModels.SONAR_REASONING_PRO.value,
-    #         output_schema_config=schema_config, # Structured output
-    #         web_search_options={
-    #             "search_recency_filter": "month",
-    #             "search_context_size": "medium",
-    #             "search_domain_filter": ["arxiv.org", "openai.com"]
-    #         },
-    #         user_prompt="What are the latest developments in AI safety research? Provide a summary, key findings, and citations.",
-    #         max_tokens=1000
-    #     )
-    #     self.assertIsInstance(result, dict)
-    #     self.assertIn("structured_output", result)
-    #     self.assertIn("metadata", result)
-    #     self.assertIsInstance(result["structured_output"], dict)
-    #     self.assertIn("summary", result["structured_output"])
-    #     self.assertIn("key_findings", result["structured_output"])
-    #     self.assertIsInstance(result["structured_output"]["key_findings"], list)
-    #     self.assertIn("citations", result["structured_output"])
-    #     self.assertIsInstance(result["structured_output"]["citations"], list)
-    #     self.assertIn("web_search_result", result) # Expect search results metadata as well
-    #     self.assertIsNotNone(result["web_search_result"])
+        result = await arun_llm_test(
+            runtime_config=self.runtime_config_regular,
+            model_provider=LLMModelProvider.PERPLEXITY,
+            model_name=PerplexityModels.SONAR_REASONING_PRO.value,
+            output_schema_config=schema_config, # Structured output
+            web_search_options={
+                "search_recency_filter": "month",
+                "search_context_size": "medium",
+                "search_domain_filter": ["arxiv.org", "openai.com"]
+            },
+            user_prompt="What are the latest developments in AI safety research? Provide a summary, key findings, and citations.",
+            max_tokens=3000
+        )
+        self.assertIsInstance(result, dict)
+        self.assertIn("structured_output", result)
+        self.assertIn("metadata", result)
+        self.assertIsInstance(result["structured_output"], dict)
+        self.assertIn("summary", result["structured_output"])
+        self.assertIn("key_findings", result["structured_output"])
+        self.assertIsInstance(result["structured_output"]["key_findings"], list)
+        self.assertIn("citations", result["structured_output"])
+        self.assertIsInstance(result["structured_output"]["citations"], list)
+        self.assertIn("web_search_result", result) # Expect search results metadata as well
+        self.assertIsNotNone(result["web_search_result"])
 
     # async def test_perplexity_text_output_non_reasoning_model(self):
     #     """Test Perplexity Sonar Pro with text output and web search."""

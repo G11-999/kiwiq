@@ -46,11 +46,13 @@ from db.session import get_async_db_as_manager
 #     total_tokens = token_usage.get("total_tokens", input_tokens + output_tokens)
 #     print("####### ######## $$$$$ FUCKING MONKEY PATCHING $$$$$ ######## ########")
 #     print("json.dumps(token_usage):", json.dumps(token_usage, indent=4))
-#     return UsageMetadata(
+#     usage_metadata = UsageMetadata(
 #         input_tokens=input_tokens,
 #         output_tokens=output_tokens,
 #         total_tokens=total_tokens,
 #     )
+#     print("usage_metadata:", usage_metadata)
+#     return usage_metadata
 
 # chat_models._create_usage_metadata = _custom_create_usage_metadata
 
@@ -1844,6 +1846,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
 
 
         response_metadata = getattr(response, 'response_metadata', {})
+        # import ipdb; ipdb.set_trace()
         
         # Normalize metadata to OpenAI format
         normalized_metadata = None
@@ -2020,6 +2023,22 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
         
         # Parse agent actions from additional_kwargs
         agent_actions = LLMNode._parse_agent_actions(response)
+
+        web_search_tool_calls = None
+        if isinstance(response.content, list):
+            web_search_tool_calls = 0
+            for _message in response.content:
+                if model_metadata.provider == LLMModelProvider.ANTHROPIC:
+                    if isinstance(_message, dict) and "type" in _message and _message["type"] == "server_tool_use":
+                        if "name" in _message and _message["name"] == "web_search":
+                            web_search_tool_calls += 1
+                elif model_metadata.provider == LLMModelProvider.OPENAI:
+                    # {'id': 'ws_68a6ceb8e27481a2a75621611279e57207d37a8c7ab8477c', 'action': {'query': 'AI in creative writing 2025', 'type': 'search'}, 'status': 'completed', 'type': 'web_search_call', 'index': 0}
+                    if isinstance(_message, dict) and "type" in _message and _message["type"] == "web_search_call":
+                        if "action" in _message and isinstance(_message["action"], dict) and "type" in _message["action"] and _message["action"]["type"] == "search":
+                            web_search_tool_calls += 1
+        # print("web_search_tool_calls:", web_search_tool_calls)
+        # import ipdb; ipdb.set_trace()
         
         # Web Searches billing
         # TODO: potentially estimate web searches in pre allocation credits??
@@ -2030,6 +2049,15 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                 run_job = app_context.get("workflow_run_job")
                 org_id = run_job.owner_org_id
                 estimated_credits = citation_count // settings.WEB_SEARCH_NUM_CITATIONS_PER_CREDIT
+                web_search_billing_metadata = {
+                    "model_name": self.config.llm_config.model_spec.model,
+                    "provider": self.config.llm_config.model_spec.provider.value,
+                    "citation_count": citation_count,
+                }
+                if web_search_tool_calls is not None:
+                    web_search_billing_metadata["web_search_tool_calls"] = web_search_tool_calls
+                    estimated_credits = web_search_tool_calls
+                
                 # Adjust allocated credits with actual cost
                 from kiwi_app.billing.models import CreditType
                 from kiwi_app.billing.schemas import CreditConsumptionRequest
@@ -2042,11 +2070,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                             credit_type=CreditType.WEB_SEARCHES,
                             credits_consumed=estimated_credits,
                             event_type="web_search",
-                            metadata={
-                                "model_name": self.config.llm_config.model_spec.model,
-                                "provider": self.config.llm_config.model_spec.provider.value,
-                                "citation_count": citation_count,
-                            },
+                            metadata=web_search_billing_metadata,
                         ),
                     )
                 self.info(f"Consumed estimated web search credits: allocated (type web search) ={estimated_credits:.6f}")

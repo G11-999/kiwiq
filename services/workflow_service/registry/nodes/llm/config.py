@@ -92,6 +92,8 @@ class ModelMetadata(BaseModel):
     cached_token_price_per_M: float = 0.
     input_token_price_per_M: float = 0.
     output_token_price_per_M: float = 0.
+    # tool call prices
+    web_search_tool_call_price_per_K: float = 0.
 
     # GPT-5 series: optional verbosity control support (unique to select models)
     verbosity_supported: bool = False
@@ -131,7 +133,8 @@ DEFAULT_OPENAI_METADATA = ModelMetadata(
     rate_limits={"requests_per_minute": 10000, "tokens_per_minute": 30000000},  # TODO: RECHECK!
     tool_choice=["auto", "any", "none"],
     parallel_tool_calling_configurable=True,
-    multimodal=True
+    multimodal=True,
+    web_search_tool_call_price_per_K=10.0,
 )
 # https://platform.openai.com/docs/pricing
 
@@ -151,7 +154,8 @@ DEFAULT_OPENAI_SEARCH_METADATA = ModelMetadata(
     # return_images=False,
     # return_related_questions=True,
     search_context_size=True,  # OpenAI supports search context size
-    user_location=True  # OpenAI supports user location
+    user_location=True,  # OpenAI supports user location
+    web_search_tool_call_price_per_K=10.0,
 )
 
 class OpenAIModels(str, EnumWithAttr):
@@ -224,8 +228,14 @@ class OpenAIModels(str, EnumWithAttr):
         "output_token_limit": 100000,
     }))
     # GPT_4_5 = "gpt-4.5-preview", ModelMetadata(**(DEFAULT_OPENAI_METADATA.model_dump() | {"rate_limits": {"requests_per_minute": 10000, "tokens_per_minute": 2000000}}))
-    GPT_4_1 = "gpt-4.1", ModelMetadata(**(DEFAULT_OPENAI_METADATA.model_dump() | {"context_limit": 1000000, "output_token_limit": 32768}))
-    GPT_4o = "gpt-4o", DEFAULT_OPENAI_METADATA
+    GPT_4_1 = "gpt-4.1", ModelMetadata(**(DEFAULT_OPENAI_METADATA.model_dump() | {
+        "context_limit": 1000000, 
+        "output_token_limit": 32768,
+        "web_search_tool_call_price_per_K": 25.0,
+    }))
+    GPT_4o = "gpt-4o", ModelMetadata(**(DEFAULT_OPENAI_METADATA.model_dump() | {
+        "web_search_tool_call_price_per_K": 25.0,
+    }))
     # ChatGPT-4o-latest model - optimized for conversational use without tool support
     CHATGPT_4O_LATEST = "chatgpt-4o-latest", ModelMetadata(**(DEFAULT_OPENAI_METADATA.model_dump() | {
         "tool_use": False,  # ChatGPT-4o-latest does not support tool use
@@ -233,9 +243,9 @@ class OpenAIModels(str, EnumWithAttr):
         "tool_choice": [],  # No tool choice options
         "parallel_tool_calling_configurable": False,  # No parallel tool calling
     }))
-    GPT_4_1_MINI = "gpt-4.1-mini", ModelMetadata(**(DEFAULT_OPENAI_METADATA.model_dump() | {"rate_limits": {"requests_per_minute": 30000, "tokens_per_minute": 150000000}, "context_limit": 1000000, "output_token_limit": 32768}))
-    GPT_4o_mini = "gpt-4o-mini", ModelMetadata(**(DEFAULT_OPENAI_METADATA.model_dump() | {"rate_limits": {"requests_per_minute": 30000, "tokens_per_minute": 150000000}}))
-    GPT_4_1_NANO = "gpt-4.1-nano", ModelMetadata(**(DEFAULT_OPENAI_METADATA.model_dump() | {"inbuilt_tools": {k:v for k,v in OPENAI_TOOLS_REGISTRY.items() if not k.startswith("web_search")}, "rate_limits": {"requests_per_minute": 30000, "tokens_per_minute": 150000000}, "context_limit": 1000000, "output_token_limit": 32768}))
+    GPT_4_1_MINI = "gpt-4.1-mini", ModelMetadata(**(DEFAULT_OPENAI_METADATA.model_dump() | {"rate_limits": {"requests_per_minute": 30000, "tokens_per_minute": 150000000}, "context_limit": 1000000, "output_token_limit": 32768, "web_search_tool_call_price_per_K": 25.0,}))
+    GPT_4o_mini = "gpt-4o-mini", ModelMetadata(**(DEFAULT_OPENAI_METADATA.model_dump() | {"rate_limits": {"requests_per_minute": 30000, "tokens_per_minute": 150000000}, "web_search_tool_call_price_per_K": 25.0,}))
+    GPT_4_1_NANO = "gpt-4.1-nano", ModelMetadata(**(DEFAULT_OPENAI_METADATA.model_dump() | {"inbuilt_tools": {k:v for k,v in OPENAI_TOOLS_REGISTRY.items() if not k.startswith("web_search")}, "rate_limits": {"requests_per_minute": 30000, "tokens_per_minute": 150000000}, "context_limit": 1000000, "output_token_limit": 32768,}))
     # O1_MINI = "o1-mini", ModelMetadata(**(DEFAULT_OPENAI_METADATA.model_dump() | {
     #     "rate_limits": {"requests_per_minute": 30000, "tokens_per_minute": 150000000},
     #     "reasoning": True,
@@ -259,10 +269,12 @@ class OpenAIModels(str, EnumWithAttr):
 
     # """OpenAI web search model options."""
     GPT_4O_SEARCH_PREVIEW = "gpt-4o-search-preview", ModelMetadata(**(DEFAULT_OPENAI_SEARCH_METADATA.model_dump() | {
-        "rate_limits": {"requests_per_minute": 1000, "tokens_per_minute": 3000000}
+        "rate_limits": {"requests_per_minute": 1000, "tokens_per_minute": 3000000},
+        "web_search_tool_call_price_per_K": 25.0,
     }))
     GPT_4O_MINI_SEARCH_PREVIEW = "gpt-4o-mini-search-preview", ModelMetadata(**(DEFAULT_OPENAI_SEARCH_METADATA.model_dump() | {
-        "rate_limits": {"requests_per_minute": 30000, "tokens_per_minute": 150000000}
+        "rate_limits": {"requests_per_minute": 30000, "tokens_per_minute": 150000000},
+        "web_search_tool_call_price_per_K": 25.0,
     }))
 
     # GPT-5 series
@@ -335,6 +347,7 @@ ANTHROPIC_METADATA = ModelMetadata(
     non_reasoning_mode=True,
     tool_choice=["auto", "any", "none"],
     parallel_tool_calling_configurable=True,
+    web_search_tool_call_price_per_K=10.0,
 )
 # https://docs.anthropic.com/en/docs/agents-and-tools/computer-use#understand-anthropic-defined-tools
 # https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/token-efficient-tool-use
