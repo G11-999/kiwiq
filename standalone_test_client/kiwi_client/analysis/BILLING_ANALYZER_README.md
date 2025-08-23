@@ -23,6 +23,9 @@ Added `parent_run_id` filter to the workflow runs API to support querying child 
      - Note: The `__dollar_credit_fallback_for` suffix is automatically removed if present
    - **By Event Subtype**: Automatic extraction of subtypes (split by `__`)
    - **By Model**: For LLM and search events, breakdown by model name
+   - **By Node (per workflow)**: Credits by `node_id` (and `node_name` when present)
+   - **Node × Model (per workflow)**: Matrix of `node_id` by model within a workflow
+   - **Node × Model (global)**: Across all workflows combined
 
 3. **Model Usage Analytics**
    - Overall model usage across all runs
@@ -89,6 +92,8 @@ The analyzer generates a comprehensive markdown report including:
 - Workflow-specific breakdowns
 - Event type analysis with subtypes
 - Run hierarchy visualization
+- Node usage per workflow
+- Node × Model breakdown per workflow and global
 
 ### JSON Data
 Complete structured data including:
@@ -114,6 +119,20 @@ The analyzer specially handles:
 3. **Event Subtypes**
    - Automatically extracts subtypes from event names (e.g., `llm_token_usage__allocation`)
    - Provides separate metrics for each subtype
+
+## Node-level Analysis
+
+The analyzer additionally leverages `usage_metadata.node_id` and `usage_metadata.node_name` when present in usage events to compute:
+
+1. Per-workflow node usage totals (credits and event counts)
+2. Per-workflow Node × Model breakdown (credits and events)
+3. Global Node × Model breakdown across all workflows
+
+These sections are included in the markdown report and are accessible via the `RunBillingAnalysis` object fields:
+
+- `workflow_breakdown[wf].node_usage`
+- `workflow_breakdown[wf].node_model_usage`
+- `overall_node_model_usage`
 
 ## Example Output
 
@@ -151,8 +170,8 @@ The analyzer specially handles:
 
 2. **Client Layer**
    - `standalone_test_client/kiwi_client/run_client.py`: Added `parent_run_id` parameter
-   - `standalone_test_client/kiwi_client/run_billing_analyzer_client.py`: Main analyzer implementation
-   - `standalone_test_client/kiwi_client/test_billing_analyzer.py`: Test/demo script
+   - `standalone_test_client/kiwi_client/analysis/run_billing_analyzer_client.py`: Analyzer extended with Node and Node × Model analyses
+   - `standalone_test_client/kiwi_client/analysis/test_billing_analyzer.py`: Test/demo extended to print new summaries
 
 ### Key Classes
 

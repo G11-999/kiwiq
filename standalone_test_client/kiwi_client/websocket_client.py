@@ -32,7 +32,7 @@ from kiwi_client.test_config import (
     # EXAMPLE_RUN_ID,
 )
 
-EXAMPLE_RUN_ID = ""
+EXAMPLE_RUN_ID = "250b2866-e31a-4320-99fb-1ae121ff2223"
 ENABLE_WEBSOCKET_TRACE = False
 
 # Setup logger
@@ -80,16 +80,25 @@ class WebSocketTestClient:
         logger.debug(f"Extracted active org ID: {active_org_id}")
         return active_org_id
 
-    def _add_params_to_url(self, url: str, include_active_org: bool = True) -> str:
+    def _add_params_to_url(
+        self,
+        url: str,
+        include_active_org: bool = True,
+        include_token: bool = False,
+        token_param_name: str = "token",
+    ) -> str:
         """
         Adds required parameters to the WebSocket URL:
         - active_org_id: organization ID from X-Active-Org header (optional)
+        - token: JWT access token as a query param for endpoints that expect it (optional)
         
         Note: JWT token is now passed via cookies instead of query parameters.
         
         Args:
             url (str): The original WebSocket URL
             include_active_org (bool): Whether to include the active_org_id parameter
+            include_token (bool): Whether to include the JWT as a query parameter (for param-based routes)
+            token_param_name (str): The name of the token parameter expected by the server (default: "token")
             
         Returns:
             str: The URL with query parameters added
@@ -105,6 +114,27 @@ class WebSocketTestClient:
             active_org_id = self._get_active_org_id()
             if active_org_id:
                 query_dict['active_org_id'] = active_org_id
+        
+        # Add token parameter if requested (for param-based auth endpoints)
+        if include_token:
+            token_value: Optional[str] = None
+            try:
+                # Prefer explicit access_token attribute if available
+                token_value = getattr(self._auth_client, 'access_token', None)
+            except Exception:
+                token_value = None
+            
+            # Fallback: attempt to pull from cookies if not explicitly exposed
+            if not token_value and getattr(self._auth_client, 'client', None):
+                try:
+                    token_value = self._auth_client.client.cookies.get('access_token')
+                except Exception:
+                    token_value = None
+            
+            if token_value:
+                query_dict[token_param_name] = token_value
+            else:
+                logger.warning("Requested to include token in URL, but no access token was available")
         
         # Rebuild the URL with the new query string
         new_query = urlencode(query_dict)
@@ -154,6 +184,8 @@ class WebSocketTestClient:
         url: str,
         include_active_org: bool = True,
         include_auth: bool = True,
+        include_token: bool = False,
+        token_param_name: str = "token",
         on_message: Optional[Callable] = None,
         on_error: Optional[Callable] = None,
         on_close: Optional[Callable] = None,
@@ -168,6 +200,8 @@ class WebSocketTestClient:
             url (str): The WebSocket URL to connect to
             include_active_org (bool): Whether to include active_org_id in the URL parameters
             include_auth (bool): Whether to include authentication parameters
+            include_token (bool): Whether to include JWT token as URL param (for param-based routes)
+            token_param_name (str): Name of the query parameter for the token when include_token is True
             on_message: Callback for message events
             on_error: Callback for error events
             on_close: Callback for connection close events
@@ -180,7 +214,12 @@ class WebSocketTestClient:
         """
         # Add parameters to URL and prepare headers if authentication is needed
         if include_auth:
-            url_with_params = self._add_params_to_url(url, include_active_org)
+            url_with_params = self._add_params_to_url(
+                url,
+                include_active_org=include_active_org,
+                include_token=include_token,
+                token_param_name=token_param_name,
+            )
             headers = self._get_header_dict()  # This includes JWT token as access_token cookie
         else:
             url_with_params = url
@@ -267,7 +306,9 @@ class WebSocketTestClient:
         return self.create_websocket_app(
             url=url,
             include_active_org=False,  # General notifications endpoint doesn't require active_org_id
-            include_auth=True,         # Still needs token for authentication
+            include_auth=True,         # Still needs authentication
+            include_token=True,        # New: notifications endpoint expects token as a query param
+            token_param_name="token",
             on_message=on_message or default_on_message,
             on_error=on_error or default_on_error,
             on_close=on_close or default_on_close,

@@ -41,6 +41,27 @@ async def test_billing_analyzer():
             print("\n" + "="*80)
             print(analyzer.format_analysis_as_markdown(analysis))
             
+            # Print concise new summaries
+            print("\nNode Usage (Top 10 across workflows):")
+            if analysis.workflow_breakdown:
+                for wf_name, wf in analysis.workflow_breakdown.items():
+                    if not wf.node_usage:
+                        continue
+                    print(f"- Workflow: {wf_name}")
+                    top_nodes = sorted(wf.node_usage.items(), key=lambda x: x[1].total_credits, reverse=True)[:10]
+                    for node_id, nstats in top_nodes:
+                        print(f"   • Node {node_id} ({nstats.node_name or 'N/A'}): ${nstats.total_credits:.6f} in {nstats.event_count} events")
+            
+            print("\nNode × Model (Top 10 global):")
+            if analysis.overall_node_model_usage:
+                flattened = []
+                for nid, models_map in analysis.overall_node_model_usage.items():
+                    for model_name, stats in models_map.items():
+                        flattened.append((nid, model_name, stats.total_credits, stats.event_count))
+                for nid, model_name, credits, count in sorted(flattened, key=lambda x: x[2], reverse=True)[:10]:
+                    node_name = (analysis.node_id_to_name or {}).get(nid) if analysis.node_id_to_name else None
+                    print(f"   • Node {nid} ({node_name or 'N/A'}) × {model_name}: ${credits:.6f} in {count} events")
+            
             # Save to files
             analysis, md_path, json_path = await analyzer.analyze_and_save(
                 run_id=run_id,

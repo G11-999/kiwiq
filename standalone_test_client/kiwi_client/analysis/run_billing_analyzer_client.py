@@ -19,7 +19,7 @@ from kiwi_client.run_client import WorkflowRunTestClient
 from kiwi_client.test_config import BILLING_DASHBOARD_USAGE_URL
 import kiwi_client.schemas.workflow_api_schemas as wf_schemas
 
-current_dir = Path(__file__).parent
+current_dir = Path(__file__).parent / "billing_analysis_reports"
 
 
 class ModelUsageStats(BaseModel):
@@ -28,6 +28,18 @@ class ModelUsageStats(BaseModel):
     total_credits: float
     event_count: int
     providers: List[str]
+
+
+class NodeUsageStats(BaseModel):
+    """Statistics for node usage within a workflow.
+
+    This captures total consumption attributed to a specific node, regardless of model.
+    The node×model breakdown is represented separately using `ModelUsageStats`.
+    """
+    node_id: str
+    node_name: Optional[str]
+    total_credits: float
+    event_count: int
 
 
 class EventTypeBreakdown(BaseModel):
@@ -46,6 +58,10 @@ class WorkflowBillingBreakdown(BaseModel):
     total_credits: float
     event_type_breakdown: List[EventTypeBreakdown]
     model_usage: Dict[str, ModelUsageStats]
+    # New: Node-level totals for this workflow
+    node_usage: Dict[str, NodeUsageStats]
+    # New: Node×Model breakdown for this workflow
+    node_model_usage: Dict[str, Dict[str, ModelUsageStats]]
 
 
 class RunBillingAnalysis(BaseModel):
@@ -61,6 +77,10 @@ class RunBillingAnalysis(BaseModel):
     workflow_breakdown: Dict[str, WorkflowBillingBreakdown]
     event_type_breakdown: List[EventTypeBreakdown]
     overall_model_usage: Dict[str, ModelUsageStats]
+    # New: Global Node×Model breakdown across all workflows
+    overall_node_model_usage: Dict[str, Dict[str, ModelUsageStats]]
+    # Optional mapping for pretty printing
+    node_id_to_name: Optional[Dict[str, Optional[str]]] = None
     
     # Raw data
     run_hierarchy: Dict[str, Any]
@@ -374,7 +394,10 @@ class RunBillingAnalyzerClient:
                 "subtypes": defaultdict(lambda: {"total_credits": 0.0, "event_count": 0}),
                 "models": defaultdict(lambda: {"total_credits": 0.0, "event_count": 0, "providers": set()})
             }),
-            "model_usage": defaultdict(lambda: {"total_credits": 0.0, "event_count": 0, "providers": set()})
+            "model_usage": defaultdict(lambda: {"total_credits": 0.0, "event_count": 0, "providers": set()}),
+            # New per-workflow node aggregations
+            "node_usage": defaultdict(lambda: {"node_name": None, "total_credits": 0.0, "event_count": 0}),
+            "node_model_usage": defaultdict(lambda: defaultdict(lambda: {"total_credits": 0.0, "event_count": 0, "providers": set()})),
         })
         
         overall_event_breakdown = defaultdict(lambda: {
@@ -385,6 +408,9 @@ class RunBillingAnalyzerClient:
         })
         
         overall_model_usage = defaultdict(lambda: {"total_credits": 0.0, "event_count": 0, "providers": set()})
+        # New global Node×Model aggregation
+        overall_node_model_usage = defaultdict(lambda: defaultdict(lambda: {"total_credits": 0.0, "event_count": 0, "providers": set()}))
+        node_id_to_name_map = {}  # For pretty printing
         
         total_credits = 0.0
         total_events = len(events)
@@ -445,6 +471,15 @@ class RunBillingAnalyzerClient:
             if (event_type.startswith("llm_token_usage") or event_type == "web_search"):
                 model_name = metadata.get("model_name")
                 provider = metadata.get("provider")
+
+            # Extract node identifiers if present
+            node_id = None
+            node_name = None
+            if metadata:
+                raw_node_id = metadata.get("node_id")
+                if raw_node_id is not None:
+                    node_id = str(raw_node_id)
+                node_name = metadata.get("node_name")
             
             # Update totals
             total_credits += credits
@@ -454,6 +489,15 @@ class RunBillingAnalyzerClient:
             wb["total_credits"] += credits
             if event_run_id:
                 wb["run_ids"].add(event_run_id)
+
+            # Update per-workflow node usage totals
+            if node_id:
+                node_totals = wb["node_usage"][node_id]
+                # Preserve/record latest known node name (best-effort)
+                if node_name and not node_totals.get("node_name"):
+                    node_totals["node_name"] = node_name
+                node_totals["total_credits"] += credits
+                node_totals["event_count"] += 1
             
             # Update event type breakdown for workflow
             event_data = wb["events_by_type"][base_event_type]
@@ -477,6 +521,23 @@ class RunBillingAnalyzerClient:
                 wm["event_count"] += 1
                 if provider:
                     wm["providers"].add(provider)
+
+                # Update per-workflow Node×Model totals
+                if node_id:
+                    nm = wb["node_model_usage"][node_id][model_name]
+                    nm["total_credits"] += credits
+                    nm["event_count"] += 1
+                    if provider:
+                        nm["providers"].add(provider)
+                    # Track global Node×Model as well
+                    gnm = overall_node_model_usage[node_id][model_name]
+                    gnm["total_credits"] += credits
+                    gnm["event_count"] += 1
+                    if provider:
+                        gnm["providers"].add(provider)
+                    # Remember node name for pretty output
+                    if node_name and node_id not in node_id_to_name_map:
+                        node_id_to_name_map[node_id] = node_name
             
             # Update overall event breakdown
             overall_event = overall_event_breakdown[base_event_type]
@@ -546,13 +607,37 @@ class RunBillingAnalyzerClient:
                     event_count=model_data["event_count"],
                     providers=list(model_data["providers"])
                 )
+
+            # Build node usage for workflow
+            node_usage = {}
+            for nid, ndata in wb["node_usage"].items():
+                node_usage[nid] = NodeUsageStats(
+                    node_id=nid,
+                    node_name=ndata.get("node_name"),
+                    total_credits=ndata["total_credits"],
+                    event_count=ndata["event_count"],
+                )
+
+            # Build per-workflow Node×Model breakdown
+            node_model_usage = {}
+            for nid, models_map in wb["node_model_usage"].items():
+                node_model_usage[nid] = {}
+                for model_name, model_data in models_map.items():
+                    node_model_usage[nid][model_name] = ModelUsageStats(
+                        model_name=model_name,
+                        total_credits=model_data["total_credits"],
+                        event_count=model_data["event_count"],
+                        providers=list(model_data["providers"]),
+                    )
             
             workflow_breakdown_final[workflow_name] = WorkflowBillingBreakdown(
                 workflow_name=workflow_name,
                 run_count=len(wb["run_ids"]),
                 total_credits=wb["total_credits"],
                 event_type_breakdown=event_type_breakdown,
-                model_usage=model_usage
+                model_usage=model_usage,
+                node_usage=node_usage,
+                node_model_usage=node_model_usage,
             )
         
         # Convert overall event breakdown
@@ -598,6 +683,18 @@ class RunBillingAnalyzerClient:
                 event_count=model_data["event_count"],
                 providers=list(model_data["providers"])
             )
+
+        # Convert global Node×Model breakdown
+        overall_node_model_usage_final = {}
+        for nid, models_map in overall_node_model_usage.items():
+            overall_node_model_usage_final[nid] = {}
+            for model_name, model_data in models_map.items():
+                overall_node_model_usage_final[nid][model_name] = ModelUsageStats(
+                    model_name=model_name,
+                    total_credits=model_data["total_credits"],
+                    event_count=model_data["event_count"],
+                    providers=list(model_data["providers"]),
+                )
         
         # Get root workflow name
         root_workflow_name = None
@@ -614,6 +711,8 @@ class RunBillingAnalyzerClient:
             workflow_breakdown=workflow_breakdown_final,
             event_type_breakdown=overall_event_breakdown_final,
             overall_model_usage=overall_model_usage_final,
+            overall_node_model_usage=overall_node_model_usage_final,
+            node_id_to_name=node_id_to_name_map if node_id_to_name_map else None,
             run_hierarchy=hierarchy,
             raw_events=events if include_raw_events else None
         )
@@ -687,6 +786,32 @@ class RunBillingAnalyzerClient:
                                                    reverse=True):
                         md_lines.append(f"| {model_name} | ${stats.total_credits:.6f} | {stats.event_count} |")
                     md_lines.append("")
+
+                # Node usage for this workflow
+                if breakdown.node_usage:
+                    md_lines.append("**Node Usage:**")
+                    md_lines.append("")
+                    md_lines.append("| Node ID | Node Name | Credits | Events |")
+                    md_lines.append("|---------|-----------|---------|--------|")
+                    for node_id, nstats in sorted(breakdown.node_usage.items(), key=lambda x: x[1].total_credits, reverse=True):
+                        node_name = nstats.node_name or "N/A"
+                        md_lines.append(f"| {node_id} | {node_name} | ${nstats.total_credits:.6f} | {nstats.event_count} |")
+                    md_lines.append("")
+
+                # Node×Model breakdown for this workflow
+                if breakdown.node_model_usage:
+                    md_lines.append("**Node × Model Breakdown:**")
+                    md_lines.append("")
+                    md_lines.append("| Node ID | Model | Credits | Events |")
+                    md_lines.append("|---------|-------|---------|--------|")
+                    # Flatten for sorting by credits
+                    flattened = []
+                    for nid, models_map in breakdown.node_model_usage.items():
+                        for model_name, stats in models_map.items():
+                            flattened.append((nid, model_name, stats.total_credits, stats.event_count))
+                    for nid, model_name, credits, count in sorted(flattened, key=lambda x: x[2], reverse=True):
+                        md_lines.append(f"| {nid} | {model_name} | ${credits:.6f} | {count} |")
+                    md_lines.append("")
                 
                 # Event type breakdown for this workflow
                 if breakdown.event_type_breakdown:
@@ -725,6 +850,21 @@ class RunBillingAnalyzerClient:
                                                    reverse=True):
                         md_lines.append(f"|   • {model_name} | ${stats.total_credits:.6f} | {stats.event_count} |")
         md_lines.append("")
+
+        # Global Node×Model Breakdown
+        if analysis.overall_node_model_usage:
+            md_lines.append("## Global Node × Model Breakdown")
+            md_lines.append("")
+            md_lines.append("| Node ID | Node Name | Model | Credits | Events |")
+            md_lines.append("|---------|-----------|-------|---------|--------|")
+            flattened = []
+            for nid, models_map in analysis.overall_node_model_usage.items():
+                for model_name, stats in models_map.items():
+                    flattened.append((nid, model_name, stats.total_credits, stats.event_count))
+            for nid, model_name, credits, count in sorted(flattened, key=lambda x: x[2], reverse=True):
+                node_name = (analysis.node_id_to_name or {}).get(nid) if analysis.node_id_to_name else None
+                md_lines.append(f"| {nid} | {node_name or 'N/A'} | {model_name} | ${credits:.6f} | {count} |")
+            md_lines.append("")
         
         # Run Hierarchy
         md_lines.append("## Run Hierarchy")
@@ -861,7 +1001,7 @@ async def main():
             # Perform analysis and save results
             analysis, md_path, json_path = await analyzer.analyze_and_save(
                 run_id=run_id,
-                output_dir="billing_analysis",
+                # output_dir="billing_analysis",
                 include_raw_events=False,  # Set to True to include raw events in JSON
                 max_hierarchy_depth=max_depth
             )

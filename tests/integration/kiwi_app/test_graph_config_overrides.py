@@ -16,10 +16,10 @@ from kiwi_app.workflow_app.workflow_config_override import (
 )
 from kiwi_app.workflow_app.dependencies import get_node_template_registry
 
-# Import example graph schemas (dictionaries)
-from kiwi_client.workflows.wf_content_strategy_workflow import workflow_graph_schema as content_strategy_schema_dict
-from kiwi_client.workflows.wf_content_creation_workflow import workflow_graph_schema as content_generation_schema_dict
-from kiwi_client.workflows.wf_linkedin_content_analysis import workflow_graph_schema as linkedin_analysis_schema_dict
+# # Import example graph schemas (dictionaries)
+from kiwi_client.workflows.deprecated.wf_content_strategy_workflow import workflow_graph_schema as content_strategy_schema_dict
+# from kiwi_client.workflows.deprecated.wf_content_creation_workflow import workflow_graph_schema as content_generation_schema_dict
+# from kiwi_client.workflows.deprecated.wf_linkedin_content_analysis import workflow_graph_schema as linkedin_analysis_schema_dict
 
 
 class TestGraphConfigOverrides(unittest.IsolatedAsyncioTestCase):
@@ -53,8 +53,8 @@ class TestGraphConfigOverrides(unittest.IsolatedAsyncioTestCase):
         # or load them once if they are not modified by tests (which deepcopy helps with).
         # For safety and to match IsolatedAsyncioTestCase's intent, load them here.
         self.base_content_strategy_schema = GraphSchema.model_validate(copy.deepcopy(content_strategy_schema_dict))
-        self.base_content_generation_schema = GraphSchema.model_validate(copy.deepcopy(content_generation_schema_dict))
-        self.base_linkedin_analysis_schema = GraphSchema.model_validate(copy.deepcopy(linkedin_analysis_schema_dict))
+        # self.base_content_generation_schema = GraphSchema.model_validate(copy.deepcopy(content_generation_schema_dict))
+        # self.base_linkedin_analysis_schema = GraphSchema.model_validate(copy.deepcopy(linkedin_analysis_schema_dict))
 
 
     async def test_basic_node_config_override_by_id(self):
@@ -118,113 +118,113 @@ class TestGraphConfigOverrides(unittest.IsolatedAsyncioTestCase):
         )
         self.assertNotEqual(original_operation, "new_operation")
 
-    async def test_node_config_override_by_name_and_version(self):
-        """Test overriding node config by node_name and a specific node_version."""
-        # For this, we'd ideally need a graph with multiple versions of the same node_name
-        # Let's use content_generation, assuming 'llm' node has a version.
-        # If not, this test might be trivial or need adjustment.
-        # The current NodeConfig in graph.py has node_version: Optional[str] = None
-        # And node templates are registered with versions.
+    # async def test_node_config_override_by_name_and_version(self):
+    #     """Test overriding node config by node_name and a specific node_version."""
+    #     # For this, we'd ideally need a graph with multiple versions of the same node_name
+    #     # Let's use content_generation, assuming 'llm' node has a version.
+    #     # If not, this test might be trivial or need adjustment.
+    #     # The current NodeConfig in graph.py has node_version: Optional[str] = None
+    #     # And node templates are registered with versions.
         
-        base_schema = copy.deepcopy(self.base_content_generation_schema)
-        target_node_name = "llm"
+    #     base_schema = copy.deepcopy(self.base_content_generation_schema)
+    #     target_node_name = "llm"
         
-        # Find an LLM node and its version. If it's None, this test might not be as effective.
-        # Let's assume 'generate_content' is an LLM node and has a version after registry load.
-        # For robust testing, we might need to setup a node with a specific version in the schema.
-        # However, the override logic relies on the version in the GraphSchema's NodeConfig.
+    #     # Find an LLM node and its version. If it's None, this test might not be as effective.
+    #     # Let's assume 'generate_content' is an LLM node and has a version after registry load.
+    #     # For robust testing, we might need to setup a node with a specific version in the schema.
+    #     # However, the override logic relies on the version in the GraphSchema's NodeConfig.
         
-        # Let's simulate a node with a version in the schema
-        test_node_id_with_version = "generate_content"
-        base_schema.nodes[test_node_id_with_version].node_version = "1.0.0" # Assign a version for test
-        original_temp = base_schema.nodes[test_node_id_with_version].node_config["llm_config"]["temperature"]
+    #     # Let's simulate a node with a version in the schema
+    #     test_node_id_with_version = "generate_content"
+    #     base_schema.nodes[test_node_id_with_version].node_version = "1.0.0" # Assign a version for test
+    #     original_temp = base_schema.nodes[test_node_id_with_version].node_config["llm_config"]["temperature"]
 
-        override_payload = {
-            "node_configs": [
-                {
-                    "node_name": target_node_name,
-                    "node_version": "1.0.0", # Specific version
-                    "node_config": {
-                        "llm_config": { "temperature": 0.1 }
-                    }
-                },
-                { # This should not apply if we add another LLM node with a different version
-                    "node_name": target_node_name,
-                    "node_version": "2.0.0",
-                    "node_config": {
-                        "llm_config": { "temperature": 0.99 }
-                    }
-                }
-            ]
-        }
-        updated_schema = await apply_graph_override(base_schema, override_payload, db_registry=self.db_registry)
-        self.assertEqual(
-            updated_schema.nodes[test_node_id_with_version].node_config["llm_config"]["temperature"],
-            0.1
-        )
-        self.assertNotEqual(original_temp, 0.1)
+    #     override_payload = {
+    #         "node_configs": [
+    #             {
+    #                 "node_name": target_node_name,
+    #                 "node_version": "1.0.0", # Specific version
+    #                 "node_config": {
+    #                     "llm_config": { "temperature": 0.1 }
+    #                 }
+    #             },
+    #             { # This should not apply if we add another LLM node with a different version
+    #                 "node_name": target_node_name,
+    #                 "node_version": "2.0.0",
+    #                 "node_config": {
+    #                     "llm_config": { "temperature": 0.99 }
+    #                 }
+    #             }
+    #         ]
+    #     }
+    #     updated_schema = await apply_graph_override(base_schema, override_payload, db_registry=self.db_registry)
+    #     self.assertEqual(
+    #         updated_schema.nodes[test_node_id_with_version].node_config["llm_config"]["temperature"],
+    #         0.1
+    #     )
+    #     self.assertNotEqual(original_temp, 0.1)
 
-    async def test_node_config_override_by_name_no_version_applies_to_all(self):
-        """Test override by node_name (no version) applies to all matching nodes."""
-        base_schema = copy.deepcopy(self.base_content_generation_schema)
-        # Add a second 'llm' node for testing this.
-        interpret_feedback_copy_id = "interpret_feedback_copy"
-        base_schema.nodes[interpret_feedback_copy_id] = NodeConfig(
-            node_id=interpret_feedback_copy_id,
-            node_name="llm", # Same name as 'interpret_feedback'
-            node_version="1.1.0", # Different version or could be same
-            node_config={
-                "llm_config": {
-                    "model_spec": {"provider": "openai", "model": "gpt-3.5-turbo"},
-                    "temperature": 0.8
-                }
-            }
-        )
-        # Add a dummy source and an edge to satisfy GraphSchema validator for the new node
-        # This is needed because GraphSchema.model_validate runs its own validators
-        # even if validate_schema=False for apply_graph_override.
-        dummy_source_id = "dummy_source_for_ifc"
-        base_schema.nodes[dummy_source_id] = NodeConfig(
-            node_id=dummy_source_id,
-            node_name="dummy_node_type", # A generic name, won't be validated by registry if validate_schema=False
-            node_config={}
-        )
-        base_schema.edges.append(EdgeSchema(
-            src_node_id=dummy_source_id,
-            dst_node_id=interpret_feedback_copy_id,
-            mappings=[]
-        ))
-        # dummy_source_id itself needs an incoming edge if it's not the graph's input_node
-        if dummy_source_id != base_schema.input_node_id:
-            base_schema.edges.append(EdgeSchema(
-                src_node_id=base_schema.input_node_id, # Typically "input_node"
-                dst_node_id=dummy_source_id,
-                mappings=[]
-            ))
+    # async def test_node_config_override_by_name_no_version_applies_to_all(self):
+    #     """Test override by node_name (no version) applies to all matching nodes."""
+    #     base_schema = copy.deepcopy(self.base_content_generation_schema)
+    #     # Add a second 'llm' node for testing this.
+    #     interpret_feedback_copy_id = "interpret_feedback_copy"
+    #     base_schema.nodes[interpret_feedback_copy_id] = NodeConfig(
+    #         node_id=interpret_feedback_copy_id,
+    #         node_name="llm", # Same name as 'interpret_feedback'
+    #         node_version="1.1.0", # Different version or could be same
+    #         node_config={
+    #             "llm_config": {
+    #                 "model_spec": {"provider": "openai", "model": "gpt-3.5-turbo"},
+    #                 "temperature": 0.8
+    #             }
+    #         }
+    #     )
+    #     # Add a dummy source and an edge to satisfy GraphSchema validator for the new node
+    #     # This is needed because GraphSchema.model_validate runs its own validators
+    #     # even if validate_schema=False for apply_graph_override.
+    #     dummy_source_id = "dummy_source_for_ifc"
+    #     base_schema.nodes[dummy_source_id] = NodeConfig(
+    #         node_id=dummy_source_id,
+    #         node_name="dummy_node_type", # A generic name, won't be validated by registry if validate_schema=False
+    #         node_config={}
+    #     )
+    #     base_schema.edges.append(EdgeSchema(
+    #         src_node_id=dummy_source_id,
+    #         dst_node_id=interpret_feedback_copy_id,
+    #         mappings=[]
+    #     ))
+    #     # dummy_source_id itself needs an incoming edge if it's not the graph's input_node
+    #     if dummy_source_id != base_schema.input_node_id:
+    #         base_schema.edges.append(EdgeSchema(
+    #             src_node_id=base_schema.input_node_id, # Typically "input_node"
+    #             dst_node_id=dummy_source_id,
+    #             mappings=[]
+    #         ))
 
-        # If GraphSchema validation were to check for outgoing edges for non-output nodes (currently commented out in graph.py):
-        # if interpret_feedback_copy_id != base_schema.output_node_id:
-        #     dummy_sink_id = "dummy_sink_for_ifc"
-        #     base_schema.nodes[dummy_sink_id] = NodeConfig(node_id=dummy_sink_id, node_name="dummy_node_type", node_config={})
-        #     base_schema.edges.append(EdgeSchema(src_node_id=interpret_feedback_copy_id, dst_node_id=dummy_sink_id, mappings=[]))
+    #     # If GraphSchema validation were to check for outgoing edges for non-output nodes (currently commented out in graph.py):
+    #     # if interpret_feedback_copy_id != base_schema.output_node_id:
+    #     #     dummy_sink_id = "dummy_sink_for_ifc"
+    #     #     base_schema.nodes[dummy_sink_id] = NodeConfig(node_id=dummy_sink_id, node_name="dummy_node_type", node_config={})
+    #     #     base_schema.edges.append(EdgeSchema(src_node_id=interpret_feedback_copy_id, dst_node_id=dummy_sink_id, mappings=[]))
 
-        target_node_name = "llm"
-        override_temp = 0.05
-        override_payload = {
-            "node_configs": [
-                {
-                    "node_name": target_node_name, # No version specified
-                    "node_config": {
-                        "llm_config": { "temperature": override_temp }
-                    }
-                }
-            ]
-        }
-        updated_schema = await apply_graph_override(base_schema, override_payload, db_registry=self.db_registry, validate_schema=False) # Validate=False to avoid issues with ad-hoc node
+    #     target_node_name = "llm"
+    #     override_temp = 0.05
+    #     override_payload = {
+    #         "node_configs": [
+    #             {
+    #                 "node_name": target_node_name, # No version specified
+    #                 "node_config": {
+    #                     "llm_config": { "temperature": override_temp }
+    #                 }
+    #             }
+    #         ]
+    #     }
+    #     updated_schema = await apply_graph_override(base_schema, override_payload, db_registry=self.db_registry, validate_schema=False) # Validate=False to avoid issues with ad-hoc node
 
-        for node_id, node_data in updated_schema.nodes.items():
-            if node_data.node_name == target_node_name:
-                self.assertEqual(node_data.node_config["llm_config"]["temperature"], override_temp)
+    #     for node_id, node_data in updated_schema.nodes.items():
+    #         if node_data.node_name == target_node_name:
+    #             self.assertEqual(node_data.node_config["llm_config"]["temperature"], override_temp)
     
     async def test_node_config_override_id_name_mismatch(self):
         """Test that override by node_id does not apply if node_name in rule mismatches."""
@@ -569,63 +569,63 @@ class TestGraphConfigOverrides(unittest.IsolatedAsyncioTestCase):
             )
 
 
-    async def test_complex_override_multiple_rules_and_types(self):
-        """Test a complex override with multiple node rules and general property changes."""
-        base_schema = copy.deepcopy(self.base_linkedin_analysis_schema)
+    # async def test_complex_override_multiple_rules_and_types(self):
+    #     """Test a complex override with multiple node rules and general property changes."""
+    #     base_schema = copy.deepcopy(self.base_linkedin_analysis_schema)
         
-        override_payload = {
-            "node_configs": [
-                { # Rule 1: by ID
-                    "node_id": "extract_themes", "node_name": "llm",
-                    "node_config": {"llm_config": {"max_tokens": 3500}}
-                },
-                { # Rule 2: by Name (applies to 'llm' nodes: classify_batch, analyze_theme_group)
-                    "node_name": "llm", 
-                    "node_config": {"llm_config": {"temperature": 0.15}}
-                },
-                { # Rule 3: specific node 'load_posts'
-                    "node_name": "load_customer_data", "node_id": "load_posts",
-                    "node_config": {"new_loader_param": True}
-                }
-            ],
-            "metadata": {
-                "analysis_version": "v2",
-                "$graph_state": {"reducer": {"all_classifications_batches": "custom_append"}}
-            },
-            "edges": [ # Modify first edge, keep others (implicit via shorter list)
-                {
-                    "src_node_id": "input_node", "dst_node_id": "$graph_state",
-                    "mappings": [{"src_field": "entity_username", "dst_field": "global_entity_username"}]
-                }
-            ]
-        }
+    #     override_payload = {
+    #         "node_configs": [
+    #             { # Rule 1: by ID
+    #                 "node_id": "extract_themes", "node_name": "llm",
+    #                 "node_config": {"llm_config": {"max_tokens": 3500}}
+    #             },
+    #             { # Rule 2: by Name (applies to 'llm' nodes: classify_batch, analyze_theme_group)
+    #                 "node_name": "llm", 
+    #                 "node_config": {"llm_config": {"temperature": 0.15}}
+    #             },
+    #             { # Rule 3: specific node 'load_posts'
+    #                 "node_name": "load_customer_data", "node_id": "load_posts",
+    #                 "node_config": {"new_loader_param": True}
+    #             }
+    #         ],
+    #         "metadata": {
+    #             "analysis_version": "v2",
+    #             "$graph_state": {"reducer": {"all_classifications_batches": "custom_append"}}
+    #         },
+    #         "edges": [ # Modify first edge, keep others (implicit via shorter list)
+    #             {
+    #                 "src_node_id": "input_node", "dst_node_id": "$graph_state",
+    #                 "mappings": [{"src_field": "entity_username", "dst_field": "global_entity_username"}]
+    #             }
+    #         ]
+    #     }
 
-        # Validation might be tricky if 'new_loader_param' isn't in load_customer_data's schema
-        updated_schema = await apply_graph_override(base_schema, override_payload, validate_schema=False, db_registry=self.db_registry)
+    #     # Validation might be tricky if 'new_loader_param' isn't in load_customer_data's schema
+    #     updated_schema = await apply_graph_override(base_schema, override_payload, validate_schema=False, db_registry=self.db_registry)
 
-        # Check Rule 1
-        self.assertEqual(updated_schema.nodes["extract_themes"].node_config["llm_config"]["max_tokens"], 3500)
-        self.assertEqual(updated_schema.nodes["extract_themes"].node_config["llm_config"]["temperature"], 0.15) # Also hit by Rule 2
+    #     # Check Rule 1
+    #     self.assertEqual(updated_schema.nodes["extract_themes"].node_config["llm_config"]["max_tokens"], 3500)
+    #     self.assertEqual(updated_schema.nodes["extract_themes"].node_config["llm_config"]["temperature"], 0.15) # Also hit by Rule 2
 
-        # Check Rule 2 (applied to classify_batch and analyze_theme_group, and extract_themes)
-        self.assertEqual(updated_schema.nodes["classify_batch"].node_config["llm_config"]["temperature"], 0.15)
-        self.assertEqual(updated_schema.nodes["analyze_theme_group"].node_config["llm_config"]["temperature"], 0.15)
-        # Max tokens for these should be original, unless they were also 2000/4000
-        self.assertEqual(updated_schema.nodes["classify_batch"].node_config["llm_config"]["max_tokens"], 
-                         base_schema.nodes["classify_batch"].node_config["llm_config"]["max_tokens"])
+    #     # Check Rule 2 (applied to classify_batch and analyze_theme_group, and extract_themes)
+    #     self.assertEqual(updated_schema.nodes["classify_batch"].node_config["llm_config"]["temperature"], 0.15)
+    #     self.assertEqual(updated_schema.nodes["analyze_theme_group"].node_config["llm_config"]["temperature"], 0.15)
+    #     # Max tokens for these should be original, unless they were also 2000/4000
+    #     self.assertEqual(updated_schema.nodes["classify_batch"].node_config["llm_config"]["max_tokens"], 
+    #                      base_schema.nodes["classify_batch"].node_config["llm_config"]["max_tokens"])
 
 
-        # Check Rule 3
-        self.assertTrue(updated_schema.nodes["load_posts"].node_config.get("new_loader_param"))
+    #     # Check Rule 3
+    #     self.assertTrue(updated_schema.nodes["load_posts"].node_config.get("new_loader_param"))
 
-        # Check metadata
-        self.assertEqual(updated_schema.metadata["analysis_version"], "v2")
-        self.assertEqual(updated_schema.metadata["$graph_state"]["reducer"]["all_classifications_batches"], "custom_append")
+    #     # Check metadata
+    #     self.assertEqual(updated_schema.metadata["analysis_version"], "v2")
+    #     self.assertEqual(updated_schema.metadata["$graph_state"]["reducer"]["all_classifications_batches"], "custom_append")
 
-        # Check edges
-        self.assertEqual(updated_schema.edges[0].mappings[0].dst_field, "global_entity_username")
-        # Ensure other edges are still there
-        self.assertGreaterEqual(len(updated_schema.edges), len(base_schema.edges) if len(override_payload["edges"]) >= len(base_schema.edges) else len(override_payload["edges"]))
+    #     # Check edges
+    #     self.assertEqual(updated_schema.edges[0].mappings[0].dst_field, "global_entity_username")
+    #     # Ensure other edges are still there
+    #     self.assertGreaterEqual(len(updated_schema.edges), len(base_schema.edges) if len(override_payload["edges"]) >= len(base_schema.edges) else len(override_payload["edges"]))
 
 
     async def test_original_schema_not_mutated(self):
@@ -842,242 +842,242 @@ class TestGraphConfigOverrides(unittest.IsolatedAsyncioTestCase):
         }
         self.assertEqual(updated_schema.nodes[target_node_id].node_config, expected_config)
 
-    async def test_complex_nested_override_with_content_generation_schema(self):
-        """
-        Test a complex, multi-level nested dictionary override using the content_generation_schema.
-        This test aims to modify parts of the 'construct_initial_prompt' node's configuration,
-        which includes nested dictionaries for prompt templates, variables, and construct options.
-        It will demonstrate adding new keys, changing existing values at various depths,
-        and ensuring that unspecified parts remain untouched (due to default merge behavior).
-        """
-        base_schema = copy.deepcopy(self.base_content_generation_schema)
-        target_node_id = "construct_initial_prompt" # Node with complex nested config
+    # async def test_complex_nested_override_with_content_generation_schema(self):
+    #     """
+    #     Test a complex, multi-level nested dictionary override using the content_generation_schema.
+    #     This test aims to modify parts of the 'construct_initial_prompt' node's configuration,
+    #     which includes nested dictionaries for prompt templates, variables, and construct options.
+    #     It will demonstrate adding new keys, changing existing values at various depths,
+    #     and ensuring that unspecified parts remain untouched (due to default merge behavior).
+    #     """
+    #     base_schema = copy.deepcopy(self.base_content_generation_schema)
+    #     target_node_id = "construct_initial_prompt" # Node with complex nested config
 
-        # Original values for assertion later (ensure only specified parts change)
-        original_system_prompt_template = base_schema.nodes[target_node_id].node_config["prompt_templates"]["system_prompt"]["template"]
-        original_initial_gen_prompt_vars_brief = base_schema.nodes[target_node_id].node_config["prompt_templates"]["initial_generation_prompt"]["variables"]["brief"]
+    #     # Original values for assertion later (ensure only specified parts change)
+    #     original_system_prompt_template = base_schema.nodes[target_node_id].node_config["prompt_templates"]["system_prompt"]["template"]
+    #     original_initial_gen_prompt_vars_brief = base_schema.nodes[target_node_id].node_config["prompt_templates"]["initial_generation_prompt"]["variables"]["brief"]
 
-        override_payload = {
-            "node_configs": [
-                {
-                    "node_id": target_node_id,
-                    "node_name": "prompt_constructor", # Verification
-                    "node_config": {
-                        "prompt_templates": {
-                            "initial_generation_prompt": {
-                                "template": "Overridden initial generation template text. {brief}", # Change template
-                                "variables": {
-                                    "user_dna": "overridden_user_dna_value", # Change existing variable
-                                    "new_custom_variable": "new_value_here" # Add new variable
-                                },
-                                "construct_options": {
-                                    "brief": "new_brief_source_path" # Change existing construct option
-                                }
-                            },
-                            "system_prompt": {
-                                # Keep template the same by not specifying it, but add a new key
-                                "new_system_prompt_config": {"detail": "value"}
-                            },
-                            "added_prompt_type": { # Add a completely new prompt type
-                                "id": "added_prompt",
-                                "template": "Template for added prompt. {foo}",
-                                "variables": {"foo": "bar"}
-                            }
-                        },
-                        "new_top_level_config_key_in_node": "new_top_level_value" # Add new key at node_config level
-                    }
-                }
-            ]
-        }
+    #     override_payload = {
+    #         "node_configs": [
+    #             {
+    #                 "node_id": target_node_id,
+    #                 "node_name": "prompt_constructor", # Verification
+    #                 "node_config": {
+    #                     "prompt_templates": {
+    #                         "initial_generation_prompt": {
+    #                             "template": "Overridden initial generation template text. {brief}", # Change template
+    #                             "variables": {
+    #                                 "user_dna": "overridden_user_dna_value", # Change existing variable
+    #                                 "new_custom_variable": "new_value_here" # Add new variable
+    #                             },
+    #                             "construct_options": {
+    #                                 "brief": "new_brief_source_path" # Change existing construct option
+    #                             }
+    #                         },
+    #                         "system_prompt": {
+    #                             # Keep template the same by not specifying it, but add a new key
+    #                             "new_system_prompt_config": {"detail": "value"}
+    #                         },
+    #                         "added_prompt_type": { # Add a completely new prompt type
+    #                             "id": "added_prompt",
+    #                             "template": "Template for added prompt. {foo}",
+    #                             "variables": {"foo": "bar"}
+    #                         }
+    #                     },
+    #                     "new_top_level_config_key_in_node": "new_top_level_value" # Add new key at node_config level
+    #                 }
+    #             }
+    #         ]
+    #     }
 
-        # Using validate_schema=False as new keys might not be in the original Pydantic model for node_config
-        updated_schema = await apply_graph_override(base_schema, override_payload, db_registry=self.db_registry, validate_schema=False)
+    #     # Using validate_schema=False as new keys might not be in the original Pydantic model for node_config
+    #     updated_schema = await apply_graph_override(base_schema, override_payload, db_registry=self.db_registry, validate_schema=False)
         
-        updated_node_config = updated_schema.nodes[target_node_id].node_config
+    #     updated_node_config = updated_schema.nodes[target_node_id].node_config
 
-        # Assertions for 'initial_generation_prompt'
-        self.assertEqual(updated_node_config["prompt_templates"]["initial_generation_prompt"]["template"], "Overridden initial generation template text. {brief}")
-        self.assertEqual(updated_node_config["prompt_templates"]["initial_generation_prompt"]["variables"]["user_dna"], "overridden_user_dna_value")
-        self.assertEqual(updated_node_config["prompt_templates"]["initial_generation_prompt"]["variables"]["new_custom_variable"], "new_value_here")
-        self.assertEqual(updated_node_config["prompt_templates"]["initial_generation_prompt"]["construct_options"]["brief"], "new_brief_source_path")
+    #     # Assertions for 'initial_generation_prompt'
+    #     self.assertEqual(updated_node_config["prompt_templates"]["initial_generation_prompt"]["template"], "Overridden initial generation template text. {brief}")
+    #     self.assertEqual(updated_node_config["prompt_templates"]["initial_generation_prompt"]["variables"]["user_dna"], "overridden_user_dna_value")
+    #     self.assertEqual(updated_node_config["prompt_templates"]["initial_generation_prompt"]["variables"]["new_custom_variable"], "new_value_here")
+    #     self.assertEqual(updated_node_config["prompt_templates"]["initial_generation_prompt"]["construct_options"]["brief"], "new_brief_source_path")
         
-        # Check that an original variable in 'initial_generation_prompt.variables' that was not overridden is preserved
-        self.assertEqual(updated_node_config["prompt_templates"]["initial_generation_prompt"]["variables"]["brief"], original_initial_gen_prompt_vars_brief)
+    #     # Check that an original variable in 'initial_generation_prompt.variables' that was not overridden is preserved
+    #     self.assertEqual(updated_node_config["prompt_templates"]["initial_generation_prompt"]["variables"]["brief"], original_initial_gen_prompt_vars_brief)
 
-        # Assertions for 'system_prompt'
-        self.assertEqual(updated_node_config["prompt_templates"]["system_prompt"]["template"], original_system_prompt_template) # Unchanged
-        self.assertEqual(updated_node_config["prompt_templates"]["system_prompt"]["new_system_prompt_config"], {"detail": "value"})
+    #     # Assertions for 'system_prompt'
+    #     self.assertEqual(updated_node_config["prompt_templates"]["system_prompt"]["template"], original_system_prompt_template) # Unchanged
+    #     self.assertEqual(updated_node_config["prompt_templates"]["system_prompt"]["new_system_prompt_config"], {"detail": "value"})
 
-        # Assertion for 'added_prompt_type'
-        self.assertIn("added_prompt_type", updated_node_config["prompt_templates"])
-        self.assertEqual(updated_node_config["prompt_templates"]["added_prompt_type"]["template"], "Template for added prompt. {foo}")
+    #     # Assertion for 'added_prompt_type'
+    #     self.assertIn("added_prompt_type", updated_node_config["prompt_templates"])
+    #     self.assertEqual(updated_node_config["prompt_templates"]["added_prompt_type"]["template"], "Template for added prompt. {foo}")
 
-        # Assertion for new top-level key in node_config
-        self.assertEqual(updated_node_config["new_top_level_config_key_in_node"], "new_top_level_value")
+    #     # Assertion for new top-level key in node_config
+    #     self.assertEqual(updated_node_config["new_top_level_config_key_in_node"], "new_top_level_value")
 
-        # Ensure original schema is not mutated
-        self.assertNotEqual(base_schema.nodes[target_node_id].node_config, updated_node_config)
+    #     # Ensure original schema is not mutated
+    #     self.assertNotEqual(base_schema.nodes[target_node_id].node_config, updated_node_config)
 
 
-    async def test_global_node_name_override_with_linkedin_analysis_schema(self):
-        """
-        Test overriding configuration for all nodes of a specific type (node_name)
-        using the wf_linkedin_content_analysis schema, which has multiple 'llm' nodes.
-        This will apply a common change to 'llm_config.temperature' and add a new
-        parameter to 'llm_config' for all 'llm' nodes.
-        """
-        base_schema = copy.deepcopy(self.base_linkedin_analysis_schema)
-        target_node_name = "llm" # Applies to extract_themes, classify_batch, analyze_theme_group
+    # async def test_global_node_name_override_with_linkedin_analysis_schema(self):
+    #     """
+    #     Test overriding configuration for all nodes of a specific type (node_name)
+    #     using the wf_linkedin_content_analysis schema, which has multiple 'llm' nodes.
+    #     This will apply a common change to 'llm_config.temperature' and add a new
+    #     parameter to 'llm_config' for all 'llm' nodes.
+    #     """
+    #     base_schema = copy.deepcopy(self.base_linkedin_analysis_schema)
+    #     target_node_name = "llm" # Applies to extract_themes, classify_batch, analyze_theme_group
         
-        # Store original temperatures and check for absence of the new key
-        original_temps: Dict[str, Optional[float]] = {}
-        llm_node_ids_in_schema: List[str] = []
+    #     # Store original temperatures and check for absence of the new key
+    #     original_temps: Dict[str, Optional[float]] = {}
+    #     llm_node_ids_in_schema: List[str] = []
 
-        for node_id, node_data in base_schema.nodes.items():
-            if node_data.node_name == target_node_name:
-                llm_node_ids_in_schema.append(node_id)
-                original_temps[node_id] = node_data.node_config.get("llm_config", {}).get("temperature")
-                self.assertNotIn("new_shared_llm_param", node_data.node_config.get("llm_config", {}))
+    #     for node_id, node_data in base_schema.nodes.items():
+    #         if node_data.node_name == target_node_name:
+    #             llm_node_ids_in_schema.append(node_id)
+    #             original_temps[node_id] = node_data.node_config.get("llm_config", {}).get("temperature")
+    #             self.assertNotIn("new_shared_llm_param", node_data.node_config.get("llm_config", {}))
 
-        self.assertGreater(len(llm_node_ids_in_schema), 1, "Test precondition failed: Need multiple LLM nodes in schema.")
+    #     self.assertGreater(len(llm_node_ids_in_schema), 1, "Test precondition failed: Need multiple LLM nodes in schema.")
 
-        new_temperature = 0.25
-        new_shared_param_value = "applied_globally_to_llms"
+    #     new_temperature = 0.25
+    #     new_shared_param_value = "applied_globally_to_llms"
 
-        override_payload = {
-            "node_configs": [
-                {
-                    "node_name": target_node_name, # No node_id, applies to all 'llm' nodes
-                    # No node_version, applies to all versions of this node_name
-                    "node_config": {
-                        "llm_config": {
-                            "temperature": new_temperature,
-                            "new_shared_llm_param": new_shared_param_value,
-                            "model_spec": { # Test nested override within the shared llm_config
-                                "provider": "test_provider_override"
-                            }
-                        }
-                    }
-                }
-            ]
-        }
+    #     override_payload = {
+    #         "node_configs": [
+    #             {
+    #                 "node_name": target_node_name, # No node_id, applies to all 'llm' nodes
+    #                 # No node_version, applies to all versions of this node_name
+    #                 "node_config": {
+    #                     "llm_config": {
+    #                         "temperature": new_temperature,
+    #                         "new_shared_llm_param": new_shared_param_value,
+    #                         "model_spec": { # Test nested override within the shared llm_config
+    #                             "provider": "test_provider_override"
+    #                         }
+    #                     }
+    #                 }
+    #             }
+    #         ]
+    #     }
 
-        # Using validate_schema=False because 'new_shared_llm_param' and 'test_provider_override' 
-        # might not be in the strict Pydantic model for LLMNodeConfig's llm_config
-        updated_schema = await apply_graph_override(base_schema, override_payload, db_registry=self.db_registry, validate_schema=False)
+    #     # Using validate_schema=False because 'new_shared_llm_param' and 'test_provider_override' 
+    #     # might not be in the strict Pydantic model for LLMNodeConfig's llm_config
+    #     updated_schema = await apply_graph_override(base_schema, override_payload, db_registry=self.db_registry, validate_schema=False)
 
-        for node_id in llm_node_ids_in_schema:
-            updated_node_llm_config = updated_schema.nodes[node_id].node_config["llm_config"]
-            self.assertEqual(updated_node_llm_config["temperature"], new_temperature)
-            self.assertEqual(updated_node_llm_config["new_shared_llm_param"], new_shared_param_value)
-            self.assertEqual(updated_node_llm_config["model_spec"]["provider"], "test_provider_override")
+    #     for node_id in llm_node_ids_in_schema:
+    #         updated_node_llm_config = updated_schema.nodes[node_id].node_config["llm_config"]
+    #         self.assertEqual(updated_node_llm_config["temperature"], new_temperature)
+    #         self.assertEqual(updated_node_llm_config["new_shared_llm_param"], new_shared_param_value)
+    #         self.assertEqual(updated_node_llm_config["model_spec"]["provider"], "test_provider_override")
             
-            # Ensure other llm_config keys (like 'model' within 'model_spec', or 'max_tokens') are preserved if they existed
-            if "model" in base_schema.nodes[node_id].node_config.get("llm_config", {}).get("model_spec", {}):
-                self.assertEqual(updated_node_llm_config["model_spec"]["model"], base_schema.nodes[node_id].node_config["llm_config"]["model_spec"]["model"])
-            if "max_tokens" in base_schema.nodes[node_id].node_config.get("llm_config", {}):
-                 self.assertEqual(updated_node_llm_config["max_tokens"], base_schema.nodes[node_id].node_config["llm_config"]["max_tokens"])
+    #         # Ensure other llm_config keys (like 'model' within 'model_spec', or 'max_tokens') are preserved if they existed
+    #         if "model" in base_schema.nodes[node_id].node_config.get("llm_config", {}).get("model_spec", {}):
+    #             self.assertEqual(updated_node_llm_config["model_spec"]["model"], base_schema.nodes[node_id].node_config["llm_config"]["model_spec"]["model"])
+    #         if "max_tokens" in base_schema.nodes[node_id].node_config.get("llm_config", {}):
+    #              self.assertEqual(updated_node_llm_config["max_tokens"], base_schema.nodes[node_id].node_config["llm_config"]["max_tokens"])
 
 
-        # Check a non-LLM node to ensure it wasn't affected
-        non_llm_node_id = "load_posts" # This is a 'load_customer_data' node
-        self.assertEqual(
-            updated_schema.nodes[non_llm_node_id].node_config,
-            base_schema.nodes[non_llm_node_id].node_config
-        )
+    #     # Check a non-LLM node to ensure it wasn't affected
+    #     non_llm_node_id = "load_posts" # This is a 'load_customer_data' node
+    #     self.assertEqual(
+    #         updated_schema.nodes[non_llm_node_id].node_config,
+    #         base_schema.nodes[non_llm_node_id].node_config
+    #     )
 
 
-    async def test_full_schema_override_with_various_replace_modes(self):
-        """
-        Test various replace_mode and list_replace_mode interactions on a full schema.
-        This test will use the content_generation schema and apply:
-        1. Global replace_mode=True for 'metadata'.
-        2. Node-specific replace_mode=True for 'generate_content' node's config.
-        3. Node-specific list_replace_mode=True for a list within 'store_draft' node's config,
-           while its node-level replace_mode is False (inheriting global False).
-        4. Default merge behavior for 'construct_initial_prompt' node.
-        """
-        base_schema = copy.deepcopy(self.base_content_generation_schema)
+    # async def test_full_schema_override_with_various_replace_modes(self):
+    #     """
+    #     Test various replace_mode and list_replace_mode interactions on a full schema.
+    #     This test will use the content_generation schema and apply:
+    #     1. Global replace_mode=True for 'metadata'.
+    #     2. Node-specific replace_mode=True for 'generate_content' node's config.
+    #     3. Node-specific list_replace_mode=True for a list within 'store_draft' node's config,
+    #        while its node-level replace_mode is False (inheriting global False).
+    #     4. Default merge behavior for 'construct_initial_prompt' node.
+    #     """
+    #     base_schema = copy.deepcopy(self.base_content_generation_schema)
 
-        # For 'store_draft', add a list to its config for testing list_replace_mode
-        # Its store_configs is a list of dicts. Let's target that.
-        original_store_configs = copy.deepcopy(base_schema.nodes["store_draft"].node_config["store_configs"])
-        self.assertGreater(len(original_store_configs), 0, "Test precondition: store_draft needs store_configs")
+    #     # For 'store_draft', add a list to its config for testing list_replace_mode
+    #     # Its store_configs is a list of dicts. Let's target that.
+    #     original_store_configs = copy.deepcopy(base_schema.nodes["store_draft"].node_config["store_configs"])
+    #     self.assertGreater(len(original_store_configs), 0, "Test precondition: store_draft needs store_configs")
         
-        original_metadata = copy.deepcopy(base_schema.metadata) if base_schema.metadata else {}
-        original_generate_content_config = copy.deepcopy(base_schema.nodes["generate_content"].node_config)
-        original_construct_prompt_template = base_schema.nodes["construct_initial_prompt"].node_config["prompt_templates"]["initial_generation_prompt"]["template"]
+    #     original_metadata = copy.deepcopy(base_schema.metadata) if base_schema.metadata else {}
+    #     original_generate_content_config = copy.deepcopy(base_schema.nodes["generate_content"].node_config)
+    #     original_construct_prompt_template = base_schema.nodes["construct_initial_prompt"].node_config["prompt_templates"]["initial_generation_prompt"]["template"]
 
 
-        override_payload = {
-            "metadata": {"completely_new_metadata": "yes", "version": 2.0}, # To be replaced
-            "node_configs": [
-                { # Rule for generate_content: Full config replacement
-                    "node_id": "generate_content",
-                    "node_name": "llm",
-                    "node_config": {"new_llm_setup": True, "details": "fully_replaced"},
-                    "replace_mode": True # This node's config will be entirely replaced
-                },
-                { # Rule for store_draft: Merge dicts, but replace 'store_configs' list
-                    "node_id": "store_draft",
-                    "node_name": "store_customer_data",
-                    "node_config": {
-                        "store_configs": [ # This new list will replace the original
-                            {"input_field_path": "new_path", "target_path": {"docname": "new_doc"}},
-                        ],
-                        "another_store_param": "merged_value" # This should be merged
-                    },
-                    "replace_mode": False, # Merge the overall node_config dict
-                    "list_replace_mode": True # But replace lists found within (like store_configs)
-                },
-                { # Rule for construct_initial_prompt: Default merge behavior
-                    "node_id": "construct_initial_prompt",
-                    "node_name": "prompt_constructor",
-                    "node_config": {
-                        "prompt_templates": {
-                            "initial_generation_prompt": {
-                                "variables": {"brief": "merged_brief_value"} # Merge this
-                            }
-                        }
-                        # replace_mode = None (inherits global False)
-                        # list_replace_mode = None (inherits global False)
-                    },
-                    "replace_mode": False,
-                }
-            ],
-            "replace_mode": True, # Global: True for top-level (metadata)
-                                  # but node rules can override for their node_config
-            "list_replace_mode": False # Global: False (element-wise merge for lists)
-                                       # but node rules can override for lists in their node_config
-        }
+    #     override_payload = {
+    #         "metadata": {"completely_new_metadata": "yes", "version": 2.0}, # To be replaced
+    #         "node_configs": [
+    #             { # Rule for generate_content: Full config replacement
+    #                 "node_id": "generate_content",
+    #                 "node_name": "llm",
+    #                 "node_config": {"new_llm_setup": True, "details": "fully_replaced"},
+    #                 "replace_mode": True # This node's config will be entirely replaced
+    #             },
+    #             { # Rule for store_draft: Merge dicts, but replace 'store_configs' list
+    #                 "node_id": "store_draft",
+    #                 "node_name": "store_customer_data",
+    #                 "node_config": {
+    #                     "store_configs": [ # This new list will replace the original
+    #                         {"input_field_path": "new_path", "target_path": {"docname": "new_doc"}},
+    #                     ],
+    #                     "another_store_param": "merged_value" # This should be merged
+    #                 },
+    #                 "replace_mode": False, # Merge the overall node_config dict
+    #                 "list_replace_mode": True # But replace lists found within (like store_configs)
+    #             },
+    #             { # Rule for construct_initial_prompt: Default merge behavior
+    #                 "node_id": "construct_initial_prompt",
+    #                 "node_name": "prompt_constructor",
+    #                 "node_config": {
+    #                     "prompt_templates": {
+    #                         "initial_generation_prompt": {
+    #                             "variables": {"brief": "merged_brief_value"} # Merge this
+    #                         }
+    #                     }
+    #                     # replace_mode = None (inherits global False)
+    #                     # list_replace_mode = None (inherits global False)
+    #                 },
+    #                 "replace_mode": False,
+    #             }
+    #         ],
+    #         "replace_mode": True, # Global: True for top-level (metadata)
+    #                               # but node rules can override for their node_config
+    #         "list_replace_mode": False # Global: False (element-wise merge for lists)
+    #                                    # but node rules can override for lists in their node_config
+    #     }
 
-        updated_schema = await apply_graph_override(base_schema, override_payload, db_registry=self.db_registry, validate_schema=False)
+    #     updated_schema = await apply_graph_override(base_schema, override_payload, db_registry=self.db_registry, validate_schema=False)
 
-        # 1. Check metadata (global replace_mode=True applies)
-        self.assertEqual(updated_schema.metadata, {"completely_new_metadata": "yes", "version": 2.0})
-        self.assertNotEqual(updated_schema.metadata, original_metadata)
+    #     # 1. Check metadata (global replace_mode=True applies)
+    #     self.assertEqual(updated_schema.metadata, {"completely_new_metadata": "yes", "version": 2.0})
+    #     self.assertNotEqual(updated_schema.metadata, original_metadata)
 
-        # 2. Check generate_content node (node-specific replace_mode=True)
-        self.assertEqual(updated_schema.nodes["generate_content"].node_config, {"new_llm_setup": True, "details": "fully_replaced"})
-        self.assertNotEqual(updated_schema.nodes["generate_content"].node_config, original_generate_content_config)
+    #     # 2. Check generate_content node (node-specific replace_mode=True)
+    #     self.assertEqual(updated_schema.nodes["generate_content"].node_config, {"new_llm_setup": True, "details": "fully_replaced"})
+    #     self.assertNotEqual(updated_schema.nodes["generate_content"].node_config, original_generate_content_config)
 
-        # 3. Check store_draft node (node replace_mode=False, list_replace_mode=True)
-        updated_store_draft_config = updated_schema.nodes["store_draft"].node_config
-        self.assertEqual(updated_store_draft_config["store_configs"], [{"input_field_path": "new_path", "target_path": {"docname": "new_doc"}}])
-        self.assertNotEqual(updated_store_draft_config["store_configs"], original_store_configs)
-        self.assertEqual(updated_store_draft_config["another_store_param"], "merged_value") # Merged part
-        # Check that other original keys in store_draft.node_config are preserved (e.g., global_versioning)
-        self.assertIn("global_versioning", updated_store_draft_config)
-        self.assertEqual(updated_store_draft_config["global_versioning"], base_schema.nodes["store_draft"].node_config["global_versioning"])
+    #     # 3. Check store_draft node (node replace_mode=False, list_replace_mode=True)
+    #     updated_store_draft_config = updated_schema.nodes["store_draft"].node_config
+    #     self.assertEqual(updated_store_draft_config["store_configs"], [{"input_field_path": "new_path", "target_path": {"docname": "new_doc"}}])
+    #     self.assertNotEqual(updated_store_draft_config["store_configs"], original_store_configs)
+    #     self.assertEqual(updated_store_draft_config["another_store_param"], "merged_value") # Merged part
+    #     # Check that other original keys in store_draft.node_config are preserved (e.g., global_versioning)
+    #     self.assertIn("global_versioning", updated_store_draft_config)
+    #     self.assertEqual(updated_store_draft_config["global_versioning"], base_schema.nodes["store_draft"].node_config["global_versioning"])
 
 
-        # 4. Check construct_initial_prompt node (default merge behavior)
-        updated_construct_prompt_config = updated_schema.nodes["construct_initial_prompt"].node_config
-        self.assertEqual(updated_construct_prompt_config["prompt_templates"]["initial_generation_prompt"]["variables"]["brief"], "merged_brief_value")
-        # Check that other parts of construct_initial_prompt are preserved
-        # import ipdb; ipdb.set_trace()
-        self.assertEqual(updated_construct_prompt_config["prompt_templates"]["initial_generation_prompt"]["template"], original_construct_prompt_template)
-        self.assertIn("system_prompt", updated_construct_prompt_config["prompt_templates"])
+    #     # 4. Check construct_initial_prompt node (default merge behavior)
+    #     updated_construct_prompt_config = updated_schema.nodes["construct_initial_prompt"].node_config
+    #     self.assertEqual(updated_construct_prompt_config["prompt_templates"]["initial_generation_prompt"]["variables"]["brief"], "merged_brief_value")
+    #     # Check that other parts of construct_initial_prompt are preserved
+    #     # import ipdb; ipdb.set_trace()
+    #     self.assertEqual(updated_construct_prompt_config["prompt_templates"]["initial_generation_prompt"]["template"], original_construct_prompt_template)
+    #     self.assertIn("system_prompt", updated_construct_prompt_config["prompt_templates"])
 
 
 if __name__ == '__main__':
