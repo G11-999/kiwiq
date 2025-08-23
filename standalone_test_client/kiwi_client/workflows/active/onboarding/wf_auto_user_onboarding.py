@@ -701,14 +701,65 @@ async def main_test_onboarding():
         "linkedin_profile_url": "https://www.linkedin.com/in/example-user-1/",
         "company_url": "https://www.entelligence.ai/",
         "linkedin_additional_context": """
-        Founder(s): Aiswarya Sankar (Founder & CEO)
+Founder(s): Aiswarya Sankar (Founder & CEO)
 
 
 Founder LinkedIn: Needs to be checked online
 
+
+Persona Tags: DevTools; AI for Eng; Platform
+
+
+Content Goals: Primary — Product Education; Secondary — Talent/Recruiting
+
+
+Posting Schedule: 2 posts/week; Days — Tue, Thu; Exclude weekends — Yes
+
+
+Timezone: PT
+
         """,
         "blog_additional_context": """
+Asset Name: Entelligence Blog
 
+
+Value Proposition: AI that understands your entire codebase and workflow to plan, review, and accelerate engineering work.
+
+
+ICP
+
+
+Name: Scale-up & Enterprise Eng Orgs
+
+
+Target Industry: Software & Platforms
+
+
+Company Size: 200–3,000
+
+
+Buyer Persona: VP Eng / Head of Platform
+
+
+Pain Points:
+
+
+PR review backlog
+
+
+Slow onboarding to legacy code
+
+
+Context fragmentation across PR/Slack/Docs
+
+
+Competitors: Sourcegraph; Codeium; Cursor
+
+
+Goals: Cut PR review time by 40%; Reduce new-hire ramp by 30 days
+
+
+Posting Schedule: 2 posts/month
         """,
     }
 

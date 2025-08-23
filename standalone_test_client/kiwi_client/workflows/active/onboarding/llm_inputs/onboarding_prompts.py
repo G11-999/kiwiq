@@ -287,11 +287,17 @@ CRITICAL INSTRUCTIONS:
    - Professional networking patterns and content consumption habits
    - Geographic and temporal factors affecting optimal posting times
 
-3. **Output Format**: Produce STRICT JSON that exactly matches the provided schema. No commentary, explanations, or additional text.
+3. **Supplement Missing Information**: Even when additional_context provides partial information for complex objects, you must research and supplement ALL missing subfields and subschemas. For example:
+   - If context mentions "posts 3 times a week" but doesn't specify days, research optimal posting days for the executive's industry/timezone
+   - If context mentions "tech executive" but lacks specific persona tags, research and add relevant expertise areas (e.g., "AI/ML Expert", "SaaS Leader")
+   - If context provides location but no timezone details, research and populate complete timezone information with IANA identifier, UTC offset, and DST support
+   - If content goals are mentioned generally, research industry-specific objectives and make them actionable and measurable
 
-4. **Data Quality**: Create actionable, specific content that will drive real LinkedIn engagement and business results.
+4. **Output Format**: Produce STRICT JSON that exactly matches the provided schema. No commentary, explanations, or additional text.
 
-5. **Professional Standards**: Ensure all content reflects executive-level professionalism and strategic thinking.
+5. **Data Quality**: Create actionable, specific content that will drive real LinkedIn engagement and business results.
+
+6. **Professional Standards**: Ensure all content reflects executive-level professionalism and strategic thinking.
 
 TASK REQUIREMENTS:
 **Focus Areas for Profile Creation:**
@@ -351,11 +357,18 @@ CRITICAL INSTRUCTIONS:
    - Content marketing best practices for the specific industry vertical
    - Business model analysis to determine appropriate content goals and distribution strategies
 
-3. **Output Format**: Produce STRICT JSON that exactly matches the provided schema. No commentary, explanations, or additional text.
+3. **Supplement Missing Information**: Even when additional_context provides partial information for complex objects, you must research and supplement ALL missing subfields and subschemas. For example:
+   - If context mentions "B2B SaaS company" but lacks specific ICP details, research typical buyer personas, company sizes, and pain points for that market
+   - If context provides industry but no competitors, research and identify key competitive players with websites
+   - If context mentions "lead generation" as a goal but lacks specificity, research industry-standard metrics and make goals measurable (e.g., "Generate 50 qualified MQLs per month")
+   - If context provides company size hint but no detailed ICP, research target market segments and populate complete buyer persona details
+   - If posting frequency is mentioned but not specific cadence, research optimal publishing schedules for the industry and company size
 
-4. **Strategic Focus**: Create data-driven content strategies that align with business objectives and target market needs.
+4. **Output Format**: Produce STRICT JSON that exactly matches the provided schema. No commentary, explanations, or additional text.
 
-5. **Market Intelligence**: Develop realistic ICPs and competitive positioning based on available information.
+5. **Strategic Focus**: Create data-driven content strategies that align with business objectives and target market needs.
+
+6. **Market Intelligence**: Develop realistic ICPs and competitive positioning based on available information.
 
 TASK REQUIREMENTS:
 **Focus Areas for Company Profile Creation:**
@@ -420,5 +433,3 @@ You will be given the current company profile JSON and revision feedback. Update
 Revision Feedback:
 {revision_feedback}
 """
-
-
