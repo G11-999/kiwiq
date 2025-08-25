@@ -1195,6 +1195,7 @@ async def get_run_status(
     # run: models.WorkflowRun = Depends(wf_deps.get_workflow_run_for_org),
     # Re-inject active_org_id for service call if needed, though run object has it
     current_user: User = Depends(wf_deps.RequireRunReadActiveOrg),
+    ignore_org_check_for_run_fetch: bool = Query(False, description="Ignore organization check and fetch run regardless of org"),
     # db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
     run_id: uuid.UUID = Path(..., description="The ID of the workflow run"),
     active_org_id: uuid.UUID = Depends(get_active_org_id),
@@ -1210,7 +1211,9 @@ async def get_run_status(
     - Requires `run:read` permission on the active organization.
     """
     try:
-        if current_user.is_superuser:
+        if ignore_org_check_for_run_fetch and not current_user.is_superuser:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot fetch run without org check for non-superusers")
+        if current_user.is_superuser and ignore_org_check_for_run_fetch:
             run = await run_dao.get(db, id=run_id)
         else:
             run = await run_dao.get_run_by_id_and_org(db, run_id=run_id, org_id=active_org_id)
