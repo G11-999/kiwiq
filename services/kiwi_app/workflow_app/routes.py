@@ -1188,14 +1188,18 @@ async def get_run_logs(
     "/{run_id}",
     response_model=schemas.WorkflowRunRead,
     summary="Get Workflow Run Status Summary",
-    dependencies=[Depends(wf_deps.RequireRunReadActiveOrg)] # Basic check on active org context
+    # dependencies=[Depends(wf_deps.RequireRunReadActiveOrg)] # Basic check on active org context
 )
 async def get_run_status(
     # Use dependency to fetch run and ensure it belongs to active org
-    run: models.WorkflowRun = Depends(wf_deps.get_workflow_run_for_org),
+    # run: models.WorkflowRun = Depends(wf_deps.get_workflow_run_for_org),
     # Re-inject active_org_id for service call if needed, though run object has it
-    # current_user: User = Depends(wf_deps.RequireRunReadActiveOrg),
+    current_user: User = Depends(wf_deps.RequireRunReadActiveOrg),
     # db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
+    run_id: uuid.UUID = Path(..., description="The ID of the workflow run"),
+    active_org_id: uuid.UUID = Depends(get_active_org_id),
+    db: AsyncSession = Depends(get_async_db_dependency),
+    run_dao: wf_crud.WorkflowRunDAO = Depends(wf_deps.get_workflow_run_dao),
     # workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
 ):
     """
@@ -1206,6 +1210,14 @@ async def get_run_status(
     - Requires `run:read` permission on the active organization.
     """
     try:
+        if current_user.is_superuser:
+            run = await run_dao.get(db, id=run_id)
+        else:
+            run = await run_dao.get_run_by_id_and_org(db, run_id=run_id, org_id=active_org_id)
+        # if not run:
+        #     raise WorkflowRunNotFoundException()
+        if not run:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workflow run not found")
         # Dependency handles fetch and access check against active org
         # Call service method that might augment with Mongo status
         # async with db_manager as db:
@@ -1214,6 +1226,8 @@ async def get_run_status(
         #     )
         workflow_logger.info(f"Retrieved workflow run status for run {run.id}")
         return run
+    except HTTPException as e:
+        raise e
     except Exception as e:
         workflow_logger.error(f"Error retrieving workflow run status for run {run.id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An error occurred while retrieving the workflow run status")
