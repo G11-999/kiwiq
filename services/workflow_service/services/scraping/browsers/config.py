@@ -16,7 +16,7 @@ OPENAI_SELECTORS = {
     "code_input": 'input[placeholder="Code"]',
     "continue_button": 'button:has-text("Continue")',
     "close_popup": 'button[data-testid="close-button"]',
-    "prompt_input": '[data-placeholder="Ask anything"]',
+    "prompt_input": 'textarea[name="prompt-textarea"]', # '[data-placeholder="Ask anything"]',
     "send_button": 'button[data-testid="send-button"]',
     "response_container": "div.markdown.prose",
 

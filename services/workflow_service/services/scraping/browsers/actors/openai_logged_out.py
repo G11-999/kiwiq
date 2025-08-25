@@ -187,6 +187,7 @@ class OpenAIBrowserActor(BaseBrowserActor):
             return False
     
     async def single_query(self, query: str) -> List[Dict[str, str]]:
+        # TODO: better way to click using locators probably: https://claude.ai/chat/96925ea0-80be-406a-a1dd-e74e7c2382e4
         async def close_popup(timeout=5000):
             try:
                 await self.wait_and_click(OPENAI_SELECTORS["close_popup"], timeout=timeout)
@@ -203,6 +204,9 @@ class OpenAIBrowserActor(BaseBrowserActor):
             
             try:
                 await self.wait_and_click(OPENAI_SELECTORS["search_web_no_login"], timeout=5000)
+                # NOTE: can add delay in click up / click down events; add separate timeout for finding element vs actual click?? 
+                #     this may be better as recommended by claude https://claude.ai/chat/96925ea0-80be-406a-a1dd-e74e7c2382e4
+                # await self.page.locator(OPENAI_SELECTORS["prompt_input"]).focus(timeout=30000)
                 # await self.page.click(OPENAI_SELECTORS["search_web_no_login"], timeout=1500)
                 self.logger.info(f"SUCCESS: Search web no login button clicked")
                 return True
@@ -246,7 +250,8 @@ class OpenAIBrowserActor(BaseBrowserActor):
 
         # Send Q1
         await self.wait_for_seconds(0.25, add_noise=True)
-        await self.wait_and_click(OPENAI_SELECTORS["prompt_input"])
+        # await self.wait_and_click(OPENAI_SELECTORS["prompt_input"])
+        await self.page.locator(OPENAI_SELECTORS["prompt_input"]).focus(timeout=30000)
         await self.wait_for_seconds(0.25, add_noise=True)
         # pause_until_confirm()
         await self.page.keyboard.type(query, delay=random.randint(1, 5))

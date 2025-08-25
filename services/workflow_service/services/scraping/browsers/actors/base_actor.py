@@ -59,6 +59,8 @@ class BaseBrowserActor:
 
         Raises:
             Exception: If the element can’t be interacted with.
+        
+        TODO: better way to click using locators probably: https://claude.ai/chat/96925ea0-80be-406a-a1dd-e74e7c2382e4
         """
         try:
             # print(selector)
