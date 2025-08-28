@@ -415,6 +415,7 @@ class WorkflowService:
             # Trigger the workflow run via the helper function
             flow_run: FlowRun = await trigger_workflow_run(
                 workflow_id=workflow_run.workflow_id,
+                workflow_name=workflow_run.workflow_name,
                 owner_org_id=owner_org_id,
                 triggered_by_user_id=user.id,
                 inputs=run_submit.inputs,
@@ -1593,6 +1594,7 @@ class WorkflowService:
             # Call the worker trigger function
             flow_run: FlowRun = await trigger_workflow_run(
                 workflow_id=run.workflow_id,
+                workflow_name=run.workflow_name,
                 owner_org_id=run.owner_org_id,
                 triggered_by_user_id=run.triggered_by_user_id, # Original triggerer
                 inputs=response_data, # Pass HITL response as input for resumption node

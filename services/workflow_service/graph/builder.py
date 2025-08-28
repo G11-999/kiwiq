@@ -735,7 +735,8 @@ class GraphBuilder:
         self, 
         graph_schema: GraphSchema,
         allow_non_user_editable_fields: bool = True,
-        prefect_mode: bool = False
+        prefect_mode: bool = False,
+        runtime_metadata: Optional[Dict[str, Any]] = None
     ) -> GraphEntities:
         """
         Build all graph entities from a graph schema.
@@ -789,6 +790,7 @@ class GraphBuilder:
         # if prefect_mode:
         for node_id, node_instance in node_instances.items():
             node_instance.prefect_mode = prefect_mode
+            node_instance.runtime_metadata = runtime_metadata
         
         # Instantiate the GraphEntities with all components
         graph_entities = GraphEntities(

@@ -101,6 +101,7 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
     # Instance configuration
     node_id: str  # Required unique identifier in the context of a graph run
     config: Optional[Union[ConfigSchemaT, Dict[str, Any]]] = None
+    runtime_metadata: Optional[Dict[str, Any]] = None
     # Whether to run the node in Prefect mode for logging and tracking flow/tasks
     prefect_mode: bool = True
     billing_mode: bool = True
@@ -720,6 +721,11 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
         Returns:
             Formatted message with node_id and node_name prefix
         """
+        if self.runtime_metadata:
+            workflow_name = self.runtime_metadata.get("workflow_name", None)
+            is_sub_workflow = self.runtime_metadata.get("is_sub_workflow", None)
+            if is_sub_workflow and workflow_name:
+                return f"{workflow_name}: {self.node_id}: {self.node_name} - {msg}"
         return f"{self.node_id}: {self.node_name} - {msg}"
     
     # Logger convenience methods

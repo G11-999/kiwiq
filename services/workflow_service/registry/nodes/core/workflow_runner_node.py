@@ -707,6 +707,7 @@ class WorkflowRunnerNode(BaseDynamicNode):  # [WorkflowRunnerInput, WorkflowRunn
             run_job = schemas.WorkflowRunJobCreate(
                 run_id=workflow_run.id,
                 workflow_id=workflow.id,
+                workflow_name=workflow.name,
                 graph_schema=effective_graph_schema if effective_graph_schema else workflow.graph_config,
                 inputs=inputs,
                 owner_org_id=org_id,

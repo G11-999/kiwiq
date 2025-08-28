@@ -112,6 +112,7 @@ class WorkflowRunCreate(BaseModel):
     """Schema used internally or by other services to create a run record."""
     run_id: Optional[uuid.UUID] = None
     workflow_id: Optional[uuid.UUID] = None
+    workflow_name: Optional[str] = Field(None, description="Name of the workflow to run, this is optional and is only used for debugging/logging purposes; workflow ID is used to fetch the workflow instance")
     inputs: Optional[Dict[str, Any]] = Field(None, description="Inputs to provide to the workflow run")
     # TODO: add checkpoint ID as well for resume!
     thread_id: Optional[uuid.UUID] = Field(None, description="Optional existing thread ID to reuse")

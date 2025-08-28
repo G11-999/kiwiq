@@ -177,7 +177,7 @@ async def workflow_execution_flow(
         return workflow_run_update_result  # .model_dump(mode='json', exclude_defaults=False)
 
     except Exception as e:
-        logger.error(f"Workflow execution flow failed critically for Run ID {run_job.run_id}: {e}", exc_info=True)
+        # logger.error(f"Workflow execution flow failed critically for Run ID {run_job.run_id}: {e}", exc_info=True)
         error_message = str(e)
         final_status = wf_schemas.WorkflowRunStatus.FAILED
         # Re-raise the original exception to ensure Prefect marks the flow as failed
@@ -237,6 +237,8 @@ async def run_graph(
                     "prefect_run_ids": ",".join([workflow_run.prefect_run_ids, str(flow_id)]) if workflow_run.prefect_run_ids else str(flow_id)
                 }
             )
+        is_sub_workflow = workflow_run.parent_run_id is not None
+        log_prefix = f"{workflow_run.workflow_name}: " if is_sub_workflow else ""
 
     try:
         ################################################################
@@ -244,7 +246,7 @@ async def run_graph(
 
         # Check if this is a resume after HITL
         if workflow_run_job.resume_after_hitl:
-            logger.info(f"Resuming workflow after HITL for Run ID: {run_id}")
+            logger.info(log_prefix + f"Resuming workflow after HITL for Run ID: {run_id}")
             # # Fetch any pending HITL jobs for this run to process their responses
             # async with get_async_db_as_manager() as db:
             #     # NOTE: this is sorted by descending created at, latest first!
@@ -313,7 +315,7 @@ async def run_graph(
         # If thread_id is not provided, use run_id as the thread_id
         thread_id = workflow_run_job.thread_id or run_id
 
-        logger.info(f"Building graph for Run ID: {run_id}")
+        logger.info(log_prefix + f"Building graph for Run ID: {run_id}")
         error_message = None
 
         ################################################################
@@ -322,8 +324,12 @@ async def run_graph(
         # --- Graph Building ---
         builder = GraphBuilder(external_context.db_registry)
         # Pass run job directly for context if builder needs it
-        graph_entities = builder.build_graph_entities(workflow_run_job.graph_schema, prefect_mode=True, allow_non_user_editable_fields=True)
-        logger.info("Graph entities built successfully")
+        runtime_metadata = {
+            "workflow_name": workflow_run.workflow_name,
+            "is_sub_workflow": is_sub_workflow,
+        }
+        graph_entities = builder.build_graph_entities(workflow_run_job.graph_schema, prefect_mode=True, allow_non_user_editable_fields=True, runtime_metadata=runtime_metadata)
+        logger.info(log_prefix + "Graph entities built successfully")
         final_output_node_id = graph_entities.get("output_node_id")
 
         # --- Runtime Configuration ---
@@ -355,11 +361,11 @@ async def run_graph(
             # --- Adapter and Execution ---
             adapter = LangGraphRuntimeAdapter()
             compiled_graph = adapter.build_graph(graph_entities)
-            logger.info("Graph compiled successfully")
+            logger.info(log_prefix + "Graph compiled successfully")
 
             # Get initial input data
             initial_input = workflow_run_job.inputs or {}
-            logger.info(f"Executing graph stream with input data: {initial_input}")
+            logger.info(log_prefix + f"Executing graph stream with input data: {initial_input}")
 
             # --- Process Graph Stream ---
             current_status = wf_schemas.WorkflowRunStatus.RUNNING # Track status locally
@@ -371,7 +377,7 @@ async def run_graph(
                 await external_context.daos.workflow_run.update_status(
                     db=db, run_id=run_id, status=current_status
                 )
-            logger.info(f"Updated Run {run_id} status to RUNNING in DB.")
+            logger.info(log_prefix + f"Updated Run {run_id} status to RUNNING in DB.")
 
             ######  ######  ######  ######  ######  ######  ######  ######  ######  ######
             # Publish initial status update event to stream
@@ -397,13 +403,13 @@ async def run_graph(
                     data=initial_status_event_dump
                     # No need for allowed_prefixes here, internal system operation
                 )
-                logger.debug(f"Persisted event {initial_status_event.event_type} (RunID: {initial_status_event.run_id}, SeqID: {initial_status_event.sequence_i}) to MongoDB.")
+                logger.debug(log_prefix + f"Persisted event {initial_status_event.event_type} (RunID: {initial_status_event.run_id}, SeqID: {initial_status_event.sequence_i}) to MongoDB.")
                 
                 await external_context.rabbit.publish_workflow_event(initial_status_event_dump)
                 sequence_id_counter += 1
                 
             except Exception as e:
-                logger.error(f"Error publishing initial status event: {e}", exc_info=True)
+                logger.error(log_prefix + f"Error publishing initial status event: {e}", exc_info=True)
             ######  ######  ######  ######  ######  ######  ######  ######  ######  ######
 
             async for chunk in adapter.aexecute_graph_stream(
@@ -417,7 +423,7 @@ async def run_graph(
                 try:
                     # Ensure chunk is a tuple (stream_mode, data)
                     if not isinstance(chunk, tuple) or len(chunk) != 2:
-                        logger.warning(f"Received unexpected chunk format: {chunk}")
+                        logger.warning(log_prefix + f"Received unexpected chunk format: {chunk}")
                         continue
 
                     stream_mode, data = chunk
@@ -437,9 +443,9 @@ async def run_graph(
                     mongo_path = [str(base_event_data.get(seg_name, "*")) for seg_name in settings.MONGO_WORKFLOW_STREAM_SEGMENTS]
                     # Ensure no wildcards remain unintentionally
                     if "*" in mongo_path:
-                        logger.warning(f"Failed to construct MongoDB path. Some segments missing for event: {stream_mode}::{sequence_id_counter}::{run_id}")
+                        logger.warning(log_prefix + f"Failed to construct MongoDB path. Some segments missing for event: {stream_mode}::{sequence_id_counter}::{run_id}")
                         mongo_path = None
-                    # logger.info(f"MongoDB path constructed successfully: {mongo_path}")
+                    # logger.info(log_prefix + f"MongoDB path constructed successfully: {mongo_path}")
 
                     # --- Handle Different Stream Modes ---
                     if stream_mode == "messages" and workflow_run_job.streaming_mode:
@@ -464,13 +470,13 @@ async def run_graph(
                                     data=message_event_dump
                                     # No need for allowed_prefixes here, internal system operation
                                 )
-                                logger.debug(f"Persisted event {message_event.event_type} (RunID: {message_event.run_id}, SeqID: {message_event.sequence_i}) to MongoDB.")
+                                logger.debug(log_prefix + f"Persisted event {message_event.event_type} (RunID: {message_event.run_id}, SeqID: {message_event.sequence_i}) to MongoDB.")
 
                             # Publish to RabbitMQ Stream
                             await external_context.rabbit.publish_workflow_event(message_event_dump)
                             sequence_id_counter += 1
                         else:
-                            logger.debug(f"Received non-AnyMessage in 'messages' stream: {type(data)} \n{data}\n")
+                            logger.debug(log_prefix + f"Received non-AnyMessage in 'messages' stream: {type(data)} \n{data}\n")
 
                     elif stream_mode == "custom":
                         # Process tool call chunks (e.g., from tools)
@@ -494,7 +500,7 @@ async def run_graph(
                                     if payload:=data.get("payload", {}):
                                         custom_event.payload = payload
                                 else:
-                                    logger.warning(f"Received unhandled custom event type: {data.get('event_type')}")
+                                    logger.warning(log_prefix + f"Received unhandled custom event type: {data.get('event_type')}")
                                     continue
                                 
                                 custom_event_dump = custom_event.model_dump(mode='json', exclude_defaults=False)
@@ -503,25 +509,25 @@ async def run_graph(
                                         path=mongo_path,
                                         data=custom_event_dump
                                     )
-                                    logger.debug(f"Persisted event {custom_event.event_type} (RunID: {custom_event.run_id}, SeqID: {custom_event.sequence_i}) to MongoDB.")
+                                    logger.debug(log_prefix + f"Persisted event {custom_event.event_type} (RunID: {custom_event.run_id}, SeqID: {custom_event.sequence_i}) to MongoDB.")
                                 # Publish to RabbitMQ Stream
                                 await external_context.rabbit.publish_workflow_event(custom_event_dump)
                                 sequence_id_counter += 1
                             except Exception as e:
-                                logger.error(f"Error processing {data.get('event_type', 'unknown')} event: {e}", exc_info=True)
+                                logger.error(log_prefix + f"Error processing {data.get('event_type', 'unknown')} event: {e}", exc_info=True)
                                 continue
 
                     elif stream_mode == "updates":
                         # Process state updates, node outputs, and interrupts
                         if not isinstance(data, dict):
-                            logger.warning(f"Received non-dict data in 'updates' stream: {data}")
+                            logger.warning(log_prefix + f"Received non-dict data in 'updates' stream: {data}")
                             continue
 
                         for node_id, node_output in data.items():
                             if node_id == "__interrupt__":
                                 # --- Handle HITL Interrupt ---
                                 current_status = wf_schemas.WorkflowRunStatus.WAITING_HITL
-                                logger.info(f"Run {run_id} interrupted for HITL.")
+                                logger.info(log_prefix + f"Run {run_id} interrupted for HITL.")
 
                                 # Extract interrupt payload
                                 interrupt_list = cast(List[Any], node_output)
@@ -558,8 +564,8 @@ async def run_graph(
                                         related_run_id=run_id
                                     )
                                 
-                                logger.info(f"Created HITL Job DB entry {hitl_job.id} and notification entry {user_notification.id} for Run {run_id}.")
-                                logger.info(f"Updated Run {run_id} status to PENDING_HITL in DB.")
+                                logger.info(log_prefix + f"Created HITL Job DB entry {hitl_job.id} and notification entry {user_notification.id} for Run {run_id}.")
+                                logger.info(log_prefix + f"Updated Run {run_id} status to PENDING_HITL in DB.")
 
                                 # 3. Publish Status Update Event
                                 status_event = WorkflowRunStatusUpdateEvent(
@@ -573,7 +579,7 @@ async def run_graph(
                                         data=status_event_dump
                                         # No need for allowed_prefixes here, internal system operation
                                     )
-                                    logger.debug(f"Persisted event {status_event.event_type} (RunID: {status_event.run_id}, SeqID: {status_event.sequence_i}) to MongoDB.")
+                                    logger.debug(log_prefix + f"Persisted event {status_event.event_type} (RunID: {status_event.run_id}, SeqID: {status_event.sequence_i}) to MongoDB.")
 
                                 # Publish to RabbitMQ Stream
                                 await external_context.rabbit.publish_workflow_event(status_event_dump)
@@ -597,7 +603,7 @@ async def run_graph(
                                         data=hitl_event_dump
                                         # No need for allowed_prefixes here, internal system operation
                                     )
-                                    logger.debug(f"Persisted event {hitl_event.event_type} (RunID: {hitl_event.run_id}, SeqID: {hitl_event.sequence_i}) to MongoDB.")
+                                    logger.debug(log_prefix + f"Persisted event {hitl_event.event_type} (RunID: {hitl_event.run_id}, SeqID: {hitl_event.sequence_i}) to MongoDB.")
 
                                 # Publish to RabbitMQ Stream
                                 await external_context.rabbit.publish_workflow_event(hitl_event_dump)
@@ -621,7 +627,7 @@ async def run_graph(
                                 #     #      "related_run_id": str(run_id)
                                 #     #  }
                                 #      )
-                                #      logger.info(f"Sent HITL notification for Run {run_id} to user {assigned_user}.")
+                                #      logger.info(log_prefix + f"Sent HITL notification for Run {run_id} to user {assigned_user}.")
 
                             else:
                                 # --- Handle Node Output ---
@@ -660,7 +666,7 @@ async def run_graph(
                                         if "central_state_update" in payload:
                                             payload["central_state_update"] = "DATA_REDACTED"
                                 except Exception as e:
-                                    logger.warning(f"Error getting node name for {node_id}: {e}")
+                                    logger.warning(log_prefix + f"Error getting node name for {node_id}: {e}")
 
                                 output_event = WorkflowRunNodeOutputEvent(
                                     **base_event_data,
@@ -675,7 +681,7 @@ async def run_graph(
                                         data=output_event_dump
                                         # No need for allowed_prefixes here, internal system operation
                                     )
-                                    logger.debug(f"Persisted event {output_event.event_type} (RunID: {output_event.run_id}, SeqID: {output_event.sequence_i}) to MongoDB.")
+                                    logger.debug(log_prefix + f"Persisted event {output_event.event_type} (RunID: {output_event.run_id}, SeqID: {output_event.sequence_i}) to MongoDB.")
 
                                 # Publish to RabbitMQ Stream
                                 await external_context.rabbit.publish_workflow_event(output_event_dump)
@@ -684,20 +690,20 @@ async def run_graph(
                                 # Capture final output if this is the designated output node
                                 if final_output_node_id and node_id == final_output_node_id:
                                     final_outputs = node_output
-                                    logger.info(f"Captured final output from node {final_output_node_id}")
+                                    logger.info(log_prefix + f"Captured final output from node {final_output_node_id}")
 
                             # else: Handle other update keys if necessary (e.g., central state updates)
                             #    logger.debug(f"Ignoring general state update key: {node_id}")
 
                     elif stream_mode == "debug":
                          # Log debug information if needed
-                         logger.debug(f"Graph Debug Chunk: {dumps(data, pretty=True)}")
+                         logger.debug(log_prefix + f"Graph Debug Chunk: {dumps(data, pretty=True)}")
 
                     else:
-                         logger.warning(f"Received unhandled stream mode: {stream_mode}")
+                         logger.warning(log_prefix + f"Received unhandled stream mode: {stream_mode}")
 
                 except Exception as stream_err:
-                     logger.error(f"Error processing stream chunk for Run ID {run_id}: {stream_err}", exc_info=True)
+                     logger.error(log_prefix + f"Error processing stream chunk for Run ID {run_id}: {stream_err}", exc_info=True)
                      # Decide if this error should fail the whole run
                      # current_status = wf_schemas.WorkflowRunStatus.FAILED
                      # error_message = f"Error processing stream chunk: {stream_err}"
@@ -716,12 +722,12 @@ async def run_graph(
                 #             allocated_credits=1,
                 #             actual_credits=1,
                 #         )
-                 logger.info(f"Graph stream execution completed successfully for Run ID: {run_id}")
+                 logger.info(log_prefix + f"Graph stream execution completed successfully for Run ID: {run_id}")
             # If status is PENDING_HITL, it remains so. If FAILED, it remains so.
 
 
     except Exception as graph_exec_err:
-        logger.error(f"Graph execution failed for Run ID {run_id}: {graph_exec_err}", exc_info=True)
+        logger.error(log_prefix + f"Graph execution failed for Workflow name {workflow_run_job.workflow_name} - Run ID {run_id}: {graph_exec_err}", exc_info=True)
         current_status = wf_schemas.WorkflowRunStatus.FAILED
         # async with get_async_db_as_manager() as db:
         #     await external_context.billing_service.adjust_allocated_credits(
@@ -767,9 +773,9 @@ async def run_graph(
                         error_message=workflow_run_update.error_message,
                         outputs=workflow_run_update.outputs
                     )
-                logger.info(f"Updated final status ({current_status.value}) and outputs in DB for Run ID: {run_id}")
+                logger.info(log_prefix + f"Updated final status ({current_status.value}) and outputs in DB for Run ID: {run_id}")
             except Exception as db_update_err:
-                logger.error(f"Failed to update final DB status/outputs for Run ID {run_id}: {db_update_err}", exc_info=True)
+                logger.error(log_prefix + f"Failed to update final DB status/outputs for Run ID {run_id}: {db_update_err}", exc_info=True)
                 # Potentially override status to FAILED if DB update fails critically?
                 # workflow_run_update.status = wf_schemas.WorkflowRunStatus.FAILED
                 # workflow_run_update.error_message = f"DB update failed: {db_update_err}"
@@ -796,10 +802,10 @@ async def run_graph(
                     data=final_status_event_dump
                     # No need for allowed_prefixes here, internal system operation
                 )
-                logger.info(f"Persisted event {final_status_event.event_type} (RunID: {final_status_event.run_id}, SeqID: {final_status_event.sequence_i}) to MongoDB.")
+                logger.info(log_prefix + f"Persisted event {final_status_event.event_type} (RunID: {final_status_event.run_id}, SeqID: {final_status_event.sequence_i}) to MongoDB.")
 
                 await external_context.rabbit.publish_workflow_event(final_status_event_dump)
-                logger.info(f"Published final status update event ({current_status.value}) for Run ID: {run_id}")
+                logger.info(log_prefix + f"Published final status update event ({current_status.value}) for Run ID: {run_id}")
 
                 # Create User Notification in DB
                 async with get_async_db_as_manager() as db:
@@ -811,17 +817,17 @@ async def run_graph(
                         message=final_status_event_dump,
                         related_run_id=run_id
                     )
-                logger.info(f"Published final status update event ({current_status.value}) for Run ID: {run_id}")
+                logger.info(log_prefix + f"Published final status update event ({current_status.value}) for Run ID: {run_id}")
                 # await external_context.rabbit.publish_notification(
                 #     final_status_event,
                 # )
             except Exception as publish_err:
-                logger.error(f"Failed to publish final status event for Run ID {run_id}: {publish_err}", exc_info=True)
+                logger.error(log_prefix + f"Failed to publish final status event for Run ID {run_id}: {publish_err}", exc_info=True)
 
     # if exception_raised is not None:
     #     raise exception_raised
 
-    logger.info(f"run_graph finished processing for Run ID: {run_id}. Final status: {current_status.value}")
+    logger.info(log_prefix + f"run_graph finished processing for Run ID: {run_id}. Final status: {current_status.value}")
     return workflow_run_update
 
 
@@ -829,6 +835,7 @@ async def run_graph(
 
 async def trigger_workflow_run(
     workflow_id: uuid.UUID,
+    workflow_name: Optional[str] = None,
     inputs: Optional[Dict[str, Any]] = None,
     owner_org_id: Optional[uuid.UUID] = None,
     triggered_by_user_id: Optional[uuid.UUID] = None,
@@ -845,6 +852,7 @@ async def trigger_workflow_run(
     
     Args:
         workflow_id: ID of the workflow to run
+        workflow_name: Name of the workflow to run, this is optional and is only used for debugging/logging purposes; workflow ID is used to fetch the workflow instance
         inputs: Optional inputs for the workflow
         owner_org_id: Organization ID that owns this workflow run
         triggered_by_user_id: User ID that triggered this workflow run
@@ -872,6 +880,7 @@ async def trigger_workflow_run(
     run_job = wf_schemas.WorkflowRunJobCreate(
         run_id=run_id,
         workflow_id=workflow_id,
+        workflow_name=workflow_name,
         owner_org_id=owner_org_id,
         triggered_by_user_id=triggered_by_user_id,
         inputs=inputs or {},
