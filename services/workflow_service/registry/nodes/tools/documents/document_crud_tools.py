@@ -148,8 +148,8 @@ class BaseDocumentInputSchema(BaseSchema):
     entity_username and view_context are marked as hidden from LLM tool calls
     using BaseSchema.FOR_LLM_TOOL_CALL_FIELD_KEY.
     """
-    entity_username: str = Field(
-        ..., 
+    entity_username: Optional[str] = Field(
+        None, 
         description="Entity username for namespace resolution", 
         json_schema_extra={BaseSchema.FOR_LLM_TOOL_CALL_FIELD_KEY: False}
     )
