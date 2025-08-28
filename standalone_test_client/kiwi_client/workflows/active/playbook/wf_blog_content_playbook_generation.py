@@ -1132,26 +1132,12 @@ workflow_graph_schema = {
                         "id": "play_selection_revision_user_prompt",
                         "template": PLAY_SELECTION_REVISION_USER_PROMPT_TEMPLATE,
                         "variables": {
-                            "company_info": None,
-                            "diagnostic_report_info": None,
                             "user_feedback": None,
                             "previous_recommendations": None
                         },
                         "construct_options": {
-                            "company_info": "company_doc",
-                            "diagnostic_report_info": "diagnostic_report_doc",
                             "user_feedback": "user_feedback",
                             "previous_recommendations": "selected_plays"
-                        }
-                    },
-                    "play_selection_revision_system_prompt": {
-                        "id": "play_selection_revision_system_prompt",
-                        "template": PLAY_SELECTION_SYSTEM_PROMPT,
-                        "variables": {
-                            "available_playbooks": None
-                        },
-                        "construct_options": {
-                            "available_playbooks": "available_playbooks"
                         }
                     }
                 }
@@ -1412,16 +1398,10 @@ workflow_graph_schema = {
                         "variables": {
                             "revision_feedback": None,
                             "current_playbook": None,
-                            "selected_plays": None,
-                            "company_info": None,
-                            "diagnostic_report_info": None
                         },
                         "construct_options": {
                             "revision_feedback": "revision_feedback",
                             "current_playbook": "current_playbook",
-                            "selected_plays": "approved_plays",
-                            "company_info": "company_doc",
-                            "diagnostic_report_info": "diagnostic_report_doc"
                         }
                     }
                 }
@@ -2077,11 +2057,8 @@ workflow_graph_schema = {
             "src_node_id": "$graph_state",
             "dst_node_id": "construct_play_selection_revision_prompt",
             "mappings": [
-                {"src_field": "company_doc", "dst_field": "company_doc"},
-                {"src_field": "diagnostic_report_doc", "dst_field": "diagnostic_report_doc"},
                 {"src_field": "current_user_feedback_on_plays", "dst_field": "user_feedback"},
                 {"src_field": "selected_plays", "dst_field": "selected_plays"},
-                {"src_field": "available_playbooks", "dst_field": "available_playbooks"}
             ]
         },
         
@@ -2091,7 +2068,6 @@ workflow_graph_schema = {
             "dst_node_id": "play_suggestion_llm",
             "mappings": [
                 {"src_field": "play_selection_revision_user_prompt", "dst_field": "user_prompt"},
-                {"src_field": "play_selection_revision_system_prompt", "dst_field": "system_prompt"}
             ]
         },
 
@@ -2195,9 +2171,6 @@ workflow_graph_schema = {
             "mappings": [
                 {"src_field": "revision_feedback", "dst_field": "revision_feedback"},
                 {"src_field": "user_edited_generated_playbook", "dst_field": "current_playbook"},
-                {"src_field": "approved_plays", "dst_field": "approved_plays"},
-                {"src_field": "company_doc", "dst_field": "company_doc"},
-                {"src_field": "diagnostic_report_doc", "dst_field": "diagnostic_report_doc"}
             ]
         },
         

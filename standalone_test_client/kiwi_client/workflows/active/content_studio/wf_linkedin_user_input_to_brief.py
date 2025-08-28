@@ -123,7 +123,7 @@ workflow_graph_schema = {
                     },
                     "initial_status": {
                         "type": "str",
-                        "required": True,
+                        "required": False,
                         "default": "draft",
                         "description": "Initial status of the workflow"
                     },
@@ -512,15 +512,14 @@ workflow_graph_schema = {
                                 "input_docname_field": "brief_uuid"
                             }
                         },
-                        "generate_uuid": True,
                         "extra_fields": [
                             {
-                                "src_path": "status",
-                                "dst_path": "initial_status"
+                                "src_path": "initial_status",
+                                "dst_path": "status"
                             },
                             {
-                                "src_path": "uuid",
-                                "dst_path": "brief_uuid"
+                                "src_path": "brief_uuid",
+                                "dst_path": "uuid"
                             }
                         ],
                         "versioning": {
@@ -612,15 +611,14 @@ workflow_graph_schema = {
                                 "input_docname_field": "brief_uuid"
                             }
                         },
-                        "generate_uuid": True,
                         "extra_fields": [
                             {
-                                "src_path": "status",
-                                "dst_path": "initial_status"
+                                "src_path": "initial_status",
+                                "dst_path": "status"
                             },
                             {
-                                "src_path": "uuid",
-                                "dst_path": "brief_uuid"
+                                "src_path": "brief_uuid",
+                                "dst_path": "uuid"
                             }
                         ]
                     }
@@ -800,15 +798,14 @@ workflow_graph_schema = {
                             "is_versioned": LINKEDIN_BRIEF_IS_VERSIONED,
                             "operation": "upsert_versioned"
                         },
-                        "generate_uuid": True,
                         "extra_fields": [
                             {
-                                "src_path": "status",
-                                "dst_path": "user_brief_action"
+                                "src_path": "user_brief_action",
+                                "dst_path": "status"
                             },
                             {
-                                "src_path": "uuid",
-                                "dst_path": "brief_uuid"
+                                "src_path": "brief_uuid",
+                                "dst_path": "uuid"
                             }
                         ]
                     }

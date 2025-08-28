@@ -71,7 +71,7 @@ from kiwi_client.workflows.active.playbook.llm_inputs.linkedin_content_playbook_
 LLM_PROVIDER = "openai"  # anthropic    openai
 LLM_MODEL = "gpt-5"  # o4-mini   gpt-4.1    claude-sonnet-4-20250514
 TEMPERATURE = 0.7
-MAX_TOKENS = 8000
+MAX_TOKENS = 30000
 MAX_TOOL_CALLS = 25  # Maximum total tool calls allowed
 MAX_FEEDBACK_ITERATIONS = 30  # Maximum LLM loop iterations # Maximum feedback loops to prevent infinite iterations
 
@@ -803,28 +803,12 @@ workflow_graph_schema = {
                         "id": "play_selection_revision_user_prompt",
                         "template": PLAY_SELECTION_REVISION_USER_PROMPT_TEMPLATE,
                         "variables": {
-                            "linkedin_info": None,
-                            "diagnostic_report_info": None,
                             "user_feedback": None,
-                            "previous_recommendations": None
                         },
                         "construct_options": {
-                            "linkedin_info": "linkedin_profile_doc",
-                            "diagnostic_report_info": "diagnostic_report_doc",
                             "user_feedback": "user_feedback",
-                            "previous_recommendations": "selected_plays"
                         }
                     },
-                    "play_selection_revision_system_prompt": {
-                        "id": "play_selection_revision_system_prompt",
-                        "template": PLAY_SELECTION_SYSTEM_PROMPT,
-                        "variables": {
-                            "available_playbooks": None
-                        },
-                        "construct_options": {
-                            "available_playbooks": "available_playbooks"
-                        }
-                    }
                 }
             }
         },
@@ -901,7 +885,6 @@ workflow_graph_schema = {
                             "fetched_information": "fetched_information",
                             "linkedin_profile_doc": "linkedin_profile_doc",
                             "diagnostic_report_info": "diagnostic_report_doc",
-                            "approved_plays": "approved_plays"
                         }
                     },
                     "playbook_generator_system_prompt": {
@@ -924,7 +907,8 @@ workflow_graph_schema = {
                         "model": LLM_MODEL
                     },
                     "temperature": TEMPERATURE,
-                    "max_tokens": MAX_TOKENS
+                    "max_tokens": MAX_TOKENS,
+                    "reasoning_effort_class": "high"
                 },
                 "output_schema": {
                     "schema_definition": PLAYBOOK_GENERATOR_OUTPUT_SCHEMA,
@@ -1080,16 +1064,10 @@ workflow_graph_schema = {
                         "variables": {
                             "revision_feedback": None,
                             "current_playbook": None,
-                            "selected_plays": None,
-                            "linkedin_profile_doc": None,
-                            "diagnostic_report_info": None
                         },
                         "construct_options": {
                             "revision_feedback": "revision_feedback",
                             "current_playbook": "current_playbook",
-                            "selected_plays": "approved_plays",
-                            "linkedin_profile_doc": "linkedin_profile_doc",
-                            "diagnostic_report_info": "diagnostic_report_doc"
                         }
                     }
                 }
@@ -1719,7 +1697,6 @@ workflow_graph_schema = {
             "src_node_id": "$graph_state",
             "dst_node_id": "construct_playbook_generator_prompt",
             "mappings": [
-                {"src_field": "approved_plays", "dst_field": "approved_plays"},
                 {"src_field": "linkedin_profile_doc", "dst_field": "linkedin_profile_doc"},
                 {"src_field": "diagnostic_report_doc", "dst_field": "diagnostic_report_doc"}
             ]
@@ -1742,11 +1719,7 @@ workflow_graph_schema = {
             "src_node_id": "$graph_state",
             "dst_node_id": "construct_play_selection_revision_prompt",
             "mappings": [
-                {"src_field": "linkedin_profile_doc", "dst_field": "linkedin_profile_doc"},
-                {"src_field": "diagnostic_report_doc", "dst_field": "diagnostic_report_doc"},
                 {"src_field": "current_user_feedback_on_plays", "dst_field": "user_feedback"},
-                {"src_field": "selected_plays", "dst_field": "selected_plays"},
-                {"src_field": "available_playbooks", "dst_field": "available_playbooks"}
             ]
         },
 
@@ -1756,9 +1729,7 @@ workflow_graph_schema = {
             "src_node_id": "construct_play_selection_revision_prompt",
             "dst_node_id": "play_suggestion_llm",
             "mappings": [
-                {"src_field": "play_selection_revision_user_prompt", "dst_field": "user_prompt"},
-                {"src_field": "play_selection_revision_system_prompt", "dst_field": "system_prompt"}
-            ]
+                {"src_field": "play_selection_revision_user_prompt", "dst_field": "user_prompt"}            ]
         },
         
         # Playbook Generator Prompt -> Playbook Generator LLM
@@ -1770,7 +1741,7 @@ workflow_graph_schema = {
                 {"src_field": "playbook_generator_system_prompt", "dst_field": "system_prompt"}
             ]
         },
-        
+
         # Playbook Generator LLM -> State
         {
             "src_node_id": "playbook_generator_llm",
@@ -1866,9 +1837,6 @@ workflow_graph_schema = {
             "mappings": [
                 {"src_field": "revision_feedback", "dst_field": "revision_feedback"},
                 {"src_field": "user_edited_generated_playbook", "dst_field": "current_playbook"},
-                {"src_field": "approved_plays", "dst_field": "approved_plays"},
-                {"src_field": "linkedin_profile_doc", "dst_field": "linkedin_profile_doc"},
-                {"src_field": "diagnostic_report_doc", "dst_field": "diagnostic_report_doc"}
             ]
         },
         
@@ -1890,7 +1858,7 @@ workflow_graph_schema = {
                 {"src_field": "user_edited_generated_playbook", "dst_field": "current_playbook"},
                 {"src_field": "approved_plays", "dst_field": "approved_plays"},
                 {"src_field": "linkedin_profile_doc", "dst_field": "linkedin_info"},
-                {"src_field": "diagnostic_report_doc", "dst_field": "diagnostic_report_info"},
+                {"src_field": "diagnostic_report_doc", "dst_field": "diagnostic_report_doc"},
                 {"src_field": "playbook_selection_config", "dst_field": "playbook_selection_config"}
             ]
         },
@@ -1902,6 +1870,15 @@ workflow_graph_schema = {
             "mappings": [
                 {"src_field": "feedback_management_user_prompt", "dst_field": "user_prompt"},
                 {"src_field": "feedback_management_system_prompt", "dst_field": "system_prompt"}
+            ]
+        },
+
+        # State -> Feedback Management LLM (provide message history)
+        {
+            "src_node_id": "$graph_state",
+            "dst_node_id": "feedback_management_llm",
+            "mappings": [
+                {"src_field": "feedback_management_messages", "dst_field": "messages_history"}
             ]
         },
         
@@ -1984,15 +1961,6 @@ workflow_graph_schema = {
             "dst_node_id": "feedback_management_llm",
             "mappings": [
                 {"src_field": "tool_outputs", "dst_field": "tool_outputs"}
-            ]
-        },
-        
-        # State -> Feedback Management LLM (provide message history)
-        {
-            "src_node_id": "$graph_state",
-            "dst_node_id": "feedback_management_llm",
-            "mappings": [
-                {"src_field": "feedback_management_messages", "dst_field": "messages_history"}
             ]
         },
         

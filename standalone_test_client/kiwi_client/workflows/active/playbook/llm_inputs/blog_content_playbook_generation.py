@@ -36,8 +36,8 @@ class ContentPlay(BaseModel):
     content_formats: List[str] = Field(description="Detailed explanatory descriptions of recommended content formats with specific guidance on how to create each format (e.g., 'Long-form educational blog posts (2000-3000 words) that break down complex topics into digestible sections with actionable takeaways' rather than just 'blog posts')")
     success_metrics: List[str] = Field(description="Success metrics to track")
     reasoning_for_timeline: str = Field(description="Reasoning for timeline")
-    timeline: str = Field(description="Implementation timeline")
-    resource_requirements: Optional[str] = Field(None, description="Required resources")
+    timeline: str = Field(description="Implementation timeline, give these for maximum upto for next 3 months")
+    # resource_requirements: Optional[str] = Field(None, description="Required resources")
     example_topics: Optional[List[str]] = Field(None, description="Example topics for this play")
 
 class PlaybookGenerationOutput(BaseModel):
@@ -47,7 +47,7 @@ class PlaybookGenerationOutput(BaseModel):
     content_plays: List[ContentPlay] = Field(description="List of content plays with implementation details")
     reasoning_for_recommendations: str = Field(description="Reasoning for the recommendations in 2-3 concise line points")
     overall_recommendations: str = Field(description="Overall recommendations for implementation in 2-3 concise line points")
-    next_steps: List[str] = Field(description="Next steps for getting started")
+    next_steps: List[str] = Field(description="Next steps for getting started, give these for maximum upto for next 3 months")
 
 # =============================================================================
 # FEEDBACK MANAGEMENT SCHEMAS
@@ -310,12 +310,6 @@ Analyze each potential play's relevance and provide detailed reasoning for your 
 # Play Selection Revision User Prompt Template
 PLAY_SELECTION_REVISION_USER_PROMPT_TEMPLATE = """Based on the user feedback provided, please revise the content play recommendations for this company.
 
-## Company Information
-{company_info}
-
-## Diagnostic Report
-{diagnostic_report_info}
-
 ## User Feedback
 {user_feedback}
 
@@ -378,15 +372,6 @@ ADDITIONAL_FEEDBACK_USER_PROMPT_TEMPLATE = """This is a subsequent revision cycl
 
 ## NEW REVISION FEEDBACK:
 {revision_feedback}
-
-## Selected Plays:
-{selected_plays}
-
-## Company Information:
-{company_info}
-
-## Diagnostic Report:
-{diagnostic_report_info}
 
 Analyze the feedback and determine:
 1. Is the feedback clear and actionable?

@@ -262,12 +262,8 @@ workflow_graph_schema = {
                         "generate_uuid": True,
                         "extra_fields": [
                             {
-                                "src_path": "user_action",
-                                "dst_path": "status"
-                            },
-                            {
-                                "src_path": "selected_topic",
-                                "dst_path": "source_topic"
+                                "src_path": " status",
+                                "dst_path": "user_action"
                             }
                         ],
                         "versioning": {
@@ -451,12 +447,8 @@ workflow_graph_schema = {
                         "generate_uuid": True,
                         "extra_fields": [
                             {
-                                "src_path": "user_action",
-                                "dst_path": "status"
-                            },
-                            {
-                                "src_path": "selected_topic",
-                                "dst_path": "source_topic"
+                                "src_path": "status",
+                                "dst_path": "user_action"
                             }
                         ],
                         "versioning": {

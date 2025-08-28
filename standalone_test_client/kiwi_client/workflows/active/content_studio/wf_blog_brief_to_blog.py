@@ -375,12 +375,12 @@ workflow_graph_schema = {
                         },
                         "extra_fields": [
                             {
-                                "src_path": "status",     
-                                "dst_path": "initial_status"
+                                "src_path": "initial_status",     
+                                "dst_path": "status"
                             },
                             {
-                                "src_path": "uuid",
-                                "dst_path": "post_uuid"
+                                "src_path": "post_uuid",
+                                "dst_path": "uuid"
                             }
                         ]
                     }
@@ -414,12 +414,12 @@ workflow_graph_schema = {
                         },
                         "extra_fields": [
                             {
-                                "src_path": "status",
-                                "dst_path": "initial_status"
+                                "src_path": "initial_status",
+                                "dst_path": "status"
                             },
                             {
-                                "src_path": "uuid",
-                                "dst_path": "post_uuid"
+                                "src_path": "post_uuid",
+                                "dst_path": "uuid"
                             }
                         ]
                     }
@@ -453,12 +453,12 @@ workflow_graph_schema = {
                         },
                         "extra_fields": [
                             {
-                                "src_path": "status",
-                                "dst_path": "user_action"
+                                "src_path": "user_action",
+                                "dst_path": "status"
                             },
                             {
-                                "src_path": "uuid",
-                                "dst_path": "post_uuid"
+                                "src_path": "post_uuid",
+                                "dst_path": "uuid"
                             }
                         ]
                     }
@@ -819,8 +819,8 @@ workflow_graph_schema = {
             "mappings": [
                 {"src_field": "blog_brief", "dst_field": "blog_brief"},
                 {"src_field": "company_guidelines", "dst_field": "company_guidelines"},
-                {"src_field": "seo_best_practices", "dst_field": "seo_best_practices"},
-                {"src_field": "knowledge_context", "dst_field": "knowledge_context"}
+                {"src_field": "knowledge_context", "dst_field": "knowledge_context"},
+                {"src_field": "seo_best_practices", "dst_field": "seo_best_practices"}
             ]
         },
         
@@ -1306,7 +1306,7 @@ async def main_test_brief_to_blog():
     
     # Create test company guidelines data
     test_company_data = {
-        "name": "Momentum",
+        "name": "momentum",
         "website_url": "https://www.momentum.io",
         "value_proposition": "AI-native Revenue Orchestration Platform that extracts, structures, and moves GTM data automatically. Momentum tracks what's said in every customer interaction and turns it into structured, usable data, updating CRM fields in real time for cleaner pipeline, better reporting, and smarter AI agents with context.",
         "company_offerings": [
@@ -1432,31 +1432,11 @@ async def main_test_brief_to_blog():
         ]
     }
     
-    # # Create test SEO best practices data
-    # test_seo_data = {
-    #     "title_best_practices": [
-    #         "Include primary keyword in title",
-    #         "Keep titles between 50-60 characters",
-    #         "Make titles compelling and clickable"
-    #     ],
-    #     "content_optimization": [
-    #         "Use header tags (H1, H2, H3) for structure",
-    #         "Include keywords naturally throughout content",
-    #         "Optimize for featured snippets with clear answers",
-    #         "Use internal and external links strategically"
-    #     ],
-    #     "meta_description_guidelines": [
-    #         "Keep between 150-160 characters",
-    #         "Include primary keyword",
-    #         "Write compelling copy that encourages clicks"
-    #     ]
-    # }
-    
     # Setup test documents
     setup_docs: List[SetupDocInfo] = [
         # Blog brief document
         {
-            'namespace': f"blog_content_creation_{test_company_name}",
+            'namespace': f"blog_brief_namespace_{test_company_name}",
             'docname': test_brief_docname,
             'initial_data': test_blog_brief_data,
             'is_shared': False,
@@ -1465,28 +1445,18 @@ async def main_test_brief_to_blog():
             'is_system_entity': False
         },
         # Company guidelines document
-        # {
-        #     'namespace': f"blog_company_profile_{test_company_name}",
-        #     'docname': BLOG_COMPANY_DOCNAME,
-        #     'initial_data': test_company_data,
-        #     'is_shared': False,
-        #     'is_versioned': False,
-        #     'initial_version': "None",
-        #     'is_system_entity': False
-        # },
-        # SEO best practices document (System Document)
-        # {
-        #     'namespace': BLOG_SEO_BEST_PRACTICES_NAMESPACE_TEMPLATE,
-        #     'docname': BLOG_SEO_BEST_PRACTICES_DOCNAME,
-        #     'initial_data': test_seo_data,
-        #     'is_shared': BLOG_SEO_BEST_PRACTICES_IS_SHARED,
-        #     'is_versioned': BLOG_SEO_BEST_PRACTICES_IS_VERSIONED,
-        #     'initial_version': None,
-        #     'is_system_entity': BLOG_SEO_BEST_PRACTICES_IS_SYSTEM_ENTITY
-        # },
-        # Knowledge base documents for enrichment
         {
-            'namespace': f"linkedin_uploaded_files_{test_company_name}",
+            'namespace': f"blog_company_profile_{test_company_name}",
+            'docname': BLOG_COMPANY_DOCNAME,
+            'initial_data': test_company_data,
+            'is_shared': False,
+            'is_versioned': False,
+            'initial_version': "None",
+            'is_system_entity': False
+        },
+
+        {
+            'namespace': f"blog_uploaded_files_{test_company_name}",
             'docname': "ai_marketing_trends_2024",
             'initial_data': {
                 "title": "AI Marketing Trends 2024",
@@ -1510,27 +1480,13 @@ async def main_test_brief_to_blog():
             'is_versioned': True,
             'is_system_entity': False
         },
-        # {
-        #     'namespace': f"blog_company_profile_{test_company_name}",
-        #     'docname': BLOG_COMPANY_DOCNAME,
-        #     'is_shared': False,
-        #     'is_versioned': False,
-        #     'is_system_entity': False
-        # },
-        # {
-        #     'namespace': BLOG_SEO_BEST_PRACTICES_NAMESPACE_TEMPLATE,
-        #     'docname': BLOG_SEO_BEST_PRACTICES_DOCNAME,
-        #     'is_shared': BLOG_SEO_BEST_PRACTICES_IS_SHARED,
-        #     'is_versioned': BLOG_SEO_BEST_PRACTICES_IS_VERSIONED,
-        #     'is_system_entity': BLOG_SEO_BEST_PRACTICES_IS_SYSTEM_ENTITY
-        # },
         {
-            'namespace': f"knowledge_base_{test_company_name}",
-            'docname': "ai_marketing_trends_2024",
+            'namespace': f"blog_company_profile_{test_company_name}",
+            'docname': BLOG_COMPANY_DOCNAME,
             'is_shared': False,
             'is_versioned': False,
             'is_system_entity': False
-        }
+        },
     ]
     
     # Test scenario

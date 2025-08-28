@@ -14,6 +14,9 @@ from pydantic import BaseModel, Field
 from datetime import datetime
 from enum import Enum
 
+# Import BriefGenerationOutput from the user input to brief file
+from .linkedin_user_input_to_brief import BriefGenerationOutput
+
 # =============================================================================
 # ENUMS
 # =============================================================================
@@ -92,143 +95,7 @@ class LinkedInFormattingSchema(BaseModel):
         description="How formatting creates visual hierarchy to improve readability and engagement"
     )
 
-class EngagementTacticSchema(BaseModel):
-    """Schema for individual engagement tactics with strategic reasoning."""
-    tactic: str = Field(description="Specific engagement tactic to employ")
-    tactic_reasoning: str = Field(
-        description="Why this tactic will work for this specific content and audience"
-    )
-    implementation_timing: str = Field(
-        description="When to implement this tactic (e.g., in post, first hour, first day)"
-    )
-    expected_outcome: str = Field(
-        description="What specific engagement behavior this tactic should trigger"
-    )
-    priority: EngagementPriority = Field(
-        description="Priority level of this tactic for achieving content goals"
-    )
 
-class SuccessMetricSchema(BaseModel):
-    """Schema for success metrics with measurement strategy."""
-    metric: str = Field(description="Specific metric to track")
-    metric_reasoning: str = Field(
-        description="Why this metric matters for the content objective"
-    )
-    target_value: str = Field(description="Target value or range for this metric")
-    measurement_timeframe: str = Field(
-        description="When to measure this metric (e.g., 24 hours, 1 week)"
-    )
-    action_threshold: str = Field(
-        description="What action to take if metric is above/below target"
-    )
-
-class ContentBriefDetailSchema(BaseModel):
-    """Enhanced schema for the detailed LinkedIn content brief with comprehensive reasoning."""
-    
-    # Strategic Reasoning Section (NEW)
-    strategic_reasoning: str = Field(
-        description="Overall strategic rationale explaining how this content advances the executive's goals and why this approach was chosen"
-    )
-    
-    audience_insight: str = Field(
-        description="Key insight about the target audience that this content leverages"
-    )
-    
-    competitive_differentiation: str = Field(
-        description="How this content differentiates from typical content in this space"
-    )
-    
-    # Core Content Fields (EXISTING - Enhanced with better descriptions)
-    title: str = Field(description="Title of the content")
-    title_reasoning: str = Field(
-        description="Why this title will perform well on LinkedIn (SEO, emotional triggers, clarity)"
-    )
-    
-    content_type: str = Field(description="Type of LinkedIn content (post, article, carousel, etc.)")
-    content_type_reasoning: str = Field(
-        description="Why this content type is optimal for the message and objective"
-    )
-    
-    content_format: str = Field(description="Format details for the content")
-    format_alignment_reasoning: str = Field(
-        description="How the format aligns with the executive's strengths and audience preferences"
-    )
-    
-    target_audience: str = Field(description="Target audience for the content")
-    audience_segmentation_strategy: str = Field(
-        description="How to speak to different segments within the target audience"
-    )
-    
-    content_goal: str = Field(description="Primary goal of the content")
-    goal_measurement_approach: str = Field(
-        description="How we'll know if the goal has been achieved"
-    )
-    
-    key_message: str = Field(description="Core message to convey")
-    message_memorability_strategy: str = Field(
-        description="How to make the key message stick in readers' minds"
-    )
-    
-    # Content Structure (EXISTING - Enhanced)
-    content_structure: List[ContentSectionSchema] = Field(
-        description="Detailed content structure with reasoning for each section"
-    )
-    
-    narrative_arc: str = Field(
-        description="The overall story arc and how sections build upon each other"
-    )
-    
-    # LinkedIn Formatting (EXISTING - Enhanced)
-    linkedin_formatting: LinkedInFormattingSchema = Field(
-        description="LinkedIn-specific formatting guidelines with strategic reasoning"
-    )
-    
-    # Call to Action (EXISTING - Enhanced)
-    call_to_action: str = Field(description="Call to action for the content")
-    cta_reasoning: str = Field(
-        description="Why this CTA will drive the desired action and how it aligns with content objective"
-    )
-    
-    secondary_ctas: List[str] = Field(
-        description="Alternative CTAs for different audience segments or engagement levels",
-        default_factory=list
-    )
-    
-    # Engagement Tactics (ENHANCED - Now structured)
-    engagement_tactics: List[EngagementTacticSchema] = Field(
-        description="Structured tactics to boost engagement with reasoning"
-    )
-    
-    conversation_starters: List[str] = Field(
-        description="Specific questions or statements to seed meaningful discussions",
-        default_factory=list
-    )
-    
-    # Success Metrics (ENHANCED - Now structured)
-    success_metrics: List[SuccessMetricSchema] = Field(
-        description="Structured success metrics with measurement strategy"
-    )
-    
-    # Additional Fields (EXISTING)
-    estimated_reading_time: str = Field(description="Estimated time to read/consume")
-    
-    writing_guidelines: List[str] = Field(description="Specific writing instructions")
-    
-    # New Strategic Fields
-    content_risks: List[str] = Field(
-        description="Potential risks or controversial elements and how to mitigate them",
-        default_factory=list
-    )
-    
-    repurposing_opportunities: List[str] = Field(
-        description="How this content can be repurposed for other platforms or formats",
-        default_factory=list
-    )
-    
-    follow_up_content_ideas: List[str] = Field(
-        description="Ideas for follow-up content to maintain momentum",
-        default_factory=list
-    )
 
 class BriefFeedbackAnalysisSchema(BaseModel):
     """Enhanced schema for brief feedback analysis output."""
@@ -592,7 +459,7 @@ Focus on convergence - each iteration should bring us closer to a brief that per
 # =============================================================================
 
 # Convert Pydantic models to JSON schemas for LLM use
-BRIEF_GENERATION_OUTPUT_SCHEMA = ContentBriefDetailSchema.model_json_schema()
+BRIEF_GENERATION_OUTPUT_SCHEMA = BriefGenerationOutput.model_json_schema()
 BRIEF_FEEDBACK_ANALYSIS_OUTPUT_SCHEMA = BriefFeedbackAnalysisSchema.model_json_schema()
 
 # Input schemas for validation (not for LLM output)

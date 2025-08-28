@@ -691,8 +691,12 @@ workflow_graph_schema = {
                         },
                         "extra_fields": [
                             {
-                                "src_path": "status",
-                                "dst_path": "user_action"
+                                "src_path": "user_action",
+                                "dst_path": "status"
+                            },
+                            {
+                                "src_path": "post_uuid",
+                                "dst_path": "uuid"
                             }
                         ]
                     }
@@ -726,8 +730,12 @@ workflow_graph_schema = {
                         },
                         "extra_fields": [
                             {
-                                "src_path": "status",
-                                "dst_path": "initial_status"
+                                "src_path": "initial_status",
+                                "dst_path": "status"
+                            },
+                            {
+                                "src_path": "post_uuid",
+                                "dst_path": "uuid"
                             }
                         ]
                     }
@@ -1474,52 +1482,7 @@ Contact us to learn more about our AI-powered project management solutions.
     ]
     
     # Predefined HITL inputs - leaving empty to allow for interactive testing
-    predefined_hitl_inputs = [
-        {
-            "final_gap_improvement": "Prioritize adding concrete case studies and comparative analysis vs competitors.",
-            "final_seo_improvement": "Target long-tail keywords related to AI project management ROI and include internal links.",
-            "final_structure_improvement": "Improve headings hierarchy and readability; add bullet lists and short paragraphs.",
-            "gap_improvement_instructions": "Add 2 case studies with metrics; include an FAQ addressing objections.",
-            "seo_improvement_instructions": "Integrate primary and secondary keywords naturally; craft a 155-char meta description.",
-            "structure_improvement_instructions": "Use H2/H3 for sections, 1 idea per paragraph, add a summary box."
-        },
-        {
-            "user_action": "provide_feedback",
-            "revision_feedback": "Tighten the intro with a stronger hook and make recommendations more actionable.",
-            "updated_content_draft": {
-                "optimized_blog_content": "DRAFT_PLACEHOLDER: refined intro and actionable bullet points.",
-                "optimization_summary": {
-                    "content_gaps_filled": ["Added case study A", "Added FAQ section"],
-                    "seo_improvements_made": ["Keyword integration", "Meta description added"],
-                    "structure_enhancements": ["H2/H3 applied", "Bullet lists"]
-                }
-            }
-        },
-        {
-            "user_action": "draft",
-            "revision_feedback": None,
-            "updated_content_draft": {
-                "optimized_blog_content": "DRAFT_V2_PLACEHOLDER after applying feedback.",
-                "optimization_summary": {
-                    "content_gaps_filled": ["Case study B added"],
-                    "seo_improvements_made": ["Improved internal linking"],
-                    "structure_enhancements": ["Added summary box"]
-                }
-            }
-        },
-        {
-            "user_action": "complete",
-            "revision_feedback": None,
-            "updated_content_draft": {
-                "optimized_blog_content": "FINAL_PLACEHOLDER content for saving.",
-                "optimization_summary": {
-                    "content_gaps_filled": ["All planned gaps addressed"],
-                    "seo_improvements_made": ["Final pass"],
-                    "structure_enhancements": ["Final readability pass"]
-                }
-            }
-        }
-    ]
+    predefined_hitl_inputs = []
     
     # VALID HUMAN INPUTS FOR MANUAL TESTING:
     

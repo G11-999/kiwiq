@@ -178,12 +178,12 @@ workflow_graph_schema = {
                 },
                 "extra_fields": [
                     {
-                        "src_path": "status",
-                        "dst_path": "initial_status"
+                        "src_path": "initial_status",
+                        "dst_path": "status"
                     },
                     {
-                        "src_path": "uuid",
-                        "dst_path": "post_uuid"
+                        "src_path": "post_uuid",
+                        "dst_path": "uuid"
                     }
                 ]
             }
@@ -214,12 +214,12 @@ workflow_graph_schema = {
             },
             "extra_fields": [
               {
-                "src_path": "status",
-                "dst_path": "initial_status"
+                "src_path": "initial_status",
+                "dst_path": "status"
               },
               {
-                "src_path": "uuid",
-                "dst_path": "post_uuid"
+                "src_path": "post_uuid",
+                "dst_path": "uuid"
               }
             ],
             "versioning": {
@@ -258,12 +258,12 @@ workflow_graph_schema = {
             },
             "extra_fields": [
               {
-                "src_path": "status",
-                "dst_path": "user_action"
+                "src_path": "user_action",
+                "dst_path": "status"
               },
               {
-                "src_path": "uuid",
-                "dst_path": "post_uuid"
+                "src_path": "post_uuid",
+                "dst_path": "uuid"
               }
             ]
           }

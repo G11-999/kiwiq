@@ -1583,6 +1583,9 @@ BLOG_AI_VISIBILITY_REPORT_USER_PROMPT = """
 You will receive two comprehensive AI visibility analysis reports as input. Your task is to synthesize this data into a persuasive executive summary that convinces leadership of critical AI visibility problems requiring immediate attention.
 
 ### Input Report Descriptions:
+Company Context Doc: This is a document that contains the context of our company.
+{company_context_doc}
+
 
 ### INPUT DATA:
 ```json
@@ -1627,6 +1630,8 @@ This report contains:
 - Extract competitive gap data to prioritize problems by business impact
 
 ### Analysis Instructions:
+
+Ensure you are doing the analysis on behalf of the company mentioned in the company context doc.
 
 **1. Visibility Snapshot Creation:**
 

@@ -13,6 +13,7 @@ from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
 from datetime import datetime
 from enum import Enum
+from .blog_user_input_to_brief import ContentBriefDetailSchema
 
 # =============================================================================
 # ENUMS
@@ -184,78 +185,7 @@ class UserJourneyAlignmentSchema(BaseModel):
     previous_helpful_content: List[str] = Field(description="Content that would be helpful before this")
     cross_linking_opportunities: List[str] = Field(description="Internal content to link to")
 
-class ContentBriefDetailSchema(BaseModel):
-    """Enhanced schema for the detailed content brief with comprehensive reasoning."""
-    # Meta reasoning
-    brief_strategy_reasoning: str = Field(description="REASONING: Overall strategy behind this brief based on research and objectives")
-    
-    # Title and positioning
-    title: str = Field(description="Title of the content")
-    title_reasoning: str = Field(description="Why this title was chosen based on research and strategy")
-    title_alternatives: List[str] = Field(description="Alternative titles considered with pros/cons")
-    
-    # Audience definition
-    target_audience: str = Field(description="Primary target audience for the content")
-    audience_reasoning: str = Field(description="How audience definition connects to research insights and company ICPs")
-    audience_pain_points: List[str] = Field(description="Specific pain points from research this content addresses")
-    audience_sophistication_level: str = Field(description="Technical/industry knowledge level of audience")
-    
-    # Goals and objectives
-    content_goal: str = Field(description="Primary goal of the content")
-    goal_reasoning: str = Field(description="How this goal serves user needs and company objectives")
-    secondary_goals: List[str] = Field(description="Secondary objectives this content achieves")
-    
-    # Strategic alignment
-    playbook_alignment: PlaybookAlignmentSchema = Field(description="Detailed playbook alignment information")
-    competitive_differentiation: CompetitiveDifferentiationSchema = Field(description="How we differentiate from competitors")
-    user_journey_alignment: UserJourneyAlignmentSchema = Field(description="How content fits in user journey")
-    
-    # Key messages
-    key_takeaways: List[str] = Field(description="Key takeaways for the audience")
-    takeaways_reasoning: List[str] = Field(description="Research basis for each key takeaway")
-    core_message: str = Field(description="Single core message readers should remember")
-    
-    # Content structure
-    hook_strategy: str = Field(description="Strategy for opening hook based on research insights")
-    content_structure: List[ContentSectionSchema] = Field(description="Detailed content structure with reasoning")
-    structure_reasoning: str = Field(description="Overall reasoning for content flow and structure")
-    
-    # SEO and discovery
-    seo_keywords: SEOKeywordsSchema = Field(description="Comprehensive SEO keyword strategy")
-    meta_description: str = Field(description="Meta description for search results (max 155 chars)")
-    social_media_angles: List[str] = Field(description="Angles for social media promotion")
-    
-    # Brand and style
-    brand_guidelines: BrandGuidelinesSchema = Field(description="Brand voice and style guidelines")
-    
-    # Research and credibility
-    research_sources: List[ResearchSourceSchema] = Field(description="Research sources with detailed usage guidance")
-    data_visualization_opportunities: List[str] = Field(description="Opportunities for charts, graphs, or infographics")
-    
-    # Engagement elements
-    interactive_elements: List[str] = Field(description="Interactive elements to consider (polls, calculators, etc.)")
-    multimedia_suggestions: List[str] = Field(description="Images, videos, or other media to include")
-    
-    # Call to action
-    call_to_action: str = Field(description="Primary call to action for the content")
-    cta_reasoning: str = Field(description="Why this CTA aligns with content goals and user journey")
-    secondary_ctas: List[str] = Field(description="Secondary CTAs for different reader segments")
-    
-    # Content specifications
-    estimated_word_count: int = Field(description="Estimated total word count")
-    word_count_reasoning: str = Field(description="Justification for word count based on topic complexity and audience")
-    reading_time: int = Field(description="Estimated reading time in minutes")
-    difficulty_level: str = Field(description="Content difficulty level (beginner, intermediate, advanced)")
-    difficulty_reasoning: str = Field(description="Why this difficulty level serves the target audience")
-    
-    # Writing instructions
-    writing_instructions: List[str] = Field(description="Specific instructions for the writer")
-    research_gaps_to_fill: List[str] = Field(description="Additional research the writer should conduct")
-    fact_checking_requirements: List[str] = Field(description="Specific facts that must be verified")
-    
-    # Success metrics
-    success_metrics: List[str] = Field(description="How to measure if this content succeeds")
-    expected_outcomes: List[str] = Field(description="Expected outcomes from publishing this content")
+
 
 class BriefFeedbackAnalysisSchema(BaseModel):
     """Enhanced schema for brief feedback analysis output."""

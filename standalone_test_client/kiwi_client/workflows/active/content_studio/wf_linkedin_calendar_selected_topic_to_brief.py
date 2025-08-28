@@ -95,6 +95,17 @@ workflow_graph_schema = {
                         "type": "dict",
                         "required": True,
                         "description": "The selected topic from ContentTopicsOutput containing title, description, theme, objective, etc."
+                    },
+                    "initial_status": {
+                        "type": "str",
+                        "required": False,
+                        "default": "draft",
+                        "description": "Initial status of the workflow"
+                    },
+                    "brief_uuid": {
+                        "type": "str",
+                        "required": True,
+                        "description": "UUID of the brief being generated"
                     }
                 }
             }
@@ -178,7 +189,47 @@ workflow_graph_schema = {
             }
         },
         
-        # 5. Brief Approval - HITL Node
+        # 5. Save as Draft After Generation
+        "save_as_draft_after_generation": {
+            "node_id": "save_as_draft_after_generation",
+            "node_name": "store_customer_data",
+            "node_config": {
+                "global_versioning": {
+                    "is_versioned": LINKEDIN_BRIEF_IS_VERSIONED,
+                    "operation": "upsert_versioned"
+                },
+                "global_is_shared": False,
+                "store_configs": [
+                    {
+                        "input_field_path": "current_content_brief",
+                        "target_path": {
+                            "filename_config": {
+                                "input_namespace_field_pattern": LINKEDIN_BRIEF_NAMESPACE_TEMPLATE,
+                                "input_namespace_field": "entity_username",
+                                "input_docname_field_pattern": LINKEDIN_BRIEF_DOCNAME,
+                                "input_docname_field": "brief_uuid"
+                            }
+                        },
+                        "extra_fields": [
+                            {
+                                "src_path": "initial_status",
+                                "dst_path": "status"
+                            },
+                            {
+                                "src_path": "brief_uuid",
+                                "dst_path": "uuid"
+                            }
+                        ],
+                        "versioning": {
+                            "is_versioned": LINKEDIN_BRIEF_IS_VERSIONED,
+                            "operation": "upsert_versioned"
+                        }
+                    }
+                ],
+            }
+        },
+        
+        # 6. Brief Approval - HITL Node
         "brief_approval_hitl": {
             "node_id": "brief_approval_hitl",
             "node_name": "hitl_node__default",
@@ -205,7 +256,7 @@ workflow_graph_schema = {
             }
         },
         
-        # 6. Route Brief Approval
+        # 7. Route Brief Approval
         "route_brief_approval": {
             "node_id": "route_brief_approval",
             "node_name": "router_node",
@@ -238,13 +289,13 @@ workflow_graph_schema = {
             }
         },
         
-        # 7. Save Brief as Draft
+        # 8. Save Brief as Draft
         "save_as_draft": {
             "node_id": "save_as_draft",
             "node_name": "store_customer_data",
             "node_config": {
                 "global_versioning": {
-                    "is_versioned": True,
+                    "is_versioned": LINKEDIN_BRIEF_IS_VERSIONED,
                     "operation": "upsert_versioned"
                 },
                 "global_is_shared": False,
@@ -255,26 +306,30 @@ workflow_graph_schema = {
                             "filename_config": {
                                 "input_namespace_field_pattern": LINKEDIN_BRIEF_NAMESPACE_TEMPLATE,
                                 "input_namespace_field": "entity_username",
-                                "static_docname": LINKEDIN_BRIEF_DOCNAME
+                                "input_docname_field_pattern": LINKEDIN_BRIEF_DOCNAME,
+                                "input_docname_field": "brief_uuid"
                             }
                         },
-                        "generate_uuid": True,
                         "extra_fields": [
                             {
-                                "src_path": "status",
-                                "dst_path": "user_action"
+                                "src_path": "user_action",
+                                "dst_path": "status"
+                            },
+                            {
+                                "src_path": "brief_uuid",
+                                "dst_path": "uuid"
                             }
                         ],
                         "versioning": {
-                            "is_versioned": True,
+                            "is_versioned": LINKEDIN_BRIEF_IS_VERSIONED,
                             "operation": "upsert_versioned"
-                        }
+                        },
                     }
                 ],
             }
         },
         
-        # 8. Check Iteration Limit
+        # 9. Check Iteration Limit
         "check_iteration_limit": {
             "node_id": "check_iteration_limit",
             "node_name": "if_else_condition",
@@ -297,7 +352,7 @@ workflow_graph_schema = {
             }
         },
         
-        # 9. Route Based on Iteration Limit Check
+        # 10. Route Based on Iteration Limit Check
         "route_on_limit_check": {
             "node_id": "route_on_limit_check",
             "node_name": "router_node",
@@ -319,7 +374,7 @@ workflow_graph_schema = {
             }
         },
         
-        # 10. Brief Feedback Prompt Constructor
+        # 11. Brief Feedback Prompt Constructor
         "construct_brief_feedback_prompt": {
             "node_id": "construct_brief_feedback_prompt",
             "node_name": "prompt_constructor",
@@ -352,7 +407,7 @@ workflow_graph_schema = {
             }
         },
         
-        # 11. Brief Feedback Analysis
+        # 12. Brief Feedback Analysis
         "analyze_brief_feedback": {
             "node_id": "analyze_brief_feedback",
             "node_name": "llm",
@@ -372,7 +427,7 @@ workflow_graph_schema = {
             }
         },
         
-        # 12. Brief Revision - Enhanced Prompt Constructor
+        # 13. Brief Revision - Enhanced Prompt Constructor
         "construct_brief_revision_prompt": {
             "node_id": "construct_brief_revision_prompt",
             "node_name": "prompt_constructor",
@@ -403,7 +458,7 @@ workflow_graph_schema = {
             }
         },
         
-        # 13. Brief Revision - LLM Node
+        # 14. Brief Revision - LLM Node
         "brief_revision_llm": {
             "node_id": "brief_revision_llm",
             "node_name": "llm",
@@ -423,13 +478,13 @@ workflow_graph_schema = {
             }
         },
         
-        # 14. Save Brief - Store Customer Data
+        # 15. Save Brief - Store Customer Data
         "save_brief": {
             "node_id": "save_brief",
             "node_name": "store_customer_data",
             "node_config": {
                 "global_versioning": {
-                    "is_versioned": True,
+                    "is_versioned": LINKEDIN_BRIEF_IS_VERSIONED,
                     "operation": "upsert_versioned"
                 },
                 "global_is_shared": False,
@@ -440,14 +495,18 @@ workflow_graph_schema = {
                             "filename_config": {
                                 "input_namespace_field_pattern": LINKEDIN_BRIEF_NAMESPACE_TEMPLATE,
                                 "input_namespace_field": "entity_username",
-                                "static_docname": LINKEDIN_BRIEF_DOCNAME
+                                "input_docname_field_pattern": LINKEDIN_BRIEF_DOCNAME,
+                                "input_docname_field": "brief_uuid"
                             }
                         },
-                        "generate_uuid": True,
                         "extra_fields": [
                             {
-                                "src_path": "status",
-                                "dst_path": "user_action"
+                                "src_path": "user_action",
+                                "dst_path": "status"
+                            },
+                            {
+                                "src_path": "brief_uuid",
+                                "dst_path": "uuid"
                             }
                         ],
                         "versioning": {
@@ -459,7 +518,7 @@ workflow_graph_schema = {
             }
         },
         
-        # 15. Output Node
+        # 16. Output Node
         "output_node": {
             "node_id": "output_node",
             "node_name": "output_node",
@@ -474,7 +533,9 @@ workflow_graph_schema = {
             "dst_node_id": "$graph_state",
             "mappings": [
                 {"src_field": "entity_username", "dst_field": "entity_username"},
-                {"src_field": "selected_topic", "dst_field": "selected_topic"}
+                {"src_field": "selected_topic", "dst_field": "selected_topic"},
+                {"src_field": "initial_status", "dst_field": "initial_status"},
+                {"src_field": "brief_uuid", "dst_field": "brief_uuid"}
             ]
         },
         
@@ -545,12 +606,38 @@ workflow_graph_schema = {
             ]
         },
         
-        # Brief Generation LLM -> HITL
+        # Brief Generation LLM -> Save as Draft After Generation
         {
             "src_node_id": "brief_generation_llm",
+            "dst_node_id": "save_as_draft_after_generation",
+            "mappings": [
+                {"src_field": "structured_output", "dst_field": "current_content_brief"}
+            ]
+        },
+        
+        # State -> Save as Draft After Generation
+        {
+            "src_node_id": "$graph_state",
+            "dst_node_id": "save_as_draft_after_generation",
+            "mappings": [
+                {"src_field": "initial_status", "dst_field": "initial_status"},
+                {"src_field": "entity_username", "dst_field": "entity_username"},
+                {"src_field": "brief_uuid", "dst_field": "brief_uuid"}
+            ]
+        },
+        
+        # Save as Draft After Generation -> Brief Approval HITL
+        {
+            "src_node_id": "save_as_draft_after_generation",
+            "dst_node_id": "brief_approval_hitl"
+        },
+        
+        # State -> Brief Approval HITL (content brief)
+        {
+            "src_node_id": "$graph_state",
             "dst_node_id": "brief_approval_hitl",
             "mappings": [
-                {"src_field": "structured_output", "dst_field": "content_brief"}
+                {"src_field": "current_content_brief", "dst_field": "content_brief"}
             ]
         },
         
@@ -631,21 +718,13 @@ workflow_graph_schema = {
             "mappings": [
                 {"src_field": "current_content_brief", "dst_field": "current_content_brief"},
                 {"src_field": "user_action", "dst_field": "user_action"},
-                {"src_field": "entity_username", "dst_field": "entity_username"}
+                {"src_field": "entity_username", "dst_field": "entity_username"},
+                {"src_field": "brief_uuid", "dst_field": "brief_uuid"}
             ]
         },
         
         # Save as Draft -> brief approval hitl
         {"src_node_id": "save_as_draft", "dst_node_id": "brief_approval_hitl"},
-        
-        # graph state -> brief approval hitl
-        {
-            "src_node_id": "$graph_state",
-            "dst_node_id": "brief_approval_hitl",
-            "mappings": [
-                {"src_field": "current_content_brief", "dst_field": "content_brief"}
-            ]
-        },
         
         # State -> Brief Feedback Prompt Constructor
         {
@@ -755,7 +834,8 @@ workflow_graph_schema = {
             "mappings": [
                 {"src_field": "entity_username", "dst_field": "entity_username"},
                 {"src_field": "current_content_brief", "dst_field": "final_content_brief"},
-                {"src_field": "user_action", "dst_field": "user_action"}
+                {"src_field": "user_action", "dst_field": "user_action"},
+                {"src_field": "brief_uuid", "dst_field": "brief_uuid"}
             ]
         },
         
@@ -783,7 +863,9 @@ workflow_graph_schema = {
                 "user_action": "replace",
                 "selected_topic": "replace",
                 "executive_profile_doc": "replace",
-                "playbook_doc": "replace"
+                "playbook_doc": "replace",
+                "initial_status": "replace",
+                "brief_uuid": "replace"
             }
         }
     }
@@ -960,7 +1042,9 @@ async def main_test_selected_topic_brief_workflow():
     # Test inputs
     test_inputs = {
         "entity_username": test_entity_username,
-        "selected_topic": test_selected_topic
+        "selected_topic": test_selected_topic,
+        "initial_status": "draft",
+        "brief_uuid": "123489",
     }
     
     # Setup test documents

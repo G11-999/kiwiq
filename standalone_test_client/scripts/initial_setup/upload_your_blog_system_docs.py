@@ -1106,312 +1106,312 @@ logger = logging.getLogger(__name__)
 #     }
 # ]
 
-# DOCUMENTS = [
-#     {
-#         "name": "seo_best_practices_doc",
-#         "markdown_content": {"data": """# AEO and GEO Best Practices: A Comprehensive Guide
+DOCUMENTS = [
+    {
+        "name": "seo_best_practices_doc",
+        "markdown_content": {"data": """# AEO and GEO Best Practices: A Comprehensive Guide
 
-# ## Executive Summary
+## Executive Summary
 
-# As AI-driven search transforms how users discover information, two critical optimization strategies have emerged: **Answer Engine Optimization (AEO)** and **Generative Engine Optimization (GEO)**. While traditional SEO remains important, these new approaches are essential for maintaining visibility in AI-powered search experiences like ChatGPT, Perplexity, Google AI Overviews, and other generative AI platforms.
+As AI-driven search transforms how users discover information, two critical optimization strategies have emerged: **Answer Engine Optimization (AEO)** and **Generative Engine Optimization (GEO)**. While traditional SEO remains important, these new approaches are essential for maintaining visibility in AI-powered search experiences like ChatGPT, Perplexity, Google AI Overviews, and other generative AI platforms.
 
-# ## Part 1: Understanding GEO and AEO
+## Part 1: Understanding GEO and AEO
 
-# ### What is Generative Engine Optimization (GEO)?
+### What is Generative Engine Optimization (GEO)?
 
-# GEO is the process of optimizing content to boost visibility in AI-driven search engines and generative AI platforms. Unlike traditional SEO which focuses on ranking in search results, GEO ensures your content is:
-# - Synthesized and prioritized by AI systems
-# - Featured in AI-generated responses
-# - Presented as authoritative and trustworthy by AI platforms
+GEO is the process of optimizing content to boost visibility in AI-driven search engines and generative AI platforms. Unlike traditional SEO which focuses on ranking in search results, GEO ensures your content is:
+- Synthesized and prioritized by AI systems
+- Featured in AI-generated responses
+- Presented as authoritative and trustworthy by AI platforms
 
-# ### What is Answer Engine Optimization (AEO)?
+### What is Answer Engine Optimization (AEO)?
 
-# AEO focuses specifically on optimizing content to directly answer user queries in featured snippets, voice search results, and AI-generated summaries. AEO prioritizes:
-# - Direct, concise answers to specific questions
-# - Structured content that AI can easily parse
-# - Natural language that matches conversational queries
+AEO focuses specifically on optimizing content to directly answer user queries in featured snippets, voice search results, and AI-generated summaries. AEO prioritizes:
+- Direct, concise answers to specific questions
+- Structured content that AI can easily parse
+- Natural language that matches conversational queries
 
-# ### The Evolution: SEO → SGE → GEO/AEO
+### The Evolution: SEO → SGE → GEO/AEO
 
-# 1. **SEO (Traditional)**: Keyword rankings, backlinks, technical optimization
-# 2. **SGE (Search Generative Experience)**: AI understanding user intent
-# 3. **GEO/AEO (Current)**: Optimizing for AI synthesis and direct answers
+1. **SEO (Traditional)**: Keyword rankings, backlinks, technical optimization
+2. **SGE (Search Generative Experience)**: AI understanding user intent
+3. **GEO/AEO (Current)**: Optimizing for AI synthesis and direct answers
 
-# ## Part 2: Core Best Practices
+## Part 2: Core Best Practices
 
-# ### 1. Research and Analysis Foundation
+### 1. Research and Analysis Foundation
 
-# #### GEO Keyword Research
-# - **Focus on conversational queries**: Target long-tail keywords and natural language phrases
-# - **Include semantic variations**: Use related terms, synonyms, and contextual phrases
-# - **Identify key entities**: People, places, concepts that AI recognizes
-# - **Analyze "People Also Ask"**: Mine Google's PAA for question-based queries
-# - **Use AI tools for research**: Leverage ChatGPT to generate related concepts and queries
+#### GEO Keyword Research
+- **Focus on conversational queries**: Target long-tail keywords and natural language phrases
+- **Include semantic variations**: Use related terms, synonyms, and contextual phrases
+- **Identify key entities**: People, places, concepts that AI recognizes
+- **Analyze "People Also Ask"**: Mine Google's PAA for question-based queries
+- **Use AI tools for research**: Leverage ChatGPT to generate related concepts and queries
 
-# #### AI Overview Response Analysis
-# - Track queries triggering AI Overviews using tools like:
-#   - Semrush AI Overview tracking
-#   - Google AI Overview Impact Analysis Chrome extension
-#   - BrightEdge and other SEO platforms
-# - Analyze response structures (lists, paragraphs, tables, videos)
-# - Monitor which sources AI cites most frequently
-# - Study topic coverage and content gaps
+#### AI Overview Response Analysis
+- Track queries triggering AI Overviews using tools like:
+  - Semrush AI Overview tracking
+  - Google AI Overview Impact Analysis Chrome extension
+  - BrightEdge and other SEO platforms
+- Analyze response structures (lists, paragraphs, tables, videos)
+- Monitor which sources AI cites most frequently
+- Study topic coverage and content gaps
 
-# #### Competitor Analysis
-# - Identify competitors featured in AI responses
-# - Analyze their content structure and formatting
-# - Study their citation patterns and authority signals
-# - Learn from their multimedia integration strategies
+#### Competitor Analysis
+- Identify competitors featured in AI responses
+- Analyze their content structure and formatting
+- Study their citation patterns and authority signals
+- Learn from their multimedia integration strategies
 
-# ### 2. Content Quality and Relevance
+### 2. Content Quality and Relevance
 
-# #### Essential Elements
-# - **Contextual accuracy**: Content must directly address user intent
-# - **Comprehensive coverage**: Provide thorough, detailed answers
-# - **E-E-A-T principles**: Demonstrate Experience, Expertise, Authoritativeness, Trustworthiness
-# - **Fresh content**: Regular updates signal relevance to AI systems
-# - **Entity optimization**: Clear references to key people, places, and concepts
+#### Essential Elements
+- **Contextual accuracy**: Content must directly address user intent
+- **Comprehensive coverage**: Provide thorough, detailed answers
+- **E-E-A-T principles**: Demonstrate Experience, Expertise, Authoritativeness, Trustworthiness
+- **Fresh content**: Regular updates signal relevance to AI systems
+- **Entity optimization**: Clear references to key people, places, and concepts
 
-# #### Proven GEO Tactics (30-40% visibility improvement)
-# 1. **Cite Sources** - Link to credible, authoritative sources
-# 2. **Add Statistics** - Include relevant data points and numbers
-# 3. **Include Quotations** - Feature expert quotes for authority
-# 4. **Simplify Language** - Make complex topics accessible
-# 5. **Optimize Fluency** - Ensure smooth, error-free text
-# 6. **Use Technical Terms** - Demonstrate expertise appropriately
-# 7. **Create Authoritative Content** - Use confident, persuasive language
+#### Proven GEO Tactics (30-40% visibility improvement)
+1. **Cite Sources** - Link to credible, authoritative sources
+2. **Add Statistics** - Include relevant data points and numbers
+3. **Include Quotations** - Feature expert quotes for authority
+4. **Simplify Language** - Make complex topics accessible
+5. **Optimize Fluency** - Ensure smooth, error-free text
+6. **Use Technical Terms** - Demonstrate expertise appropriately
+7. **Create Authoritative Content** - Use confident, persuasive language
 
-# ### 3. Content Structure and Clarity
+### 3. Content Structure and Clarity
 
-# #### Optimization Techniques
-# - **Start with clear introductions**: State the main purpose immediately
-# - **Use descriptive headings**: H1-H5 hierarchy for logical flow
-# - **Provide direct answers**: Answer queries in the first 1-2 sentences
-# - **Implement FAQ sections**: Address common questions directly
-# - **Use bullet points and lists**: Make information scannable
-# - **Add summaries**: Include key takeaways at the beginning and end
-# - **Integrate multimedia**: Videos, infographics, images for engagement
+#### Optimization Techniques
+- **Start with clear introductions**: State the main purpose immediately
+- **Use descriptive headings**: H1-H5 hierarchy for logical flow
+- **Provide direct answers**: Answer queries in the first 1-2 sentences
+- **Implement FAQ sections**: Address common questions directly
+- **Use bullet points and lists**: Make information scannable
+- **Add summaries**: Include key takeaways at the beginning and end
+- **Integrate multimedia**: Videos, infographics, images for engagement
 
-# #### Quick Answer Format
-# ```
-# What is [Topic]?
-# → Direct definition/answer (1-2 sentences)
-# → Expanded explanation (paragraph)
-# → Key points (bullet list)
-# → Additional context/examples
-# ```
+#### Quick Answer Format
+```
+What is [Topic]?
+→ Direct definition/answer (1-2 sentences)
+→ Expanded explanation (paragraph)
+→ Key points (bullet list)
+→ Additional context/examples
+```
 
-# ### 4. Technical Optimization
+### 4. Technical Optimization
 
-# #### Structured Data Implementation
-# - **Article schema**: For blog posts and articles
-# - **FAQ schema**: For question-answer content
-# - **How-to schema**: For instructional content
-# - **Organization schema**: For brand information
-# - **Review/Rating schema**: For user-generated content
-# - **Video/Image schema**: For multimedia content
+#### Structured Data Implementation
+- **Article schema**: For blog posts and articles
+- **FAQ schema**: For question-answer content
+- **How-to schema**: For instructional content
+- **Organization schema**: For brand information
+- **Review/Rating schema**: For user-generated content
+- **Video/Image schema**: For multimedia content
 
-# #### Core Technical Requirements
-# - **Page speed**: Fast loading times (<3 seconds)
-# - **Mobile optimization**: Fully responsive design
-# - **HTTPS security**: SSL certificates required
-# - **Clean code**: Minimal JavaScript, optimized CSS
-# - **XML sitemaps**: Updated and submitted regularly
-# - **Internal linking**: Clear content relationships
+#### Core Technical Requirements
+- **Page speed**: Fast loading times (<3 seconds)
+- **Mobile optimization**: Fully responsive design
+- **HTTPS security**: SSL certificates required
+- **Clean code**: Minimal JavaScript, optimized CSS
+- **XML sitemaps**: Updated and submitted regularly
+- **Internal linking**: Clear content relationships
 
-# ### 5. Content Distribution and Engagement
+### 5. Content Distribution and Engagement
 
-# #### Multi-Platform Strategy
-# - **Community platforms**: Reddit, Quora, specialized forums
-# - **Social media**: LinkedIn, Twitter/X, Facebook groups
-# - **Video platforms**: YouTube, TikTok for visual content
-# - **User-generated content**: Reviews, testimonials, comments
-# - **Guest posting**: Authoritative industry sites
+#### Multi-Platform Strategy
+- **Community platforms**: Reddit, Quora, specialized forums
+- **Social media**: LinkedIn, Twitter/X, Facebook groups
+- **Video platforms**: YouTube, TikTok for visual content
+- **User-generated content**: Reviews, testimonials, comments
+- **Guest posting**: Authoritative industry sites
 
-# #### Engagement Tactics
-# - Respond to comments and questions promptly
-# - Create shareable content (infographics, tips)
-# - Encourage user participation with hashtags
-# - Repurpose content across platforms
-# - Maintain consistent posting schedules
+#### Engagement Tactics
+- Respond to comments and questions promptly
+- Create shareable content (infographics, tips)
+- Encourage user participation with hashtags
+- Repurpose content across platforms
+- Maintain consistent posting schedules
 
-# ### 6. Building Authority and Credibility
+### 6. Building Authority and Credibility
 
-# #### Key Strategies
-# - **High-quality backlinks**: From authoritative domains
-# - **Consistent branding**: Unified messaging across platforms
-# - **Original research**: Publish unique data and insights
-# - **Expert contributions**: Feature industry thought leaders
-# - **Transparent practices**: Clear authorship and affiliations
-# - **Offline reputation**: Maintain positive brand presence
+#### Key Strategies
+- **High-quality backlinks**: From authoritative domains
+- **Consistent branding**: Unified messaging across platforms
+- **Original research**: Publish unique data and insights
+- **Expert contributions**: Feature industry thought leaders
+- **Transparent practices**: Clear authorship and affiliations
+- **Offline reputation**: Maintain positive brand presence
 
-# ## Part 3: Domain-Specific Optimization
+## Part 3: Domain-Specific Optimization
 
-# ### By Industry/Niche
+### By Industry/Niche
 
-# #### Science & Technology
-# - Emphasize technical terms and formal language
-# - Include data visualizations and charts
-# - Cite academic sources and research papers
-# - Use precise, unambiguous language
+#### Science & Technology
+- Emphasize technical terms and formal language
+- Include data visualizations and charts
+- Cite academic sources and research papers
+- Use precise, unambiguous language
 
-# #### Business & Finance
-# - Lead with statistics and data
-# - Include case studies and examples
-# - Focus on ROI and practical applications
-# - Provide actionable insights
+#### Business & Finance
+- Lead with statistics and data
+- Include case studies and examples
+- Focus on ROI and practical applications
+- Provide actionable insights
 
-# #### Arts & Humanities
-# - Incorporate relevant quotes and citations
-# - Include cultural context and references
-# - Use engaging narrative structures
-# - Feature multimedia content
+#### Arts & Humanities
+- Incorporate relevant quotes and citations
+- Include cultural context and references
+- Use engaging narrative structures
+- Feature multimedia content
 
-# #### Health & Medicine
-# - Prioritize E-E-A-T signals strongly
-# - Cite medical journals and authorities
-# - Include disclaimers appropriately
-# - Focus on evidence-based information
+#### Health & Medicine
+- Prioritize E-E-A-T signals strongly
+- Cite medical journals and authorities
+- Include disclaimers appropriately
+- Focus on evidence-based information
 
-# ### By Query Intent
+### By Query Intent
 
-# #### Informational Queries
-# - Comprehensive explanations
-# - Multiple perspectives
-# - Supporting data and examples
-# - Related topics coverage
+#### Informational Queries
+- Comprehensive explanations
+- Multiple perspectives
+- Supporting data and examples
+- Related topics coverage
 
-# #### Navigational Queries
-# - Clear site structure
-# - Optimized meta descriptions
-# - Direct pathway to destination
-# - Breadcrumb navigation
+#### Navigational Queries
+- Clear site structure
+- Optimized meta descriptions
+- Direct pathway to destination
+- Breadcrumb navigation
 
-# #### Transactional Queries
-# - Clear calls-to-action
-# - Trust signals (reviews, testimonials)
-# - Simplified purchase process
-# - Product/service details
+#### Transactional Queries
+- Clear calls-to-action
+- Trust signals (reviews, testimonials)
+- Simplified purchase process
+- Product/service details
 
-# ## Part 4: Measurement and Iteration
+## Part 4: Measurement and Iteration
 
-# ### Key Performance Metrics
+### Key Performance Metrics
 
-# #### GEO-Specific Metrics
-# - AI Overview inclusion rate
-# - Citation frequency in AI responses
-# - Position in AI-generated summaries
-# - Referral traffic from AI platforms
-# - Brand mentions in AI responses
+#### GEO-Specific Metrics
+- AI Overview inclusion rate
+- Citation frequency in AI responses
+- Position in AI-generated summaries
+- Referral traffic from AI platforms
+- Brand mentions in AI responses
 
-# #### Traditional Metrics (Still Important)
-# - Organic search rankings
-# - Click-through rates
-# - Engagement metrics (time on page, bounce rate)
-# - Conversion rates
-# - Brand search volume
+#### Traditional Metrics (Still Important)
+- Organic search rankings
+- Click-through rates
+- Engagement metrics (time on page, bounce rate)
+- Conversion rates
+- Brand search volume
 
-# ### Testing and Optimization
+### Testing and Optimization
 
-# #### A/B Testing Strategies
-# - Content formats (lists vs. paragraphs)
-# - Answer positioning (beginning vs. throughout)
-# - Multimedia inclusion
-# - Citation density
-# - Technical term usage
+#### A/B Testing Strategies
+- Content formats (lists vs. paragraphs)
+- Answer positioning (beginning vs. throughout)
+- Multimedia inclusion
+- Citation density
+- Technical term usage
 
-# #### Continuous Improvement
-# - Monitor AI response changes weekly
-# - Update content based on new patterns
-# - Test different content structures
-# - Analyze competitor changes
-# - Adapt to algorithm updates
+#### Continuous Improvement
+- Monitor AI response changes weekly
+- Update content based on new patterns
+- Test different content structures
+- Analyze competitor changes
+- Adapt to algorithm updates
 
-# ## Part 5: Future-Proofing Your Strategy
+## Part 5: Future-Proofing Your Strategy
 
-# ### Emerging Trends
+### Emerging Trends
 
-# #### Voice and Visual Search
-# - Optimize for natural speech patterns
-# - Include image alt text and descriptions
-# - Create voice-friendly content snippets
-# - Implement visual search schema
+#### Voice and Visual Search
+- Optimize for natural speech patterns
+- Include image alt text and descriptions
+- Create voice-friendly content snippets
+- Implement visual search schema
 
-# #### Multimodal AI
-# - Integrate text, video, audio, images
-# - Create content in multiple formats
-# - Optimize across all media types
-# - Ensure accessibility compliance
+#### Multimodal AI
+- Integrate text, video, audio, images
+- Create content in multiple formats
+- Optimize across all media types
+- Ensure accessibility compliance
 
-# #### Hyper-Personalization
-# - Create audience-specific content variations
-# - Implement dynamic content strategies
-# - Focus on user journey mapping
-# - Leverage first-party data
+#### Hyper-Personalization
+- Create audience-specific content variations
+- Implement dynamic content strategies
+- Focus on user journey mapping
+- Leverage first-party data
 
-# ### Preparation Checklist
+### Preparation Checklist
 
-# #### Immediate Actions
-# - [ ] Audit current content for GEO readiness
-# - [ ] Implement structured data markup
-# - [ ] Optimize for featured snippets
-# - [ ] Create FAQ sections
-# - [ ] Improve content clarity and structure
+#### Immediate Actions
+- [ ] Audit current content for GEO readiness
+- [ ] Implement structured data markup
+- [ ] Optimize for featured snippets
+- [ ] Create FAQ sections
+- [ ] Improve content clarity and structure
 
-# #### Short-term (1-3 months)
-# - [ ] Develop comprehensive content hubs
-# - [ ] Build authoritative backlinks
-# - [ ] Expand multimedia content
-# - [ ] Increase social media presence
-# - [ ] Monitor AI platform performance
+#### Short-term (1-3 months)
+- [ ] Develop comprehensive content hubs
+- [ ] Build authoritative backlinks
+- [ ] Expand multimedia content
+- [ ] Increase social media presence
+- [ ] Monitor AI platform performance
 
-# #### Long-term (3-6 months)
-# - [ ] Establish thought leadership
-# - [ ] Create original research
-# - [ ] Build community engagement
-# - [ ] Develop AI-specific content strategies
-# - [ ] Implement advanced technical optimizations
+#### Long-term (3-6 months)
+- [ ] Establish thought leadership
+- [ ] Create original research
+- [ ] Build community engagement
+- [ ] Develop AI-specific content strategies
+- [ ] Implement advanced technical optimizations
 
-# ## Part 6: Common Pitfalls to Avoid
+## Part 6: Common Pitfalls to Avoid
 
-# ### Content Mistakes
-# - ❌ Keyword stuffing (doesn't work for GEO)
-# - ❌ Thin, surface-level content
-# - ❌ Ignoring user intent
-# - ❌ Lack of citations and sources
-# - ❌ Complex, jargon-heavy language
+### Content Mistakes
+- ❌ Keyword stuffing (doesn't work for GEO)
+- ❌ Thin, surface-level content
+- ❌ Ignoring user intent
+- ❌ Lack of citations and sources
+- ❌ Complex, jargon-heavy language
 
-# ### Technical Errors
-# - ❌ Slow page load times
-# - ❌ Poor mobile experience
-# - ❌ Missing structured data
-# - ❌ Broken internal links
-# - ❌ Duplicate content issues
+### Technical Errors
+- ❌ Slow page load times
+- ❌ Poor mobile experience
+- ❌ Missing structured data
+- ❌ Broken internal links
+- ❌ Duplicate content issues
 
-# ### Strategic Missteps
-# - ❌ Focusing only on traditional SEO
-# - ❌ Ignoring AI platforms
-# - ❌ Inconsistent brand messaging
-# - ❌ Neglecting user engagement
-# - ❌ Failing to update content
+### Strategic Missteps
+- ❌ Focusing only on traditional SEO
+- ❌ Ignoring AI platforms
+- ❌ Inconsistent brand messaging
+- ❌ Neglecting user engagement
+- ❌ Failing to update content
 
-# ## Conclusion: The Integration Imperative
+## Conclusion: The Integration Imperative
 
-# Success in the AI-driven search landscape requires integrating GEO and AEO with traditional SEO. This isn't about replacing old strategies but evolving them to meet new challenges. Organizations that embrace this integrated approach will:
+Success in the AI-driven search landscape requires integrating GEO and AEO with traditional SEO. This isn't about replacing old strategies but evolving them to meet new challenges. Organizations that embrace this integrated approach will:
 
-# - Maintain visibility across all search platforms
-# - Build stronger brand authority
-# - Deliver better user experiences
-# - Stay ahead of competitors
-# - Future-proof their digital presence
+- Maintain visibility across all search platforms
+- Build stronger brand authority
+- Deliver better user experiences
+- Stay ahead of competitors
+- Future-proof their digital presence
 
-# Remember: **GEO is an ongoing process, not a one-time optimization.** Regular monitoring, testing, and adaptation are essential as AI technologies continue to evolve. The goal is not just visibility but becoming the trusted, authoritative source that both AI systems and users rely on for accurate, valuable information.
+Remember: **GEO is an ongoing process, not a one-time optimization.** Regular monitoring, testing, and adaptation are essential as AI technologies continue to evolve. The goal is not just visibility but becoming the trusted, authoritative source that both AI systems and users rely on for accurate, valuable information.
 
-# ### Key Takeaway
-# The future belongs to those who optimize for both human readers and AI systems. By following these best practices and maintaining a commitment to quality, relevance, and user value, your content will thrive in the age of generative AI search."""
-#     }
-#     }
-# ]
+### Key Takeaway
+The future belongs to those who optimize for both human readers and AI systems. By following these best practices and maintaining a commitment to quality, relevance, and user value, your content will thrive in the age of generative AI search."""
+    }
+    }
+]
 
 # CUSTOMIZE THIS: Change the namespace if needed
 NAMESPACE = "blog_seo_guidelines"  # Fixed namespace without item substitution

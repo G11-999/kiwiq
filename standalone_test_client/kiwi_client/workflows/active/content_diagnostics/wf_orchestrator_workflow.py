@@ -295,7 +295,7 @@ workflow_graph_schema = {
             "node_config": {
                 "workflow_name": LINKEDIN_ANALYSIS_WORKFLOW_NAME,
                 "timeout_seconds": ANALYSIS_TIMEOUT,
-                "enable_workflow_cache": False
+                "enable_workflow_cache": CACHE_ENABLED
                 }
         },
 
@@ -838,9 +838,11 @@ workflow_graph_schema = {
                         "template": BLOG_AI_VISIBILITY_REPORT_USER_PROMPT,
                         "variables": {
                             "company_ai_visibility_data": None,
-                            "blog_ai_visibility_data": None
+                            "blog_ai_visibility_data": None,
+                            "company_context_doc": None
                         },
                         "construct_options": {
+                            "company_context_doc": "company_context_doc",
                             "company_ai_visibility_data": "company_ai_visibility_data",
                             "blog_ai_visibility_data": "blog_ai_visibility_data"
                         }
@@ -1791,6 +1793,7 @@ workflow_graph_schema = {
             "src_node_id": "$graph_state",
             "dst_node_id": "construct_ai_visibility_report_prompt",
             "mappings": [
+                {"src_field": "company_context_doc", "dst_field": "company_context_doc"},
                 {"src_field": "company_ai_visibility_doc", "dst_field": "company_ai_visibility_data"},
                 {"src_field": "blog_ai_visibility_doc", "dst_field": "blog_ai_visibility_data"}
             ]
@@ -2260,13 +2263,13 @@ async def main_test_orchestrator():
     """
     # --- Test Inputs ---
     TEST_INPUTS = {
-        "entity_username": "example-user-1",  # LinkedIn username
-        "company_name": "Entelligence.ai",  # Company name for analysis
+        "entity_username": "hungweiwu",  # LinkedIn username
+        "company_name": "momentic",  # Company name for analysis
         "run_linkedin_exec": True,  # Execute LinkedIn workflows
         "run_blog_analysis": True,  # Skip company workflows for now
-        "linkedin_profile_url": "https://www.linkedin.com/in/example-user-1/",  # LinkedIn URL
-        "company_url": "https://www.entelligence.ai/",  # Company website URL (optional)
-        "blog_start_urls": ["https://www.entelligence.ai/"] # Example blog start URL
+        "linkedin_profile_url": "https://www.linkedin.com/in/hungweiwu/",  # LinkedIn URL
+        "company_url": "https://momentic.ai",  # Company website URL (optional)
+        "blog_start_urls": ["https://momentic.ai"] # Example blog start URL
     }
     
     test_name = "Content Orchestrator Workflow Test"

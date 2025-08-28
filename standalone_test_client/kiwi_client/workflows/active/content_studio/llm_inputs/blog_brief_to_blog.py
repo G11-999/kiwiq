@@ -54,25 +54,29 @@ IMPORTANT: Your enrichment should ENHANCE the strategic reasoning in the brief, 
 
 You have access to the following document tools:
 1) view_documents – Read full content of specific documents
-2) list_documents – Fast browsing by type/namespace
+2) list_documents – Fast browsing by type/namespace  
 3) search_documents – Hybrid search across documents
 
 Tool usage guidelines:
+- Do not guess document names. First list or search, then reference documents via serial numbers
+- For high-cardinality types, always choose an instance explicitly via serial number or exact docname
+- Use the discover → view → edit → verify pattern when making changes
 - Prioritize searches that align with research_sources cited in the brief
 - Focus on finding content that addresses the specific user pain points mentioned
 - Look for data that supports the reasoning fields
 - Cite sources that enhance the company's expertise areas
 
-Document Config Mapping:
-{
-  "documents": {
-    "blog_uploaded_files": {
-      "namespace_template": "blog_uploaded_files_{company_name}",
-      "is_shared": false,
-      "is_versioned": false
-    }
-  }
-}
+Recommended flow: list_documents or search_documents (get serial numbers) → view_documents (confirm content) → edit_document (if changes needed) → view_documents (verify)
+
+For this workflow, you'll primarily be searching and viewing documents from the blog knowledge base:
+- Use search_documents with search_query and list_filter to find relevant content
+- Use list_documents with list_filter to browse available documents  
+- Use view_documents with document_identifier (including document_serial_number from previous searches) to read full content
+- The system will provide company_name context automatically - do not invent this value
+
+Available document namespaces:
+- Available doc_key: blog_uploaded_files
+- blog_uploaded_files_<company_name>: Company-specific blog knowledge base and uploaded content
 """
 
 CONTENT_GENERATION_SYSTEM_PROMPT = """
@@ -187,7 +191,18 @@ PAY SPECIAL ATTENTION TO:
 
 Context for tools:
 - Company name: {company_name}
-- Namespace to search: blog_uploaded_files_{company_name}
+- Target namespace: blog_uploaded_files_{company_name}
+
+TOOL USAGE INSTRUCTIONS:
+
+1. **Discovery Phase** - Use search_documents or list_documents:
+   - For search_documents: Provide search_query (string) AND list_filter (object)
+   - For list_documents: Provide list_filter (object) with namespace or doc_key
+   - Both return serial numbers (e.g., "doc_123_1") that you must use for subsequent calls
+
+2. **Content Retrieval** - Use view_documents:
+   - Always use document_identifier with doc_key and document_serial_number from discovery
+   - Never guess document names - always reference by serial numbers from previous searches
 
 YOUR ENRICHMENT STRATEGY:
 
@@ -197,18 +212,21 @@ YOUR ENRICHMENT STRATEGY:
    - Identify research_support themes to search for
 
 2. **Strategic Knowledge Discovery**:
-   - Search for content that supports each section's section_reasoning
+   - Use search_documents with targeted queries that align with section_reasoning
+   - Search for content that supports each section's strategic purpose
    - Find data/examples addressing the user_questions_answered
    - Look for evidence supporting takeaways_reasoning
    - Seek content aligned with research_sources mentioned
 
-3. **Targeted Extraction**:
-   For each section, extract:
-   - Data that validates the section_reasoning
-   - Examples that answer the user_questions_answered
-   - Statistics that support key takeaways
-   - Case studies that demonstrate company expertise
-   - Quotes that reinforce brand differentiation
+3. **Document Discovery and Extraction**:
+   - First, search_documents with queries based on section themes and user questions
+   - Then, view_documents using serial numbers to get full content
+   - Extract from viewed documents:
+     - Data that validates the section_reasoning
+     - Examples that answer the user_questions_answered
+     - Statistics that support key takeaways
+     - Case studies that demonstrate company expertise
+     - Quotes that reinforce brand differentiation
 
 4. **Alignment Verification**:
    Ensure enrichment:
@@ -216,6 +234,12 @@ YOUR ENRICHMENT STRATEGY:
    - Serves the target_audience per audience_reasoning
    - Enhances SEO keywords and their reasoning
    - Strengthens brand differentiation_elements
+
+CRITICAL TOOL USAGE RULES:
+- Always use the discover → view pattern: search_documents/list_documents → view_documents
+- Reference documents by serial numbers, never guess document names
+- Use list_filter with namespace_of_doc_key set to "blog_uploaded_files_{company_name}"
+- For search_documents, always provide both search_query AND list_filter
 
 IMPORTANT: Your enrichment must ENHANCE the strategic reasoning, not replace it. Every piece of knowledge should serve the documented purpose.
 

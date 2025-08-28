@@ -129,14 +129,6 @@ Based on the selected theme and research guidance provided:
 3. **Content Gap Analysis**: Discover angles and subtopics competitors haven't adequately covered
 4. **Trend Identification**: Spot emerging discussions and timely opportunities
 
-## Research Domains to Explore
-Focus your research on the specific domains identified in the theme selection:
-{research_domains_list}
-
-## Specific Investigation Areas
-Deep dive into these focus areas:
-{research_focus_areas_list}
-
 # Research Requirements
 
 ## User Perspective Priority
@@ -445,6 +437,14 @@ This is a follow-up iteration to generate more topics. Consider:
 - Need to maintain theme coherence while avoiding duplication
 - Different angles or audience segments within the same theme
 - Complementary content depths and formats
+- Keep the user's/company context and tone consistent with the playbook
+
+## Scheduling Requirements
+The previously suggested topic set has been saved to the calendar. This set is the NEXT entry in sequence. Therefore:
+- Determine the most recent scheduled_date in the previously saved topics (see {previous_topics}) and schedule this set strictly AFTER that date
+- Never choose a date in the past relative to {current_datetime}
+- If no previous scheduled_date exists, schedule starting from tomorrow relative to {current_datetime}
+- Use ISO 8601 UTC format (YYYY-MM-DDTHH:MM:SSZ)
 
 ## Topic Set Composition
 Create exactly **4 new interconnected topics** that:

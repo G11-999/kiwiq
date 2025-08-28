@@ -694,72 +694,75 @@ async def validate_onboarding_output(outputs: Optional[Dict[str, Any]], test_inp
 
 async def main_test_onboarding():
     test_inputs = {
-        "entity_username": "example-user-1",
-        "company_name": "Entelligence.ai",
+        "entity_username": "example-user-2-1a4b25172",
+        "company_name": "ExampleCorp",
         "perform_linkedin_onboarding": True,
         "perform_blog_onboarding": True,
-        "linkedin_profile_url": "https://www.linkedin.com/in/example-user-1/",
-        "company_url": "https://www.entelligence.ai/",
+        "linkedin_profile_url": "https://www.linkedin.com/in/example-user-2-1a4b25172/",
+        "company_url": "https://www.gumloop.com/blog",
         "linkedin_additional_context": """
-Founder(s): Aiswarya Sankar (Founder & CEO)
+LinkedIn Profile Asset (Founder)
+Founder(s): Max Brodeur‑Urbas (Co‑founder)
 
 
-Founder LinkedIn: Needs to be checked online
+Founder LinkedIn: https://www.linkedin.com/in/example-user-2-1a4b25172/
 
 
-Persona Tags: DevTools; AI for Eng; Platform
+Persona Tags: AI Automation; Ops; Go‑to‑Market
 
 
-Content Goals: Primary — Product Education; Secondary — Talent/Recruiting
+Content Goals: Primary — Use‑case demos; Secondary — Partner stories
 
 
-Posting Schedule: 2 posts/week; Days — Tue, Thu; Exclude weekends — Yes
+Posting Schedule: 3 posts/week; Days — Mon, Wed, Fri; Exclude weekends — Yes
 
 
 Timezone: PT
-
         """,
         "blog_additional_context": """
-Asset Name: Entelligence Blog
+Blog URL: https://www.gumloop.com/blog
 
 
-Value Proposition: AI that understands your entire codebase and workflow to plan, review, and accelerate engineering work.
+Asset Name: ExampleCorp Blog
+
+
+Value Proposition: Drag-and-drop AI automation—connect data, apps, and LLMs to ship business workflows fast.
 
 
 ICP
 
 
-Name: Scale-up & Enterprise Eng Orgs
+Name: Ops & RevOps Automation
 
 
-Target Industry: Software & Platforms
+Target Industry: SaaS & E-commerce
 
 
-Company Size: 200–3,000
+Company Size: 50–500
 
 
-Buyer Persona: VP Eng / Head of Platform
+Buyer Persona: RevOps Lead / Growth Ops / BizOps
 
 
 Pain Points:
 
 
-PR review backlog
+Manual outreach & enrichment
 
 
-Slow onboarding to legacy code
+Fragmented tooling
 
 
-Context fragmentation across PR/Slack/Docs
+Non-technical teams blocked on scripts
 
 
-Competitors: Sourcegraph; Codeium; Cursor
+Competitors: Zapier; Make; Tines
 
 
-Goals: Cut PR review time by 40%; Reduce new-hire ramp by 30 days
+Goals: 3 customer stories/quarter; 20 demo requests/month from blog
 
 
-Posting Schedule: 2 posts/month
+Posting Schedule: 3 posts/month
         """,
     }
 

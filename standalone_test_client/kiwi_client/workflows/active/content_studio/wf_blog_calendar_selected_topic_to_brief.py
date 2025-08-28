@@ -110,6 +110,17 @@ workflow_graph_schema = {
                         "type": "dict",
                         "required": True,
                         "description": "The selected topic from ContentTopicsOutput containing title, description, theme, objective, etc."
+                    },
+                    "initial_status": {
+                        "type": "str",
+                        "required": False,
+                        "default": "draft",
+                        "description": "Initial status of the workflow"
+                    },
+                    "brief_uuid": {
+                        "type": "str",
+                        "required": True,
+                        "description": "UUID of the brief being generated"
                     }
                 }
             }
@@ -299,7 +310,47 @@ workflow_graph_schema = {
             }
         },
         
-        # 5. Brief Approval - HITL Node
+        # 5. Save as Draft After Generation
+        "save_as_draft_after_generation": {
+            "node_id": "save_as_draft_after_generation",
+            "node_name": "store_customer_data",
+            "node_config": {
+                "global_versioning": {
+                    "is_versioned": BLOG_CONTENT_BRIEF_IS_VERSIONED,
+                    "operation": "upsert_versioned"
+                },
+                "global_is_shared": False,
+                "store_configs": [
+                    {
+                        "input_field_path": "current_content_brief",
+                        "target_path": {
+                            "filename_config": {
+                                "input_namespace_field_pattern": BLOG_CONTENT_BRIEF_NAMESPACE_TEMPLATE,
+                                "input_namespace_field": "company_name",
+                                "input_docname_field_pattern": BLOG_CONTENT_BRIEF_DOCNAME,
+                                "input_docname_field": "brief_uuid"
+                            }
+                        },
+                        "extra_fields": [
+                            {
+                                "src_path": "initial_status",
+                                "dst_path": "status"
+                            },
+                            {
+                                "src_path": "brief_uuid",
+                                "dst_path": "uuid"
+                            }
+                        ],
+                        "versioning": {
+                            "is_versioned": BLOG_CONTENT_BRIEF_IS_VERSIONED,
+                            "operation": "upsert_versioned"
+                        }
+                    }
+                ],
+            }
+        },
+        
+        # 6. Brief Approval - HITL Node
         "brief_approval_hitl": {
             "node_id": "brief_approval_hitl",
             "node_name": "hitl_node__default",
@@ -326,7 +377,7 @@ workflow_graph_schema = {
             }
         },
         
-        # 6. Route Brief Approval
+        # 7. Route Brief Approval
         "route_brief_approval": {
             "node_id": "route_brief_approval",
             "node_name": "router_node",
@@ -359,7 +410,7 @@ workflow_graph_schema = {
             }
         },
         
-        # 7. Save Brief as Draft
+        # 8. Save Brief as Draft
         "save_as_draft": {
             "node_id": "save_as_draft",
             "node_name": "store_customer_data",
@@ -376,26 +427,30 @@ workflow_graph_schema = {
                             "filename_config": {
                                 "input_namespace_field_pattern": BLOG_CONTENT_BRIEF_NAMESPACE_TEMPLATE,
                                 "input_namespace_field": "company_name",
-                                "static_docname": BLOG_CONTENT_BRIEF_DOCNAME
+                                "input_docname_field_pattern": BLOG_CONTENT_BRIEF_DOCNAME,
+                                "input_docname_field": "brief_uuid"
                             }
                         },
-                        "generate_uuid": True,
                         "extra_fields": [
                             {
-                                "src_path": "status",
-                                "dst_path": "user_action"
+                                "src_path": "user_action",
+                                "dst_path": "status"
+                            },
+                            {
+                                "src_path": "brief_uuid",
+                                "dst_path": "uuid"
                             }
                         ],
                         "versioning": {
-                            "is_versioned": True,
+                            "is_versioned": BLOG_CONTENT_BRIEF_IS_VERSIONED,
                             "operation": "upsert_versioned"
-                        }
+                        },
                     }
                 ],
             }
         },
         
-        # 8. Check Iteration Limit
+        # 9. Check Iteration Limit
         "check_iteration_limit": {
             "node_id": "check_iteration_limit",
             "node_name": "if_else_condition",
@@ -418,7 +473,7 @@ workflow_graph_schema = {
             }
         },
         
-        # 9. Route Based on Iteration Limit Check
+        # 10. Route Based on Iteration Limit Check
         "route_on_limit_check": {
             "node_id": "route_on_limit_check",
             "node_name": "router_node",
@@ -440,7 +495,7 @@ workflow_graph_schema = {
             }
         },
         
-        # 10. Brief Feedback Prompt Constructor
+        # 11. Brief Feedback Prompt Constructor
         "construct_brief_feedback_prompt": {
             "node_id": "construct_brief_feedback_prompt",
             "node_name": "prompt_constructor",
@@ -473,7 +528,7 @@ workflow_graph_schema = {
             }
         },
         
-        # 11. Brief Feedback Analysis
+        # 12. Brief Feedback Analysis
         "analyze_brief_feedback": {
             "node_id": "analyze_brief_feedback",
             "node_name": "llm",
@@ -493,7 +548,7 @@ workflow_graph_schema = {
             }
         },
         
-        # 12. Brief Revision - Enhanced Prompt Constructor
+        # 13. Brief Revision - Enhanced Prompt Constructor
         "construct_brief_revision_prompt": {
             "node_id": "construct_brief_revision_prompt",
             "node_name": "prompt_constructor",
@@ -506,12 +561,16 @@ workflow_graph_schema = {
                             "selected_topic": None,
                             "company_doc": None,
                             "playbook_doc": None,
+                            "google_research_output": None,
+                            "reddit_research_output": None,
                             "revision_instructions": None
                         },
                         "construct_options": {
                             "selected_topic": "selected_topic",
                             "company_doc": "company_doc",
                             "playbook_doc": "playbook_doc",
+                            "google_research_output": "google_research_output",
+                            "reddit_research_output": "reddit_research_output",
                             "revision_instructions": "brief_feedback_analysis.revision_instructions"
                         }
                     },
@@ -524,7 +583,7 @@ workflow_graph_schema = {
             }
         },
         
-        # 13. Brief Revision - LLM Node
+        # 14. Brief Revision - LLM Node
         "brief_revision_llm": {
             "node_id": "brief_revision_llm",
             "node_name": "llm",
@@ -544,13 +603,13 @@ workflow_graph_schema = {
             }
         },
         
-        # 14. Save Brief - Store Customer Data
+        # 15. Save Brief - Store Customer Data
         "save_brief": {
             "node_id": "save_brief",
             "node_name": "store_customer_data",
             "node_config": {
                 "global_versioning": {
-                    "is_versioned": True,
+                    "is_versioned": BLOG_CONTENT_BRIEF_IS_VERSIONED,
                     "operation": "upsert_versioned"
                 },
                 "global_is_shared": False,
@@ -561,26 +620,30 @@ workflow_graph_schema = {
                             "filename_config": {
                                 "input_namespace_field_pattern": BLOG_CONTENT_BRIEF_NAMESPACE_TEMPLATE,
                                 "input_namespace_field": "company_name",
-                                "static_docname": BLOG_CONTENT_BRIEF_DOCNAME
+                                "input_docname_field_pattern": BLOG_CONTENT_BRIEF_DOCNAME,
+                                "input_docname_field": "brief_uuid"
                             }
                         },
-                        "generate_uuid": True,
                         "extra_fields": [
                             {
-                                "src_path": "status",
-                                "dst_path": "user_action"
+                                "src_path": "user_action",
+                                "dst_path": "status"
+                            },
+                            {
+                                "src_path": "brief_uuid",
+                                "dst_path": "uuid"
                             }
                         ],
                         "versioning": {
                             "is_versioned": BLOG_CONTENT_BRIEF_IS_VERSIONED,
                             "operation": "upsert_versioned"
-                        },
+                        }
                     }
                 ],
             }
         },
         
-        # 15. Output Node
+        # 17. Output Node
         "output_node": {
             "node_id": "output_node",
             "node_name": "output_node",
@@ -595,7 +658,9 @@ workflow_graph_schema = {
             "dst_node_id": "$graph_state",
             "mappings": [
                 {"src_field": "company_name", "dst_field": "company_name"},
-                {"src_field": "selected_topic", "dst_field": "selected_topic"}
+                {"src_field": "selected_topic", "dst_field": "selected_topic"},
+                {"src_field": "initial_status", "dst_field": "initial_status"},
+                {"src_field": "brief_uuid", "dst_field": "brief_uuid"}
             ]
         },
         
@@ -742,12 +807,38 @@ workflow_graph_schema = {
             ]
         },
         
-        # Brief Generation LLM -> HITL
+        # Brief Generation LLM -> Save as Draft After Generation
         {
             "src_node_id": "brief_generation_llm",
+            "dst_node_id": "save_as_draft_after_generation",
+            "mappings": [
+                {"src_field": "structured_output", "dst_field": "current_content_brief"}
+            ]
+        },
+        
+        # State -> Save as Draft After Generation
+        {
+            "src_node_id": "$graph_state",
+            "dst_node_id": "save_as_draft_after_generation",
+            "mappings": [
+                {"src_field": "initial_status", "dst_field": "initial_status"},
+                {"src_field": "company_name", "dst_field": "company_name"},
+                {"src_field": "brief_uuid", "dst_field": "brief_uuid"}
+            ]
+        },
+        
+        # Save as Draft After Generation -> Brief Approval HITL
+        {
+            "src_node_id": "save_as_draft_after_generation",
+            "dst_node_id": "brief_approval_hitl"
+        },
+        
+        # State -> Brief Approval HITL (content brief)
+        {
+            "src_node_id": "$graph_state",
             "dst_node_id": "brief_approval_hitl",
             "mappings": [
-                {"src_field": "structured_output", "dst_field": "content_brief"}
+                {"src_field": "current_content_brief", "dst_field": "content_brief"}
             ]
         },
         
@@ -828,21 +919,13 @@ workflow_graph_schema = {
             "mappings": [
                 {"src_field": "current_content_brief", "dst_field": "current_content_brief"},
                 {"src_field": "user_action", "dst_field": "user_action"},
-                {"src_field": "company_name", "dst_field": "company_name"}
+                {"src_field": "company_name", "dst_field": "company_name"},
+                {"src_field": "brief_uuid", "dst_field": "brief_uuid"}
             ]
         },
         
         # Save as Draft -> brief approval hitl
         {"src_node_id": "save_as_draft", "dst_node_id": "brief_approval_hitl"},
-        
-        # graph state -> brief approval hitl
-        {
-            "src_node_id": "$graph_state",
-            "dst_node_id": "brief_approval_hitl",
-            "mappings": [
-                {"src_field": "current_content_brief", "dst_field": "content_brief"}
-            ]
-        },
         
         # State -> Brief Feedback Prompt Constructor
         {
@@ -902,7 +985,9 @@ workflow_graph_schema = {
             "mappings": [
                 {"src_field": "selected_topic", "dst_field": "selected_topic"},
                 {"src_field": "company_doc", "dst_field": "company_doc"},
-                {"src_field": "playbook_doc", "dst_field": "playbook_doc"}
+                {"src_field": "playbook_doc", "dst_field": "playbook_doc"},
+                {"src_field": "google_research_output", "dst_field": "google_research_output"},
+                {"src_field": "reddit_research_output", "dst_field": "reddit_research_output"}
             ]
         },
         
@@ -952,7 +1037,8 @@ workflow_graph_schema = {
             "mappings": [
                 {"src_field": "company_name", "dst_field": "company_name"},
                 {"src_field": "current_content_brief", "dst_field": "final_content_brief"},
-                {"src_field": "user_action", "dst_field": "user_action"}
+                {"src_field": "user_action", "dst_field": "user_action"},
+                {"src_field": "brief_uuid", "dst_field": "brief_uuid"}
             ]
         },
         
@@ -982,7 +1068,9 @@ workflow_graph_schema = {
                 "company_doc": "replace",
                 "playbook_doc": "replace",
                 "google_research_output": "replace",
-                "reddit_research_output": "replace"
+                "reddit_research_output": "replace",
+                "initial_status": "replace",
+                "brief_uuid": "replace"
             }
         }
     }
@@ -1168,7 +1256,9 @@ async def main_test_selected_topic_brief_workflow():
     # Test inputs
     test_inputs = {
         "company_name": test_company_name,
-        "selected_topic": test_selected_topic
+        "selected_topic": test_selected_topic,
+        "initial_status": "draft",
+        "brief_uuid": "123e4567-e89b-12d3-a456-426614174000"
     }
     
     # Setup test documents
@@ -1213,8 +1303,10 @@ async def main_test_selected_topic_brief_workflow():
     
     # Predefined HITL inputs for testing
     predefined_hitl_inputs = [
+        # First HITL: Request revision
         {
-            "user_action": "complete",
+            "user_action": "revise_brief",
+            "revision_feedback": "The brief needs more focus on specific cost categories and should include more concrete examples. Please add a section about hidden costs like opportunity cost of sales reps not selling.",
             "updated_content_brief": {
                 "title": "The Hidden Cost of Manual CRM Data Entry: A CFO's Perspective",
                 "target_audience": "CFOs and Finance Leaders at Enterprise SaaS companies",
@@ -1274,6 +1366,260 @@ async def main_test_selected_topic_brief_workflow():
                     "Include specific dollar amounts and percentages",
                     "Use CFO-friendly language and metrics",
                     "Add comparison table of manual vs automated costs"
+                ]
+            }
+        },
+        # Second HITL: Save as draft
+        {
+            "user_action": "draft",
+            "updated_content_brief": {
+                "title": "The Hidden Cost of Manual CRM Data Entry: A CFO's Perspective (Revised)",
+                "target_audience": "CFOs and Finance Leaders at Enterprise SaaS companies",
+                "content_goal": "Demonstrate comprehensive financial impact of manual data entry including hidden costs and ROI of automation",
+                "key_takeaways": [
+                    "Manual CRM data entry costs enterprises $1M+ annually in lost productivity",
+                    "Hidden opportunity costs from sales reps not selling add another $500K annually",
+                    "Poor data quality leads to 20% revenue leakage",
+                    "Automation delivers 10x ROI within 6 months"
+                ],
+                "content_structure": [
+                    {
+                        "section": "Introduction",
+                        "description": "Hook with shocking statistics about manual data entry costs",
+                        "word_count": 200
+                    },
+                    {
+                        "section": "Direct Cost Categories",
+                        "description": "Salary costs, training costs, and system maintenance",
+                        "word_count": 400
+                    },
+                    {
+                        "section": "Hidden Opportunity Costs",
+                        "description": "Time sales reps spend on data entry instead of selling",
+                        "word_count": 500
+                    },
+                    {
+                        "section": "Data Quality Impact",
+                        "description": "How bad data affects financial planning and forecasting accuracy",
+                        "word_count": 400
+                    },
+                    {
+                        "section": "ROI of Automation with Examples",
+                        "description": "Financial benefits, payback period, and real customer examples",
+                        "word_count": 500
+                    },
+                    {
+                        "section": "Conclusion",
+                        "description": "Call to action for CFOs with specific next steps",
+                        "word_count": 200
+                    }
+                ],
+                "seo_keywords": {
+                    "primary_keyword": "CRM data entry costs",
+                    "secondary_keywords": ["revenue operations ROI", "sales productivity", "opportunity cost"],
+                    "long_tail_keywords": ["manual CRM data entry financial impact", "hidden costs sales data entry"]
+                },
+                "brand_guidelines": {
+                    "tone": "Professional and data-driven",
+                    "voice": "Authoritative yet approachable",
+                    "style_notes": ["Use financial metrics", "Include case studies", "Add concrete examples"]
+                },
+                "research_sources": [
+                    {
+                        "source": "Industry Reports",
+                        "key_insights": ["Average cost per manual entry", "Time spent on data entry", "Opportunity cost calculations"]
+                    },
+                    {
+                        "source": "Customer Case Studies",
+                        "key_insights": ["Real ROI examples", "Implementation timelines"]
+                    }
+                ],
+                "call_to_action": "Calculate your CRM data entry costs with our ROI calculator and see your potential savings",
+                "estimated_word_count": 2200,
+                "difficulty_level": "intermediate",
+                "writing_instructions": [
+                    "Include specific dollar amounts and percentages",
+                    "Use CFO-friendly language and metrics",
+                    "Add comparison table of manual vs automated costs",
+                    "Include at least 2 customer examples with specific ROI numbers",
+                    "Add section on opportunity cost calculations"
+                ]
+            }
+        },
+        # Third HITL: Request another revision after draft
+        {
+            "user_action": "revise_brief",
+            "revision_feedback": "The brief looks good but needs a stronger executive summary section and should include more industry-specific examples. Also, please add a section about implementation considerations from a CFO perspective.",
+            "updated_content_brief": {
+                "title": "The Hidden Cost of Manual CRM Data Entry: A CFO's Perspective (Draft)",
+                "target_audience": "CFOs and Finance Leaders at Enterprise SaaS companies",
+                "content_goal": "Demonstrate comprehensive financial impact of manual data entry including hidden costs and ROI of automation",
+                "key_takeaways": [
+                    "Manual CRM data entry costs enterprises $1M+ annually in lost productivity",
+                    "Hidden opportunity costs from sales reps not selling add another $500K annually",
+                    "Poor data quality leads to 20% revenue leakage",
+                    "Automation delivers 10x ROI within 6 months"
+                ],
+                "content_structure": [
+                    {
+                        "section": "Introduction",
+                        "description": "Hook with shocking statistics about manual data entry costs",
+                        "word_count": 200
+                    },
+                    {
+                        "section": "Direct Cost Categories",
+                        "description": "Salary costs, training costs, and system maintenance",
+                        "word_count": 400
+                    },
+                    {
+                        "section": "Hidden Opportunity Costs",
+                        "description": "Time sales reps spend on data entry instead of selling",
+                        "word_count": 500
+                    },
+                    {
+                        "section": "Data Quality Impact",
+                        "description": "How bad data affects financial planning and forecasting accuracy",
+                        "word_count": 400
+                    },
+                    {
+                        "section": "ROI of Automation with Examples",
+                        "description": "Financial benefits, payback period, and real customer examples",
+                        "word_count": 500
+                    },
+                    {
+                        "section": "Conclusion",
+                        "description": "Call to action for CFOs with specific next steps",
+                        "word_count": 200
+                    }
+                ],
+                "seo_keywords": {
+                    "primary_keyword": "CRM data entry costs",
+                    "secondary_keywords": ["revenue operations ROI", "sales productivity", "opportunity cost"],
+                    "long_tail_keywords": ["manual CRM data entry financial impact", "hidden costs sales data entry"]
+                },
+                "brand_guidelines": {
+                    "tone": "Professional and data-driven",
+                    "voice": "Authoritative yet approachable",
+                    "style_notes": ["Use financial metrics", "Include case studies", "Add concrete examples"]
+                },
+                "research_sources": [
+                    {
+                        "source": "Industry Reports",
+                        "key_insights": ["Average cost per manual entry", "Time spent on data entry", "Opportunity cost calculations"]
+                    },
+                    {
+                        "source": "Customer Case Studies",
+                        "key_insights": ["Real ROI examples", "Implementation timelines"]
+                    }
+                ],
+                "call_to_action": "Calculate your CRM data entry costs with our ROI calculator and see your potential savings",
+                "estimated_word_count": 2200,
+                "difficulty_level": "intermediate",
+                "writing_instructions": [
+                    "Include specific dollar amounts and percentages",
+                    "Use CFO-friendly language and metrics",
+                    "Add comparison table of manual vs automated costs",
+                    "Include at least 2 customer examples with specific ROI numbers",
+                    "Add section on opportunity cost calculations"
+                ]
+            }
+        },
+        # Fourth HITL: Final completion
+        {
+            "user_action": "complete",
+            "updated_content_brief": {
+                "title": "The Hidden Cost of Manual CRM Data Entry: A CFO's Perspective (Final)",
+                "target_audience": "CFOs and Finance Leaders at Enterprise SaaS companies",
+                "content_goal": "Demonstrate comprehensive financial impact of manual data entry including hidden costs, industry examples, and ROI of automation with implementation considerations",
+                "key_takeaways": [
+                    "Manual CRM data entry costs enterprises $1M+ annually in lost productivity",
+                    "Hidden opportunity costs from sales reps not selling add another $500K annually",
+                    "Poor data quality leads to 20% revenue leakage",
+                    "Automation delivers 10x ROI within 6 months with proper implementation"
+                ],
+                "content_structure": [
+                    {
+                        "section": "Executive Summary",
+                        "description": "Key financial impact overview for busy CFOs",
+                        "word_count": 250
+                    },
+                    {
+                        "section": "Introduction",
+                        "description": "Hook with shocking statistics about manual data entry costs",
+                        "word_count": 200
+                    },
+                    {
+                        "section": "Direct Cost Categories",
+                        "description": "Salary costs, training costs, and system maintenance with SaaS examples",
+                        "word_count": 400
+                    },
+                    {
+                        "section": "Hidden Opportunity Costs",
+                        "description": "Time sales reps spend on data entry instead of selling",
+                        "word_count": 500
+                    },
+                    {
+                        "section": "Industry-Specific Impact",
+                        "description": "Examples from SaaS, FinTech, and Enterprise software companies",
+                        "word_count": 400
+                    },
+                    {
+                        "section": "Data Quality Impact",
+                        "description": "How bad data affects financial planning and forecasting accuracy",
+                        "word_count": 350
+                    },
+                    {
+                        "section": "ROI of Automation with Examples",
+                        "description": "Financial benefits, payback period, and real customer examples",
+                        "word_count": 500
+                    },
+                    {
+                        "section": "CFO Implementation Considerations",
+                        "description": "Budget planning, change management, and success metrics",
+                        "word_count": 400
+                    },
+                    {
+                        "section": "Conclusion",
+                        "description": "Call to action for CFOs with specific next steps",
+                        "word_count": 200
+                    }
+                ],
+                "seo_keywords": {
+                    "primary_keyword": "CRM data entry costs",
+                    "secondary_keywords": ["revenue operations ROI", "sales productivity", "opportunity cost", "CFO implementation"],
+                    "long_tail_keywords": ["manual CRM data entry financial impact", "hidden costs sales data entry", "SaaS CRM automation ROI"]
+                },
+                "brand_guidelines": {
+                    "tone": "Professional and data-driven",
+                    "voice": "Authoritative yet approachable",
+                    "style_notes": ["Use financial metrics", "Include case studies", "Add concrete examples", "Focus on CFO concerns"]
+                },
+                "research_sources": [
+                    {
+                        "source": "Industry Reports",
+                        "key_insights": ["Average cost per manual entry", "Time spent on data entry", "Opportunity cost calculations"]
+                    },
+                    {
+                        "source": "Customer Case Studies",
+                        "key_insights": ["Real ROI examples", "Implementation timelines", "Industry-specific results"]
+                    },
+                    {
+                        "source": "CFO Surveys",
+                        "key_insights": ["Implementation concerns", "Budget allocation priorities"]
+                    }
+                ],
+                "call_to_action": "Download our CFO's Guide to CRM Automation ROI and calculate your potential savings",
+                "estimated_word_count": 3200,
+                "difficulty_level": "intermediate",
+                "writing_instructions": [
+                    "Include specific dollar amounts and percentages",
+                    "Use CFO-friendly language and metrics",
+                    "Add comparison table of manual vs automated costs",
+                    "Include at least 3 customer examples with specific ROI numbers",
+                    "Add section on opportunity cost calculations",
+                    "Include executive summary for time-pressed CFOs",
+                    "Add implementation timeline and budget considerations",
+                    "Use industry-specific examples (SaaS, FinTech, Enterprise)"
                 ]
             }
         }
