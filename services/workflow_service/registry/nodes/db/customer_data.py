@@ -84,7 +84,7 @@ def _get_nested_obj(data: Any, field_path: str) -> Tuple[Any, bool]:
 
     return current, True
 
-def _set_nested_obj(data: Dict[str, Any], field_path: str, value: Any) -> bool:
+def _set_nested_obj(data: Dict[str, Any], field_path: str, value: Any, logger: Optional[BaseDynamicNode] = None) -> bool:
     """
     Sets a value in a nested dictionary or list structure.
 
@@ -99,7 +99,7 @@ def _set_nested_obj(data: Dict[str, Any], field_path: str, value: Any) -> bool:
     Returns:
         bool: True if the value was successfully set, False otherwise (e.g., path is invalid).
     """
-    logger = get_prefect_or_regular_python_logger(f"{__name__}._set_nested_obj")
+    logger = logger or get_prefect_or_regular_python_logger(f"{__name__}._set_nested_obj")
     parts = field_path.split('.')
     current_obj = data
     
@@ -274,7 +274,8 @@ def _resolve_single_doc_path(
     full_input_data: Dict[str, Any],
     current_item_data: Optional[Dict[str, Any]] = None,
     item_index: Optional[int] = None,
-    generated_uuid: Optional[str] = None  # NEW PARAMETER: Pass generated UUID if available
+    generated_uuid: Optional[str] = None,  # NEW PARAMETER: Pass generated UUID if available
+    logger: Optional[BaseDynamicNode] = None,
 ) -> Optional[Tuple[str, str]]:
     """
     Resolves the namespace and docname for a single document operation.
@@ -297,7 +298,7 @@ def _resolve_single_doc_path(
     Returns:
         A tuple (namespace, docname) or None if resolution fails.
     """
-    logger = get_prefect_or_regular_python_logger(f"{__name__}")
+    logger = logger or get_prefect_or_regular_python_logger(f"{__name__}")
     resolved_namespace: Optional[str] = None
     resolved_docname: Optional[str] = None
     context_data = current_item_data if current_item_data is not None else full_input_data
@@ -803,7 +804,8 @@ class LoadCustomerDataNode(BaseDynamicNode):
                     config=path_config.filename_config,
                     full_input_data=input_dict,
                     current_item_data=None,
-                    item_index=None
+                    item_index=None,
+                    logger=self,
                 )
                 if not resolved_path:
                     self.error(f"Could not resolve document path for output field '{path_config.output_field_name}'. Skipping.")
@@ -1252,7 +1254,8 @@ class StoreCustomerDataNode(BaseDynamicNode):
             full_input_data=full_input_dict,
             current_item_data=processed_doc_data, # Use the (potentially modified) data for path resolution
             item_index=item_index,
-            generated_uuid=generated_uuid  # Pass the generated UUID to use in filename pattern
+            generated_uuid=generated_uuid,  # Pass the generated UUID to use in filename pattern
+            logger=self,
         )
         if not resolved_path:
             self.error(f"Could not resolve target path for item from input '{store_cfg.input_field_path}' (index: {item_index}). Skipping store.")
@@ -1628,7 +1631,7 @@ class StoreCustomerDataNode(BaseDynamicNode):
                             path_to_update_in_passthrough = store_cfg.input_field_path
                         
                         # Update the passthrough_input with the (potentially) modified document data
-                        if not _set_nested_obj(passthrough_input, path_to_update_in_passthrough, final_doc_data_stored):
+                        if not _set_nested_obj(passthrough_input, path_to_update_in_passthrough, final_doc_data_stored, logger=self):
                             self.warning(f"Failed to update passthrough_data at path '{path_to_update_in_passthrough}'. "
                                          f"This might occur if the input structure changed unexpectedly or path was invalid.")
                 elif not success:

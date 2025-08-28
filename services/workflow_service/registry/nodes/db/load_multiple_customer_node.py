@@ -197,7 +197,6 @@ class LoadMultipleCustomerDataNode(BaseDynamicNode):
         pattern: str,
         pattern_input_path: str,
         input_dict: Dict[str, Any],
-        logger
     ) -> Optional[str]:
         """
         Resolve a namespace pattern using values from the input data.
@@ -211,6 +210,7 @@ class LoadMultipleCustomerDataNode(BaseDynamicNode):
         Returns:
             The resolved namespace string or None if resolution fails.
         """
+        logger = self
         try:
             # Get the object to use in pattern substitution
             pattern_data, found = _get_nested_obj(input_dict, pattern_input_path)
@@ -252,7 +252,7 @@ class LoadMultipleCustomerDataNode(BaseDynamicNode):
             LoadMultipleCustomerDataOutput: An object containing the list of loaded documents
                                             under the configured field name, plus metadata.
         """
-        logger = get_prefect_or_regular_python_logger(f"{__name__}.{self.__class__.__name__}")
+        logger = self  # get_prefect_or_regular_python_logger(f"{__name__}.{self.__class__.__name__}")
 
         # --- 1. Extract Context ---
         if not runtime_config:
@@ -326,7 +326,6 @@ class LoadMultipleCustomerDataNode(BaseDynamicNode):
                 pattern=effective_config.namespace_pattern,
                 pattern_input_path=effective_config.namespace_pattern_input_path,
                 input_dict=input_dict,
-                logger=logger
             )
             
             if resolved_namespace:
