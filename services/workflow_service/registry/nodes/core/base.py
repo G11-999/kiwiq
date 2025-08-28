@@ -351,6 +351,14 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
         Raises:
             Exception: For any unregistered error codes encountered during processing
         """
+
+        # DEBUG
+        if self.node_id == "save_competitor_analysis":
+            try:
+                data_dump = json.dumps(state, indent=4, default=str)
+            except Exception as e:
+                data_dump = state
+            self.warning(f"DEBUG: state: {data_dump}")
         
         try:
             # print("\n\n\n\n NODE ENTRY: ", "="*100, "\n\n\n\n")
