@@ -278,26 +278,6 @@ class CrawlerScraperConfig(BaseNodeConfig):
         ),
     )
 
-    # Path filtering
-    include_only_paths: Optional[List[str]] = Field(
-        default=None,
-        description=(
-            "List of URL path patterns to include during crawling. "
-            "If specified, only URLs matching these patterns will be followed and processed. "
-            "Supports wildcard patterns using * (e.g., '/blog/*', '/news/*'). "
-            "Homepage URLs are always included unless explicitly excluded."
-        ),
-    )
-    exclude_paths: Optional[List[str]] = Field(
-        default=None,
-        description=(
-            "List of URL path patterns to exclude during crawling. "
-            "URLs matching these patterns will not be followed or processed. "
-            "Supports wildcard patterns using * (e.g., '/admin/*', '/api/*'). "
-            "Takes precedence over include_only_paths."
-        ),
-    )
-
 
 class CrawlerScraperInput(BaseSchema):
     """
@@ -318,6 +298,27 @@ class CrawlerScraperInput(BaseSchema):
                    "Must be valid HTTP/HTTPS URLs. "
                    "Example: ['https://example.com/blog', 'https://example.com/news']"
     )
+
+    # Path filtering
+    include_only_paths: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "List of URL path patterns to include during crawling. "
+            "If specified, only URLs matching these patterns will be followed and processed. "
+            "Supports wildcard patterns using * (e.g., '/blog/*', '/news/*'). "
+            "Homepage URLs are always included unless explicitly excluded."
+        ),
+    )
+    exclude_paths: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "List of URL path patterns to exclude during crawling. "
+            "URLs matching these patterns will not be followed or processed. "
+            "Supports wildcard patterns using * (e.g., '/admin/*', '/api/*'). "
+            "Takes precedence over include_only_paths."
+        ),
+    )
+
     allowed_domains: Optional[List[str]] = Field(
         default=None,
         # min_length=0,
@@ -593,7 +594,7 @@ class CrawlerScraperNode(BaseNode[CrawlerScraperInput, CrawlerScraperOutput, Cra
         customer_data_service: CustomerDataService,
     ) -> Optional[Dict[str, Any]]:
         """Load the latest robots analysis doc under the given namespace pattern."""
-        start_urls_uuid = MongoCustomerDataPipeline._generate_start_urls_uuid(input_data.start_urls)
+        start_urls_uuid = MongoCustomerDataPipeline._generate_start_urls_uuid(input_data.start_urls, input_data.include_only_paths, input_data.exclude_paths)
             
         # Search pattern - only use start_urls_uuid, not netloc
         namespace_pattern = f"crawler_scraper_results_{start_urls_uuid}_*"
@@ -634,7 +635,7 @@ class CrawlerScraperNode(BaseNode[CrawlerScraperInput, CrawlerScraperOutput, Cra
         """
         try:
             # Generate the start_urls_uuid to match the namespace pattern
-            start_urls_uuid = MongoCustomerDataPipeline._generate_start_urls_uuid(input_data.start_urls)
+            start_urls_uuid = MongoCustomerDataPipeline._generate_start_urls_uuid(input_data.start_urls, input_data.include_only_paths, input_data.exclude_paths)
             
             # Search pattern - only use start_urls_uuid, not netloc
             namespace_pattern = f"crawler_scraper_results_{start_urls_uuid}_*"
@@ -902,13 +903,13 @@ class CrawlerScraperNode(BaseNode[CrawlerScraperInput, CrawlerScraperOutput, Cra
             'browser_pool_timeout': self.config.browser_pool_timeout,
             
             # Content classification configuration (example_usage.py alignment)
-            'classify_pages_as_blog': self.config.classify_pages_as_blog,
+            'classify_pages_as_blog': False if input_data.include_only_paths else self.config.classify_pages_as_blog,
             'blog_classifier_model': self.config.blog_classifier_model,
             'blog_classifier_max_length': self.config.blog_classifier_max_length,
 
             # Path filtering configuration
-            'include_only_paths': self.config.include_only_paths,
-            'exclude_paths': self.config.exclude_paths,
+            'include_only_paths': input_data.include_only_paths,
+            'exclude_paths': input_data.exclude_paths,
 
             # MongoDB pipeline - CRITICAL: Set these for the pipeline to work
             'mongo_pipeline_enabled': True,

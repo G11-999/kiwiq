@@ -90,24 +90,9 @@ The node can classify pages as blog posts using an LLM and filter the returned s
 Notes:
 - Classification occurs in the scraping pipeline. When enabled, each stored document includes an `is_blog` boolean.
 - For node output, the preview list `scraped_data` is filtered by `is_blog == true` when classification is enabled.
+- **Automatic Disable**: Blog classification is automatically disabled when `include_only_paths` is specified in input, as path-based filtering provides more targeted content selection.
 
-### Path Filtering
 
-Control which URL paths are crawled and processed using include/exclude patterns.
-
-- `include_only_paths` (Optional[List[str]], default `None`): List of URL path patterns to include during crawling. If specified, only URLs matching these patterns will be followed and processed. Supports both wildcard patterns using `*` (e.g., `/blog/*`, `/news/*`) and prefix matching (e.g., `/blog` matches `/blog/post1`, `/blog/category/tech`). Homepage URLs are always included unless explicitly excluded.
-- `exclude_paths` (Optional[List[str]], default `None`): List of URL path patterns to exclude during crawling. URLs matching these patterns will not be followed or processed. Supports both wildcard patterns using `*` (e.g., `/admin/*`, `/api/*`) and prefix matching (e.g., `/admin` excludes `/admin/dashboard`, `/admin/users`). Takes precedence over `include_only_paths`.
-
-**Pattern Matching Logic**:
-1. **Wildcard matching**: Use `*` for flexible patterns (e.g., `/blog/*` matches `/blog/post1`, `/blog/category/tech`)
-2. **Prefix matching**: Pattern acts as prefix (e.g., `/blog` matches `/blog`, `/blog/post1`, `/blogpost`) - implemented as `path.startswith(pattern)`
-3. **Exact matching**: Pattern matches exactly (e.g., `/contact` matches only `/contact`)
-
-**Note**: The matching logic combines both fnmatch wildcard support and prefix matching. A URL path matches a pattern if either the wildcard pattern matches OR the path starts with the pattern string.
-
-**Homepage Exception**: Homepage URLs (`/`, `/index.html`, `/home`, etc.) are always allowed in `should_follow_link` unless explicitly forbidden in `exclude_paths`. This ensures the crawler can start from and return to homepages even with restrictive include patterns.
-
-**Processing vs Following**: Path filtering applies to both link following (`should_follow_link`) and content processing (`should_process_link`). A URL must pass path filtering to be both followed and processed.
 
 ## Input (`CrawlerScraperInput`) - Focus Here
 
@@ -134,6 +119,35 @@ This is where you should focus your configuration efforts. Input parameters dire
   - If omitted, domains are automatically derived from `start_urls` (base domains)
   - Maximum 5 domains per job
   - **Impact**: More domains = broader data collection but potentially slower execution
+
+### Path Filtering (Optional but Powerful)
+
+Control which URL paths are crawled and processed using include/exclude patterns.
+
+```json
+{
+  "include_only_paths": ["/blog", "/news", "/articles/*"],
+  "exclude_paths": ["/admin/*", "/api/*"]
+}
+```
+
+- **`include_only_paths`** (Optional[List[str]], default `None`): List of URL path patterns to include during crawling. If specified, only URLs matching these patterns will be followed and processed. Supports both wildcard patterns using `*` (e.g., `/blog/*`, `/news/*`) and prefix matching (e.g., `/blog` matches `/blog/post1`, `/blog/category/tech`). Homepage URLs are always included unless explicitly excluded.
+- **`exclude_paths`** (Optional[List[str]], default `None`): List of URL path patterns to exclude during crawling. URLs matching these patterns will not be followed or processed. Supports both wildcard patterns using `*` (e.g., `/admin/*`, `/api/*`) and prefix matching (e.g., `/admin` excludes `/admin/dashboard`, `/admin/users`). Takes precedence over `include_only_paths`.
+
+**Pattern Matching Logic**:
+1. **Wildcard matching**: Use `*` for flexible patterns (e.g., `/blog/*` matches `/blog/post1`, `/blog/category/tech`)
+2. **Prefix matching**: Pattern acts as prefix (e.g., `/blog` matches `/blog`, `/blog/post1`, `/blogpost`) - implemented as `path.startswith(pattern)`
+3. **Exact matching**: Pattern matches exactly (e.g., `/contact` matches only `/contact`)
+
+**Note**: The matching logic combines both fnmatch wildcard support and prefix matching. A URL path matches a pattern if either the wildcard pattern matches OR the path starts with the pattern string.
+
+**Homepage Exception**: Homepage URLs (`/`, `/index.html`, `/home`, etc.) are always allowed in `should_follow_link` unless explicitly forbidden in `exclude_paths`. This ensures the crawler can start from and return to homepages even with restrictive include patterns.
+
+**Processing vs Following**: Path filtering applies to both link following (`should_follow_link`) and content processing (`should_process_link`). A URL must pass path filtering to be both followed and processed.
+
+**Caching Integration**: Path filtering configurations are considered when matching cached results. The cache system takes into account both `include_only_paths` and `exclude_paths` settings to ensure cached results match your current filtering criteria.
+
+**Blog Classification Interaction**: When `include_only_paths` is specified, automatic blog classification (`classify_pages_as_blog`) is disabled. This is because path-based filtering already provides content targeting, making LLM-based blog classification redundant.
 
 ### Crawling Limits (Key Performance Controls)
 
@@ -172,6 +186,7 @@ This is where you should focus your configuration efforts. Input parameters dire
 - **`use_cached_scraping_results`** (bool, default `true`): Use cached results if available
   - **Impact**: `true` = faster execution for recently scraped content, `false` = always fresh data
   - **Recommendation**: Keep `true` unless you specifically need fresh data
+  - **Path Filtering Integration**: Cache matching considers `include_only_paths` and `exclude_paths` settings
 
 - **`cache_lookback_period_days`** (int, default 7): How far back to look for cached results
   - **Impact**: Longer periods = more cache hits but potentially staler data
@@ -249,6 +264,8 @@ The node provides comprehensive information about the scraping operation and res
 }
 ```
 
+**Note**: This example doesn't use `include_only_paths`, so blog classification remains enabled and will filter the output to include only detected blog posts.
+
 ### Disable Blog Filtering (Return all page types in preview)
 ```json
 {
@@ -298,13 +315,11 @@ The node provides comprehensive information about the scraping operation and res
 #### Include Only Blog and News Content
 ```json
 {
-  "node_config": {
-    "include_only_paths": ["/blog", "/news", "/articles/*", "/posts/*"]
-  },
   "input": {
     "start_urls": ["https://example.com"],
     "allowed_domains": ["example.com"],
-    "max_processed_urls_per_domain": 100
+    "max_processed_urls_per_domain": 100,
+    "include_only_paths": ["/blog", "/news", "/articles/*", "/posts/*"]
   }
 }
 ```
@@ -318,15 +333,15 @@ This will crawl:
 But will skip:
 - `/about`, `/contact`, `/services` (don't match patterns)
 
+**Note**: Blog classification is automatically disabled since `include_only_paths` is specified.
+
 #### Exclude Admin and API Endpoints
 ```json
 {
-  "node_config": {
-    "exclude_paths": ["/admin", "/api/*", "/private/*", "/login", "/register"]
-  },
   "input": {
     "start_urls": ["https://webapp.com"],
-    "allowed_domains": ["webapp.com"]
+    "allowed_domains": ["webapp.com"],
+    "exclude_paths": ["/admin", "/api/*", "/private/*", "/login", "/register"]
   }
 }
 ```
@@ -339,13 +354,11 @@ This will crawl everything except:
 #### Combined Include/Exclude (Exclude Takes Precedence)
 ```json
 {
-  "node_config": {
-    "include_only_paths": ["/docs", "/help", "/support"],
-    "exclude_paths": ["/docs/internal", "/help/admin"]
-  },
   "input": {
     "start_urls": ["https://company.com"],
-    "allowed_domains": ["company.com"]
+    "allowed_domains": ["company.com"],
+    "include_only_paths": ["/docs", "/help", "/support"],
+    "exclude_paths": ["/docs/internal", "/help/admin"]
   }
 }
 ```
@@ -363,13 +376,11 @@ But will skip:
 #### Force Homepage Exclusion (Rare Use Case)
 ```json
 {
-  "node_config": {
-    "include_only_paths": ["/blog"],
-    "exclude_paths": ["/", "/index.html"]
-  },
   "input": {
     "start_urls": ["https://example.com/blog"],
-    "allowed_domains": ["example.com"]
+    "allowed_domains": ["example.com"],
+    "include_only_paths": ["/blog"],
+    "exclude_paths": ["/", "/index.html"]
   }
 }
 ```
@@ -402,6 +413,8 @@ This will explicitly exclude the homepage despite the homepage exception, since 
 - **Exclude patterns**: Prevents crawling unwanted areas (admin, APIs) improving efficiency and avoiding restricted content
 - **Over-restrictive includes**: May miss valuable content if patterns are too narrow
 - **Homepage exception**: Ensures crawler functionality even with restrictive patterns
+- **Cache integration**: Path filtering settings are considered in cache matching, ensuring cached results align with current filtering criteria
+- **Blog classification**: Automatically disabled when `include_only_paths` is used, as path targeting makes content classification redundant
 
 ## MongoDB Data Access
 
@@ -550,6 +563,7 @@ The node returns a filtered preview of each document with safe, high-signal fiel
 - **Check** `use_cached_scraping_results` is `true`
 - **Verify** same start URLs are being used
 - **Consider** if `cache_lookback_period_days` is too short
+- **Path filtering mismatch**: Cache considers both `include_only_paths` and `exclude_paths` - different filtering settings won't match cached results
 
 ### JavaScript Content Missing
 - **Ensure** `browser_pool_enabled` is `true` in system settings

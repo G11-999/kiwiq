@@ -729,8 +729,10 @@ class BaseProcessor:
         self.perform_technical_seo = kwargs.get('perform_technical_seo')
         self.disable_html_dump_in_data = kwargs.get('disable_html_dump_in_data')
         # Path filtering configurations
-        self.include_only_paths = kwargs.get('include_only_paths', None)  # List of path patterns to include
-        self.exclude_paths = kwargs.get('exclude_paths', None)  # List of path patterns to exclude
+        self.include_only_paths = kwargs.get('include_only_paths', None) or []  # List of path patterns to include
+        self.include_only_paths = sorted(list(set([path.strip() for path in self.include_only_paths])))
+        self.exclude_paths = kwargs.get('exclude_paths', None) or []  # List of path patterns to exclude
+        self.exclude_paths = sorted(list(set([path.strip() for path in self.exclude_paths])))
     
     def _is_homepage_url(self, url: str) -> bool:
         """
@@ -1965,6 +1967,9 @@ def run_scraping_job(job_config: Dict[str, Any], use_prefect_logging: bool = Fal
 
     settings.set('start_urls', job_config.get('start_urls', []))
     logger.info(f"START_URLS: {settings.get('start_urls')}")
+
+    settings.set('include_only_paths', job_config.get('include_only_paths', []))
+    settings.set('exclude_paths', job_config.get('exclude_paths', []))
     
     settings.set('SCHEDULER', 'services.workflow_service.services.scraping.scrapy_redis_integration.RedisScheduler')
     settings.set('REDIS_URL', job_config.get('redis_url', scraping_settings.REDIS_URL))

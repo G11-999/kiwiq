@@ -428,16 +428,38 @@ class MongoCustomerDataPipeline:
         )
     
     @staticmethod
-    def _generate_start_urls_uuid(start_urls: List[str]) -> str:
+    def _generate_start_urls_uuid(start_urls: List[str], include_only_paths: Optional[List[str]] = None, exclude_paths: Optional[List[str]] = None) -> str:
         """
         Generate a deterministic UUID from the start URLs for consistency.
         
         Args:
             start_urls: List of start URLs
-            
+            include_only_paths: List of path patterns to include
+            exclude_paths: List of path patterns to exclude
         Returns:
             The generated UUID string (as string, not UUID object)
         """
+        if not include_only_paths:
+            include_only_paths = []
+        if not exclude_paths:
+            exclude_paths = []
+        
+        # normalize include / exclude paths
+        def normalize_path(path: str) -> str:
+            path = path.strip()
+            if path.startswith("/"):
+                path = path[1:]
+            if path.endswith("*"):
+                path = path[:-1]
+            return path
+        
+        include_only_paths = sorted(list(set([normalize_path(path) for path in include_only_paths])))
+        exclude_paths = sorted(list(set([normalize_path(path) for path in exclude_paths])))
+
+        path_filter_string = ""
+        if exclude_paths or include_only_paths:
+            path_filter_string = "include:" + ",".join(include_only_paths) + "exclude:" + ",".join(exclude_paths)
+        
         try:
             def _get_netloc(url: str) -> str:
                 parsed_url = urlparse(url)
@@ -446,7 +468,7 @@ class MongoCustomerDataPipeline:
             # Sort netlocs to ensure consistency
             sorted_netlocs = list(sorted(list(set(_get_netloc(url) for url in start_urls))))
             # Join netlocs to create a deterministic string
-            combined_string = ",".join(sorted_netlocs)
+            combined_string = ",".join(sorted_netlocs) + path_filter_string
             # Generate UUID from the combined string
             start_urls_uuid = uuid.uuid5(uuid.NAMESPACE_URL, combined_string)
             return str(start_urls_uuid)
@@ -528,6 +550,8 @@ class MongoCustomerDataPipeline:
         
         # Extract required fields with sensible defaults
         start_urls = settings.get('start_urls')
+        include_only_paths = settings.get('include_only_paths')
+        exclude_paths = settings.get('exclude_paths')
         org_id = settings.get('org_id')
         user = settings.get('user')
         is_shared = settings.get('is_shared', False)
@@ -544,7 +568,7 @@ class MongoCustomerDataPipeline:
             'org_id': org_id,
             'user': user,
             'is_shared': is_shared,
-            'start_urls_uuid': MongoCustomerDataPipeline._generate_start_urls_uuid(start_urls),
+            'start_urls_uuid': MongoCustomerDataPipeline._generate_start_urls_uuid(start_urls, include_only_paths, exclude_paths),
             "date_str": date_str,
             "classify_pages_as_blog": classify_pages_as_blog,
             "blog_classifier_model": blog_classifier_model,
