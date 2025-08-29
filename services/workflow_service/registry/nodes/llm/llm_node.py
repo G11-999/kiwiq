@@ -200,7 +200,8 @@ class Citation(BaseSchema):
     url: Optional[str] = Field(None, description="URL of the source")
     title: Optional[str] = Field(None, description="Title of the source")
     snippet: Optional[str] = Field(None, description="Relevant snippet from the source")
-    timestamp: Optional[str] = Field(None, description="Timestamp of the source")
+    date: Optional[str] = Field(None, description="Date of the source")
+    last_updated: Optional[str] = Field(None, description="Last updated date of the source")
     metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata about the source")
 
 
@@ -2162,7 +2163,6 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                                     url=citation.get('url'),
                                     title=citation.get('title'),
                                     snippet=citation.get('cited_text'),
-                                    timestamp=None,
                                     metadata=None,
                                 )
                             )
@@ -2177,7 +2177,6 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                                     url=annotation.get('url'),
                                     title=annotation.get('title'),
                                     snippet=snippet,  # Annotations don't provide snippets
-                                    timestamp=None,
                                     metadata=annotation  # Store full annotation as metadata
                                 )
                             )
@@ -2223,7 +2222,6 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                             url=None,
                             title=None,
                             snippet=None,  # OpenAI doesn't provide snippets directly
-                            timestamp=None,
                             metadata=annotation
                         )
                     )
@@ -2241,7 +2239,8 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                         url=search_result.get('url', None),
                         title=search_result.get('title', None),
                         snippet=search_result.get('snippet', None),
-                        timestamp=None,
+                        date=search_result.get('date', None),
+                        last_updated=search_result.get('last_updated', None),
                         metadata=None
                     )
                 )
@@ -2254,7 +2253,6 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                         url=url,
                         title=None,  # Perplexity doesn't provide titles directly
                         snippet=None,
-                        timestamp=None,
                         metadata=None
                     )
                 )
@@ -2271,7 +2269,6 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                         url=url,
                         title=title.strip() if title else None,
                         snippet=None,
-                        timestamp=None,
                         metadata={'detected_format': 'markdown_link'}
                     )
                 )
