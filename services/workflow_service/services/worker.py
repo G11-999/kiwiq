@@ -5,12 +5,13 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, Tuple, AsyncGenerator, Optional, List, Union, cast
 from pydantic import BaseModel
+from functools import partial
 
 # Prefect imports
-from prefect import flow, get_run_logger, serve
+from prefect import flow, get_run_logger, serve, Flow
 from prefect.deployments import run_deployment
 from prefect import resume_flow_run, pause_flow_run, suspend_flow_run
-from prefect.client.schemas import FlowRun
+from prefect.client.schemas import FlowRun, State
 from prefect.server.schemas.schedules import CronSchedule
 # from prefect.filesystems import S3, GitHub, LocalFileSystem
 from prefect.cache_policies import NO_CACHE
@@ -44,8 +45,9 @@ from workflow_service.config.constants import (
 
 from workflow_service.services.external_context_manager import (
     ExternalContextManager,
-    get_external_context_manager_with_clients
+    get_external_context_manager_with_clients,
 )
+from kiwi_app.workflow_app import crud as wf_crud
 
 # Import specific event types
 from workflow_service.services.events import (
@@ -102,6 +104,36 @@ prefect-agent-dev  |
 prefect-agent-dev  | During handling of the above exception, another exception occurred:
 prefect-agent-dev  |
 """
+
+async def handle_flow_crash(flow: Flow, flow_run: FlowRun, state: State, crashed: bool = True):
+    """
+    Handle a flow crash by logging the error and suspending the flow run.
+    """
+    logger = get_prefect_or_regular_python_logger(name="workflow-execution-flow-crash-handler")
+    workflow_run_job: wf_schemas.WorkflowRunJobCreate = flow_run.parameters.get("run_job")
+    if not workflow_run_job:
+        raise ValueError("Workflow run job not found in flow parameters")
+    workflow_run_dao = wf_crud.WorkflowRunDAO()
+    run_id = workflow_run_job.run_id
+    is_sub_workflow = workflow_run_job.parent_run_id is not None
+    log_prefix = f"{workflow_run_job.workflow_name}: " if is_sub_workflow else ""
+
+
+    # if parent_run_id is not None:
+    status = wf_schemas.WorkflowRunStatus.FAILED if crashed else wf_schemas.WorkflowRunStatus.CANCELLED
+    status_message = "crashed" if crashed else "cancelled"
+
+    logger.error(log_prefix + f"Flow {status_message}: {flow_run.state.message}")
+    async with get_async_db_as_manager() as db:
+        await workflow_run_dao.update_status(
+            db=db,
+            run_id=run_id,
+            status=status,
+            ended_at=datetime.now(tz=timezone.utc),
+            error_message=f"Flow {status_message}! State message: {flow_run.state.message}",
+            outputs=None,
+        )
+
 @flow(
     name="workflow-execution",
     description="Orchestrates the execution of a LangGraph workflow",
@@ -114,6 +146,8 @@ prefect-agent-dev  |
     # persist_result=False,
     # # TODO: persist_result and result_storage configs!
     timeout_seconds=settings.WORKFLOW_TIMEOUT_SECONDS,
+    on_crashed=partial(handle_flow_crash, crashed=True),
+    on_cancellation=partial(handle_flow_crash, crashed=False),
 )
 async def workflow_execution_flow(
     run_job: wf_schemas.WorkflowRunJobCreate
