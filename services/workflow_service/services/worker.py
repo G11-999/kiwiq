@@ -105,34 +105,7 @@ prefect-agent-dev  | During handling of the above exception, another exception o
 prefect-agent-dev  |
 """
 
-async def handle_flow_crash(flow: Flow, flow_run: FlowRun, state: State, crashed: bool = True):
-    """
-    Handle a flow crash by logging the error and suspending the flow run.
-    """
-    logger = get_prefect_or_regular_python_logger(name="workflow-execution-flow-crash-handler")
-    workflow_run_job: wf_schemas.WorkflowRunJobCreate = flow_run.parameters.get("run_job")
-    if not workflow_run_job:
-        raise ValueError("Workflow run job not found in flow parameters")
-    workflow_run_dao = wf_crud.WorkflowRunDAO()
-    run_id = workflow_run_job.run_id
-    is_sub_workflow = workflow_run_job.parent_run_id is not None
-    log_prefix = f"{workflow_run_job.workflow_name}: " if is_sub_workflow else ""
 
-
-    # if parent_run_id is not None:
-    status = wf_schemas.WorkflowRunStatus.FAILED if crashed else wf_schemas.WorkflowRunStatus.CANCELLED
-    status_message = "crashed" if crashed else "cancelled"
-
-    logger.error(log_prefix + f"Flow {status_message}: {flow_run.state.message}")
-    async with get_async_db_as_manager() as db:
-        await workflow_run_dao.update_status(
-            db=db,
-            run_id=run_id,
-            status=status,
-            ended_at=datetime.now(tz=timezone.utc),
-            error_message=f"Flow {status_message}! State message: {flow_run.state.message}",
-            outputs=None,
-        )
 
 @flow(
     name="workflow-execution",
@@ -146,8 +119,8 @@ async def handle_flow_crash(flow: Flow, flow_run: FlowRun, state: State, crashed
     # persist_result=False,
     # # TODO: persist_result and result_storage configs!
     timeout_seconds=settings.WORKFLOW_TIMEOUT_SECONDS,
-    on_crashed=[partial(handle_flow_crash, crashed=True)],
-    on_cancellation=[partial(handle_flow_crash, crashed=False)],
+    # on_crashed=[partial(handle_flow_crash, crashed=True)],
+    # on_cancellation=[partial(handle_flow_crash, crashed=False)],
 )
 async def workflow_execution_flow(
     run_job: wf_schemas.WorkflowRunJobCreate
@@ -225,6 +198,37 @@ async def workflow_execution_flow(
         except Exception as close_err:
             logger.error(f"Error closing external context: {close_err}", exc_info=True)
 
+
+@workflow_execution_flow.on_crashed
+@workflow_execution_flow.on_cancellation
+async def handle_flow_crash(flow: Flow, flow_run: FlowRun, state: State, crashed: bool = False):
+    """
+    Handle a flow crash by logging the error and suspending the flow run.
+    """
+    logger = get_prefect_or_regular_python_logger(name="workflow-execution-flow-crash-handler")
+    workflow_run_job = flow_run.parameters.get("run_job")
+    workflow_run_job = wf_schemas.WorkflowRunJobCreate(**workflow_run_job)
+    if not workflow_run_job:
+        raise ValueError("Workflow run job not found in flow parameters")
+    workflow_run_dao = wf_crud.WorkflowRunDAO()
+    run_id = workflow_run_job.run_id
+    is_sub_workflow = workflow_run_job.parent_run_id is not None
+    log_prefix = f"{workflow_run_job.workflow_name}: " if is_sub_workflow else ""
+
+    # if parent_run_id is not None:
+    status = wf_schemas.WorkflowRunStatus.FAILED if crashed else wf_schemas.WorkflowRunStatus.CANCELLED
+    status_message = "crashed" if crashed else "cancelled"
+
+    logger.error(log_prefix + f"Flow {status_message}: {flow_run.state.message}")
+    async with get_async_db_as_manager() as db:
+        await workflow_run_dao.update_status(
+            db=db,
+            run_id=run_id,
+            status=status,
+            ended_at=datetime.now(tz=timezone.utc),
+            error_message=f"Flow {status_message}! State message: {flow_run.state.message}",
+            outputs=None,
+        )
 
 
 async def run_graph(
