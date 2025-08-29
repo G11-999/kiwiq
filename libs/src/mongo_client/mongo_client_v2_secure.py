@@ -859,7 +859,7 @@ class AsyncMongoDBClient:
                 document,
                 upsert=True
             )
-            logger.info(f"Created document with path '{path}', ID: {doc_id}")
+            logger.debug(f"Created document with path '{path}', ID: {doc_id}")
             return doc_id
         except Exception as e:
             logger.error(f"Error creating document for path '{path}': {e}")
@@ -933,16 +933,16 @@ class AsyncMongoDBClient:
             result = await collection.update_one(query, update_operation)
             
             if result.matched_count == 0:
-                logger.info(f"No document found with path '{path}' to update.")
+                logger.debug(f"No document found with path '{path}' to update.")
                 return None
             
             if result.modified_count > 0:
                 if update_subfields:
-                    logger.info(f"Updated {len(data) if isinstance(data, dict) else 1} subfields for document at path '{path}'.")
+                    logger.debug(f"Updated {len(data) if isinstance(data, dict) else 1} subfields for document at path '{path}'.")
                 else:
-                    logger.info(f"Updated entire data object for path '{path}'.")
+                    logger.debug(f"Updated entire data object for path '{path}'.")
             else:
-                logger.info(f"Document found for path '{path}' but data was identical.")
+                logger.debug(f"Document found for path '{path}' but data was identical.")
                 
             return doc_id
         except Exception as e:
@@ -1007,7 +1007,7 @@ class AsyncMongoDBClient:
             if was_created:
                 # Insert new document
                 await collection.insert_one(document)
-                logger.info(f"Created document for path '{path}', ID: {doc_id}")
+                logger.debug(f"Created document for path '{path}', ID: {doc_id}")
             else:
                 # Update existing document
                 existing_data = existing.get("data", {})
@@ -1027,7 +1027,7 @@ class AsyncMongoDBClient:
                     allowed_prefixes=allowed_prefixes,
                     update_subfields=update_subfields
                 )
-                logger.info(f"Updated document for path '{path}', ID: {doc_id}")
+                logger.debug(f"Updated document for path '{path}', ID: {doc_id}")
             
             return doc_id, was_created
         # except WriteError as e:
@@ -1137,10 +1137,10 @@ class AsyncMongoDBClient:
         try:
             result = await collection.delete_one(query)
             if result.deleted_count > 0:
-                logger.info(f"Deleted document with path '{path}'")
+                logger.debug(f"Deleted document with path '{path}'")
                 return True
             else:
-                logger.info(f"No document found with path '{path}' to delete")
+                logger.debug(f"No document found with path '{path}' to delete")
                 return False
         except Exception as e:
             logger.error(f"Error deleting document for path '{path}': {e}")
@@ -1201,7 +1201,7 @@ class AsyncMongoDBClient:
         # Check if source and destination are the same
         if source_path == destination_path:
             if move:
-                logger.info(f"Source and destination paths are identical: '{source_path}'. No operation needed.")
+                logger.debug(f"Source and destination paths are identical: '{source_path}'. No operation needed.")
                 return self._path_to_id(source_path)
             else:
                 # For copy operation with same paths, this doesn't make sense
@@ -1214,7 +1214,7 @@ class AsyncMongoDBClient:
             # Step 1: Fetch the source document
             source_doc = await self.fetch_object(source_path, allowed_prefixes=allowed_prefixes)
             if source_doc is None:
-                logger.info(f"No document found at source path '{source_path}' to move")
+                logger.debug(f"No document found at source path '{source_path}' to move")
                 return None
             
             # Step 2: Check if destination exists
@@ -1242,9 +1242,9 @@ class AsyncMongoDBClient:
                     # The destination document was created, so we don't rollback
                     # This is a partial success - destination exists but source wasn't deleted
                 
-                logger.info(f"Successfully moved document from '{source_path}' to '{destination_path}'")
+                logger.debug(f"Successfully moved document from '{source_path}' to '{destination_path}'")
             else:
-                logger.info(f"Successfully copied document from '{source_path}' to '{destination_path}'")
+                logger.debug(f"Successfully copied document from '{source_path}' to '{destination_path}'")
             
             return destination_id
             
@@ -1559,7 +1559,7 @@ class AsyncMongoDBClient:
                 return 0
             
             count = await collection.count_documents(final_query)
-            logger.info(f"Counted {count} objects matching pattern '{pattern}'")
+            logger.debug(f"Counted {count} objects matching pattern '{pattern}'")
             return count
         except ValueError as e:
             logger.error(f"Invalid pattern format for '{pattern}': {e}")
