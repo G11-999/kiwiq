@@ -2232,7 +2232,19 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                     citations[-1].url = url_citation.get('url', None)
                     citations[-1].title = url_citation.get('title', None)
                     
-        
+        # Perplexity new format!
+        elif 'search_results' in additional_kwargs:
+            search_results = additional_kwargs.get('search_results', [])
+            for search_result in search_results:
+                citations.append(
+                    Citation(
+                        url=search_result.get('url', None),
+                        title=search_result.get('title', None),
+                        snippet=search_result.get('snippet', None),
+                        timestamp=None,
+                        metadata=None
+                    )
+                )
         # Handle Perplexity format with simple citations list
         elif 'citations' in additional_kwargs:
             citation_urls = additional_kwargs.get('citations', [])
