@@ -459,7 +459,8 @@ class WorkflowRunDAO(BaseDAO[models.WorkflowRun, schemas.WorkflowRunCreate, sche
         status: WorkflowRunStatus = WorkflowRunStatus.SCHEDULED,
         tag: Optional[str] = None,
         applied_workflow_config_overrides: Optional[str] = None,
-        parent_run_id: Optional[uuid.UUID] = None
+        parent_run_id: Optional[uuid.UUID] = None,
+        retry_count: int = 0
     ) -> models.WorkflowRun:
         """Creates a new workflow run record."""
         # Compute deterministic input hash for caching
@@ -484,6 +485,7 @@ class WorkflowRunDAO(BaseDAO[models.WorkflowRun, schemas.WorkflowRunCreate, sche
             applied_workflow_config_overrides=applied_workflow_config_overrides,
             parent_run_id=parent_run_id,
             input_hash=input_hash,
+            retry_count=retry_count,
         )
         db.add(db_obj)
         await db.commit()

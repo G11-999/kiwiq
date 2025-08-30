@@ -390,6 +390,7 @@ class WorkflowService:
                 tag=run_submit.tag,
                 applied_workflow_config_overrides=",".join([str(override.id) for override in overrides]) if overrides else None,
                 parent_run_id=run_submit.parent_run_id,
+                retry_count=run_submit.retry_count or 0,
             )
             # TODO: FIXME: do the above and below in one step by checking thread_id is None!
             if not workflow_run.thread_id:
@@ -427,6 +428,7 @@ class WorkflowService:
                 streaming_mode=run_submit.streaming_mode,
                 # is_subflow=run_submit.parent_run_id is not None,
                 parent_run_id=run_submit.parent_run_id,
+                retry_count=run_submit.retry_count or 0,
             )
             workflow_run = await self.workflow_run_dao.update(
                 db,
@@ -1605,6 +1607,7 @@ class WorkflowService:
                 prefect_run_ids=run.prefect_run_ids, # Pass the prefect run_id if provided
                 # is_subflow=run.parent_run_id is not None,
                 parent_run_id=run.parent_run_id,
+                retry_count=run.retry_count or 0,
             )
             run = await self.workflow_run_dao.update(
                 db,

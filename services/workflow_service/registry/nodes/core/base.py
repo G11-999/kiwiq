@@ -10,6 +10,8 @@ from abc import ABC, abstractmethod
 # FIXME: DEBUG: Prefect test!
 from prefect import task
 from prefect.cache_policies import NO_CACHE
+from prefect import runtime
+from prefect.context import get_run_context
 
 from langgraph.types import Command, Send, Interrupt
 
@@ -439,8 +441,15 @@ class BaseNode(BaseModel, Generic[InputSchemaT, OutputSchemaT, ConfigSchemaT], A
                 }
                 if node_retry_count:
                     prefect_kwargs.update(retry_config)
+                
+                async def process_retry_wrapper(input_data: InputSchemaT, config: Dict[str, Any], *args: Any, **kwargs: Any) -> OutputSchemaT:
+                    attempt = runtime.task_run.run_count or 1          # 1 = first try, 2 = first retry, etc.
+                    max_attempts = get_run_context().task.retries + 1  # retries + initial try
+                    if attempt > 1:
+                        self.warning(f"Retry attempt {attempt-1}/{max_attempts-1}")
+                    return await self.process(input_data, config, *args, **kwargs)
 
-                output_data = await task(**prefect_kwargs)(self.process)(input_data, config, *args, **kwargs)
+                output_data = await task(**prefect_kwargs)(process_retry_wrapper)(input_data, config, *args, **kwargs)  # self.process   process_retry_wrapper
             else:
                 i = 0
                 node_retry_count = node_retry_count or 0

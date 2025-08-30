@@ -266,15 +266,26 @@ async def run_graph(
         #     ttl=10,
         # ):
         workflow_run = await external_context.daos.workflow_run.get_run_by_id_and_org(db, run_id=run_id, org_id=org_id)
-        logger.info(f"Info for Workflow run: - Workflow Name: {workflow_run.workflow_name} - Workflow ID: {workflow_run.workflow_id} - Run ID: {workflow_run.id}")
+        current_retry_count = workflow_run.retry_count or 0
+        start_retry_count = workflow_run_job.retry_count or 0
+        is_retry_of_run = current_retry_count > start_retry_count 
+        updated_retry_count = current_retry_count + 1
+
+        retry_count_msg = f"Retry Count: #{current_retry_count} " if is_retry_of_run else ""
+
+        logger.info(f"Info for Workflow run: {retry_count_msg}- Workflow Name: {workflow_run.workflow_name} - Workflow ID: {workflow_run.workflow_id} - Run ID: {workflow_run.id}")
+        obj_in={   
+            "retry_count": updated_retry_count,
+        }
         if workflow_run and ((not workflow_run.prefect_run_ids) or (str(flow_id) not in workflow_run.prefect_run_ids)):
-            workflow_run = await external_context.daos.workflow_run.update(
-                db,
-                db_obj=workflow_run,
-                obj_in={
-                    "prefect_run_ids": ",".join([workflow_run.prefect_run_ids, str(flow_id)]) if workflow_run.prefect_run_ids else str(flow_id)
-                }
-            )
+            prefect_run_ids = ",".join([workflow_run.prefect_run_ids, str(flow_id)]) if workflow_run.prefect_run_ids else str(flow_id),
+            obj_in["prefect_run_ids"] = prefect_run_ids
+        
+        workflow_run = await external_context.daos.workflow_run.update(
+            db,
+            db_obj=workflow_run,
+            obj_in=obj_in,
+        )
         is_sub_workflow = workflow_run.parent_run_id is not None
         log_prefix = f"{workflow_run.workflow_name}: " if is_sub_workflow else ""
 
@@ -457,6 +468,9 @@ async def run_graph(
                 output_node_id=final_output_node_id,
                 interrupt_handler=None, # Adapter handles internal interrupt loop
                 resume_with_hitl=workflow_run_job.resume_after_hitl,
+                is_retry=is_retry_of_run,
+                logger=logger,
+                log_prefix=log_prefix,
             ):
                 try:
                     # Ensure chunk is a tuple (stream_mode, data)
@@ -884,6 +898,7 @@ async def trigger_workflow_run(
     prefect_run_ids: Optional[str] = None,
     streaming_mode: Optional[bool] = True,
     parent_run_id: Optional[uuid.UUID] = None,
+    retry_count: Optional[int] = 0,
 ) -> FlowRun:
     """
     Helper function to trigger a workflow run via the Prefect deployment.
@@ -901,6 +916,7 @@ async def trigger_workflow_run(
         prefect_run_ids: Optional Prefect flow run ID for resuming runs
         streaming_mode: Optional flag to enable/disable streaming mode
         parent_run_id: Optional parent run ID for subflows
+        retry_count: Optional retry count for the workflow run
 
     Returns:
         uuid.UUID: The run ID of the triggered flow
@@ -926,6 +942,8 @@ async def trigger_workflow_run(
         graph_schema=graph_schema,
         resume_after_hitl=resume_after_hitl,
         streaming_mode=streaming_mode,
+        parent_run_id=parent_run_id,
+        retry_count=retry_count,
     )
     
     # # Trigger the workflow as a deployment

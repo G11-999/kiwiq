@@ -5,6 +5,7 @@ This module contains base class and implementations for runtime adapters that ha
 actual execution of workflow graphs using different underlying frameworks.
 """
 from abc import ABC, abstractmethod
+from logging import Logger
 from typing import Any, Dict, List, Optional, Tuple, Type, Union, AsyncIterator, cast, Literal, Callable, Awaitable, Iterator
 from pathlib import Path
 import os
@@ -863,7 +864,10 @@ class LangGraphRuntimeAdapter(GraphRuntimeAdapter):
         config: Dict[str, Any],
         output_node_id: Optional[str] = None, # Added optional output_node_id
         resume_with_hitl: bool = False,
-        interrupt_handler: Optional[Callable[[Dict[str, Any]], Awaitable[Any]]] = None # Expects async handler
+        interrupt_handler: Optional[Callable[[Dict[str, Any]], Awaitable[Any]]] = None, # Expects async handler
+        is_retry: bool = False,
+        logger: Optional[Logger] = None,
+        log_prefix: str = "",
     ) -> AsyncIterator[Union[Dict[str, Any], Tuple[str, Any]]]: # Yields stream chunks or final output
         """
         Asynchronously execute a LangGraph with input data and stream results, handling interrupts.
@@ -874,6 +878,9 @@ class LangGraphRuntimeAdapter(GraphRuntimeAdapter):
             config (Dict[str, Any]): Runtime configuration for execution.
             output_node_id (str, optional): If provided, the final yielded item will be the output of this node.
             interrupt_handler (Callable, optional): An async function to handle HITL prompts.
+            is_retry (bool): Whether the run is a retry.
+            logger (Optional[Logger]): The logger to use.
+            log_prefix (str): The log prefix to use.
 
         Yields:
             Union[Dict[str, Any], Tuple[str, Any]]: Streaming chunks from the graph execution
@@ -895,15 +902,21 @@ class LangGraphRuntimeAdapter(GraphRuntimeAdapter):
         # Create LangGraph config
         lg_config: RunnableConfig = {"configurable": config, "recursion_limit": 200}
 
-        print("\n\n\n\n#### ASYNC INPUT DATA SENT TO GRAPH STREAM", processed_input_data, f" --> RESUME: {resume_with_hitl} \n\n\n\n")
+        # print("\n\n\n\n#### ASYNC INPUT DATA SENT TO GRAPH STREAM", processed_input_data, f" --> RESUME: {resume_with_hitl} \n\n\n\n")
 
         current_input: Union[Dict[str, Any], Command] = processed_input_data
         stream_modes = ["updates", "messages", "custom",
                         # "debug"
                         ] # Request multiple stream types
         if resume_with_hitl:
-            print("\n\n\n\n--- Resuming with HITL ---\n\n\n\n")
+            # print("\n\n\n\n--- Resuming with HITL ---\n\n\n\n")
             current_input = Command(resume=input_data)
+        
+        if is_retry:
+            if logger is not None:
+                logger.warning(log_prefix + " #### RETRY DETECTED for workflow run! ####\n\n")
+            current_input = None
+
         async for chunk in graph.astream(current_input, config=lg_config, stream_mode=stream_modes):
             yield chunk
         # while True:

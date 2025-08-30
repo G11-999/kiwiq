@@ -377,6 +377,12 @@ class WorkflowRun(SQLModel, table=True):
         nullable=True,
         description="Comma-separated list of workflow config override IDs that were applied to this run, in order of application (later ones override previous ones)"
     )
+    retry_count: Optional[int] = Field(
+        default=0,
+        nullable=True,
+        ge=0,
+        description="Number of times this workflow run has been retried. Defaults to 0."
+    )
 
     started_at: Optional[datetime] = Field(default=None, sa_column=sa.Column(sa.DateTime(timezone=True), nullable=True))
     ended_at: Optional[datetime] = Field(default=None, sa_column=sa.Column(sa.DateTime(timezone=True), nullable=True))

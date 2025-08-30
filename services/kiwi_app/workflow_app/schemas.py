@@ -105,6 +105,7 @@ class WorkflowRunBase(BaseModel):
     error_message: Optional[str] = None
     detailed_results_ref: Optional[str] = Field(None, description="Reference to detailed logs/results (e.g., NoSQL collection/path)")
     thread_id: Optional[uuid.UUID] = Field(None, description="Associated thread ID (e.g., from LangGraph)")
+    retry_count: Optional[int] = Field(default=0, ge=0, description="Number of times this workflow run has been retried. Defaults to 0.")
     # resume_from_checkpoint: Optional[bool] = Field(default=False, description="Whether to resume from a checkpoint")
 
 
@@ -123,6 +124,7 @@ class WorkflowRunCreate(BaseModel):
     on_behalf_of_user_id: Optional[uuid.UUID] = Field(None, description="User ID to act on behalf of (requires superuser privileges)")
     tag: Optional[str] = Field(None, description="Optional tag to mark this run for experimentation tracking")
     applied_workflow_config_overrides: Optional[str] = Field(None, description="Comma-separated list of override IDs that were applied to this run")
+    retry_count: Optional[int] = Field(default=0, ge=0, description="Number of times this workflow run has been retried. Defaults to 0.")
     # Override configs
     include_active_overrides: Optional[bool] = Field(default=True, description="Whether to include active overrides")
     include_override_tags: Optional[List[str]] = Field(default=None, description="List of override tags to include")
@@ -155,6 +157,7 @@ class WorkflowRunUpdate(BaseModel):
     started_at: Optional[datetime] = None
     ended_at: Optional[datetime] = None
     thread_id: Optional[uuid.UUID] = None
+    retry_count: Optional[int] = Field(None, ge=0, description="Number of times this workflow run has been retried")
 
 class LogEntry(BaseModel):
     """Schema for a log entry with simplified fields."""

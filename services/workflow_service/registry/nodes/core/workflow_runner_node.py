@@ -715,6 +715,7 @@ class WorkflowRunnerNode(BaseDynamicNode):  # [WorkflowRunnerInput, WorkflowRunn
                 parent_run_id=parent_run_id,
                 thread_id=thread_id,
                 streaming_mode=True,
+                retry_count=workflow_run.retry_count or 0,
             )
             
             # Run the workflow as a subprocess
