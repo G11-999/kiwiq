@@ -285,12 +285,28 @@ class WorkflowService:
                             detail=f"HITL input validation failed: {error_msg}"
                         )
                 
-                # Store HITL response and mark job as done
-                hitl_job.response_data = run_submit.inputs
-                hitl_job.status = HITLJobStatus.RESPONDED
-                hitl_job.responded_at = datetime_now_utc()
-                db.add(hitl_job)
-                # await db.commit()
+                # TODO: FIXME: handle concurrency condition and only allow this code to be run once similar to below code in response to HITL API
+
+                updated_job = await self.hitl_job_dao.update_response(
+                    db, 
+                    id=hitl_job.id,
+                    response_data=run_submit.inputs, 
+                    user_id=user.id # Record who responded
+                )
+                
+                if not updated_job:
+                    # Should not happen if checks above pass, but handle defensively
+                    # Log error
+                    logger.error(f"ERROR: Failed to update HITL job response in DAO for job {job.id}")
+                    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update HITL job response")
+
+                
+                # # Store HITL response and mark job as done
+                # hitl_job.response_data = run_submit.inputs
+                # hitl_job.status = HITLJobStatus.RESPONDED
+                # hitl_job.responded_at = datetime_now_utc()
+                # db.add(hitl_job)
+                # # await db.commit()
                 
                 # Update run status to SCHEDULED for resumption
                 workflow_run.status = WorkflowRunStatus.SCHEDULED
