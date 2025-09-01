@@ -2252,6 +2252,7 @@ class WorkflowService:
         overrides: List[models.WorkflowConfigOverride],
         base_graph_schema: GraphSchema,
         workflow_id: Optional[uuid.UUID] = None,
+        apply_in_reverse_order: bool = True,
     ) -> GraphSchema:
         """
         Applies a list of workflow configuration overrides to a base workflow.
@@ -2259,6 +2260,7 @@ class WorkflowService:
         Args:
             overrides: List of WorkflowConfigOverride objects to apply
             base_graph_schema: The base graph schema to apply overrides to
+            apply_in_reverse_order: Whether to apply overrides in reverse order
             
         Returns:
             The final effective GraphSchema after applying all overrides
@@ -2273,7 +2275,7 @@ class WorkflowService:
             )
         
         current_graph_schema = base_graph_schema
-        for override_idx, override_config in enumerate(overrides):
+        for override_idx, override_config in enumerate(reversed(overrides) if apply_in_reverse_order else overrides):
             if not override_config.override_graph_schema:
                 logger.warning(f"Skipping override ID {override_config.id} (Tag: {override_config.tag or 'N/A'}) as its override_graph_schema is empty/None.")
                 continue
