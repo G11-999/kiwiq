@@ -41,22 +41,39 @@ MAX_OVERFLOW = global_settings.effective_max_overflow
 # SQLModel Engine and Session Setup
 # ========================================
 
-# Create SQLModel async database engine
+# Create SQLModel async database engine with enhanced pool management
 async_engine = create_async_engine(
     DATABASE_URL_ASYNC,
     echo=ENGINE_ECHO,
     pool_size=POOL_SIZE,
     max_overflow=MAX_OVERFLOW,
-    pool_timeout=30,
+    pool_timeout=30,  # Timeout waiting for a connection from pool
+    # DEBUG: new Pool health management configs
+    pool_recycle=3600,  # Recycle connections after 30 minutes (more frequent for high load)
+    pool_pre_ping=True,  # Test connections before using them
+    echo_pool=False,  # Set to True for debugging pool issues
+    connect_args={
+        "server_settings": {"jit": "off"},  # Disable JIT for more predictable performance
+        "command_timeout": 60,  # Individual query timeout (60 seconds)
+        "connect_timeout": 10,  # Connection establishment timeout (10 seconds)
+    },
 )
 
-# Create SQLModel sync engine
+# Create SQLModel sync engine with enhanced pool management
 sync_engine = create_engine(
     DATABASE_URL_SYNC,
     echo=ENGINE_ECHO,
     pool_size=POOL_SIZE,
     max_overflow=MAX_OVERFLOW,
-    pool_timeout=30,
+    pool_timeout=30,  # Timeout waiting for a connection from pool
+    # DEBUG: new Pool health management configs
+    pool_recycle=3600,  # Recycle connections after 30 minutes (more frequent for high load)
+    pool_pre_ping=True,  # Test connections before using them
+    echo_pool=False,  # Set to True for debugging pool issues
+    connect_args={
+        "options": "-c statement_timeout=60000",  # 60 second statement timeout (milliseconds)
+        "connect_timeout": 10,  # Connection establishment timeout (10 seconds)
+    },
 )
 
 # SQLModel Session Factories

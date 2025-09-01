@@ -50,13 +50,23 @@ class Settings(BaseSettings):
     DB_ECHO: bool = os.getenv("DB_ECHO_STR", "false").lower() == "true"  # SQL query logging
     DB_TABLE_NAMESPACE_PREFIX: str = "kiwiq_"
 
-    # Main app settings (keep current)
-    DB_POOL_SIZE: int = 5
-    DB_MAX_OVERFLOW: int = 10
+    # Main app settings - Optimized for single async worker production load
+    # Single async worker can handle 500-2000+ concurrent requests
+    # Assuming 40% need DB access with 25% connection utilization = ~50-200 connections needed
+    # Total: 75 + 50 = 125 connections max (conservative for production)
+    DB_POOL_SIZE: int = 75  # Persistent connections in the pool (warm connections)
+    DB_MAX_OVERFLOW: int = 50  # Additional connections for traffic spikes
     
     # Worker/Prefect settings (smaller pools)
     WORKER_DB_POOL_SIZE: int = 2
     WORKER_DB_MAX_OVERFLOW: int = 3
+
+    # # Worker/Prefect settings - MUST support 50 concurrent workflows
+    # # Each workflow needs ~3 connections (checkpointer, DB ops, external context)
+    # # Recommended: 50 workflows × 3 connections = 150, with some pooling efficiency
+    # # Setting to 100 base + 50 overflow = 150 total connections
+    # WORKER_DB_POOL_SIZE: int = 100  # Base pool for concurrent workflows
+    # WORKER_DB_MAX_OVERFLOW: int = 50  # Burst capacity for peak load
 
     # Detect if running in worker
     IS_WORKER_PROCESS: bool = Field(default_factory=lambda: os.getenv("IS_PREFECT_WORKER", "false").lower() == "true")
