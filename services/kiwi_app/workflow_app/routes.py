@@ -968,12 +968,14 @@ async def delete_workflow(
     dependencies=[Depends(wf_deps.RequireWorkflowReadActiveOrg)] # Ensures user has read access to the base workflow
 )
 async def get_workflow_effective_config(
-    query_params: Annotated[schemas.WorkflowEffectiveConfigQuery, Query(...)],
+    # query_params: Annotated[schemas.WorkflowEffectiveConfigQuery, Query(...)],
+    include_active: Optional[bool] = Query(True, description="Whether to include active overrides when calculating the effective config."),
+    include_tags: Optional[List[str]] = Query(None, description="Optional list of override tags to specifically include."),
     workflow_id: uuid.UUID = Path(..., description="The ID of the workflow"),
     active_org_id: uuid.UUID = Depends(get_active_org_id),
     current_user: User = Depends(get_current_active_verified_user), # get_current_active_verified_user instead of RequireWorkflowReadActiveOrg for current_user
     db: AsyncSession = Depends(get_async_db_dependency),
-    user_id: uuid.UUID = Query(None, description="The ID of the user whose effective config to retrieve (superuser only)"), # Optional, defaults to current_user
+    user_id: Optional[uuid.UUID] = Query(None, description="The ID of the user whose effective config to retrieve (superuser only)"), # Optional, defaults to current_user
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
     user_dao: auth_crud.UserDAO = Depends(auth_deps.get_user_dao),
 ):
@@ -996,8 +998,8 @@ async def get_workflow_effective_config(
             workflow_id=workflow_id,
             active_org_id=active_org_id,
             requesting_user=effective_user,
-            include_active=query_params.include_active,
-            include_tags=query_params.include_tags
+            include_active=include_active,
+            include_tags=include_tags
         )
         effective_user_msg = f" for user {effective_user.id}" if effective_user.id != current_user.id else ""
         workflow_logger.info(f"User {current_user.id} retrieved effective config{effective_user_msg} for workflow {workflow_id} in org {active_org_id} with {len(applied_overrides)} overrides.")
