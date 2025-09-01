@@ -973,7 +973,9 @@ async def get_workflow_effective_config(
     active_org_id: uuid.UUID = Depends(get_active_org_id),
     current_user: User = Depends(get_current_active_verified_user), # get_current_active_verified_user instead of RequireWorkflowReadActiveOrg for current_user
     db: AsyncSession = Depends(get_async_db_dependency),
+    user_id: uuid.UUID = Query(None, description="The ID of the user whose effective config to retrieve (superuser only)"), # Optional, defaults to current_user
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
+    user_dao: auth_crud.UserDAO = Depends(auth_deps.get_user_dao),
 ):
     """
     Retrieves the effective graph configuration for a specific workflow, 
@@ -981,29 +983,37 @@ async def get_workflow_effective_config(
 
     - Requires `workflow:read` permission on the active organization for the base workflow.
     """
+    if not current_user.is_superuser and user_id and user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You must be a superuser to get effective config for other users.")
+    effective_user = current_user
+    if user_id and user_id != current_user.id:
+        effective_user = await user_dao.get(db, id=user_id)
+        if not effective_user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     try:
         applied_overrides, effective_graph_schema = await workflow_service.get_workflow_config_with_overrides(
             db=db,
             workflow_id=workflow_id,
             active_org_id=active_org_id,
-            requesting_user=current_user,
+            requesting_user=effective_user,
             include_active=query_params.include_active,
             include_tags=query_params.include_tags
         )
-        workflow_logger.info(f"User {current_user.id} retrieved effective config for workflow {workflow_id} in org {active_org_id} with {len(applied_overrides)} overrides.")
+        effective_user_msg = f" for user {effective_user.id}" if effective_user.id != current_user.id else ""
+        workflow_logger.info(f"User {current_user.id} retrieved effective config{effective_user_msg} for workflow {workflow_id} in org {active_org_id} with {len(applied_overrides)} overrides.")
         return schemas.WorkflowEffectiveConfigResponse(
             applied_overrides=applied_overrides,
             effective_graph_schema=effective_graph_schema
         )
     except exceptions.WorkflowNotFoundException as e:
-        workflow_logger.warning(f"User {current_user.id} attempted to get effective config for non-existent workflow: {workflow_id}")
+        workflow_logger.warning(f"User {current_user.id} attempted to get effective config{effective_user_msg} for non-existent workflow: {workflow_id}")
         raise e
     except HTTPException as e:
         # Re-raise known HTTP exceptions (e.g., from override application failure)
-        workflow_logger.warning(f"HTTP error for user {current_user.id} getting effective config for workflow {workflow_id}: {str(e)}")
+        workflow_logger.warning(f"HTTP error for user {current_user.id} getting effective config{effective_user_msg} for workflow {workflow_id}: {str(e)}")
         raise
     except Exception as e:
-        workflow_logger.error(f"Error retrieving effective config for workflow {workflow_id}: {str(e)}", exc_info=True)
+        workflow_logger.error(f"Error retrieving effective config{effective_user_msg} for workflow {workflow_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An error occurred while retrieving the effective workflow configuration")
 
 
