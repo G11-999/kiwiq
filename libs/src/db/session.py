@@ -36,6 +36,9 @@ DATABASE_URL_ASYNC = global_settings.DATABASE_URL.replace('postgresql://', 'post
 ENGINE_ECHO = global_settings.DB_ECHO
 POOL_SIZE = global_settings.effective_pool_size
 MAX_OVERFLOW = global_settings.effective_max_overflow
+WORKER_POOL_SIZE = global_settings.WORKER_DB_POOL_SIZE
+WORKER_MAX_OVERFLOW = global_settings.WORKER_DB_MAX_OVERFLOW
+WORKER_POOL_MAX_SIZE = global_settings.WORKER_POOL_MAX_SIZE
 
 # ========================================
 # SQLModel Engine and Session Setup
@@ -124,8 +127,8 @@ def get_pool() -> Generator[ConnectionPool, None, None]:
     """
     pool = ConnectionPool(
         conninfo=global_settings.LANGGRAPH_DATABASE_URL, # Raw URL is fine for psycopg directly
-        min_size=POOL_SIZE,
-        max_size=MAX_OVERFLOW,
+        min_size=WORKER_POOL_SIZE,
+        max_size=WORKER_POOL_MAX_SIZE,
         kwargs=pool_connection_kwargs,
     )
     try:
@@ -150,7 +153,7 @@ async def get_shared_async_pool() -> AsyncConnectionPool:
                 _async_psycopg_pool = AsyncConnectionPool(
                     conninfo=global_settings.LANGGRAPH_DATABASE_URL,
                     min_size=POOL_SIZE,  # Smaller for workers
-                    max_size=MAX_OVERFLOW,
+                    max_size=WORKER_POOL_MAX_SIZE,
                     kwargs=pool_connection_kwargs,
                 )
                 await _async_psycopg_pool.open()
@@ -179,7 +182,7 @@ async def get_async_pool() -> AsyncGenerator[AsyncConnectionPool, None]:
     pool = AsyncConnectionPool(
         conninfo=global_settings.LANGGRAPH_DATABASE_URL, # Raw URL is fine for psycopg directly
         min_size=POOL_SIZE,
-        max_size=MAX_OVERFLOW,
+        max_size=WORKER_POOL_MAX_SIZE,
         kwargs=pool_connection_kwargs,
     )
     try:

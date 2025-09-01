@@ -60,6 +60,7 @@ class Settings(BaseSettings):
     # Worker/Prefect settings (smaller pools)
     WORKER_DB_POOL_SIZE: int = 2
     WORKER_DB_MAX_OVERFLOW: int = 3
+    WORKER_POOL_MAX_SIZE: int = 3
 
     # # Worker/Prefect settings - MUST support 50 concurrent workflows
     # # Each workflow needs ~3 connections (checkpointer, DB ops, external context)
