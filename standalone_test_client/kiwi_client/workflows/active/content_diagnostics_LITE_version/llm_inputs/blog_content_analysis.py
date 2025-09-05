@@ -19,29 +19,11 @@ class SalesFunnelStage(str, Enum):
 class PostClassificationSchema(BaseModel):
     post_url: str = Field(description="The URL of the blog post")
     sales_funnel_stage: SalesFunnelStage = Field(description="The sales funnel stage this post belongs to")
-    primary_topic: str = Field(description="Main topic of the post")
-    secondary_topics: List[str] = Field(description="Secondary topics covered", max_items=5)
-    
-    # Content Quality Scores (moved from group)
-    readability_score: float = Field(description="Readability score (0-100)")
-    clarity_score: float = Field(description="Content clarity score (0-100)")
-    logical_flow_score: float = Field(description="Logical flow score (0-100)")
-    depth_score: float = Field(description="Content depth score (0-100)")
-    originality_score: float = Field(description="Content originality score (0-100)")
-    
-    # E-E-A-T Individual Scores (moved from group)
-    expertise_score: float = Field(description="Expertise signals score (0-100)")
-    experience_score: float = Field(description="Experience demonstration score (0-100)")
-    authoritativeness_score: float = Field(description="Authority indicators score (0-100)")
-    trustworthiness_score: float = Field(description="Trust signals score (0-100)")
-    
-    # Content Structure Detection (boolean flags)
-    has_table_of_contents: bool = Field(description="Has table of contents")
-    has_faq_section: bool = Field(description="Has FAQ section")
 
 class PostClassificationBatchSchema(BaseModel):
     batch_id: str = Field(description="Batch ID")
     posts: List[PostClassificationSchema] = Field(description="List of posts")
+    reasoning: str = Field(description="Reasoning process for classification")
 
 # Modified E-E-A-T Analysis for Group Level (strategic insights only)
 class EEATAnalysisSchema(BaseModel):

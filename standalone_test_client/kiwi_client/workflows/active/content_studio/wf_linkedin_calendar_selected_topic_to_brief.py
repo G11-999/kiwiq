@@ -236,7 +236,7 @@ workflow_graph_schema = {
             "node_config": {},
             "dynamic_output_schema": {
                 "fields": {
-                    "user_action": {
+                    "user_brief_action": {
                         "type": "enum",
                         "enum_values": ["complete", "revise_brief", "cancel_workflow", "draft"],
                         "required": True,
@@ -261,31 +261,31 @@ workflow_graph_schema = {
             "node_id": "route_brief_approval",
             "node_name": "router_node",
             "node_config": {
-                "choices": ["save_brief", "check_iteration_limit", "output_node", "save_as_draft"],
+                "choices": ["save_brief", "check_iteration_limit", "delete_brief_on_cancel", "save_as_draft"],
                 "allow_multiple": False,
                 "choices_with_conditions": [
                     {
                         "choice_id": "save_brief",
-                        "input_path": "user_action",
+                        "input_path": "user_brief_action",
                         "target_value": "complete"
                     },
                     {
                         "choice_id": "check_iteration_limit",
-                        "input_path": "user_action",
+                        "input_path": "user_brief_action",
                         "target_value": "revise_brief"
                     },
                     {
-                        "choice_id": "output_node",
-                        "input_path": "user_action",
+                        "choice_id": "delete_brief_on_cancel",
+                        "input_path": "user_brief_action",
                         "target_value": "cancel_workflow"
                     },
                     {
                         "choice_id": "save_as_draft",
-                        "input_path": "user_action",
+                        "input_path": "user_brief_action",
                         "target_value": "draft"
                     }
                 ],
-                "default_choice": "output_node"
+                "default_choice": "delete_brief_on_cancel"
             }
         },
         
@@ -312,7 +312,7 @@ workflow_graph_schema = {
                         },
                         "extra_fields": [
                             {
-                                "src_path": "user_action",
+                                "src_path": "user_brief_action",
                                 "dst_path": "status"
                             },
                             {
@@ -326,6 +326,20 @@ workflow_graph_schema = {
                         },
                     }
                 ],
+            }
+        },
+        
+        # 8a. Delete Brief on Cancel - Delete Customer Data Node
+        "delete_brief_on_cancel": {
+            "node_id": "delete_brief_on_cancel",
+            "node_name": "delete_customer_data",
+            "node_config": {
+                "search_params": {
+                    "input_namespace_field": "entity_username",
+                    "input_namespace_field_pattern": LINKEDIN_BRIEF_NAMESPACE_TEMPLATE,
+                    "input_docname_field": "brief_uuid",
+                    "input_docname_field_pattern": LINKEDIN_BRIEF_DOCNAME
+                }
             }
         },
         
@@ -501,7 +515,7 @@ workflow_graph_schema = {
                         },
                         "extra_fields": [
                             {
-                                "src_path": "user_action",
+                                "src_path": "user_brief_action",
                                 "dst_path": "status"
                             },
                             {
@@ -646,7 +660,7 @@ workflow_graph_schema = {
             "src_node_id": "brief_approval_hitl",
             "dst_node_id": "route_brief_approval",
             "mappings": [
-                {"src_field": "user_action", "dst_field": "user_action"}
+                {"src_field": "user_brief_action", "dst_field": "user_brief_action"}
             ]
         },
         
@@ -657,7 +671,7 @@ workflow_graph_schema = {
             "mappings": [
                 {"src_field": "revision_feedback", "dst_field": "current_revision_feedback"},
                 {"src_field": "updated_content_brief", "dst_field": "current_content_brief"},
-                {"src_field": "user_action", "dst_field": "user_action"}
+                {"src_field": "user_brief_action", "dst_field": "user_brief_action"}
             ]
         },
         
@@ -674,8 +688,8 @@ workflow_graph_schema = {
         },
         {
             "src_node_id": "route_brief_approval",
-            "dst_node_id": "output_node",
-            "description": "Route to output if workflow cancelled"
+            "dst_node_id": "delete_brief_on_cancel",
+            "description": "Route to delete brief if workflow cancelled"
         },
         {
             "src_node_id": "route_brief_approval",
@@ -717,7 +731,7 @@ workflow_graph_schema = {
             "dst_node_id": "save_as_draft",
             "mappings": [
                 {"src_field": "current_content_brief", "dst_field": "current_content_brief"},
-                {"src_field": "user_action", "dst_field": "user_action"},
+                {"src_field": "user_brief_action", "dst_field": "user_brief_action"},
                 {"src_field": "entity_username", "dst_field": "entity_username"},
                 {"src_field": "brief_uuid", "dst_field": "brief_uuid"}
             ]
@@ -725,6 +739,24 @@ workflow_graph_schema = {
         
         # Save as Draft -> brief approval hitl
         {"src_node_id": "save_as_draft", "dst_node_id": "brief_approval_hitl"},
+        
+        # Delete Brief on Cancel edges
+        {
+            "src_node_id": "$graph_state",
+            "dst_node_id": "delete_brief_on_cancel",
+            "mappings": [
+                {"src_field": "entity_username", "dst_field": "entity_username"},
+                {"src_field": "brief_uuid", "dst_field": "brief_uuid"}
+            ]
+        },
+        {
+            "src_node_id": "delete_brief_on_cancel",
+            "dst_node_id": "output_node",
+            "mappings": [
+                {"src_field": "deleted_count", "dst_field": "deleted_count"},
+                {"src_field": "deleted_documents", "dst_field": "deleted_documents"}
+            ]
+        },
         
         # State -> Brief Feedback Prompt Constructor
         {
@@ -834,7 +866,7 @@ workflow_graph_schema = {
             "mappings": [
                 {"src_field": "entity_username", "dst_field": "entity_username"},
                 {"src_field": "current_content_brief", "dst_field": "final_content_brief"},
-                {"src_field": "user_action", "dst_field": "user_action"},
+                {"src_field": "user_brief_action", "dst_field": "user_brief_action"},
                 {"src_field": "brief_uuid", "dst_field": "brief_uuid"}
             ]
         },
@@ -860,7 +892,7 @@ workflow_graph_schema = {
                 "generation_metadata": "replace",
                 "brief_generation_messages_history": "add_messages",
                 "brief_feedback_analysis_messages_history": "add_messages",
-                "user_action": "replace",
+                "user_brief_action": "replace",
                 "selected_topic": "replace",
                 "executive_profile_doc": "replace",
                 "playbook_doc": "replace",
@@ -1090,7 +1122,7 @@ async def main_test_selected_topic_brief_workflow():
     # Predefined HITL inputs for testing
     predefined_hitl_inputs = [
         {
-            "user_action": "revise_brief",
+            "user_brief_action": "cancel_workflow",
             "revision_feedback": "The brief needs more specific examples and should include more actionable steps. Also, make the tone more conversational and add a personal story in the hook.",
             "updated_content_brief": {
                 "title": "Why Your Sales Team's CRM Adoption is Failing (And How to Fix It)",
@@ -1121,136 +1153,136 @@ async def main_test_selected_topic_brief_workflow():
                 "writing_guidelines": ["Use 'you' and 'your' to speak directly to reader"]
             }
         },
-        {
-            "user_action": "draft",
-            "updated_content_brief": {
-                "title": "Why Your Sales Team's CRM Adoption is Failing (And How to Fix It)",
-                "content_type": "LinkedIn Post",
-                "content_format": "Text-based thought leadership post",
-                "target_audience": "Sales leaders and Revenue Operations professionals at enterprise companies",
-                "content_goal": "Share insights on CRM adoption challenges and provide actionable solutions",
-                "key_message": "CRM adoption fails due to process issues, not technology - fix the human element first",
-                "content_structure": [
-                    {
-                        "section_title": "Hook",
-                        "key_points": [
-                            "Bold statement about 70% of CRM implementations failing",
-                            "Personal anecdote about witnessing failed adoption"
-                        ],
-                        "estimated_word_count": 50
-                    },
-                    {
-                        "section_title": "Problem Diagnosis",
-                        "key_points": [
-                            "Top 3 reasons for failure",
-                            "Real examples from enterprise teams",
-                            "Cost of poor adoption"
-                        ],
-                        "estimated_word_count": 150
-                    }
-                ],
-                "linkedin_formatting": {
-                    "hook_style": "Contrarian statement with surprising statistic",
-                    "emoji_strategy": "Use sparingly - checkmarks for lists, warning for problems",
-                    "hashtag_strategy": "#SalesOps #CRM #RevenueOperations #SalesLeadership #SalesEnablement",
-                    "formatting_notes": [
-                        "Use line breaks between paragraphs",
-                        "Bold key statistics"
-                    ]
-                },
-                "call_to_action": "What's your biggest CRM adoption challenge? Share below and I'll provide personalized advice.",
-                "engagement_tactics": [
-                    "Ask provocative question at the end",
-                    "Respond to early comments to boost algorithm"
-                ],
-                "success_metrics": [
-                    "200+ reactions within 24 hours",
-                    "50+ meaningful comments"
-                ],
-                "estimated_reading_time": "2-3 minutes",
-                "writing_guidelines": [
-                    "Use 'you' and 'your' to speak directly to reader",
-                    "Include specific numbers and percentages"
-                ]
-            }
-        },
-        {
-            "user_action": "complete",
-            "updated_content_brief": {
-                "title": "Why Your Sales Team's CRM Adoption is Failing (And How to Fix It)",
-                "content_type": "LinkedIn Post",
-                "content_format": "Text-based thought leadership post",
-                "target_audience": "Sales leaders and Revenue Operations professionals at enterprise companies",
-                "content_goal": "Share insights on CRM adoption challenges and provide actionable solutions",
-                "key_message": "CRM adoption fails due to process issues, not technology - fix the human element first",
-                "content_structure": [
-                    {
-                        "section_title": "Hook",
-                        "key_points": [
-                            "Bold statement about 70% of CRM implementations failing",
-                            "Personal anecdote about witnessing failed adoption"
-                        ],
-                        "estimated_word_count": 50
-                    },
-                    {
-                        "section_title": "Problem Diagnosis",
-                        "key_points": [
-                            "Top 3 reasons for failure",
-                            "Real examples from enterprise teams",
-                            "Cost of poor adoption"
-                        ],
-                        "estimated_word_count": 150
-                    },
-                    {
-                        "section_title": "Solution Framework",
-                        "key_points": [
-                            "5-step adoption framework",
-                            "Quick wins to build momentum",
-                            "Change management tactics"
-                        ],
-                        "estimated_word_count": 200
-                    },
-                    {
-                        "section_title": "Call to Action",
-                        "key_points": [
-                            "Question about reader's CRM challenges",
-                            "Invitation to share experiences"
-                        ],
-                        "estimated_word_count": 50
-                    }
-                ],
-                "linkedin_formatting": {
-                    "hook_style": "Contrarian statement with surprising statistic",
-                    "emoji_strategy": "Use sparingly - checkmarks for lists, warning for problems",
-                    "hashtag_strategy": "#SalesOps #CRM #RevenueOperations #SalesLeadership #SalesEnablement",
-                    "formatting_notes": [
-                        "Use line breaks between paragraphs",
-                        "Bold key statistics",
-                        "Number the solution steps"
-                    ]
-                },
-                "call_to_action": "What's your biggest CRM adoption challenge? Share below and I'll provide personalized advice.",
-                "engagement_tactics": [
-                    "Ask provocative question at the end",
-                    "Respond to early comments to boost algorithm",
-                    "Tag relevant thought leaders",
-                    "Share controversial opinion about vendor blame"
-                ],
-                "success_metrics": [
-                    "200+ reactions within 24 hours",
-                    "50+ meaningful comments",
-                    "20+ shares/reposts",
-                    "5+ connection requests from target audience"
-                ],
-                "estimated_reading_time": "2-3 minutes",
-                "writing_guidelines": [
-                    "Use 'you' and 'your' to speak directly to reader",
-                    "Include specific numbers and percentages",
-                    "Share personal experience to build credibility",
-                    "End with open-ended question to drive engagement"
-                ]
-            }
-        }
+        # {
+        #     "user_brief_action": "draft",
+        #     "updated_content_brief": {
+        #         "title": "Why Your Sales Team's CRM Adoption is Failing (And How to Fix It)",
+        #         "content_type": "LinkedIn Post",
+        #         "content_format": "Text-based thought leadership post",
+        #         "target_audience": "Sales leaders and Revenue Operations professionals at enterprise companies",
+        #         "content_goal": "Share insights on CRM adoption challenges and provide actionable solutions",
+        #         "key_message": "CRM adoption fails due to process issues, not technology - fix the human element first",
+        #         "content_structure": [
+        #             {
+        #                 "section_title": "Hook",
+        #                 "key_points": [
+        #                     "Bold statement about 70% of CRM implementations failing",
+        #                     "Personal anecdote about witnessing failed adoption"
+        #                 ],
+        #                 "estimated_word_count": 50
+        #             },
+        #             {
+        #                 "section_title": "Problem Diagnosis",
+        #                 "key_points": [
+        #                     "Top 3 reasons for failure",
+        #                     "Real examples from enterprise teams",
+        #                     "Cost of poor adoption"
+        #                 ],
+        #                 "estimated_word_count": 150
+        #             }
+        #         ],
+        #         "linkedin_formatting": {
+        #             "hook_style": "Contrarian statement with surprising statistic",
+        #             "emoji_strategy": "Use sparingly - checkmarks for lists, warning for problems",
+        #             "hashtag_strategy": "#SalesOps #CRM #RevenueOperations #SalesLeadership #SalesEnablement",
+        #             "formatting_notes": [
+        #                 "Use line breaks between paragraphs",
+        #                 "Bold key statistics"
+        #             ]
+        #         },
+        #         "call_to_action": "What's your biggest CRM adoption challenge? Share below and I'll provide personalized advice.",
+        #         "engagement_tactics": [
+        #             "Ask provocative question at the end",
+        #             "Respond to early comments to boost algorithm"
+        #         ],
+        #         "success_metrics": [
+        #             "200+ reactions within 24 hours",
+        #             "50+ meaningful comments"
+        #         ],
+        #         "estimated_reading_time": "2-3 minutes",
+        #         "writing_guidelines": [
+        #             "Use 'you' and 'your' to speak directly to reader",
+        #             "Include specific numbers and percentages"
+        #         ]
+        #     }
+        # },
+        # {
+        #     "user_brief_action": "complete",
+        #     "updated_content_brief": {
+        #         "title": "Why Your Sales Team's CRM Adoption is Failing (And How to Fix It)",
+        #         "content_type": "LinkedIn Post",
+        #         "content_format": "Text-based thought leadership post",
+        #         "target_audience": "Sales leaders and Revenue Operations professionals at enterprise companies",
+        #         "content_goal": "Share insights on CRM adoption challenges and provide actionable solutions",
+        #         "key_message": "CRM adoption fails due to process issues, not technology - fix the human element first",
+        #         "content_structure": [
+        #             {
+        #                 "section_title": "Hook",
+        #                 "key_points": [
+        #                     "Bold statement about 70% of CRM implementations failing",
+        #                     "Personal anecdote about witnessing failed adoption"
+        #                 ],
+        #                 "estimated_word_count": 50
+        #             },
+        #             {
+        #                 "section_title": "Problem Diagnosis",
+        #                 "key_points": [
+        #                     "Top 3 reasons for failure",
+        #                     "Real examples from enterprise teams",
+        #                     "Cost of poor adoption"
+        #                 ],
+        #                 "estimated_word_count": 150
+        #             },
+        #             {
+        #                 "section_title": "Solution Framework",
+        #                 "key_points": [
+        #                     "5-step adoption framework",
+        #                     "Quick wins to build momentum",
+        #                     "Change management tactics"
+        #                 ],
+        #                 "estimated_word_count": 200
+        #             },
+        #             {
+        #                 "section_title": "Call to Action",
+        #                 "key_points": [
+        #                     "Question about reader's CRM challenges",
+        #                     "Invitation to share experiences"
+        #                 ],
+        #                 "estimated_word_count": 50
+        #             }
+        #         ],
+        #         "linkedin_formatting": {
+        #             "hook_style": "Contrarian statement with surprising statistic",
+        #             "emoji_strategy": "Use sparingly - checkmarks for lists, warning for problems",
+        #             "hashtag_strategy": "#SalesOps #CRM #RevenueOperations #SalesLeadership #SalesEnablement",
+        #             "formatting_notes": [
+        #                 "Use line breaks between paragraphs",
+        #                 "Bold key statistics",
+        #                 "Number the solution steps"
+        #             ]
+        #         },
+        #         "call_to_action": "What's your biggest CRM adoption challenge? Share below and I'll provide personalized advice.",
+        #         "engagement_tactics": [
+        #             "Ask provocative question at the end",
+        #             "Respond to early comments to boost algorithm",
+        #             "Tag relevant thought leaders",
+        #             "Share controversial opinion about vendor blame"
+        #         ],
+        #         "success_metrics": [
+        #             "200+ reactions within 24 hours",
+        #             "50+ meaningful comments",
+        #             "20+ shares/reposts",
+        #             "5+ connection requests from target audience"
+        #         ],
+        #         "estimated_reading_time": "2-3 minutes",
+        #         "writing_guidelines": [
+        #             "Use 'you' and 'your' to speak directly to reader",
+        #             "Include specific numbers and percentages",
+        #             "Share personal experience to build credibility",
+        #             "End with open-ended question to drive engagement"
+        #         ]
+        #     }
+        # }
     ]
     
     # Execute the test

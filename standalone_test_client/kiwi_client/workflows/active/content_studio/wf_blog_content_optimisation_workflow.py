@@ -80,7 +80,7 @@ from kiwi_client.workflows.active.content_studio.llm_inputs.blog_content_optimis
 LLM_PROVIDER = "anthropic"
 LLM_MODEL = "claude-sonnet-4-20250514"
 TEMPERATURE = 0.7
-MAX_TOKENS = 4000
+MAX_TOKENS = 8000
 
 # Perplexity Configuration for Content Gap Research
 PERPLEXITY_PROVIDER = "perplexity"
@@ -543,7 +543,7 @@ workflow_graph_schema = {
             "node_id": "route_final_approval",
             "node_name": "router_node",
             "node_config": {
-                "choices": ["save_blog_post", "check_iteration_limit", "output_node", "save_draft"],
+                "choices": ["save_blog_post", "check_iteration_limit", "delete_blog_post", "save_draft"],
                 "allow_multiple": False,
                 "choices_with_conditions": [
                     {
@@ -557,7 +557,7 @@ workflow_graph_schema = {
                         "target_value": "provide_feedback"
                     },
                     {
-                        "choice_id": "output_node",
+                        "choice_id": "delete_blog_post",
                         "input_path": "user_action",
                         "target_value": "cancel_workflow"
                     },
@@ -567,7 +567,7 @@ workflow_graph_schema = {
                         "target_value": "draft"
                     }
                 ],
-                "default_choice": "output_node"
+                "default_choice": "delete_blog_post"
             }
         },
         
@@ -743,6 +743,20 @@ workflow_graph_schema = {
             }
         },
         
+        # 14b. Delete Blog Post on Cancel
+        "delete_blog_post": {
+            "node_id": "delete_blog_post",
+            "node_name": "delete_customer_data",
+            "node_config": {
+                "search_params": {
+                    "input_namespace_field": "company_name",
+                    "input_namespace_field_pattern": BLOG_POST_NAMESPACE_TEMPLATE,
+                    "input_docname_field": "post_uuid",
+                    "input_docname_field_pattern": BLOG_POST_DOCNAME
+                }
+            }
+        },
+        
         # 15. Output Node
         "output_node": {
             "node_id": "output_node",
@@ -865,23 +879,40 @@ workflow_graph_schema = {
         # LLM Nodes -> HITL Review (direct connection, no merge)
         {
             "src_node_id": "content_analyzer_llm",
-            "dst_node_id": "analysis_review_hitl",
+            "dst_node_id": "$graph_state",
             "mappings": [
                 {"src_field": "structured_output", "dst_field": "content_analysis"}
             ]
         },
         {
             "src_node_id": "seo_intent_analyzer_llm",
-            "dst_node_id": "analysis_review_hitl", 
+            "dst_node_id": "$graph_state", 
             "mappings": [
                 {"src_field": "structured_output", "dst_field": "seo_analysis"}
             ]
         },
+        # {
+        #     "src_node_id": "content_gap_finder_llm",
+        #     "dst_node_id": "$graph_state",
+        #     "mappings": [
+        #                         {"src_field": "structured_output", "dst_field": "content_gap_analysis"}
+        #     ]
+        # },
+        
         {
             "src_node_id": "content_gap_finder_llm",
             "dst_node_id": "analysis_review_hitl",
             "mappings": [
                 {"src_field": "structured_output", "dst_field": "content_gap_analysis"}
+            ]
+        },
+
+        {
+            "src_node_id": "$graph_state",
+            "dst_node_id": "analysis_review_hitl",
+            "mappings": [
+                {"src_field": "content_analysis", "dst_field": "content_analysis"},
+                {"src_field": "seo_analysis", "dst_field": "seo_analysis"},
             ]
         },
         
@@ -1044,7 +1075,7 @@ workflow_graph_schema = {
         },
         {
             "src_node_id": "route_final_approval",
-            "dst_node_id": "output_node"
+            "dst_node_id": "delete_blog_post"
         },
         
         # Check Iteration Limit edges
@@ -1103,6 +1134,26 @@ workflow_graph_schema = {
         {
             "src_node_id": "save_draft",
             "dst_node_id": "final_approval_hitl"
+        },
+        
+        # State -> Delete Blog Post (for cancel workflow)
+        {
+            "src_node_id": "$graph_state",
+            "dst_node_id": "delete_blog_post",
+            "mappings": [
+                {"src_field": "company_name", "dst_field": "company_name"},
+                {"src_field": "post_uuid", "dst_field": "post_uuid"}
+            ]
+        },
+        
+        # Delete Blog Post -> Output (after deletion)
+        {
+            "src_node_id": "delete_blog_post",
+            "dst_node_id": "output_node",
+            "mappings": [
+                {"src_field": "deleted_count", "dst_field": "deleted_count"},
+                {"src_field": "deleted_documents", "dst_field": "deleted_documents"}
+            ]
         },
         
         # Save Blog Post -> Output
@@ -1270,6 +1321,14 @@ async def validate_content_optimization_workflow_output(outputs: Optional[Dict[s
         logger.info(f"   Blog post saved to: {final_blog_post_paths}")
     if final_blog_post_data:
         logger.info(f"   Blog post data available: {type(final_blog_post_data)}")
+    
+    # Check if blog post was deleted (cancellation scenario)
+    deleted_count = outputs.get('deleted_count')
+    deleted_documents = outputs.get('deleted_documents')
+    if deleted_count is not None:
+        logger.info(f"✓ Workflow cancelled - {deleted_count} document(s) deleted")
+        if deleted_documents:
+            logger.info(f"   Deleted documents: {deleted_documents}")
     
     logger.info("✓ Content optimization workflow output validation passed.")
     return True
@@ -1487,10 +1546,10 @@ Contact us to learn more about our AI-powered project management solutions.
     # VALID HUMAN INPUTS FOR MANUAL TESTING:
     
     # For analysis review HITL:
-    # {"user_action": "proceed_with_improvements", "gap_improvement_instructions": "Add more specific examples and case studies", "seo_improvement_instructions": "Focus on long-tail keywords for project management AI", "structure_improvement_instructions": "Improve readability with better subheadings and bullet points"}
+    {"user_action": "proceed_with_improvements", "gap_improvement_instructions": "Add more specific examples and case studies", "seo_improvement_instructions": "Focus on long-tail keywords for project management AI", "structure_improvement_instructions": "Improve readability with better subheadings and bullet points"}
     
     # For final approval HITL:
-    # {"approval_status": "approve"}
+    {"user_action": "cancel_workflow"}
     # {"approval_status": "reject", "user_feedback": "The content is too technical, please make it more accessible for non-technical project managers"}
     
     # Execute the test
@@ -1544,6 +1603,12 @@ Contact us to learn more about our AI-powered project management solutions.
             print(f"Saved to: {final_run_outputs['final_blog_post_paths']}")
         if 'final_blog_post_data' in final_run_outputs:
             print(f"Blog post data available: {type(final_run_outputs['final_blog_post_data'])}")
+        
+        # Show deletion info if workflow was cancelled
+        if 'deleted_count' in final_run_outputs:
+            print(f"✓ Workflow cancelled - {final_run_outputs['deleted_count']} document(s) deleted")
+            if 'deleted_documents' in final_run_outputs:
+                print(f"Deleted documents: {final_run_outputs['deleted_documents']}")
 
 
 # Entry point

@@ -87,10 +87,17 @@ The node can classify pages as blog posts using an LLM and filter the returned s
 - `blog_classifier_max_length` (int, default from system settings): Maximum characters considered from the `cleaned_markdown_content` field during classification.
 - `clean_markdown` (bool, default `true`): If enabled, the node returns cleaned markdown content in the preview items. The output field `markdown_content` will be sourced from `cleaned_markdown_content` (URLs stripped, irrelevant boilerplate removed). If disabled, `markdown_content` will be sourced from `raw_markdown_content`.
 
+### Data Quality Threshold
+
+The node includes a data quality check to ensure sufficient content was collected:
+
+- `min_blog_and_page_count` (int, default `10`, range: 1-100): Minimum number of pages required in the filtered sample for the result to be considered useful. If fewer pages are collected after filtering (blog classification, path filtering, etc.), the output field `has_insufficient_blog_and_page_count` will be set to `true` to indicate the data may not be sufficient for downstream processing.
+
 Notes:
 - Classification occurs in the scraping pipeline. When enabled, each stored document includes an `is_blog` boolean.
 - For node output, the preview list `scraped_data` is filtered by `is_blog == true` when classification is enabled.
 - **Automatic Disable**: Blog classification is automatically disabled when `include_only_paths` is specified in input, as path-based filtering provides more targeted content selection.
+- **Quality Check**: The threshold is applied to the final filtered sample (after blog classification and other filtering), not the raw scraped count.
 
 
 
@@ -244,6 +251,7 @@ The node provides comprehensive information about the scraping operation and res
   - Provides preview of extracted content
   - Full results are in MongoDB - use `mongodb_namespaces` to query them
   - If `classify_pages_as_blog` is enabled, this list is filtered to include only documents where `is_blog` is `true`
+- **`has_insufficient_blog_and_page_count`** (bool): Indicates whether the scraping job collected fewer pages than the minimum threshold (`min_blog_and_page_count`) after filtering. When `true`, the scraped data may not be sufficient for meaningful downstream processing, and you may need to adjust scraping parameters or target different content.
 
 ### Cache Information
 - **`used_cached_results`** (bool): Whether cached results were used
@@ -281,6 +289,20 @@ The node provides comprehensive information about the scraping operation and res
   "input": {
     "start_urls": ["https://example.com"],
     "allowed_domains": ["example.com"]
+  }
+}
+```
+
+### Lower Quality Threshold for Small Sites
+```json
+{
+  "node_config": {
+    "min_blog_and_page_count": 3
+  },
+  "input": {
+    "start_urls": ["https://small-blog.com"],
+    "allowed_domains": ["small-blog.com"],
+    "max_processed_urls_per_domain": 25
   }
 }
 ```
@@ -490,6 +512,56 @@ The node returns a filtered preview of each document with safe, high-signal fiel
 - When `clean_markdown` is `true` (default), `scraped_data[i].markdown_content` comes from `cleaned_markdown_content` which removes markdown links' URLs and prunes non-primary content. Link texts are preserved in brackets (e.g., `[Example](https://x.com)` → `[Example]`).
 - When `clean_markdown` is `false`, `scraped_data[i].markdown_content` comes from `raw_markdown_content` (direct markdown conversion with minimal cleaning).
 
+## Data Quality Threshold
+
+The Crawler Scraper node includes a built-in data quality check to help ensure that scraping jobs collect sufficient content for meaningful downstream processing.
+
+### How It Works
+
+1. **Threshold Setting**: The `min_blog_and_page_count` configuration (default: 10) sets the minimum number of pages required in the final filtered sample.
+
+2. **Quality Check**: After all filtering is applied (blog classification, path filtering, etc.), the node counts the pages in the final `scraped_data` sample.
+
+3. **Quality Indicator**: The output field `has_insufficient_blog_and_page_count` is set to:
+   - `false` if the filtered sample meets or exceeds the threshold (sufficient data)
+   - `true` if the filtered sample is below the threshold (insufficient data)
+
+### When Quality Checks Trigger
+
+The quality threshold is evaluated on the **final filtered sample**, which means it accounts for:
+- Blog classification filtering (when enabled)
+- Path filtering effects (include/exclude patterns)
+- Content extraction success/failure
+- Any other filtering applied during processing
+
+### Using Quality Information
+
+**In Workflow Logic**:
+```json
+{
+  "conditional_logic": {
+    "if": "crawler_output.has_insufficient_blog_and_page_count == true",
+    "then": "retry_with_broader_parameters",
+    "else": "proceed_with_analysis"
+  }
+}
+```
+
+**Common Responses to Insufficient Data**:
+- Increase `max_processed_urls_per_domain` to collect more pages
+- Broaden `include_only_paths` patterns or remove restrictive filtering
+- Disable blog classification if it's filtering too aggressively
+- Try different start URLs or domains with more content
+- Lower the `min_blog_and_page_count` threshold if appropriate for your use case
+
+### Quality vs. Quantity Balance
+
+- **Higher thresholds** (15-30): Ensure robust datasets but may require more extensive crawling
+- **Lower thresholds** (5-10): Accept smaller datasets but faster execution
+- **Very low thresholds** (1-3): Useful for testing or when any content is valuable
+
+**Note**: The quality check is informational - the node will still return all collected data even when the threshold isn't met. This allows downstream nodes to decide how to handle insufficient data scenarios.
+
 ## Best Practices
 
 ### Start Small and Scale
@@ -592,6 +664,22 @@ The node returns a filtered preview of each document with safe, high-signal fiel
 - **Increase** `max_processed_urls_per_domain` gradually
 - **Check** if `allowed_domains` includes all relevant subdomains
 - **Verify** start URLs are accessible and contain links to more content
+
+### Insufficient Data Quality (`has_insufficient_blog_and_page_count` is `true`)
+This indicates the final filtered sample contains fewer pages than the `min_blog_and_page_count` threshold:
+
+**First, diagnose the cause**:
+- Check the `scraped_data` sample size vs. `documents_stored` - if much smaller, filtering is removing most content
+- Review `stats` for crawling issues (robots.txt blocks, errors, etc.)
+- If blog classification is enabled, many pages may have been classified as non-blog content
+
+**Solutions to try**:
+- **Increase crawling limits**: Raise `max_processed_urls_per_domain` to collect more raw content
+- **Broaden path filtering**: Make `include_only_paths` patterns less restrictive or remove them entirely
+- **Disable blog classification**: Set `classify_pages_as_blog: false` if it's filtering too aggressively
+- **Adjust quality threshold**: Lower `min_blog_and_page_count` if your use case can work with smaller datasets
+- **Try different targets**: Use different `start_urls` or domains that may have more relevant content
+- **Check site structure**: Some sites may have most content behind login or in areas not accessible to crawlers
 
 ### Cache Not Working
 - **Check** `use_cached_scraping_results` is `true`

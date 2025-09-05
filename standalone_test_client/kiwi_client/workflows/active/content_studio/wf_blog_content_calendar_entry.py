@@ -22,7 +22,7 @@ import logging
 from typing import Dict, Any, Optional, List, Union, ClassVar, Type
 import json
 from enum import Enum
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 # Using Pydantic for easier schema generation
 from pydantic import BaseModel, Field
@@ -76,14 +76,13 @@ logger = logging.getLogger(__name__)
 
 # LLM Configuration
 LLM_PROVIDER = "openai"
-GENERATION_MODEL = "gpt-5"
+GENERATION_MODEL = "gpt-4.1"
 LLM_TEMPERATURE = 1
 LLM_MAX_TOKENS = 5000
 
 # Workflow Defaults
 DEFAULT_WEEKS_TO_GENERATE = 2
 DEFAULT_POSTS_PER_WEEK = 2  # Default if not specified in schedule config
-MAX_TOPIC_SUMMARY_ITERATIONS = 1  # Maximum iterations for topic summary to prevent infinite loops
 
 # Perplexity Configuration for Research
 PERPLEXITY_PROVIDER = "perplexity"
@@ -94,6 +93,19 @@ PERPLEXITY_MAX_TOKENS = 3000
 # Tool Executor Configuration
 TOOL_EXECUTOR_TIMEOUT = 30.0
 TOOL_EXECUTOR_MAX_CONCURRENT = 3
+
+# Search Params Default
+SEARCH_PARAMS_DEFAULT = {
+                    "input_namespace_field": "company_name",
+                    "input_namespace_field_pattern": BLOG_TOPIC_IDEAS_CARD_NAMESPACE_TEMPLATE,
+                    "docname_pattern": "*",
+                    "value_filter": {
+                        "scheduled_date": {
+                            "$gt": None,
+                            "$lte": None,
+                        },
+                    }
+                }
 
 # --- Workflow Graph Schema Definition ---
 
@@ -116,6 +128,22 @@ workflow_graph_schema = {
                   "type": "str", 
                   "required": True,
                   "description": "Company name identifier for loading documents"
+              },
+              "start_date": {
+                  "type": "str",
+                  "required": True,
+                  "description": "Start date for generating topic suggestions"
+              },
+              "end_date": {
+                  "type": "str",
+                  "required": True,
+                  "description": "End date for generating topic suggestions"
+              },
+              "search_params": {
+                  "type": "dict",
+                  "required": False,
+                  "default": SEARCH_PARAMS_DEFAULT,
+                  "description": "Default search params object for load node",
               },
           }
         }
@@ -242,7 +270,7 @@ workflow_graph_schema = {
             "variables": {
               "company_doc": None,
               "playbook": None,
-              "previous_topics": None,
+              "previous_topics": "",
             },
             "construct_options": {
               "company_doc": "company_doc",
@@ -288,7 +316,7 @@ workflow_graph_schema = {
             "variables": {
               "company_doc": None,
               "playbook": None,
-              "previous_posts": None,
+              "previous_posts": "",
               "selected_theme": None
             },
             "construct_options": {
@@ -382,17 +410,13 @@ workflow_graph_schema = {
             "id": "additional_topic_user_prompt",
             "template": TOPIC_ADDITIONAL_USER_PROMPT_TEMPLATE,
             "variables": {
-              "company_doc": None,
-              "playbook": None,
+              "posts_per_week": None,
               "current_datetime": "$current_date",
-              "previous_topics": None,
               "research_insights": None,
               "selected_theme": None
             },
             "construct_options": {
-              "company_doc": "company_doc",
-              "playbook": "playbook",
-              "previous_topics": "previous_topics",
+              "posts_per_week": "playbook.posts_per_week",
               "research_insights": "research_insights",
               "selected_theme": "theme_suggestion"
             }
@@ -414,7 +438,7 @@ workflow_graph_schema = {
               "company_doc": None,
               "playbook": None,
               "current_datetime": "$current_date",
-              "previous_topics": None,
+              "previous_topics": "",
               "research_insights": None,
               "selected_theme": None
             },
@@ -484,7 +508,7 @@ workflow_graph_schema = {
       "node_id": "route_on_topic_count",
       "node_name": "router_node",
       "node_config": {
-        "choices": ["construct_additional_theme_prompt", "store_all_topics"],
+        "choices": ["construct_additional_theme_prompt", "construct_delete_search_params"],
         "allow_multiple": False,
         "choices_with_conditions": [
           {
@@ -493,7 +517,7 @@ workflow_graph_schema = {
             "target_value": True
           },
           {
-            "choice_id": "store_all_topics",
+            "choice_id": "construct_delete_search_params",
             "input_path": "if_else_condition_tag_results.topic_count_check",
             "target_value": False,
           }
@@ -512,18 +536,39 @@ workflow_graph_schema = {
             "template": THEME_ADDITIONAL_USER_PROMPT_TEMPLATE,
             "variables": {
               "all_generated_topics": None,
-              "company_doc": None,
-              "playbook": None,
               "previous_topics": None
             },
             "construct_options": {
               "all_generated_topics": "all_generated_topics",
-              "company_doc": "company_doc",
-              "playbook": "playbook",
               "previous_topics": "previous_topics"
             }
           },
         }
+      }
+    },
+
+    # --- Construct Delete Search Params ---
+    "construct_delete_search_params": {
+      "node_id": "construct_delete_search_params",
+      "node_name": "transform_data",
+      "node_config": {
+        "merge_conflicting_paths_as_list": False,
+        "mappings": [
+          { "source_path": "search_params.input_namespace_field", "destination_path": "input_namespace_field" },
+          { "source_path": "search_params.input_namespace_field_pattern", "destination_path": "input_namespace_field_pattern" },
+          { "source_path": "search_params.docname_pattern", "destination_path": "docname_pattern" },
+          { "source_path": "start_date", "destination_path": "value_filter.scheduled_date.$gt" },
+          { "source_path": "end_date", "destination_path": "value_filter.scheduled_date.$lte" }
+        ]
+      }
+    },
+
+    # --- Delete Existing Entries in Window ---
+    "delete_previous_entries": {
+      "node_id": "delete_previous_entries",
+      "node_name": "delete_customer_data",
+      "node_config": {
+        "search_params_input_path": "search_params"
       }
     },
 
@@ -569,6 +614,9 @@ workflow_graph_schema = {
     { "src_node_id": "input_node", "dst_node_id": "$graph_state", "mappings": [
         { "src_field": "weeks_to_generate", "dst_field": "weeks_to_generate" },
         { "src_field": "company_name", "dst_field": "company_name" },
+        { "src_field": "start_date", "dst_field": "start_date" },
+        { "src_field": "end_date", "dst_field": "end_date" },
+        { "src_field": "search_params", "dst_field": "search_params" }
       ]
     },
 
@@ -650,10 +698,16 @@ workflow_graph_schema = {
       ]
     },
 
+    { "src_node_id": "$graph_state", "dst_node_id": "theme_suggestion_llm", "mappings": [
+        { "src_field": "theme_suggestion_messages_history", "dst_field": "messages_history" }
+      ]
+    },
+
     # --- Theme LLM to State ---
     { "src_node_id": "theme_suggestion_llm", "dst_node_id": "$graph_state", "mappings": [
         { "src_field": "structured_output", "dst_field": "theme_suggestion" },
-        { "src_field": "metadata", "dst_field": "theme_suggestion_metadata" }
+        { "src_field": "metadata", "dst_field": "theme_suggestion_metadata" },
+        { "src_field": "current_messages", "dst_field": "theme_suggestion_messages_history" }
       ]
     },
 
@@ -706,9 +760,7 @@ workflow_graph_schema = {
 
     # --- State to Construct Additional Topic Prompt ---
     { "src_node_id": "$graph_state", "dst_node_id": "construct_additional_topic_prompt", "mappings": [
-        { "src_field": "company_doc", "dst_field": "company_doc" },
-        { "src_field": "playbook", "dst_field": "playbook"},
-        { "src_field": "previous_topics", "dst_field": "previous_topics" },
+        { "src_field": "playbook", "dst_field": "playbook" },
         { "src_field": "research_insights", "dst_field": "research_insights" },
         { "src_field": "theme_suggestion", "dst_field": "selected_theme" }
       ]
@@ -774,20 +826,43 @@ workflow_graph_schema = {
     # --- State to Additional Theme Prompt ---
     { "src_node_id": "$graph_state", "dst_node_id": "construct_additional_theme_prompt", "mappings": [
         { "src_field": "all_generated_topics", "dst_field": "all_generated_topics" },
-        { "src_field": "company_doc", "dst_field": "company_doc" },
-        { "src_field": "playbook", "dst_field": "playbook" },
+        # { "src_field": "company_doc", "dst_field": "company_doc" },
+        # { "src_field": "playbook", "dst_field": "playbook" },
         { "src_field": "previous_topics", "dst_field": "previous_topics" }
       ]
     },
 
-    # --- Additional Theme Prompt to Theme Suggestion (loop for next suggestion) ---
-    { "src_node_id": "construct_additional_theme_prompt", "dst_node_id": "theme_suggestion_llm", "mappings": [
-        { "src_field": "additional_theme_user_prompt", "dst_field": "user_prompt" }
+    # --- Router to Construct Topic Feedback ---
+    { "src_node_id": "construct_additional_theme_prompt", "dst_node_id": "theme_suggestion_llm",
+      "mappings": [
+        { "src_field": "additional_theme_user_prompt", "dst_field": "user_prompt"}      ]
+    }, 
+
+    # --- Router to Construct Delete Params ---
+    { "src_node_id": "route_on_topic_count", "dst_node_id": "construct_delete_search_params" },
+
+    # --- State to Construct Delete Params ---
+    { "src_node_id": "$graph_state", "dst_node_id": "construct_delete_search_params", "mappings": [
+        { "src_field": "search_params", "dst_field": "search_params" },
+        { "src_field": "start_date", "dst_field": "start_date" },
+        { "src_field": "end_date", "dst_field": "end_date" }
       ]
     },
 
-    # --- Router to Store ---
-    { "src_node_id": "route_on_topic_count", "dst_node_id": "store_all_topics" },
+    # --- Construct Delete Params to Delete Node ---
+    { "src_node_id": "construct_delete_search_params", "dst_node_id": "delete_previous_entries", "mappings": [
+        { "src_field": "transformed_data", "dst_field": "search_params" }
+      ]
+    },
+
+    # --- State to Delete Node (to resolve input_namespace_field path) ---
+    { "src_node_id": "$graph_state", "dst_node_id": "delete_previous_entries", "mappings": [
+        { "src_field": "company_name", "dst_field": "company_name" }
+      ]
+    },
+
+    # --- Delete then Store ---
+    { "src_node_id": "delete_previous_entries", "dst_node_id": "store_all_topics" },
 
     # --- State to Store ---
     { "src_node_id": "$graph_state", "dst_node_id": "store_all_topics", "mappings": [
@@ -882,7 +957,8 @@ async def main_test_blog_content_calendar_workflow():
     # Define test inputs with realistic values
     test_inputs = {
         "company_name": test_company_name,
-        "weeks_to_generate": 2,  # Generate for 2 weeks
+        "start_date": datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+        "end_date": (datetime.utcnow() + timedelta(days=7)).strftime('%Y-%m-%dT%H:%M:%SZ'),
     }
 
     # Create realistic test data for setup

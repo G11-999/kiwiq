@@ -31,7 +31,7 @@ DOCUMENTS = [
 
 **Strategic Theory**: Radical transparency creates parasocial relationships that convert to business value. By sharing real metrics, mistakes, and lessons, you build an audience that roots for your success. This play works because it satisfies the human desire to see behind the curtain while positioning you as an authentic, relatable leader. Success comes from consistent, honest sharing that makes your audience feel invested in your journey.
 
-**Expected Timeline**: 3-6 months to build engaged following; 6-12 months to see significant business impact from transparency-driven relationships.
+**Expected Timeline**: Next 3 months - establish transparent founder voice, begin building engaged following, and create initial transparency-driven connections.
 
 ### **2. Content System Structure**
 
@@ -85,7 +85,7 @@ DOCUMENTS = [
 
 **Strategic Theory**: Teaching builds authority while providing value. This play positions you as the professor of your niche, breaking down complex topics into digestible insights. It works by demonstrating mastery through the ability to simplify and explain clearly. Success comes from consistent educational content that makes you the go-to source for understanding complex topics in your domain.
 
-**Expected Timeline**: 4-6 months to establish teaching authority; 8-12 months to become recognized subject matter expert and thought leader.
+**Expected Timeline**: Next 3 months - establish teaching authority, develop initial educational content series, and begin building learning-focused community.
 
 ### **2. Content System Structure**
 
@@ -139,7 +139,7 @@ DOCUMENTS = [
 
 **Strategic Theory**: Well-reasoned contrarian views generate engagement and position you as an independent thinker. This play works by identifying widely-held beliefs that data or experience contradicts, then articulating alternative viewpoints that make people reconsider assumptions. Success comes from thoughtful dissent that sparks valuable discussion and positions you as a fearless truth-teller.
 
-**Expected Timeline**: 2-4 months to establish contrarian voice; 6-10 months to build reputation as thoughtful industry challenger.
+**Expected Timeline**: Next 3 months - establish contrarian voice, spark initial industry debates, and position as thoughtful challenger.
 
 ### **2. Content System Structure**
 
@@ -193,7 +193,7 @@ DOCUMENTS = [
 
 **Strategic Theory**: Customer-centric content builds trust and social proof simultaneously. By consistently highlighting customer success, challenges, and feedback, you demonstrate that customer outcomes drive your decisions. This play works because it shows rather than claims customer obsession while building a community of advocates. Success comes from authentic customer celebration that attracts prospects who want similar success.
 
-**Expected Timeline**: 2-4 months to establish customer-centric voice; 6-9 months to build strong customer advocacy community.
+**Expected Timeline**: Next 3 months - establish customer-centric voice, share initial success stories, and begin building customer advocacy foundation.
 
 ### **2. Content System Structure**
 
@@ -247,7 +247,7 @@ DOCUMENTS = [
 
 **Strategic Theory**: Giving first creates lasting reciprocity. This play builds your network by consistently highlighting others' achievements, making introductions, and sharing opportunities. It works through the principle that connectors become central nodes in valuable networks. Success comes from generous networking that makes you indispensable to your professional community.
 
-**Expected Timeline**: 3-6 months to establish connector reputation; 9-15 months to become central network node with significant reciprocal value.
+**Expected Timeline**: Next 3 months - establish connector reputation, facilitate initial introductions, and build foundation for reciprocal networking.
 
 ### **2. Content System Structure**
 
@@ -301,7 +301,7 @@ DOCUMENTS = [
 
 **Strategic Theory**: Platform success requires ecosystem health. This play demonstrates leadership by highlighting partner wins, collaborative innovations, and ecosystem growth. It works by showing that your success enables others' success, creating a virtuous cycle that attracts more ecosystem participants. Success comes from authentic ecosystem development that creates network effects through content.
 
-**Expected Timeline**: 4-6 months to establish ecosystem focus; 8-12 months to become recognized ecosystem leader with measurable network effects.
+**Expected Timeline**: Next 3 months - establish ecosystem focus, highlight initial partner wins, and demonstrate collaborative approach.
 
 ### **2. Content System Structure**
 
@@ -355,7 +355,7 @@ DOCUMENTS = [
 
 **Strategic Theory**: Data creates unique value in content marketing. This play leverages your access to proprietary data, customer insights, and industry intelligence to create thought leadership that competitors can't replicate. It works because original data analysis positions you as the definitive source of truth in your domain. Success comes from consistent sharing of unique insights that make your content essential reading for industry professionals.
 
-**Expected Timeline**: 2-4 months to establish data authority; 6-10 months to become recognized as industry intelligence source.
+**Expected Timeline**: Next 3 months - establish data authority, share initial proprietary insights, and build reputation for data-driven content.
 
 ### **2. Content System Structure**
 
@@ -409,7 +409,7 @@ DOCUMENTS = [
 
 **Strategic Theory**: Visionary content attracts forward-thinking audiences and positions you as someone who sees around corners. This play works by demonstrating deep industry understanding through specific, reasoned predictions about the future. Rather than generic predictions, it provides detailed scenarios that help others prepare for and navigate change. Success comes from consistent future-focused insights that prove prescient over time.
 
-**Expected Timeline**: 3-6 months to establish visionary voice; 8-15 months to build reputation as industry futurist with demonstrated accuracy.
+**Expected Timeline**: Next 3 months - establish visionary voice, share initial future predictions, and begin building forward-thinking community.
 
 ### **2. Content System Structure**
 
@@ -463,7 +463,7 @@ DOCUMENTS = [
 
 **Strategic Theory**: Strategic vulnerability accelerates trust and connection. This play involves sharing personal challenges, growth moments, and authentic struggles in ways that make you more relatable and human. It works because authenticity in leadership is rare and creates emotional bonds that transcend professional relationships. Success comes from genuine vulnerability that inspires others while building a loyal, engaged community.
 
-**Expected Timeline**: 1-3 months to establish authentic voice; 4-8 months to build deep community connections and loyalty.
+**Expected Timeline**: Next 3 months - establish authentic voice, share initial vulnerable stories, and begin building trust-based connections.
 
 ### **2. Content System Structure**
 
@@ -517,7 +517,7 @@ DOCUMENTS = [
 
 **Strategic Theory**: Public gratitude creates positive cycles that compound over time. This play involves regularly acknowledging others' contributions with specificity and authenticity, creating a magnetic leadership brand that attracts talent, partners, and customers. It works by making people feel seen and valued, generating goodwill that translates into business value. Success comes from genuine appreciation that inspires reciprocal loyalty and positive brand association.
 
-**Expected Timeline**: 1-2 months to establish grateful voice; 3-6 months to see significant culture and relationship impact.
+**Expected Timeline**: Next 3 months - establish grateful voice, implement regular appreciation practices, and begin seeing positive culture impacts.
 
 ### **2. Content System Structure**
 

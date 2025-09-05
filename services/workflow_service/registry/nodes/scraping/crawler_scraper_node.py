@@ -270,6 +270,13 @@ class CrawlerScraperConfig(BaseNodeConfig):
         ),
     )
 
+    min_blog_and_page_count: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+        description="Minimum number of blog and page count to be useful.",
+    )
+
     # Output cleaning
     clean_markdown: bool = Field(
         default=True,
@@ -457,6 +464,10 @@ class CrawlerScraperOutput(BaseSchema):
         ge=0,
         description="Total number of documents available in MongoDB for this job. "
                    "May be larger than documents_stored if using cached results."
+    )
+    has_insufficient_blog_and_page_count: bool = Field(
+        default=False,
+        description="Whether the scraping job has insufficient blog and page count to be useful."
     )
 
     # Optional aggregated technical SEO summary
@@ -835,7 +846,7 @@ class CrawlerScraperNode(BaseNode[CrawlerScraperInput, CrawlerScraperOutput, Cra
                 
                 filtered_sample = [self._allowlist_output_item(doc, clean_markdown=self.config.clean_markdown) for doc in scraped_sample]
 
-                min_cache_size = 5
+                min_cache_size = 10
                 if len(filtered_sample) >= min_cache_size:
 
                     # Optional filtering by blog classification
@@ -858,6 +869,7 @@ class CrawlerScraperNode(BaseNode[CrawlerScraperInput, CrawlerScraperOutput, Cra
                     # Allowlist filter for cached sample as well
 
                     filtered_sample = filtered_sample[:input_data.max_processed_urls_per_domain]
+                    has_insufficient_blog_and_page_count = len(filtered_sample) < self.config.min_blog_and_page_count
 
                     return CrawlerScraperOutput(
                         job_id=job_id,
@@ -868,6 +880,7 @@ class CrawlerScraperNode(BaseNode[CrawlerScraperInput, CrawlerScraperOutput, Cra
                         documents_stored=len(filtered_sample),  # At least one document exists
                         scraped_data=filtered_sample,  # Return first 5 items
                         total_scraped_count=len(filtered_sample),
+                        has_insufficient_blog_and_page_count=has_insufficient_blog_and_page_count,
                         used_cached_results=True,
                         technical_seo_summary=asdict(technical_seo_summary) if technical_seo_summary else None,
                         cached_results_age_hours=cached_info['age_hours'],
@@ -1096,6 +1109,7 @@ class CrawlerScraperNode(BaseNode[CrawlerScraperInput, CrawlerScraperOutput, Cra
             #         except Exception:
             #             pass
 
+            has_insufficient_blog_and_page_count = len(filtered_sample) < self.config.min_blog_and_page_count
             return CrawlerScraperOutput(
                 job_id=result['job_id'],
                 status=result['status'],
@@ -1105,6 +1119,7 @@ class CrawlerScraperNode(BaseNode[CrawlerScraperInput, CrawlerScraperOutput, Cra
                 documents_stored=documents_stored,
                 scraped_data=filtered_sample,
                 total_scraped_count=len(filtered_sample),
+                has_insufficient_blog_and_page_count=has_insufficient_blog_and_page_count,
                 used_cached_results=False,
                 technical_seo_summary=asdict(technical_seo_summary) if technical_seo_summary else None,
                 robots_analysis=result.get('robots_analysis'),

@@ -290,7 +290,7 @@ workflow_graph_schema = {
       "node_id": "route_on_approval",
       "node_name": "router_node",
       "node_config": {
-        "choices": ["check_iteration_limit", "output_node", "save_draft", "save_final_draft"], # Node IDs to route to
+        "choices": ["check_iteration_limit", "delete_draft_on_cancel", "save_draft", "save_final_draft"], # Node IDs to route to
         "allow_multiple": False,
         "choices_with_conditions": [
           {
@@ -309,13 +309,27 @@ workflow_graph_schema = {
             "target_value": "draft"
           },
           {
-            "choice_id": "output_node", # Cancel
+            "choice_id": "delete_draft_on_cancel", # Delete draft and cancel
             "input_path": "user_action_from_hitl",
             "target_value": "cancel_workflow"
           }
         ]
       }
 
+    },
+
+    # --- 7b. Delete Draft on Cancel ---
+    "delete_draft_on_cancel": {
+        "node_id": "delete_draft_on_cancel",
+        "node_name": "delete_customer_data",
+        "node_config": {
+            "search_params": {
+                "input_namespace_field": "entity_username",
+                "input_namespace_field_pattern": LINKEDIN_DRAFT_NAMESPACE_TEMPLATE,
+                "input_docname_field": "post_uuid",
+                "input_docname_field_pattern": LINKEDIN_DRAFT_DOCNAME
+            }
+        }
     },
 
     # --- 8. Check Iteration Limit ---
@@ -585,12 +599,24 @@ workflow_graph_schema = {
     },
     # Route on Approval -> Check Iteration Limit: Control flow if 'provide_feedback'
     { "src_node_id": "route_on_approval", "dst_node_id": "check_iteration_limit", "description": "Trigger iteration check if feedback provided (Control Flow: 'provide_feedback')." },
-    # Route on Approval -> Finalize Post: Control flow if 'approved'
-    { "src_node_id": "route_on_approval", "dst_node_id": "output_node", "description": "Trigger finalization if post approved (Control Flow: 'approved')." },
+    # Route on Approval -> Delete Draft on Cancel: Control flow if 'cancel_workflow'
+    { "src_node_id": "route_on_approval", "dst_node_id": "delete_draft_on_cancel", "description": "Delete draft and cancel workflow if user cancels (Control Flow: 'cancel_workflow')." },
     # Route on Approval -> Save Final Draft: Control flow if 'save_content'
     { "src_node_id": "route_on_approval", "dst_node_id": "save_final_draft", "description": "Save final draft if approved (Control Flow: 'save_content')." },
     # Route on Approval -> Save Draft: Control flow if 'draft'
     { "src_node_id": "route_on_approval", "dst_node_id": "save_draft", "description": "Save interim draft (Control Flow: 'draft')." },
+
+    # State -> Delete Draft on Cancel: Provide required fields for deletion
+    { "src_node_id": "$graph_state", "dst_node_id": "delete_draft_on_cancel", "mappings": [
+        { "src_field": "entity_username", "dst_field": "entity_username", "description": "Pass entity username for namespace pattern."},
+        { "src_field": "post_uuid", "dst_field": "post_uuid", "description": "Pass post UUID for docname pattern."}
+      ]
+    },
+    # Delete Draft on Cancel -> Output: Finalize after deletion
+    { "src_node_id": "delete_draft_on_cancel", "dst_node_id": "output_node", "description": "Finalize workflow after deleting draft.", "mappings": [
+        { "src_field": "deleted_count", "dst_field": "draft_deleted_count", "description": "Pass count of deleted drafts."}
+      ]
+    },
 
     # State -> Save Draft: Provide required fields
     { "src_node_id": "$graph_state", "dst_node_id": "save_draft", "mappings": [
@@ -1065,30 +1091,30 @@ async def main_test_content_workflow_with_client():
     predefined_hitl_inputs: List[Dict[str, Any]] = [
         # Input for the first HITL stop (request revisions)
         {
-            "user_action": "provide_feedback",
+            "user_action": "cancel_workflow",
             "revision_feedback": "The content is good but needs to be more specific to SaaS companies. Also, can you add more statistics to back up the claims and make the call to action stronger?",
             "updated_content_draft": {
                 "post_text": "73% of B2B buyers don't read most of the content they download. Here's why...\n\nAfter 10+ years in B2B SaaS marketing, I've seen this pattern repeatedly: companies invest heavily in content creation but treat it as a checkbox rather than a conversion tool.\n\nThe truth? Quality trumps quantity every time. And alignment with the customer journey is non-negotiable.\n\nHere's what I've learned works consistently:\n\n1️⃣ ALIGN WITH THE JOURNEY: Most B2B content fails because it doesn't match where prospects are in their decision process. Technical whitepapers don't work for awareness stage, and basic \"what is\" content frustrates those ready to buy.\n\n2️⃣ BRIDGE THE TECHNICAL DIVIDE: Your technical content must speak to non-technical decision makers. I've seen brilliant solutions rejected because the content only made sense to engineers, not the C-suite holding the budget.\n\n3️⃣ QUANTIFY RESULTS: The recent McKinsey report confirms what I've observed - case studies with specific, measurable outcomes convert 3x better than generic testimonials.\n\nThe framework I use with clients is what I call the 3T approach:\n• Target: Identify exactly which buying stage you're addressing\n• Tailor: Adapt complexity and focus to match that stage\n• Track: Measure engagement by stage, not just overall views\n\nCompanies with documented content strategies aligned to this approach have consistently shown 3x higher conversion rates according to HubSpot's latest SaaS content study.\n\nGaurav, you might want to personalize the ending a bit more with a stronger call-to-action or reference to your expertise—something that makes your voice unmistakable.\n\nWhat's your biggest challenge with B2B content development? I'd love to hear your experiences in the comments.\n\n(And if you're struggling with making technical content accessible to decision-makers, let's connect - that's my sweet spot.)",
                 "hashtags": ["#B2BMarketing", "#ContentStrategy", "#SaaS", "#MarketingROI"]
             }
         },
-        {
-            "user_action": "provide_feedback", 
-            "revision_feedback": "The statistics are helpful, but I'd like to see more concrete examples of successful B2B SaaS content strategies. Also, can you make the opening hook more attention-grabbing and include a specific mention of ROI?",
-            "updated_content_draft": {
-                "post_text": "73% of B2B buyers don't read most of the content they download. Here's why...\n\nAfter 10+ years in B2B SaaS marketing, I've seen this pattern repeatedly: companies invest heavily in content creation but treat it as a checkbox rather than a conversion tool.\n\nThe truth? Quality trumps quantity every time. And alignment with the customer journey is non-negotiable.\n\nHere's what I've learned works consistently:\n\n1️⃣ ALIGN WITH THE JOURNEY: Most B2B content fails because it doesn't match where prospects are in their decision process. Technical whitepapers don't work for awareness stage, and basic \"what is\" content frustrates those ready to buy.\n\n2️⃣ BRIDGE THE TECHNICAL DIVIDE: Your technical content must speak to non-technical decision makers. I've seen brilliant solutions rejected because the content only made sense to engineers, not the C-suite holding the budget.\n\n3️⃣ QUANTIFY RESULTS: The recent McKinsey report confirms what I've observed - case studies with specific, measurable outcomes convert 3x better than generic testimonials.\n\nThe framework I use with clients is what I call the 3T approach:\n• Target: Identify exactly which buying stage you're addressing\n• Tailor: Adapt complexity and focus to match that stage\n• Track: Measure engagement by stage, not just overall views\n\nCompanies with documented content strategies aligned to this approach have consistently shown 3x higher conversion rates according to HubSpot's latest SaaS content study.\n\nGaurav, you might want to personalize the ending a bit more with a stronger call-to-action or reference to your expertise—something that makes your voice unmistakable.\n\nWhat's your biggest challenge with B2B content development? I'd love to hear your experiences in the comments.\n\n(And if you're struggling with making technical content accessible to decision-makers, let's connect - that's my sweet spot.)",
-                "hashtags": ["#B2BMarketing", "#ContentStrategy", "#SaaS", "#MarketingROI"]
-            }
-        },
-        # Input for the final HITL stop (approve)
-        {
-            "user_action": "complete",
-            "revision_feedback": "",
-            "updated_content_draft": {
-                "post_text": "73% of B2B buyers don't read most of the content they download. Here's why...\n\nAfter 10+ years in B2B SaaS marketing, I've seen this pattern repeatedly: companies invest heavily in content creation but treat it as a checkbox rather than a conversion tool.\n\nThe truth? Quality trumps quantity every time. And alignment with the customer journey is non-negotiable.\n\nHere's what I've learned works consistently:\n\n1️⃣ ALIGN WITH THE JOURNEY: Most B2B content fails because it doesn't match where prospects are in their decision process. Technical whitepapers don't work for awareness stage, and basic \"what is\" content frustrates those ready to buy.\n\n2️⃣ BRIDGE THE TECHNICAL DIVIDE: Your technical content must speak to non-technical decision makers. I've seen brilliant solutions rejected because the content only made sense to engineers, not the C-suite holding the budget.\n\n3️⃣ QUANTIFY RESULTS: The recent McKinsey report confirms what I've observed - case studies with specific, measurable outcomes convert 3x better than generic testimonials.\n\nThe framework I use with clients is what I call the 3T approach:\n• Target: Identify exactly which buying stage you're addressing\n• Tailor: Adapt complexity and focus to match that stage\n• Track: Measure engagement by stage, not just overall views\n\nCompanies with documented content strategies aligned to this approach have consistently shown 3x higher conversion rates according to HubSpot's latest SaaS content study.\n\nGaurav, you might want to personalize the ending a bit more with a stronger call-to-action or reference to your expertise—something that makes your voice unmistakable.\n\nWhat's your biggest challenge with B2B content development? I'd love to hear your experiences in the comments.\n\n(And if you're struggling with making technical content accessible to decision-makers, let's connect - that's my sweet spot.)",
-                "hashtags": ["#B2BMarketing", "#ContentStrategy", "#SaaS", "#MarketingROI"]
-            }
-        }
+        # {
+        #     "user_action": "provide_feedback", 
+        #     "revision_feedback": "The statistics are helpful, but I'd like to see more concrete examples of successful B2B SaaS content strategies. Also, can you make the opening hook more attention-grabbing and include a specific mention of ROI?",
+        #     "updated_content_draft": {
+        #         "post_text": "73% of B2B buyers don't read most of the content they download. Here's why...\n\nAfter 10+ years in B2B SaaS marketing, I've seen this pattern repeatedly: companies invest heavily in content creation but treat it as a checkbox rather than a conversion tool.\n\nThe truth? Quality trumps quantity every time. And alignment with the customer journey is non-negotiable.\n\nHere's what I've learned works consistently:\n\n1️⃣ ALIGN WITH THE JOURNEY: Most B2B content fails because it doesn't match where prospects are in their decision process. Technical whitepapers don't work for awareness stage, and basic \"what is\" content frustrates those ready to buy.\n\n2️⃣ BRIDGE THE TECHNICAL DIVIDE: Your technical content must speak to non-technical decision makers. I've seen brilliant solutions rejected because the content only made sense to engineers, not the C-suite holding the budget.\n\n3️⃣ QUANTIFY RESULTS: The recent McKinsey report confirms what I've observed - case studies with specific, measurable outcomes convert 3x better than generic testimonials.\n\nThe framework I use with clients is what I call the 3T approach:\n• Target: Identify exactly which buying stage you're addressing\n• Tailor: Adapt complexity and focus to match that stage\n• Track: Measure engagement by stage, not just overall views\n\nCompanies with documented content strategies aligned to this approach have consistently shown 3x higher conversion rates according to HubSpot's latest SaaS content study.\n\nGaurav, you might want to personalize the ending a bit more with a stronger call-to-action or reference to your expertise—something that makes your voice unmistakable.\n\nWhat's your biggest challenge with B2B content development? I'd love to hear your experiences in the comments.\n\n(And if you're struggling with making technical content accessible to decision-makers, let's connect - that's my sweet spot.)",
+        #         "hashtags": ["#B2BMarketing", "#ContentStrategy", "#SaaS", "#MarketingROI"]
+        #     }
+        # },
+        # # Input for the final HITL stop (approve)
+        # {
+        #     "user_action": "complete",
+        #     "revision_feedback": "",
+        #     "updated_content_draft": {
+        #         "post_text": "73% of B2B buyers don't read most of the content they download. Here's why...\n\nAfter 10+ years in B2B SaaS marketing, I've seen this pattern repeatedly: companies invest heavily in content creation but treat it as a checkbox rather than a conversion tool.\n\nThe truth? Quality trumps quantity every time. And alignment with the customer journey is non-negotiable.\n\nHere's what I've learned works consistently:\n\n1️⃣ ALIGN WITH THE JOURNEY: Most B2B content fails because it doesn't match where prospects are in their decision process. Technical whitepapers don't work for awareness stage, and basic \"what is\" content frustrates those ready to buy.\n\n2️⃣ BRIDGE THE TECHNICAL DIVIDE: Your technical content must speak to non-technical decision makers. I've seen brilliant solutions rejected because the content only made sense to engineers, not the C-suite holding the budget.\n\n3️⃣ QUANTIFY RESULTS: The recent McKinsey report confirms what I've observed - case studies with specific, measurable outcomes convert 3x better than generic testimonials.\n\nThe framework I use with clients is what I call the 3T approach:\n• Target: Identify exactly which buying stage you're addressing\n• Tailor: Adapt complexity and focus to match that stage\n• Track: Measure engagement by stage, not just overall views\n\nCompanies with documented content strategies aligned to this approach have consistently shown 3x higher conversion rates according to HubSpot's latest SaaS content study.\n\nGaurav, you might want to personalize the ending a bit more with a stronger call-to-action or reference to your expertise—something that makes your voice unmistakable.\n\nWhat's your biggest challenge with B2B content development? I'd love to hear your experiences in the comments.\n\n(And if you're struggling with making technical content accessible to decision-makers, let's connect - that's my sweet spot.)",
+        #         "hashtags": ["#B2BMarketing", "#ContentStrategy", "#SaaS", "#MarketingROI"]
+        #     }
+        # }
     ]
 
     # Execute the test using the helper function

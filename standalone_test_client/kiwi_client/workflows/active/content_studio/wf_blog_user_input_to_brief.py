@@ -62,17 +62,14 @@ from kiwi_client.workflows.active.content_studio.llm_inputs.blog_user_input_to_b
     GOOGLE_RESEARCH_USER_PROMPT_TEMPLATE,
     REDDIT_RESEARCH_USER_PROMPT_TEMPLATE,
     TOPIC_GENERATION_USER_PROMPT_TEMPLATE,
+    TOPIC_REGENERATION_USER_PROMPT_TEMPLATE,
     BRIEF_GENERATION_USER_PROMPT_TEMPLATE,
+    BRIEF_REVISION_USER_PROMPT_TEMPLATE,
     
-    # Feedback prompts for topics
-    TOPIC_FEEDBACK_SYSTEM_PROMPT,
-    TOPIC_FEEDBACK_INITIAL_USER_PROMPT,
-    TOPIC_FEEDBACK_ADDITIONAL_USER_PROMPT,
     
     # Feedback prompts for briefs
     BRIEF_FEEDBACK_SYSTEM_PROMPT,
     BRIEF_FEEDBACK_INITIAL_USER_PROMPT,
-    BRIEF_FEEDBACK_ADDITIONAL_USER_PROMPT,
     
     # Output schemas
     GOOGLE_RESEARCH_OUTPUT_SCHEMA,
@@ -81,15 +78,14 @@ from kiwi_client.workflows.active.content_studio.llm_inputs.blog_user_input_to_b
     BRIEF_GENERATION_OUTPUT_SCHEMA,
     
     # Feedback analysis schemas
-    TOPIC_FEEDBACK_ANALYSIS_OUTPUT_SCHEMA,
     BRIEF_FEEDBACK_ANALYSIS_OUTPUT_SCHEMA,
 )
 
 # LLM Configuration
-LLM_PROVIDER = "anthropic"
-LLM_MODEL = "claude-sonnet-4-20250514"
+LLM_PROVIDER = "openai"
+LLM_MODEL = "gpt-4.1"
 TEMPERATURE = 0.7
-MAX_TOKENS = 4000
+MAX_TOKENS = 6000
 
 # Perplexity Configuration for Reddit Research
 PERPLEXITY_PROVIDER = "perplexity"
@@ -103,8 +99,8 @@ MAX_REVISION_ATTEMPTS = 3
 MAX_ITERATIONS = 10  # Maximum iterations for HITL feedback loops
 
 # Feedback LLM Configuration
-FEEDBACK_LLM_PROVIDER = "anthropic"
-FEEDBACK_ANALYSIS_MODEL = "claude-sonnet-4-20250514"
+FEEDBACK_LLM_PROVIDER = "openai"
+FEEDBACK_ANALYSIS_MODEL = "gpt-4.1"
 FEEDBACK_TEMPERATURE = 0.5
 FEEDBACK_MAX_TOKENS = 3000 
 
@@ -359,7 +355,7 @@ workflow_graph_schema = {
             "node_id": "route_topic_selection",
             "node_name": "router_node",
             "node_config": {
-                "choices": ["filter_selected_topic", "construct_topic_feedback_prompt", "output_node"],
+                "choices": ["filter_selected_topic", "construct_topic_regeneration_prompt", "output_node"],
                 "allow_multiple": False,
                 "choices_with_conditions": [
                     {
@@ -368,7 +364,7 @@ workflow_graph_schema = {
                         "target_value": "complete"
                     },
                     {
-                        "choice_id": "construct_topic_feedback_prompt",
+                        "choice_id": "construct_topic_regeneration_prompt",
                         "input_path": "user_action",
                         "target_value": "provide_feedback"
                     },
@@ -382,65 +378,7 @@ workflow_graph_schema = {
             }
         },
         
-        # 12. Topic Feedback Analysis Prompt Constructor
-        "construct_topic_feedback_prompt": {
-            "node_id": "construct_topic_feedback_prompt",
-            "node_name": "prompt_constructor",
-            "node_config": {
-                "prompt_templates": {
-                    "topic_feedback_user_prompt": {
-                        "id": "topic_feedback_user_prompt",
-                        "template": TOPIC_FEEDBACK_INITIAL_USER_PROMPT,
-                        "variables": {
-                            "suggested_blog_topics": None,
-                            "regeneration_feedback": None,
-                            "company_doc": None,
-                            "content_playbook_doc": None,
-                            "google_research_output": None,
-                            "reddit_research_output": None,
-                            "user_input": None
-                        },
-                        "construct_options": {
-                            "suggested_blog_topics": "current_topic_suggestions",
-                            "regeneration_feedback": "current_regeneration_feedback",
-                            "company_doc": "company_doc",
-                            "content_playbook_doc": "content_playbook_doc",
-                            "google_research_output": "google_research_output",
-                            "reddit_research_output": "reddit_research_output",
-                            "user_input": "user_input"
-                        }
-                    },
-                    "topic_feedback_system_prompt": {
-                        "id": "topic_feedback_system_prompt",
-                        "template": TOPIC_FEEDBACK_SYSTEM_PROMPT,
-                        "variables": {},
-                    }
-                }
-            }
-        },
-
-        # 11. Topic Feedback Analysis - Analyze user feedback before regeneration
-        "analyze_topic_feedback": {
-            "node_id": "analyze_topic_feedback",
-            "node_name": "llm",
-            "node_config": {
-                "llm_config": {
-                    "model_spec": {
-                        "provider": FEEDBACK_LLM_PROVIDER,
-                        "model": FEEDBACK_ANALYSIS_MODEL
-                    },
-                    "temperature": FEEDBACK_TEMPERATURE,
-                    "max_tokens": FEEDBACK_MAX_TOKENS
-                },
-                "output_schema": {
-                    "schema_definition": TOPIC_FEEDBACK_ANALYSIS_OUTPUT_SCHEMA,
-                    "convert_loaded_schema_to_pydantic": False
-                }
-            }
-        },
-        
-        
-        # 13. Topic Regeneration - Enhanced Prompt Constructor
+        # 13. Topic Feedback - Enhanced Prompt Constructor
         "construct_topic_regeneration_prompt": {
             "node_id": "construct_topic_regeneration_prompt",
             "node_name": "prompt_constructor",
@@ -448,49 +386,14 @@ workflow_graph_schema = {
                 "prompt_templates": {
                     "topic_regeneration_user_prompt": {
                         "id": "topic_regeneration_user_prompt",
-                        "template": TOPIC_GENERATION_USER_PROMPT_TEMPLATE,
+                        "template": TOPIC_REGENERATION_USER_PROMPT_TEMPLATE,
                         "variables": {
-                            "company_doc": None,
-                            "content_playbook_doc": None,
-                            "google_research_output": None,
-                            "reddit_research_output": None,
-                            "user_input": None,
                             "regeneration_instructions": None
                         },
                         "construct_options": {
-                            "company_doc": "company_doc",
-                            "content_playbook_doc": "content_playbook_doc",
-                            "google_research_output": "google_research_output",
-                            "reddit_research_output": "reddit_research_output",
-                            "user_input": "user_input",
-                            "regeneration_instructions": "feedback_analysis.regeneration_instructions"
+                            "regeneration_instructions": "current_regeneration_feedback"
                         }
-                    },
-                    "topic_regeneration_system_prompt": {
-                        "id": "topic_regeneration_system_prompt",
-                        "template": TOPIC_GENERATION_SYSTEM_PROMPT,
-                        "variables": {},
                     }
-                }
-            }
-        },
-        
-        # 14. Topic Regeneration - LLM Node
-        "topic_regeneration_llm": {
-            "node_id": "topic_regeneration_llm",
-            "node_name": "llm",
-            "node_config": {
-                "llm_config": {
-                    "model_spec": {
-                        "provider": LLM_PROVIDER,
-                        "model": LLM_MODEL
-                    },
-                    "temperature": TEMPERATURE,
-                    "max_tokens": MAX_TOKENS
-                },
-                "output_schema": {
-                    "schema_definition": TOPIC_GENERATION_OUTPUT_SCHEMA,
-                    "convert_loaded_schema_to_pydantic": False
                 }
             }
         },
@@ -646,7 +549,7 @@ workflow_graph_schema = {
             "node_id": "route_brief_approval",
             "node_name": "router_node",
             "node_config": {
-                "choices": ["save_brief", "check_iteration_limit", "output_node", "save_as_draft"],
+                "choices": ["save_brief", "check_iteration_limit", "delete_draft_on_cancel", "save_as_draft"],
                 "allow_multiple": False,
                 "choices_with_conditions": [
                     {
@@ -660,7 +563,7 @@ workflow_graph_schema = {
                         "target_value": "provide_feedback"
                     },
                     {
-                        "choice_id": "output_node",
+                        "choice_id": "delete_draft_on_cancel",
                         "input_path": "user_brief_action",
                         "target_value": "cancel_workflow"
                     },
@@ -670,7 +573,7 @@ workflow_graph_schema = {
                         "target_value": "draft"
                     }
                 ],
-                "default_choice": "output_node"
+                "default_choice": "delete_draft_on_cancel"
             }
         },
         # 20. Save Brief as Draft - Store Customer Data
@@ -736,6 +639,20 @@ workflow_graph_schema = {
             }
         },
         
+        # 21.5 Delete Draft on Cancel - New node to clean up saved draft
+        "delete_draft_on_cancel": {
+            "node_id": "delete_draft_on_cancel",
+            "node_name": "delete_customer_data",
+            "node_config": {
+                "search_params": {
+                    "input_namespace_field": "company_name",
+                    "input_namespace_field_pattern": BLOG_CONTENT_BRIEF_NAMESPACE_TEMPLATE,
+                    "input_docname_field": "brief_uuid",
+                    "input_docname_field_pattern": BLOG_CONTENT_BRIEF_DOCNAME
+                }
+            }
+        },
+        
         # 22. Route Based on Iteration Limit Check
         "route_on_limit_check": {
             "node_id": "route_on_limit_check",
@@ -774,7 +691,6 @@ workflow_graph_schema = {
                             "selected_topic": None,
                             "google_research_output": None,
                             "reddit_research_output": None,
-                            "user_input": None
                         },
                         "construct_options": {
                             "content_brief": "current_content_brief",
@@ -784,7 +700,6 @@ workflow_graph_schema = {
                             "selected_topic": "selected_topics",
                             "google_research_output": "google_research_output",
                             "reddit_research_output": "reddit_research_output",
-                            "user_input": "user_input"
                         }
                     },
                     "brief_feedback_system_prompt": {
@@ -815,6 +730,7 @@ workflow_graph_schema = {
                 }
             }
         },
+
      # 22. Brief Revision - Enhanced Prompt Constructor
         "construct_brief_revision_prompt": {
             "node_id": "construct_brief_revision_prompt",
@@ -823,52 +739,15 @@ workflow_graph_schema = {
                 "prompt_templates": {
                     "brief_revision_user_prompt": {
                         "id": "brief_revision_user_prompt",
-                        "template": BRIEF_GENERATION_USER_PROMPT_TEMPLATE,
+                        "template": BRIEF_REVISION_USER_PROMPT_TEMPLATE,
                         "variables": {
-                            "company_doc": None,
-                            "content_playbook_doc": None,
-                            "selected_topic": None,
-                            "google_research_output": None,
-                            "reddit_research_output": None,
-                            "user_input": None,
                             "revision_instructions": None
                         },
                         "construct_options": {
-                            "company_doc": "company_doc",
-                            "content_playbook_doc": "content_playbook_doc",
-                            "selected_topic": "selected_topics",
-                            "google_research_output": "google_research_output",
-                            "reddit_research_output": "reddit_research_output",
-                            "user_input": "user_input",
                             "revision_instructions": "brief_feedback_analysis.revision_instructions"
                         }
-                    },
-                    "brief_revision_system_prompt": {
-                        "id": "brief_revision_system_prompt",
-                        "template": BRIEF_GENERATION_SYSTEM_PROMPT,
-                        "variables": {},
                     }
                 }
-            }
-        },
-        
-        # 23. Brief Revision - LLM Node
-        "brief_revision_llm": {
-            "node_id": "brief_revision_llm",
-            "node_name": "llm",
-            "node_config": {
-                "llm_config": {
-                    "model_spec": {
-                        "provider": LLM_PROVIDER,
-                        "model": LLM_MODEL
-                    },
-                    "temperature": TEMPERATURE,
-                    "max_tokens": MAX_TOKENS
-                },
-                "output_schema": {
-                    "schema_definition": BRIEF_GENERATION_OUTPUT_SCHEMA,
-                    "convert_loaded_schema_to_pydantic": False
-                }   
             }
         },
         
@@ -1054,16 +933,15 @@ workflow_graph_schema = {
                 {"src_field": "topic_generation_system_prompt", "dst_field": "system_prompt"}
             ]
         },
-        
-        # # State -> Topic Generation LLM (message history)
-        # {
-        #     "src_node_id": "$graph_state",
-        #     "dst_node_id": "topic_generation_llm",
-        #     "mappings": [
-        #         {"src_field": "topic_generation_messages_history", "dst_field": "messages_history"}
-        #     ]
-        # },
-        
+
+        {
+            "src_node_id": "$graph_state",
+            "dst_node_id": "topic_generation_llm",
+            "mappings": [
+                {"src_field": "topic_generation_messages_history", "dst_field": "messages_history"}
+            ]
+        },
+
         # Topic Generation LLM -> State
         {
             "src_node_id": "topic_generation_llm",
@@ -1110,7 +988,7 @@ workflow_graph_schema = {
         },
         {
             "src_node_id": "route_topic_selection",
-            "dst_node_id": "construct_topic_feedback_prompt",
+            "dst_node_id": "construct_topic_regeneration_prompt",
             "description": "Route to analyze feedback if regeneration requested"
         },
         {
@@ -1119,107 +997,22 @@ workflow_graph_schema = {
             "description": "Route to output if workflow cancelled"
         },
         
-        # State -> Topic Feedback Prompt Constructor
-        {
-            "src_node_id": "$graph_state",
-            "dst_node_id": "construct_topic_feedback_prompt",
-            "mappings": [
-                {"src_field": "company_doc", "dst_field": "company_doc"},
-                {"src_field": "content_playbook_doc", "dst_field": "content_playbook_doc"},
-                {"src_field": "current_topic_suggestions", "dst_field": "current_topic_suggestions"},
-                {"src_field": "current_regeneration_feedback", "dst_field": "current_regeneration_feedback"},
-                {"src_field": "google_research_output", "dst_field": "google_research_output"},
-                {"src_field": "reddit_research_output", "dst_field": "reddit_research_output"},
-                {"src_field": "user_input", "dst_field": "user_input"}
-            ]
-        },
-        
-        # Topic Feedback Prompt -> LLM
-        {
-            "src_node_id": "construct_topic_feedback_prompt",
-            "dst_node_id": "analyze_topic_feedback",
-            "mappings": [
-                {"src_field": "topic_feedback_user_prompt", "dst_field": "user_prompt"},
-                {"src_field": "topic_feedback_system_prompt", "dst_field": "system_prompt"}
-            ]
-        },
-        
-        # State -> Topic Feedback Analysis (message history)
-        {
-            "src_node_id": "$graph_state",
-            "dst_node_id": "analyze_topic_feedback",
-            "mappings": [
-                {"src_field": "topic_feedback_analysis_messages_history", "dst_field": "messages_history"}
-            ]
-        },
-        
-        # Topic Feedback Analysis -> State
-        {
-            "src_node_id": "analyze_topic_feedback",
-            "dst_node_id": "$graph_state",
-            "mappings": [
-                {"src_field": "structured_output", "dst_field": "topic_feedback_analysis"},
-                {"src_field": "current_messages", "dst_field": "topic_feedback_analysis_messages_history"}
-            ]
-        },
-        
-        # Topic Feedback Analysis -> Topic Regeneration Prompt Constructor
-        {
-            "src_node_id": "analyze_topic_feedback",
-            "dst_node_id": "construct_topic_regeneration_prompt",
-            "mappings": [
-                {"src_field": "structured_output", "dst_field": "feedback_analysis"}
-            ]
-        },
         
         # State -> Topic Regeneration Prompt Constructor
         {
             "src_node_id": "$graph_state",
             "dst_node_id": "construct_topic_regeneration_prompt",
             "mappings": [
-                {"src_field": "company_doc", "dst_field": "company_doc"},
-                {"src_field": "content_playbook_doc", "dst_field": "content_playbook_doc"},
-                {"src_field": "google_research_output", "dst_field": "google_research_output"},
-                {"src_field": "reddit_research_output", "dst_field": "reddit_research_output"},
-                {"src_field": "user_input", "dst_field": "user_input"}
+                {"src_field": "current_regeneration_feedback", "dst_field": "current_regeneration_feedback"}
             ]
         },
         
         # Topic Regeneration Prompt -> LLM
         {
             "src_node_id": "construct_topic_regeneration_prompt",
-            "dst_node_id": "topic_regeneration_llm",
+            "dst_node_id": "topic_generation_llm",
             "mappings": [
                 {"src_field": "topic_regeneration_user_prompt", "dst_field": "user_prompt"},
-                {"src_field": "topic_regeneration_system_prompt", "dst_field": "system_prompt"}
-            ]
-        },
-        
-        # State -> Topic Regeneration LLM (message history)
-        {
-            "src_node_id": "$graph_state",
-            "dst_node_id": "topic_regeneration_llm",
-            "mappings": [
-                {"src_field": "topic_generation_messages_history", "dst_field": "messages_history"}
-            ]
-        },
-        
-        # Topic Regeneration LLM -> HITL (loop back)
-        {
-            "src_node_id": "topic_regeneration_llm",
-            "dst_node_id": "topic_selection_hitl",
-            "mappings": [
-                {"src_field": "structured_output", "dst_field": "topic_suggestions"}
-            ]
-        },
-        
-        # Topic Regeneration LLM -> State
-        {
-            "src_node_id": "topic_regeneration_llm",
-            "dst_node_id": "$graph_state",
-            "mappings": [
-                {"src_field": "structured_output", "dst_field": "current_topic_suggestions"},
-                {"src_field": "current_messages", "dst_field": "topic_generation_messages_history"}
             ]
         },
         
@@ -1302,9 +1095,7 @@ workflow_graph_schema = {
                 {"src_field": "structured_output", "dst_field": "current_content_brief"}
             ]
         },
-
-        
-        
+     
         # State -> Save as Draft After Brief Generation
         {
             "src_node_id": "$graph_state",
@@ -1315,15 +1106,6 @@ workflow_graph_schema = {
                 {"src_field": "brief_uuid", "dst_field": "brief_uuid"}
             ]
         },
-        
-        # Brief Generation LLM -> HITL
-        # {
-        #     "src_node_id": "brief_generation_llm",
-        #     "dst_node_id": "brief_approval_hitl",
-        #     "mappings": [
-        #         {"src_field": "structured_output", "dst_field": "content_brief"}
-        #     ]
-        # },
         
         # Save as Draft After Brief Generation -> Brief Approval HITL
         { "src_node_id": "save_as_draft_after_brief_generation", "dst_node_id": "brief_approval_hitl", "mappings": [          ] },
@@ -1366,8 +1148,8 @@ workflow_graph_schema = {
         },
         {
             "src_node_id": "route_brief_approval",
-            "dst_node_id": "output_node",
-            "description": "Route to output if workflow cancelled"
+            "dst_node_id": "delete_draft_on_cancel",
+            "description": "Route to delete draft if workflow cancelled"
         },
         {
             "src_node_id": "route_brief_approval",
@@ -1415,6 +1197,24 @@ workflow_graph_schema = {
         # ---- Save as Draft -> brief approval hitl ----
         { "src_node_id": "save_as_draft", "dst_node_id": "brief_approval_hitl", "mappings": [          ]},
 
+        # State -> Delete Draft on Cancel (provide company_name and brief_uuid)
+        {
+            "src_node_id": "$graph_state",
+            "dst_node_id": "delete_draft_on_cancel",
+            "mappings": [
+                {"src_field": "company_name", "dst_field": "company_name"},
+                {"src_field": "brief_uuid", "dst_field": "brief_uuid"}
+            ]
+        },
+        
+        # Delete Draft on Cancel -> Output
+        {
+            "src_node_id": "delete_draft_on_cancel",
+            "dst_node_id": "output_node",
+            "mappings": [
+                {"src_field": "deleted_count", "dst_field": "cancelled_draft_deleted_count"}
+            ]
+        },
         
         # State -> Brief Feedback Prompt Constructor
         {
@@ -1487,40 +1287,9 @@ workflow_graph_schema = {
         # Brief Revision Prompt -> LLM
         {
             "src_node_id": "construct_brief_revision_prompt",
-            "dst_node_id": "brief_revision_llm",
+            "dst_node_id": "brief_generation_llm",
             "mappings": [
-                {"src_field": "brief_revision_user_prompt", "dst_field": "user_prompt"},
-                {"src_field": "brief_revision_system_prompt", "dst_field": "system_prompt"}
-            ]
-        },
-        
-        # State -> Brief Revision LLM (message history)
-        {
-            "src_node_id": "$graph_state",
-            "dst_node_id": "brief_revision_llm",
-            "mappings": [
-                {"src_field": "brief_generation_messages_history", "dst_field": "messages_history"}
-            ]
-        },
-        
-        # Brief Revision LLM -> HITL (loop back)
-        {
-            "src_node_id": "brief_revision_llm",
-            "dst_node_id": "brief_approval_hitl",
-            "mappings": [
-                {"src_field": "structured_output", "dst_field": "content_brief"}
-            ]
-        },
-        
-        # Brief Revision LLM -> State
-        {
-            "src_node_id": "brief_revision_llm",
-            "dst_node_id": "$graph_state",
-            "mappings": [
-                {"src_field": "structured_output", "dst_field": "current_content_brief"},
-                {"src_field": "current_messages", "dst_field": "brief_generation_messages_history"},
-                {"src_field": "metadata", "dst_field": "generation_metadata", "description": "Store LLM metadata (e.g., token usage, iteration count)."}
-            ]
+                {"src_field": "brief_revision_user_prompt", "dst_field": "user_prompt"}            ]
         },
         
         # State -> Save Brief

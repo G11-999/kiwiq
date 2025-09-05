@@ -147,7 +147,9 @@ class GraphOverridePayload(BaseModel):
                                     "model_spec": {
                                         "provider": "openai",
                                         "model": "gpt-4.1-nano"
-                                    }
+                                    },
+                                    "reasoning_tokens_budget": null,
+                                    "reasoning_effort_class": null
                                 }
                             }
                         }]
@@ -158,34 +160,6 @@ class GraphOverridePayload(BaseModel):
         "is_active": true,
         "description": "frontend testing override to reduce workflow latency"
     }
-
-
-    {
-        "override_graph_schema": {
-            "node_configs": [
-                        {
-                            "node_name": "llm",
-                            "node_config": {
-                                "llm_config": {
-                                    "model_spec": {
-                                        "provider": "openai",
-                                        "model": "gpt-4.1-nano"
-                                    }
-                                }
-                            }
-                        }]
-        },
-        "is_system_entity": false,
-        "user_id": "69bb8628-b83d-411e-a970-7d25a7cfaca9",
-        "org_id": "0b5e5a20-a7bd-44ea-aab1-a23325a9eed0",
-        "is_active": true,
-        "description": "frontend testing override to reduce workflow latency"
-    }
-
-
-
-
-
 
 
     {
@@ -198,7 +172,7 @@ class GraphOverridePayload(BaseModel):
                                 "llm_config": {
                                     "model_spec": {
                                         "provider": "perplexity",
-                                        "model": "sonar-pro"
+                                        "model": "sonar"
                                     }
                                 }
                             }
@@ -221,7 +195,7 @@ class GraphOverridePayload(BaseModel):
                                 "llm_config": {
                                     "model_spec": {
                                         "provider": "perplexity",
-                                        "model": "sonar-pro"
+                                        "model": "sonar"
                                     }
                                 }
                             }
@@ -244,7 +218,7 @@ class GraphOverridePayload(BaseModel):
                                 "llm_config": {
                                     "model_spec": {
                                         "provider": "perplexity",
-                                        "model": "sonar-pro"
+                                        "model": "sonar"
                                     }
                                 }
                             }
@@ -268,7 +242,7 @@ class GraphOverridePayload(BaseModel):
                                 "llm_config": {
                                     "model_spec": {
                                         "provider": "perplexity",
-                                        "model": "sonar-pro"
+                                        "model": "sonar"
                                     }
                                 }
                             }
@@ -298,7 +272,9 @@ class GraphOverridePayload(BaseModel):
                                     "model_spec": {
                                         "provider": "openai",
                                         "model": "gpt-4.1-nano"
-                                    }
+                                    },
+                                    "reasoning_tokens_budget": null,
+                                    "reasoning_effort_class": null
                                 }
                             }
                         }]

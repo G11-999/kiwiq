@@ -17,32 +17,29 @@ from kiwi_client.schemas.workflow_constants import WorkflowRunStatus
 
 from kiwi_client.workflows.active.document_models.customer_docs import (
     # Deep Research Report
-    BLOG_DEEP_RESEARCH_REPORT_DOCNAME,
-    BLOG_DEEP_RESEARCH_REPORT_NAMESPACE_TEMPLATE,
-    BLOG_DEEP_RESEARCH_REPORT_IS_VERSIONED,
-    BLOG_COMPANY_DOCNAME,
-    BLOG_COMPANY_NAMESPACE_TEMPLATE,
-    BLOG_DEEP_RESEARCH_REPORT_DOCNAME,
-    BLOG_DEEP_RESEARCH_REPORT_NAMESPACE_TEMPLATE,
-    BLOG_DEEP_RESEARCH_REPORT_IS_VERSIONED,
-    BLOG_COMPANY_DOCNAME,
-    BLOG_COMPANY_NAMESPACE_TEMPLATE,
-    BLOG_DEEP_RESEARCH_REPORT_DOCNAME,
-    BLOG_DEEP_RESEARCH_REPORT_NAMESPACE_TEMPLATE,
-    BLOG_DEEP_RESEARCH_REPORT_IS_VERSIONED,
+    LITE_BLOG_DEEP_RESEARCH_REPORT_DOCNAME,
+    LITE_BLOG_DEEP_RESEARCH_REPORT_NAMESPACE_TEMPLATE,
+    LITE_BLOG_DEEP_RESEARCH_REPORT_IS_VERSIONED,
+    LITE_BLOG_COMPANY_DOCNAME,
+    LITE_BLOG_COMPANY_NAMESPACE_TEMPLATE,
+    LITE_BLOG_DEEP_RESEARCH_REPORT_DOCNAME,
+    LITE_BLOG_DEEP_RESEARCH_REPORT_NAMESPACE_TEMPLATE,
+    LITE_BLOG_DEEP_RESEARCH_REPORT_IS_VERSIONED,
+    LITE_BLOG_COMPANY_DOCNAME,
+    LITE_BLOG_COMPANY_NAMESPACE_TEMPLATE,
+    LITE_BLOG_DEEP_RESEARCH_REPORT_DOCNAME,
+    LITE_BLOG_DEEP_RESEARCH_REPORT_NAMESPACE_TEMPLATE,
+    LITE_BLOG_DEEP_RESEARCH_REPORT_IS_VERSIONED,
+    LITE_LINKEDIN_USER_PROFILE_DOCNAME,
+    LITE_LINKEDIN_USER_PROFILE_NAMESPACE_TEMPLATE,
+    LITE_LINKEDIN_SCRAPED_PROFILE_DOCNAME,
+    LITE_LINKEDIN_SCRAPED_PROFILE_NAMESPACE_TEMPLATE,
+    LITE_LINKEDIN_DEEP_RESEARCH_REPORT_DOCNAME,
+    LITE_LINKEDIN_DEEP_RESEARCH_REPORT_NAMESPACE_TEMPLATE,
+    LITE_LINKEDIN_DEEP_RESEARCH_REPORT_IS_VERSIONED,
 )
 
-from kiwi_client.workflows.active.document_models.customer_docs import (
-    LINKEDIN_USER_PROFILE_DOCNAME,
-    LINKEDIN_USER_PROFILE_NAMESPACE_TEMPLATE,
-    LINKEDIN_SCRAPED_PROFILE_DOCNAME,
-    LINKEDIN_SCRAPED_PROFILE_NAMESPACE_TEMPLATE,
-    LINKEDIN_DEEP_RESEARCH_REPORT_DOCNAME,
-    LINKEDIN_DEEP_RESEARCH_REPORT_NAMESPACE_TEMPLATE,
-    LINKEDIN_DEEP_RESEARCH_REPORT_IS_VERSIONED,
-)
-
-from kiwi_client.workflows.active.content_diagnostics.llm_inputs.deep_research_content_strategy import (
+from kiwi_client.workflows.active.content_diagnostics_LITE_version.llm_inputs.deep_research_content_strategy import (
     # Content Strategy only schemas and prompts
     GENERATION_SCHEMA_FOR_DEEP_RESEARCH_BLOG_CONTENT_STRATEGY,
     SYSTEM_PROMPT_TEMPLATE_FOR_DEEP_RESEARCH_BLOG_CONTENT_STRATEGY,
@@ -51,30 +48,16 @@ from kiwi_client.workflows.active.content_diagnostics.llm_inputs.deep_research_c
     SCHEMA_TEMPLATE_FOR_LINKEDIN_RESEARCH,
     SYSTEM_PROMPT_TEMPLATE_FOR_LINKEDIN_RESEARCH,
     USER_PROMPT_TEMPLATE_FOR_LINKEDIN_RESEARCH,
-    # Combined schemas and prompts
-    GENERATION_SCHEMA_FOR_COMBINED_DEEP_RESEARCH,
-    SYSTEM_PROMPT_TEMPLATE_FOR_COMBINED_DEEP_RESEARCH,
-    USER_PROMPT_TEMPLATE_FOR_COMBINED_DEEP_RESEARCH,
-    # Blog-specific structured extraction prompts
-    SYSTEM_PROMPT_TEMPLATE_FOR_BLOG_STRATEGY_EXTRACTION,
-    USER_PROMPT_TEMPLATE_FOR_BLOG_STRATEGY_EXTRACTION,
-    # LinkedIn-specific structured extraction prompts
-    SYSTEM_PROMPT_TEMPLATE_FOR_LINKEDIN_EXTRACTION,
-    USER_PROMPT_TEMPLATE_FOR_LINKEDIN_EXTRACTION,
 )
 
 # --- Workflow Configuration Constants ---
 
 # LLM Configuration for Deep Research Model
-LLM_PROVIDER = "openai"
-LLM_MODEL = "o4-mini-deep-research"  # Deep research model
+LLM_PROVIDER = "perplexity"
+LLM_MODEL = "sonar-deep-research"  # Deep research model
 LLM_TEMPERATURE = 0.8
-LLM_MAX_TOKENS = 100000
-MAX_TOOL_CALLS_LINKEDIN = 25
-MAX_TOOL_CALLS_BLOG = 40
-STRUCTURED_OUTPUT_PROVIDER = "openai"
-STRUCTURED_OUTPUT_MODEL = "gpt-5"
-STRUCTURED_OUTPUT_MAX_TOKENS = 10000
+LLM_MAX_TOKENS = 16384
+MAX_TOOL_CALLS = 30
 
 workflow_graph_schema = {
     "nodes": {
@@ -118,9 +101,9 @@ workflow_graph_schema = {
                 "load_paths": [
                     {
                         "filename_config": {
-                            "input_namespace_field_pattern": BLOG_COMPANY_NAMESPACE_TEMPLATE, 
-                            "input_namespace_field": "company_name",
-                            "static_docname": BLOG_COMPANY_DOCNAME,
+                                                    "input_namespace_field_pattern": LITE_BLOG_COMPANY_NAMESPACE_TEMPLATE,
+                        "input_namespace_field": "company_name",
+                        "static_docname": LITE_BLOG_COMPANY_DOCNAME,
                         },
                         "output_field_name": "company_data"
                     },
@@ -139,17 +122,17 @@ workflow_graph_schema = {
                 "load_paths": [
                     {
                         "filename_config": {
-                            "input_namespace_field_pattern": LINKEDIN_USER_PROFILE_NAMESPACE_TEMPLATE,
-                            "input_namespace_field": "entity_username",
-                            "static_docname": LINKEDIN_USER_PROFILE_DOCNAME,
+                                                    "input_namespace_field_pattern": LITE_LINKEDIN_USER_PROFILE_NAMESPACE_TEMPLATE,
+                        "input_namespace_field": "entity_username",
+                        "static_docname": LITE_LINKEDIN_USER_PROFILE_DOCNAME,
                         },
                         "output_field_name": "linkedin_user_profile"
                     },
                     {
                         "filename_config": {
-                            "input_namespace_field_pattern": LINKEDIN_SCRAPED_PROFILE_NAMESPACE_TEMPLATE,
-                            "input_namespace_field": "entity_username",
-                            "static_docname": LINKEDIN_SCRAPED_PROFILE_DOCNAME,
+                                                    "input_namespace_field_pattern": LITE_LINKEDIN_SCRAPED_PROFILE_NAMESPACE_TEMPLATE,
+                        "input_namespace_field": "entity_username",
+                        "static_docname": LITE_LINKEDIN_SCRAPED_PROFILE_DOCNAME,
                         },
                         "output_field_name": "linkedin_scraped_profile"
                     },
@@ -230,7 +213,7 @@ workflow_graph_schema = {
                         "model": LLM_MODEL
                     },
                     "temperature": LLM_TEMPERATURE,
-                    "max_tool_calls": MAX_TOOL_CALLS_BLOG,
+                    "max_tool_calls": MAX_TOOL_CALLS,
                     "max_tokens": LLM_MAX_TOKENS,
                 },
                 "output_schema": {
@@ -239,12 +222,12 @@ workflow_graph_schema = {
                     "enable_tool_calling": True,
                     "parallel_tool_calls": True
                 },
-                "tools": [
-                    {
-                        "tool_name": "web_search_preview",
-                        "is_provider_inbuilt_tool": True,
-                    }
-                ]
+                # "tools": [
+                #     {
+                #         "tool_name": "web_search_preview",
+                #         "is_provider_inbuilt_tool": True,
+                #     }
+                # ]
             }
         },
         
@@ -259,7 +242,7 @@ workflow_graph_schema = {
                     },
                     "temperature": LLM_TEMPERATURE,
                     "max_tokens": LLM_MAX_TOKENS,
-                    "max_tool_calls": MAX_TOOL_CALLS_LINKEDIN,
+                    "max_tool_calls": 20,
                 },
                 "output_schema": {
                 },
@@ -267,12 +250,12 @@ workflow_graph_schema = {
                     "enable_tool_calling": True,
                     "parallel_tool_calls": True
                 },
-                "tools": [
-                    {
-                        "tool_name": "web_search_preview",
-                        "is_provider_inbuilt_tool": True,
-                    }
-                ]
+                # "tools": [
+                #     {
+                #         "tool_name": "web_search_preview",
+                #         "is_provider_inbuilt_tool": True,
+                #     }
+                # ]
             }
         },
         
@@ -281,7 +264,7 @@ workflow_graph_schema = {
             "node_id": "store_blog_research",
             "node_name": "store_customer_data",
             "node_config": {
-                "global_versioning": {"is_versioned": BLOG_DEEP_RESEARCH_REPORT_IS_VERSIONED, "operation": "upsert"},
+                "global_versioning": {"is_versioned": LITE_BLOG_DEEP_RESEARCH_REPORT_IS_VERSIONED, "operation": "upsert"},
                 "global_is_shared": False,
                 "global_is_system_entity": False,
                 "store_configs": [
@@ -289,12 +272,16 @@ workflow_graph_schema = {
                         "input_field_path": "content_strategy_report",
                         "target_path": {
                             "filename_config": {
-                                "input_namespace_field_pattern": BLOG_DEEP_RESEARCH_REPORT_NAMESPACE_TEMPLATE,
-                                "input_namespace_field": "company_name",
-                                "static_docname": BLOG_DEEP_RESEARCH_REPORT_DOCNAME,
+                                                            "input_namespace_field_pattern": LITE_BLOG_DEEP_RESEARCH_REPORT_NAMESPACE_TEMPLATE,
+                            "input_namespace_field": "company_name",
+                            "static_docname": LITE_BLOG_DEEP_RESEARCH_REPORT_DOCNAME,
                             }
-                        }
-                    }
+                        },
+                        "extra_fields": [
+                            {"src_path": "web_search_result", "dst_path": "web_search_result"}
+                        ]
+                    },
+                    
                 ]
             }
         },
@@ -303,7 +290,7 @@ workflow_graph_schema = {
             "node_id": "store_linkedin_research",
             "node_name": "store_customer_data",
             "node_config": {
-                "global_versioning": {"is_versioned": LINKEDIN_DEEP_RESEARCH_REPORT_IS_VERSIONED, "operation": "upsert"},
+                "global_versioning": {"is_versioned": LITE_LINKEDIN_DEEP_RESEARCH_REPORT_IS_VERSIONED, "operation": "upsert"},
                 "global_is_shared": False,
                 "global_is_system_entity": False,
                 "store_configs": [
@@ -311,11 +298,14 @@ workflow_graph_schema = {
                         "input_field_path": "linkedin_report",
                         "target_path": {
                             "filename_config": {
-                                "input_namespace_field_pattern": LINKEDIN_DEEP_RESEARCH_REPORT_NAMESPACE_TEMPLATE,
-                                "input_namespace_field": "entity_username",
-                                "static_docname": LINKEDIN_DEEP_RESEARCH_REPORT_DOCNAME,
+                                                            "input_namespace_field_pattern": LITE_LINKEDIN_DEEP_RESEARCH_REPORT_NAMESPACE_TEMPLATE,
+                            "input_namespace_field": "entity_username",
+                            "static_docname": LITE_LINKEDIN_DEEP_RESEARCH_REPORT_DOCNAME,
                             }
-                        }
+                        },
+                        "extra_fields": [
+                            {"src_path": "web_search_result", "dst_path": "web_search_result"}
+                        ]
                     }
                 ]
             }
@@ -364,9 +354,13 @@ workflow_graph_schema = {
             {"src_field": "linkedin_user_profile", "dst_field": "linkedin_user_profile"},
             {"src_field": "linkedin_scraped_profile", "dst_field": "linkedin_scraped_profile"}
         ]},
+
+        # Router -> Prompt constructors (control flow)
+        {"src_node_id": "load_company_data", "dst_node_id": "construct_content_strategy_prompt"},
+        {"src_node_id": "load_linkedin_data", "dst_node_id": "construct_linkedin_prompt"},
         
         # --- Content Strategy Path ---
-        {"src_node_id": "load_company_data", "dst_node_id": "construct_content_strategy_prompt", "mappings": [
+        {"src_node_id": "$graph_state", "dst_node_id": "construct_content_strategy_prompt", "mappings": [
             {"src_field": "company_data", "dst_field": "company_data"}
         ]},
         {"src_node_id": "construct_content_strategy_prompt", "dst_node_id": "deep_researcher_content_strategy", "mappings": [
@@ -374,11 +368,12 @@ workflow_graph_schema = {
             {"src_field": "system_prompt", "dst_field": "system_prompt"}
         ]},
         {"src_node_id": "deep_researcher_content_strategy", "dst_node_id": "store_blog_research", "mappings": [
-            {"src_field": "text_content", "dst_field": "content_strategy_report"}
+            {"src_field": "text_content", "dst_field": "content_strategy_report"},
+            {"src_field": "web_search_result", "dst_field": "web_search_result"}
         ]},
         
         # --- LinkedIn Path ---
-        {"src_node_id": "load_linkedin_data", "dst_node_id": "construct_linkedin_prompt", "mappings": [
+        {"src_node_id": "$graph_state", "dst_node_id": "construct_linkedin_prompt", "mappings": [
             {"src_field": "linkedin_user_profile", "dst_field": "linkedin_user_profile"},
             {"src_field": "linkedin_scraped_profile", "dst_field": "linkedin_scraped_profile"}
         ]},
@@ -387,9 +382,10 @@ workflow_graph_schema = {
             {"src_field": "system_prompt", "dst_field": "system_prompt"}
         ]},
         {"src_node_id": "deep_researcher_linkedin", "dst_node_id": "store_linkedin_research", "mappings": [
-            {"src_field": "text_content", "dst_field": "linkedin_report"}
+            {"src_field": "text_content", "dst_field": "linkedin_report"},
+            {"src_field": "web_search_result", "dst_field": "web_search_result"}
         ]},
-        
+
         # State -> Store nodes (for namespace fields)
         {"src_node_id": "$graph_state", "dst_node_id": "store_blog_research", "mappings": [
             {"src_field": "company_name", "dst_field": "company_name"}
@@ -416,7 +412,6 @@ workflow_graph_schema = {
             {"src_field": "blog_storage_paths", "dst_field": "blog_storage_paths"},
             {"src_field": "linkedin_storage_paths", "dst_field": "linkedin_storage_paths"}
         ]},
-
     ],
 
     # --- Define Start and End ---
@@ -435,8 +430,6 @@ workflow_graph_schema = {
                 "linkedin_user_profile": "replace",
                 "linkedin_scraped_profile": "replace",
                 "linkedin_exec_context": "replace",
-                "combined_output": "replace",
-                "research_type": "replace",
             }
         }
     }
@@ -568,8 +561,8 @@ async def main_test_deep_research_workflow():
     # Setup documents - create company and LinkedIn profile documents
     setup_docs: List[SetupDocInfo] = [
         SetupDocInfo(
-            docname=BLOG_COMPANY_DOCNAME,
-            namespace=BLOG_COMPANY_NAMESPACE_TEMPLATE.format(item="otter"),
+                            docname=LITE_BLOG_COMPANY_DOCNAME,
+                namespace=LITE_BLOG_COMPANY_NAMESPACE_TEMPLATE.format(item="otter"),
             initial_data=COMPANY_DOCUMENT_DATA,
             is_versioned=False,
             is_shared=False,
@@ -581,16 +574,16 @@ async def main_test_deep_research_workflow():
     if test_inputs.get("run_linkedin_exec"):
         setup_docs.extend([
             SetupDocInfo(
-                docname=LINKEDIN_USER_PROFILE_DOCNAME,
-                namespace=LINKEDIN_USER_PROFILE_NAMESPACE_TEMPLATE.format(item="samliang"),
+                docname=LITE_LINKEDIN_USER_PROFILE_DOCNAME,
+                namespace=LITE_LINKEDIN_USER_PROFILE_NAMESPACE_TEMPLATE.format(item="samliang"),
                 initial_data=LINKEDIN_PROFILE_DATA,
                 is_versioned=False,
                 is_shared=False,
                 is_system_entity=False
             ),
             SetupDocInfo(
-                docname=LINKEDIN_SCRAPED_PROFILE_DOCNAME,
-                namespace=LINKEDIN_SCRAPED_PROFILE_NAMESPACE_TEMPLATE.format(item="samliang"),
+                docname=LITE_LINKEDIN_SCRAPED_PROFILE_DOCNAME,
+                namespace=LITE_LINKEDIN_SCRAPED_PROFILE_NAMESPACE_TEMPLATE.format(item="samliang"),
                 initial_data=LINKEDIN_SCRAPED_DATA,
                 is_versioned=False,
                 is_shared=False,

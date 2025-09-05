@@ -32,15 +32,15 @@ from kiwi_client.schemas.workflow_constants import WorkflowRunStatus
 
 # Import document model constants
 from kiwi_client.workflows.active.document_models.customer_docs import (
-    BLOG_COMPANY_DOCNAME,
-    BLOG_COMPANY_NAMESPACE_TEMPLATE,
-    BLOG_COMPETITOR_CONTENT_ANALYSIS_DOCNAME,
-    BLOG_COMPETITOR_CONTENT_ANALYSIS_NAMESPACE_TEMPLATE,
-    BLOG_COMPANY_IS_VERSIONED,
+    LITE_BLOG_COMPANY_DOCNAME,
+    LITE_BLOG_COMPANY_NAMESPACE_TEMPLATE,
+    LITE_BLOG_COMPETITOR_CONTENT_ANALYSIS_DOCNAME,
+    LITE_BLOG_COMPETITOR_CONTENT_ANALYSIS_NAMESPACE_TEMPLATE,
+    LITE_BLOG_COMPANY_IS_VERSIONED,
 )
 
 # Import LLM inputs
-from kiwi_client.workflows.active.content_diagnostics.llm_inputs.competitor_content_analysis import (
+from kiwi_client.workflows.active.content_diagnostics_LITE_version.llm_inputs.competitor_content_analysis import (
     COMPETITOR_CONTENT_ANALYSIS_SYSTEM_PROMPT,
     COMPETITOR_CONTENT_ANALYSIS_USER_PROMPT_TEMPLATE,
     COMPETITOR_CONTENT_ANALYSIS_OUTPUT_SCHEMA,
@@ -80,9 +80,9 @@ workflow_graph_schema = {
                 "load_paths": [
                     {
                         "filename_config": {
-                            "input_namespace_field_pattern": BLOG_COMPANY_NAMESPACE_TEMPLATE,
-                            "input_namespace_field": "company_name",
-                            "static_docname": BLOG_COMPANY_DOCNAME,
+                                                    "input_namespace_field_pattern": LITE_BLOG_COMPANY_NAMESPACE_TEMPLATE,
+                        "input_namespace_field": "company_name",
+                        "static_docname": LITE_BLOG_COMPANY_DOCNAME,
                         },
                     "output_field_name": "company_doc"
                     }
@@ -191,9 +191,9 @@ workflow_graph_schema = {
                         "input_field_path": "competitor_data",
                         "target_path": {
                             "filename_config": {
-                                "input_namespace_field_pattern": BLOG_COMPETITOR_CONTENT_ANALYSIS_NAMESPACE_TEMPLATE,
-                                "input_namespace_field": "company_name",
-                                "input_docname_field_pattern": BLOG_COMPETITOR_CONTENT_ANALYSIS_DOCNAME,
+                                                            "input_namespace_field_pattern": LITE_BLOG_COMPETITOR_CONTENT_ANALYSIS_NAMESPACE_TEMPLATE,
+                            "input_namespace_field": "company_name",
+                            "input_docname_field_pattern": LITE_BLOG_COMPETITOR_CONTENT_ANALYSIS_DOCNAME,
                                 "input_docname_field": "competitor_data.name"
                             }
                         },
@@ -453,10 +453,10 @@ async def main_test_competitor_analysis_workflow():
     setup_docs: List[SetupDocInfo] = [
         {
             'namespace': f"blog_company_profile_{test_company_name}",
-            'docname': BLOG_COMPANY_DOCNAME,
+            'docname': LITE_BLOG_COMPANY_DOCNAME,
             'initial_data': company_data,
             'is_shared': False,
-            'is_versioned': BLOG_COMPANY_IS_VERSIONED,
+            'is_versioned': LITE_BLOG_COMPANY_IS_VERSIONED,
             'initial_version': "default",
             'is_system_entity': False
         }
@@ -466,9 +466,9 @@ async def main_test_competitor_analysis_workflow():
     cleanup_docs: List[CleanupDocInfo] = [
         {
             'namespace': f"blog_company_profile_{test_company_name}",
-            'docname': BLOG_COMPANY_DOCNAME,
+            'docname': LITE_BLOG_COMPANY_DOCNAME,
             'is_shared': False,
-            'is_versioned': BLOG_COMPANY_IS_VERSIONED,
+            'is_versioned': LITE_BLOG_COMPANY_IS_VERSIONED,
             'is_system_entity': False
         }
     ]

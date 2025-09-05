@@ -22,40 +22,34 @@ from functools import partial
 # Import document model constants
 from kiwi_client.workflows.active.document_models.customer_docs import (
     # LinkedIn documents
-    LINKEDIN_CONTENT_ANALYSIS_DOCNAME,
-    LINKEDIN_CONTENT_ANALYSIS_NAMESPACE_TEMPLATE,
-    LINKEDIN_USER_AI_VISIBILITY_TEST_DOCNAME,
-    LINKEDIN_USER_AI_VISIBILITY_TEST_NAMESPACE_TEMPLATE,
-    LINKEDIN_SCRAPED_PROFILE_NAMESPACE_TEMPLATE,
-    LINKEDIN_SCRAPED_PROFILE_DOCNAME,
-    LINKEDIN_DEEP_RESEARCH_REPORT_NAMESPACE_TEMPLATE,
-    LINKEDIN_DEEP_RESEARCH_REPORT_DOCNAME,
-    LINKEDIN_USER_PROFILE_NAMESPACE_TEMPLATE,
-    LINKEDIN_USER_PROFILE_DOCNAME,
+    LITE_LINKEDIN_CONTENT_ANALYSIS_DOCNAME,
+    LITE_LINKEDIN_CONTENT_ANALYSIS_NAMESPACE_TEMPLATE,
+    LITE_LINKEDIN_USER_AI_VISIBILITY_TEST_DOCNAME,
+    LITE_LINKEDIN_USER_AI_VISIBILITY_TEST_NAMESPACE_TEMPLATE,
+    LITE_LINKEDIN_SCRAPED_PROFILE_NAMESPACE_TEMPLATE,
+    LITE_LINKEDIN_SCRAPED_PROFILE_DOCNAME,
+    LITE_LINKEDIN_DEEP_RESEARCH_REPORT_NAMESPACE_TEMPLATE,
+    LITE_LINKEDIN_DEEP_RESEARCH_REPORT_DOCNAME,
+    LITE_LINKEDIN_USER_PROFILE_NAMESPACE_TEMPLATE,
+    LITE_LINKEDIN_USER_PROFILE_DOCNAME,
     # Blog/Company documents
-    BLOG_CONTENT_ANALYSIS_DOCNAME,
-    BLOG_CONTENT_ANALYSIS_NAMESPACE_TEMPLATE,
-    BLOG_AI_VISIBILITY_TEST_DOCNAME,
-    BLOG_AI_VISIBILITY_TEST_NAMESPACE_TEMPLATE,
-    BLOG_COMPANY_AI_VISIBILITY_TEST_DOCNAME,
-    BLOG_COMPANY_AI_VISIBILITY_TEST_NAMESPACE_TEMPLATE,
-    BLOG_TECHNICAL_ANALYSIS_DOCNAME,
-    BLOG_TECHNICAL_ANALYSIS_NAMESPACE_TEMPLATE,
-    BLOG_DEEP_RESEARCH_REPORT_DOCNAME,
-    BLOG_DEEP_RESEARCH_REPORT_NAMESPACE_TEMPLATE,
-    BLOG_CONTENT_PORTFOLIO_ANALYSIS_DOCNAME,
-    BLOG_CONTENT_PORTFOLIO_ANALYSIS_NAMESPACE_TEMPLATE,
-    BLOG_COMPETITOR_CONTENT_ANALYSIS_NAMESPACE_TEMPLATE,
-    BLOG_COMPANY_DOCNAME,
-    BLOG_COMPANY_NAMESPACE_TEMPLATE,
+    LITE_BLOG_CONTENT_ANALYSIS_DOCNAME,
+    LITE_BLOG_CONTENT_ANALYSIS_NAMESPACE_TEMPLATE,
+    LITE_BLOG_AI_VISIBILITY_TEST_DOCNAME,
+    LITE_BLOG_AI_VISIBILITY_TEST_NAMESPACE_TEMPLATE,
+    LITE_BLOG_DEEP_RESEARCH_REPORT_DOCNAME,
+    LITE_BLOG_DEEP_RESEARCH_REPORT_NAMESPACE_TEMPLATE,
+    LITE_BLOG_COMPETITOR_CONTENT_ANALYSIS_NAMESPACE_TEMPLATE,
+    LITE_BLOG_COMPANY_DOCNAME,
+    LITE_BLOG_COMPANY_NAMESPACE_TEMPLATE,
     # Final diagnostic reports
-    LINKEDIN_CONTENT_DIAGNOSTIC_REPORT_DOCNAME,
-    LINKEDIN_CONTENT_DIAGNOSTIC_REPORT_NAMESPACE_TEMPLATE,
-    BLOG_CONTENT_DIAGNOSTIC_REPORT_DOCNAME,
-    BLOG_CONTENT_DIAGNOSTIC_REPORT_NAMESPACE_TEMPLATE,
+    LITE_LINKEDIN_CONTENT_DIAGNOSTIC_REPORT_DOCNAME,
+    LITE_LINKEDIN_CONTENT_DIAGNOSTIC_REPORT_NAMESPACE_TEMPLATE,
+    LITE_BLOG_CONTENT_DIAGNOSTIC_REPORT_DOCNAME,
+    LITE_BLOG_CONTENT_DIAGNOSTIC_REPORT_NAMESPACE_TEMPLATE,
 )
 
-from kiwi_client.workflows.active.content_diagnostics.llm_inputs.orchestrator_final_reports import (
+from kiwi_client.workflows.active.content_diagnostics_LITE_version.llm_inputs.orchestrator_final_reports import (
     # LinkedIn Executive Reports
     LINKEDIN_COMPETITIVE_INTELLIGENCE_USER_PROMPT,
     LINKEDIN_COMPETITIVE_INTELLIGENCE_SYSTEM_PROMPT,
@@ -66,8 +60,6 @@ from kiwi_client.workflows.active.content_diagnostics.llm_inputs.orchestrator_fi
     LINKEDIN_STRATEGIC_RECOMMENDATIONS_USER_PROMPT,
     LINKEDIN_STRATEGIC_RECOMMENDATIONS_SYSTEM_PROMPT,
     # Blog/Company Reports
-    BLOG_AI_VISIBILITY_REPORT_USER_PROMPT,
-    BLOG_AI_VISIBILITY_REPORT_SYSTEM_PROMPT,
     BLOG_COMPETITIVE_INTELLIGENCE_REPORT_USER_PROMPT,
     BLOG_COMPETITIVE_INTELLIGENCE_REPORT_SYSTEM_PROMPT,
     BLOG_PERFORMANCE_REPORT_USER_PROMPT,
@@ -86,7 +78,6 @@ from kiwi_client.workflows.active.content_diagnostics.llm_inputs.orchestrator_fi
     LINKEDIN_CONTENT_PERFORMANCE_ANALYSIS_SCHEMA,
     LINKEDIN_CONTENT_STRATEGY_GAPS_SCHEMA,
     LINKEDIN_STRATEGIC_RECOMMENDATIONS_SCHEMA,
-    BLOG_AI_VISIBILITY_REPORT_SCHEMA,
     BLOG_COMPETITIVE_INTELLIGENCE_REPORT_SCHEMA,
     BLOG_PERFORMANCE_REPORT_SCHEMA,
     BLOG_GAP_ANALYSIS_VALIDATION_SCHEMA,
@@ -99,13 +90,13 @@ from kiwi_client.workflows.active.content_diagnostics.llm_inputs.orchestrator_fi
 
 # --- Workflow Constants ---
 # Workflow names to execute
-DEEP_RESEARCH_WORKFLOW_NAME = "deep_research_workflow"
-BLOG_CONTENT_ANALYSIS_WORKFLOW_NAME = "blog_content_analysis_workflow"
-EXECUTIVE_AI_VISIBILITY_WORKFLOW_NAME = "executive_ai_visibility_workflow"
-COMPANY_AI_VISIBILITY_WORKFLOW_NAME = "company_ai_visibility_workflow"
-BLOG_COMPETITOR_CONTENT_ANALYSIS_WORKFLOW_NAME = "blog_competitor_content_analysis_workflow"
-LINKEDIN_SCRAPING_WORKFLOW_NAME = "linkedin_linkedin_scraping_workflow"
-LINKEDIN_ANALYSIS_WORKFLOW_NAME = "linkedin_linkedin_content_analysis_workflow"
+DEEP_RESEARCH_WORKFLOW_NAME = "LITE_deep_research_workflow"
+BLOG_CONTENT_ANALYSIS_WORKFLOW_NAME = "LITE_blog_content_analysis_workflow"
+EXECUTIVE_AI_VISIBILITY_WORKFLOW_NAME = "LITE_executive_ai_visibility_workflow"
+COMPANY_AI_VISIBILITY_WORKFLOW_NAME = "LITE_company_ai_visibility_workflow"
+BLOG_COMPETITOR_CONTENT_ANALYSIS_WORKFLOW_NAME = "LITE_blog_competitor_content_analysis_workflow"
+LINKEDIN_SCRAPING_WORKFLOW_NAME = "LITE_linkedin_linkedin_scraping_workflow"
+LINKEDIN_ANALYSIS_WORKFLOW_NAME = "LITE_linkedin_linkedin_content_analysis_workflow"
 
 # Timeouts for each workflow (in seconds)
 DEEP_RESEARCH_TIMEOUT = 1800  # 30 minutes for deep research
@@ -119,11 +110,13 @@ LLM_MODEL_FOR_STRATEGIC_RECOMMENDATIONS = "gpt-5"
 LLM_TEMPERATURE_FOR_STRATEGIC_RECOMMENDATIONS = 0.5
 LLM_MAX_TOKENS_FOR_STRATEGIC_RECOMMENDATIONS = 20000
 
+VERBOSITY = "low"
+
 # LLM defaults
-LLM_PROVIDER = "anthropic"
-LLM_MODEL = "claude-sonnet-4-20250514"
+LLM_PROVIDER = "openai"
+LLM_MODEL = "gpt-5"
 LLM_TEMPERATURE = 0.7
-LLM_MAX_TOKENS = 4000
+LLM_MAX_TOKENS = 8000
 
 CACHE_ENABLED = True
 
@@ -411,41 +404,41 @@ workflow_graph_schema = {
                 "load_paths": [
                     {
                         "filename_config": {
-                            "input_namespace_field_pattern": LINKEDIN_CONTENT_ANALYSIS_NAMESPACE_TEMPLATE,
+                            "input_namespace_field_pattern": LITE_LINKEDIN_CONTENT_ANALYSIS_NAMESPACE_TEMPLATE,
                             "input_namespace_field": "entity_username",
-                            "static_docname": LINKEDIN_CONTENT_ANALYSIS_DOCNAME,
+                            "static_docname": LITE_LINKEDIN_CONTENT_ANALYSIS_DOCNAME,
                         },
                         "output_field_name": "linkedin_content_doc",
                     },
                     {
                         "filename_config": {
-                            "input_namespace_field_pattern": LINKEDIN_USER_AI_VISIBILITY_TEST_NAMESPACE_TEMPLATE,
+                            "input_namespace_field_pattern": LITE_LINKEDIN_USER_AI_VISIBILITY_TEST_NAMESPACE_TEMPLATE,
                             "input_namespace_field": "entity_username",
-                            "static_docname": LINKEDIN_USER_AI_VISIBILITY_TEST_DOCNAME,
+                            "static_docname": LITE_LINKEDIN_USER_AI_VISIBILITY_TEST_DOCNAME,
                         },
                         "output_field_name": "linkedin_ai_visibility_doc",
                     },
                     {
                         "filename_config": {
-                            "input_namespace_field_pattern": LINKEDIN_SCRAPED_PROFILE_NAMESPACE_TEMPLATE,
+                            "input_namespace_field_pattern": LITE_LINKEDIN_SCRAPED_PROFILE_NAMESPACE_TEMPLATE,
                             "input_namespace_field": "entity_username",
-                            "static_docname": LINKEDIN_SCRAPED_PROFILE_DOCNAME
+                            "static_docname": LITE_LINKEDIN_SCRAPED_PROFILE_DOCNAME
                         },
                         "output_field_name": "linkedin_scraped_profile_doc"
                     },
                     {
                         "filename_config": {
-                            "input_namespace_field_pattern": LINKEDIN_DEEP_RESEARCH_REPORT_NAMESPACE_TEMPLATE,
+                            "input_namespace_field_pattern": LITE_LINKEDIN_DEEP_RESEARCH_REPORT_NAMESPACE_TEMPLATE,
                             "input_namespace_field": "entity_username",
-                            "static_docname": LINKEDIN_DEEP_RESEARCH_REPORT_DOCNAME
+                            "static_docname": LITE_LINKEDIN_DEEP_RESEARCH_REPORT_DOCNAME
                         },
                         "output_field_name": "linkedin_deep_research_doc"
                     },
                     {
                         "filename_config": {
-                            "input_namespace_field_pattern": LINKEDIN_USER_PROFILE_NAMESPACE_TEMPLATE,
+                            "input_namespace_field_pattern": LITE_LINKEDIN_USER_PROFILE_NAMESPACE_TEMPLATE,
                             "input_namespace_field": "entity_username",
-                            "static_docname": LINKEDIN_USER_PROFILE_DOCNAME
+                            "static_docname": LITE_LINKEDIN_USER_PROFILE_DOCNAME
                         },
                         "output_field_name": "linkedin_user_profile_doc"
                     }
@@ -464,57 +457,36 @@ workflow_graph_schema = {
                 "load_paths": [
                     {
                         "filename_config": {
-                            "input_namespace_field_pattern": BLOG_CONTENT_ANALYSIS_NAMESPACE_TEMPLATE,
+                            "input_namespace_field_pattern": LITE_BLOG_CONTENT_ANALYSIS_NAMESPACE_TEMPLATE,
                             "input_namespace_field": "company_name",
-                            "static_docname": BLOG_CONTENT_ANALYSIS_DOCNAME,
+                            "static_docname": LITE_BLOG_CONTENT_ANALYSIS_DOCNAME,
                         },
                         "output_field_name": "blog_content_analysis_doc",
                     },
+
                     {
                         "filename_config": {
-                            "input_namespace_field_pattern": BLOG_CONTENT_PORTFOLIO_ANALYSIS_NAMESPACE_TEMPLATE,
+                            "input_namespace_field_pattern": LITE_BLOG_AI_VISIBILITY_TEST_NAMESPACE_TEMPLATE,
                             "input_namespace_field": "company_name",
-                            "static_docname": BLOG_CONTENT_PORTFOLIO_ANALYSIS_DOCNAME,
-                        },
-                        "output_field_name": "blog_portfolio_analysis_doc",
-                    },
-                    {
-                        "filename_config": {
-                            "input_namespace_field_pattern": BLOG_AI_VISIBILITY_TEST_NAMESPACE_TEMPLATE,
-                            "input_namespace_field": "company_name",
-                            "static_docname": BLOG_AI_VISIBILITY_TEST_DOCNAME,
+                            "static_docname": LITE_BLOG_AI_VISIBILITY_TEST_DOCNAME,
                         },
                         "output_field_name": "blog_ai_visibility_doc",
                     },
+
+
                     {
                         "filename_config": {
-                            "input_namespace_field_pattern": BLOG_COMPANY_AI_VISIBILITY_TEST_NAMESPACE_TEMPLATE,
+                            "input_namespace_field_pattern": LITE_BLOG_DEEP_RESEARCH_REPORT_NAMESPACE_TEMPLATE,
                             "input_namespace_field": "company_name",
-                            "static_docname": BLOG_COMPANY_AI_VISIBILITY_TEST_DOCNAME,
-                        },
-                        "output_field_name": "company_ai_visibility_doc",
-                    },
-                    {
-                        "filename_config": {
-                            "input_namespace_field_pattern": BLOG_TECHNICAL_ANALYSIS_NAMESPACE_TEMPLATE,
-                            "input_namespace_field": "company_name",
-                            "static_docname": BLOG_TECHNICAL_ANALYSIS_DOCNAME,
-                        },
-                        "output_field_name": "technical_seo_doc",
-                    },
-                    {
-                        "filename_config": {
-                            "input_namespace_field_pattern": BLOG_DEEP_RESEARCH_REPORT_NAMESPACE_TEMPLATE,
-                            "input_namespace_field": "company_name",
-                            "static_docname": BLOG_DEEP_RESEARCH_REPORT_DOCNAME,
+                            "static_docname": LITE_BLOG_DEEP_RESEARCH_REPORT_DOCNAME,
                         },
                         "output_field_name": "deep_research_doc",
                     },
                     {
                         "filename_config": {
-                            "input_namespace_field_pattern": BLOG_COMPANY_NAMESPACE_TEMPLATE,
+                            "input_namespace_field_pattern": LITE_BLOG_COMPANY_NAMESPACE_TEMPLATE,
                             "input_namespace_field": "company_name",
-                            "static_docname": BLOG_COMPANY_DOCNAME
+                            "static_docname": LITE_BLOG_COMPANY_DOCNAME
                         },
                         "output_field_name": "company_context_doc"
                     }
@@ -530,7 +502,7 @@ workflow_graph_schema = {
             "node_id": "load_competitor_content_docs",
             "node_name": "load_multiple_customer_data",
             "node_config": {
-                "namespace_pattern": BLOG_COMPETITOR_CONTENT_ANALYSIS_NAMESPACE_TEMPLATE,
+                "namespace_pattern": LITE_BLOG_COMPETITOR_CONTENT_ANALYSIS_NAMESPACE_TEMPLATE,
                 "namespace_pattern_input_path": "company_name",
                 "include_shared": False,
                 "include_user_specific": True,
@@ -603,7 +575,6 @@ workflow_graph_schema = {
             "node_name": "router_node",
             "node_config": {
                 "choices": [
-                    "construct_ai_visibility_report_prompt",
                     "construct_competitive_intelligence_report_prompt",
                     "construct_blog_performance_report_prompt",
                     "construct_gap_analysis_validation_prompt"
@@ -611,7 +582,6 @@ workflow_graph_schema = {
                 "allow_multiple": True,
                 "default_choice": None,
                 "choices_with_conditions": [
-                    {"choice_id": "construct_ai_visibility_report_prompt", "input_path": "run_blog_analysis", "target_value": True},
                     {"choice_id": "construct_competitive_intelligence_report_prompt", "input_path": "run_blog_analysis", "target_value": True},
                     {"choice_id": "construct_blog_performance_report_prompt", "input_path": "run_blog_analysis", "target_value": True},
                     {"choice_id": "construct_gap_analysis_validation_prompt", "input_path": "run_blog_analysis", "target_value": True}
@@ -657,7 +627,9 @@ workflow_graph_schema = {
                 "llm_config": {
                     "model_spec": {"provider": LLM_PROVIDER, "model": LLM_MODEL},
                     "temperature": LLM_TEMPERATURE,
-                    "max_tokens": LLM_MAX_TOKENS
+                    "max_tokens": LLM_MAX_TOKENS,
+                    "reasoning_effort_class": "low",
+                    "verbosity": VERBOSITY
                 },
                 "output_schema": {"schema_definition": LINKEDIN_COMPETITIVE_INTELLIGENCE_SCHEMA, "convert_loaded_schema_to_pydantic": False}
             }
@@ -699,7 +671,9 @@ workflow_graph_schema = {
                 "llm_config": {
                     "model_spec": {"provider": LLM_PROVIDER, "model": LLM_MODEL},
                     "temperature": LLM_TEMPERATURE,
-                    "max_tokens": LLM_MAX_TOKENS
+                    "max_tokens": LLM_MAX_TOKENS,
+                    "reasoning_effort_class": "low",
+                    "verbosity": VERBOSITY
                 },
                 "output_schema": {"schema_definition": LINKEDIN_CONTENT_PERFORMANCE_ANALYSIS_SCHEMA, "convert_loaded_schema_to_pydantic": False}
             }
@@ -743,7 +717,9 @@ workflow_graph_schema = {
                 "llm_config": {
                     "model_spec": {"provider": LLM_PROVIDER, "model": LLM_MODEL},
                     "temperature": LLM_TEMPERATURE,
-                    "max_tokens": LLM_MAX_TOKENS
+                    "max_tokens": LLM_MAX_TOKENS,
+                    "reasoning_effort_class": "low",
+                    "verbosity": VERBOSITY
                 },
                 "output_schema": {"schema_definition": LINKEDIN_CONTENT_STRATEGY_GAPS_SCHEMA, "convert_loaded_schema_to_pydantic": False}
             }
@@ -793,7 +769,8 @@ workflow_graph_schema = {
                     "model_spec": {"provider": LLM_PROVIDER_FOR_STRATEGIC_RECOMMENDATIONS, "model": LLM_MODEL_FOR_STRATEGIC_RECOMMENDATIONS},
                     "temperature": LLM_TEMPERATURE_FOR_STRATEGIC_RECOMMENDATIONS,
                     "max_tokens": LLM_MAX_TOKENS_FOR_STRATEGIC_RECOMMENDATIONS,
-                    "reasoning_effort_class": "high"
+                    "reasoning_effort_class": "high",
+                    "verbosity": VERBOSITY
                 },
                 "output_schema": {"schema_definition": LINKEDIN_STRATEGIC_RECOMMENDATIONS_SCHEMA, "convert_loaded_schema_to_pydantic": False}
             }
@@ -843,7 +820,8 @@ workflow_graph_schema = {
                     "model_spec": {"provider": LLM_PROVIDER_FOR_STRATEGIC_RECOMMENDATIONS, "model": LLM_MODEL_FOR_STRATEGIC_RECOMMENDATIONS},
                     "temperature": LLM_TEMPERATURE_FOR_STRATEGIC_RECOMMENDATIONS,
                     "max_tokens": LLM_MAX_TOKENS_FOR_STRATEGIC_RECOMMENDATIONS,
-                    "reasoning_effort_class": "high"
+                    "reasoning_effort_class": "high",
+                    "verbosity": VERBOSITY
                 },
                 "output_schema": {"schema_definition": LINKEDIN_EXECUTIVE_SUMMARY_SCHEMA, "convert_loaded_schema_to_pydantic": False}
             }
@@ -885,35 +863,6 @@ workflow_graph_schema = {
         },
 
         # # --- COMPANY REPORT GENERATION NODES ---
-        # # 1. AI Visibility Report Prompt Constructor
-        "construct_ai_visibility_report_prompt": {
-            "node_id": "construct_ai_visibility_report_prompt",
-            "node_name": "prompt_constructor",
-            "node_config": {
-                "prompt_templates": {
-                    "user_prompt": {
-                        "id": "user_prompt",
-                        "template": BLOG_AI_VISIBILITY_REPORT_USER_PROMPT,
-                        "variables": {
-                            "company_ai_visibility_data": None,
-                            "blog_ai_visibility_data": None,
-                            "company_context_doc": None
-                        },
-                        "construct_options": {
-                            "company_context_doc": "company_context_doc",
-                            "company_ai_visibility_data": "company_ai_visibility_data",
-                            "blog_ai_visibility_data": "blog_ai_visibility_data"
-                        }
-                    },
-                    "system_prompt": {
-                        "id": "system_prompt",
-                        "template": BLOG_AI_VISIBILITY_REPORT_SYSTEM_PROMPT,
-                        "variables": {},
-                        "construct_options": {}
-                    }
-                }
-            }
-        },
 
         # # 2. Competitive Intelligence Report Prompt Constructor
         "construct_competitive_intelligence_report_prompt": {
@@ -957,12 +906,10 @@ workflow_graph_schema = {
                         "id": "user_prompt",
                         "template": BLOG_PERFORMANCE_REPORT_USER_PROMPT,
                         "variables": {
-                            "blog_content_data": None,
-                            "blog_portfolio_data": None
+                            "blog_content_data": None
                         },
                         "construct_options": {
-                            "blog_content_data": "blog_content_data",
-                            "blog_portfolio_data": "blog_portfolio_data"
+                            "blog_content_data": "blog_content_data"
                         }
                     },
                     "system_prompt": {
@@ -986,13 +933,11 @@ workflow_graph_schema = {
                         "template": BLOG_GAP_ANALYSIS_VALIDATION_USER_PROMPT,
                         "variables": {
                             "blog_content_data": None,
-                            "blog_portfolio_data": None,
                             "deep_research_data": None,
                             "competitor_data": None
                         },
                         "construct_options": {
                             "blog_content_data": "blog_content_data",
-                            "blog_portfolio_data": "blog_portfolio_data",
                             "deep_research_data": "deep_research_data",
                             "competitor_data": "competitor_data"
                         }
@@ -1018,18 +963,14 @@ workflow_graph_schema = {
                         "id": "user_prompt",
                         "template": BLOG_STRATEGIC_RECOMMENDATIONS_USER_PROMPT,
                         "variables": {
-                            "ai_visibility_report": None,
                             "competitive_intelligence_report": None,
                             "blog_performance_report": None,
-                            "gap_analysis_validation": None,
-                            "technical_seo_report": None
+                            "gap_analysis_validation": None
                         },
                         "construct_options": {
-                            "ai_visibility_report": "ai_visibility_report",
                             "competitive_intelligence_report": "competitive_intelligence_report",
                             "blog_performance_report": "blog_performance_report",
-                            "gap_analysis_validation": "gap_analysis_validation",
-                            "technical_seo_report": "technical_seo_report"
+                            "gap_analysis_validation": "gap_analysis_validation"
                         }
                     },
                     "system_prompt": {
@@ -1052,18 +993,14 @@ workflow_graph_schema = {
                         "id": "user_prompt",
                         "template": BLOG_EXECUTIVE_SUMMARY_USER_PROMPT,
                         "variables": {
-                            "ai_visibility_report": None,
                             "competitive_intelligence_report": None,
                             "blog_performance_report": None,
-                            "gap_analysis_validation": None,
-                            "technical_seo_report": None
+                            "gap_analysis_validation": None
                         },
                         "construct_options": {
-                            "ai_visibility_report": "ai_visibility_report",
                             "competitive_intelligence_report": "competitive_intelligence_report",
                             "blog_performance_report": "blog_performance_report",
-                            "gap_analysis_validation": "gap_analysis_validation",
-                            "technical_seo_report": "technical_seo_report"
+                            "gap_analysis_validation": "gap_analysis_validation"
                         }
                     },
                     "system_prompt": {
@@ -1076,19 +1013,7 @@ workflow_graph_schema = {
             }
         },
 
-        # # 1. AI Visibility Report
-        "generate_ai_visibility_report": {
-            "node_id": "generate_ai_visibility_report",
-            "node_name": "llm",
-            "node_config": {
-                "llm_config": {
-                    "model_spec": {"provider": LLM_PROVIDER, "model": LLM_MODEL},
-                    "temperature": LLM_TEMPERATURE,
-                    "max_tokens": LLM_MAX_TOKENS
-                },
-                "output_schema": {"schema_definition": BLOG_AI_VISIBILITY_REPORT_SCHEMA, "convert_loaded_schema_to_pydantic": False}
-            }
-        },
+
 
         # # 2. Competitive Intelligence Report
         "generate_competitive_intelligence_report": {
@@ -1098,7 +1023,9 @@ workflow_graph_schema = {
                 "llm_config": {
                     "model_spec": {"provider": LLM_PROVIDER, "model": LLM_MODEL},
                     "temperature": LLM_TEMPERATURE,
-                    "max_tokens": LLM_MAX_TOKENS
+                    "max_tokens": LLM_MAX_TOKENS,
+                    "reasoning_effort_class": "low",
+                    "verbosity": VERBOSITY
                 },
                 "output_schema": {"schema_definition": BLOG_COMPETITIVE_INTELLIGENCE_REPORT_SCHEMA, "convert_loaded_schema_to_pydantic": False}
             }
@@ -1114,7 +1041,9 @@ workflow_graph_schema = {
                 "llm_config": {
                     "model_spec": {"provider": LLM_PROVIDER, "model": LLM_MODEL},
                     "temperature": LLM_TEMPERATURE,
-                    "max_tokens": LLM_MAX_TOKENS
+                    "max_tokens": LLM_MAX_TOKENS,
+                    "reasoning_effort_class": "low",
+                    "verbosity": VERBOSITY
                 },
                 "output_schema": {"schema_definition": BLOG_PERFORMANCE_REPORT_SCHEMA, "convert_loaded_schema_to_pydantic": False}
             }
@@ -1128,7 +1057,9 @@ workflow_graph_schema = {
                 "llm_config": {
                     "model_spec": {"provider": LLM_PROVIDER, "model": LLM_MODEL},
                     "temperature": LLM_TEMPERATURE,
-                    "max_tokens": LLM_MAX_TOKENS
+                    "max_tokens": LLM_MAX_TOKENS,
+                    "reasoning_effort_class": "low",
+                    "verbosity": VERBOSITY
                 },
                 "output_schema": {"schema_definition": BLOG_GAP_ANALYSIS_VALIDATION_SCHEMA, "convert_loaded_schema_to_pydantic": False}
             }
@@ -1143,7 +1074,8 @@ workflow_graph_schema = {
                     "model_spec": {"provider": LLM_PROVIDER_FOR_STRATEGIC_RECOMMENDATIONS, "model": LLM_MODEL_FOR_STRATEGIC_RECOMMENDATIONS},
                     "temperature": LLM_TEMPERATURE_FOR_STRATEGIC_RECOMMENDATIONS,
                     "max_tokens": LLM_MAX_TOKENS_FOR_STRATEGIC_RECOMMENDATIONS,
-                    "reasoning_effort_class": "high"
+                    "reasoning_effort_class": "low",
+                    "verbosity": VERBOSITY
                 },
                 "output_schema": {"schema_definition": BLOG_STRATEGIC_RECOMMENDATIONS_SCHEMA, "convert_loaded_schema_to_pydantic": False}
             }
@@ -1157,7 +1089,8 @@ workflow_graph_schema = {
                     "model_spec": {"provider": LLM_PROVIDER_FOR_STRATEGIC_RECOMMENDATIONS, "model": LLM_MODEL_FOR_STRATEGIC_RECOMMENDATIONS},
                     "temperature": LLM_TEMPERATURE_FOR_STRATEGIC_RECOMMENDATIONS,
                     "max_tokens": LLM_MAX_TOKENS_FOR_STRATEGIC_RECOMMENDATIONS,
-                    "reasoning_effort_class": "high"
+                    "reasoning_effort_class": "low",
+                    "verbosity": VERBOSITY
                 },
                 "output_schema": {"schema_definition": BLOG_EXECUTIVE_SUMMARY_SCHEMA_PYDANTIC, "convert_loaded_schema_to_pydantic": False}
             }
@@ -1171,16 +1104,12 @@ workflow_graph_schema = {
             "node_config": {
                 "mappings": [
                     {
-                        "source_path": "ai_visibility_report",
-                        "destination_path": "company_reports.ai_visibility_overview"
+                        "source_path": "blog_ai_visibility_doc",
+                        "destination_path": "company_reports.blog_ai_visibility"
                     },
                     {
                         "source_path": "blog_performance_report",
                         "destination_path": "company_reports.blog_performance_health"
-                    },
-                    {
-                        "source_path": "technical_seo_report",
-                        "destination_path": "company_reports.technical_seo_foundation"
                     },
                     {
                         "source_path": "competitive_intelligence_report",
@@ -1214,9 +1143,9 @@ workflow_graph_schema = {
                         "input_field_path": "executive_reports.executive_reports",
                         "target_path": {
                             "filename_config": {
-                                "input_namespace_field_pattern": LINKEDIN_CONTENT_DIAGNOSTIC_REPORT_NAMESPACE_TEMPLATE,
+                                "input_namespace_field_pattern": LITE_LINKEDIN_CONTENT_DIAGNOSTIC_REPORT_NAMESPACE_TEMPLATE,
                                 "input_namespace_field": "entity_username",
-                                "static_docname": LINKEDIN_CONTENT_DIAGNOSTIC_REPORT_DOCNAME
+                                "static_docname": LITE_LINKEDIN_CONTENT_DIAGNOSTIC_REPORT_DOCNAME
                             }
                         }
                     }
@@ -1236,9 +1165,9 @@ workflow_graph_schema = {
                         "input_field_path": "company_reports.company_reports",
                         "target_path": {
                             "filename_config": {
-                                "input_namespace_field_pattern": BLOG_CONTENT_DIAGNOSTIC_REPORT_NAMESPACE_TEMPLATE,
+                                "input_namespace_field_pattern": LITE_BLOG_CONTENT_DIAGNOSTIC_REPORT_NAMESPACE_TEMPLATE,
                                 "input_namespace_field": "company_name",
-                                "static_docname": BLOG_CONTENT_DIAGNOSTIC_REPORT_DOCNAME
+                                "static_docname": LITE_BLOG_CONTENT_DIAGNOSTIC_REPORT_DOCNAME
                             }
                         }
                     }
@@ -1595,10 +1524,7 @@ workflow_graph_schema = {
             "dst_node_id": "$graph_state",
             "mappings": [
                 {"src_field": "blog_content_analysis_doc", "dst_field": "blog_content_analysis_doc"},
-                {"src_field": "blog_portfolio_analysis_doc", "dst_field": "blog_portfolio_analysis_doc"},
                 {"src_field": "blog_ai_visibility_doc", "dst_field": "blog_ai_visibility_doc"},
-                {"src_field": "company_ai_visibility_doc", "dst_field": "company_ai_visibility_doc"},
-                {"src_field": "technical_seo_doc", "dst_field": "technical_seo_doc"},
                 {"src_field": "deep_research_doc", "dst_field": "deep_research_doc"},
                 {"src_field": "company_context_doc", "dst_field": "company_context_doc"}            ]
         },
@@ -1897,29 +1823,7 @@ workflow_graph_schema = {
         },
         
     #     # Company Reports Router -> Individual Report Constructors
-        # 1. AI Visibility Report
-        {
-            "src_node_id": "generate_company_reports_router",
-            "dst_node_id": "construct_ai_visibility_report_prompt",
-            "mappings": []
-        },
-        {
-            "src_node_id": "$graph_state",
-            "dst_node_id": "construct_ai_visibility_report_prompt",
-            "mappings": [
-                {"src_field": "company_context_doc", "dst_field": "company_context_doc"},
-                {"src_field": "company_ai_visibility_doc", "dst_field": "company_ai_visibility_data"},
-                {"src_field": "blog_ai_visibility_doc", "dst_field": "blog_ai_visibility_data"}
-            ]
-        },
-        {
-            "src_node_id": "construct_ai_visibility_report_prompt",
-            "dst_node_id": "generate_ai_visibility_report",
-            "mappings": [
-                {"src_field": "user_prompt", "dst_field": "user_prompt"},
-                {"src_field": "system_prompt", "dst_field": "system_prompt"}
-            ]
-        },
+
         
         # 2. Competitive Intelligence Report
         {
@@ -1956,8 +1860,7 @@ workflow_graph_schema = {
             "src_node_id": "$graph_state",
             "dst_node_id": "construct_blog_performance_report_prompt",
             "mappings": [
-                {"src_field": "blog_content_analysis_doc", "dst_field": "blog_content_data"},
-                {"src_field": "blog_portfolio_analysis_doc", "dst_field": "blog_portfolio_data"}
+                {"src_field": "blog_content_analysis_doc", "dst_field": "blog_content_data"}
             ]
         },
         {
@@ -1980,7 +1883,6 @@ workflow_graph_schema = {
             "dst_node_id": "construct_gap_analysis_validation_prompt",
             "mappings": [
                 {"src_field": "blog_content_analysis_doc", "dst_field": "blog_content_data"},
-                {"src_field": "blog_portfolio_analysis_doc", "dst_field": "blog_portfolio_data"},
                 {"src_field": "deep_research_doc", "dst_field": "deep_research_data"},
                 {"src_field": "competitor_content_docs", "dst_field": "competitor_data"}
             ]
@@ -1995,11 +1897,6 @@ workflow_graph_schema = {
         },
         
         # 6. Strategic Recommendations & Action Plan Report (depends on other reports)
-        {
-            "src_node_id": "generate_ai_visibility_report",
-            "dst_node_id": "construct_strategic_recommendations_prompt",
-            "mappings": []
-        },
         {
             "src_node_id": "generate_competitive_intelligence_report",
             "dst_node_id": "construct_strategic_recommendations_prompt",
@@ -2019,11 +1916,9 @@ workflow_graph_schema = {
             "src_node_id": "$graph_state",
             "dst_node_id": "construct_strategic_recommendations_prompt",
             "mappings": [
-                {"src_field": "ai_visibility_report", "dst_field": "ai_visibility_report"},
                 {"src_field": "competitive_intelligence_report", "dst_field": "competitive_intelligence_report"},
                 {"src_field": "blog_performance_report", "dst_field": "blog_performance_report"},
-                {"src_field": "gap_analysis_validation", "dst_field": "gap_analysis_validation"},
-                {"src_field": "technical_seo_doc", "dst_field": "technical_seo_report"}
+                {"src_field": "gap_analysis_validation", "dst_field": "gap_analysis_validation"}
             ]
         },
         {
@@ -2036,13 +1931,6 @@ workflow_graph_schema = {
         },
 
     #     # Store company report outputs in state
-        {
-            "src_node_id": "generate_ai_visibility_report",
-            "dst_node_id": "$graph_state",
-            "mappings": [
-                {"src_field": "structured_output", "dst_field": "ai_visibility_report"}
-            ]
-        },
         {
             "src_node_id": "generate_competitive_intelligence_report",
             "dst_node_id": "$graph_state",
@@ -2090,11 +1978,9 @@ workflow_graph_schema = {
             "src_node_id": "$graph_state",
             "dst_node_id": "construct_blog_executive_summary_prompt",
             "mappings": [
-                {"src_field": "ai_visibility_report", "dst_field": "ai_visibility_report"},
                 {"src_field": "competitive_intelligence_report", "dst_field": "competitive_intelligence_report"},
                 {"src_field": "blog_performance_report", "dst_field": "blog_performance_report"},
-                {"src_field": "gap_analysis_validation", "dst_field": "gap_analysis_validation"},
-                {"src_field": "technical_seo_doc", "dst_field": "technical_seo_report"}
+                {"src_field": "gap_analysis_validation", "dst_field": "gap_analysis_validation"}
             ]
         },
         # Blog Executive Summary: constructor -> LLM
@@ -2117,11 +2003,6 @@ workflow_graph_schema = {
 
     #     # All company reports -> Company Action Plan
         # Wait for all company reports to complete before constructing action plan
-        {
-            "src_node_id": "generate_ai_visibility_report",
-            "dst_node_id": "aggregate_company_reports",
-            "mappings": []
-        },
         {
             "src_node_id": "generate_competitive_intelligence_report",
             "dst_node_id": "aggregate_company_reports",
@@ -2154,9 +2035,8 @@ workflow_graph_schema = {
             "src_node_id": "$graph_state",
             "dst_node_id": "aggregate_company_reports",
             "mappings": [
-                {"src_field": "ai_visibility_report", "dst_field": "ai_visibility_report"},
+                {"src_field": "blog_ai_visibility_doc", "dst_field": "blog_ai_visibility_doc"},
                 {"src_field": "competitive_intelligence_report", "dst_field": "competitive_intelligence_report"},
-                {"src_field": "technical_seo_doc", "dst_field": "technical_seo_report"},
                 {"src_field": "blog_performance_report", "dst_field": "blog_performance_report"},
                 {"src_field": "gap_analysis_validation", "dst_field": "gap_analysis_validation"},
                 {"src_field": "strategic_recommendations", "dst_field": "strategic_recommendations"},
@@ -2220,59 +2100,6 @@ workflow_graph_schema = {
     "metadata": {
         "$graph_state": {
             "reducer": {
-                "entity_username": "replace",
-                "company_name": "replace",
-                "run_linkedin_exec": "replace",
-                "run_blog_analysis": "replace",
-                "linkedin_profile_url": "replace",
-                "company_url": "replace",
-                "blog_start_urls": "replace",
-                "deep_research_result": "replace",
-                "blog_analysis_result": "replace",
-                "executive_ai_visibility_result": "replace",
-                "company_ai_visibility_result": "replace",
-                "linkedin_scraping_result": "replace",
-                "linkedin_analysis_result": "replace",
-                "company_result": "replace",
-                "linkedin_content_doc": "replace",
-                "blog_content_analysis_doc": "replace",
-                "linkedin_ai_visibility_doc": "replace",
-                "company_ai_visibility_doc": "replace",
-                 "deep_research_doc": "replace",
-                 "competitor_content_analysis_result": "replace",
-                "competitor_content_docs": "replace",
-                "executive_reports": "replace",
-                "company_reports": "replace",
-                "business_impact_projection": "replace",
-                "linkedin_competitive_intelligence": "replace",
-                "content_performance_analysis": "replace",
-                "content_strategy_gaps": "replace",
-                "strategic_linkedin_recommendations": "replace",
-                "linkedin_executive_summary": "replace",
-                "ai_visibility_report": "replace",
-                "competitive_intelligence_report": "replace",
-                "blog_performance_report": "replace",
-                "gap_analysis_validation": "replace",
-                "strategic_recommendations": "replace",
-                "blog_executive_summary": "replace",
-                "company_action_plan": "replace",
-                "linkedin_ai_visibility_doc": "replace",
-                "linkedin_scraped_profile_doc": "replace",
-                "linkedin_scraped_posts_doc": "replace",
-                "linkedin_scraped_profile_raw_doc": "replace",
-                "linkedin_scraped_posts_raw_doc": "replace",
-                "linkedin_deep_research_doc": "replace",
-                "linkedin_user_profile_doc": "replace",
-                "blog_portfolio_analysis_doc": "replace",
-                "blog_ai_visibility_doc": "replace",
-                "company_ai_visibility_doc": "replace",
-                "technical_seo_doc": "replace",
-                "classified_posts_doc": "replace",
-                "company_context_doc": "replace",
-                "competitor_content_docs": "replace",
-                "blog_scraped_data": "replace",
-                "blog_technical_seo_summary": "replace",
-                "blog_robots_analysis": "replace"
             }
         }
     },
@@ -2370,26 +2197,27 @@ async def validate_orchestrator_output(outputs: Optional[Dict[str, Any]], test_i
     if 'business_impact_projection' in results:
         logger.info("   ✓ Business Impact Projection generated")
     
-    logger.info("✓ Orchestrator output structure and content validation passed.")
+    logger.info("✓ Lite Orchestrator output structure and content validation passed.")
     return True
 
 
 async def main_test_orchestrator():
     """
-    Tests the Content Orchestrator Workflow using the run_workflow_test helper function.
+    Tests the Lite Content Orchestrator Workflow using the run_workflow_test helper function.
     """
     # --- Test Inputs ---
     TEST_INPUTS = {
-        "entity_username": "chuckwhiteman",
-    "company_name": "lamatic",
-    "run_linkedin_exec": True,
-    "run_blog_analysis": True,
-    "linkedin_profile_url": "https://www.linkedin.com/in/chuckwhiteman/",
-    "company_url": "https://blog.lamatic.ai",
-        "blog_start_urls": ["https://blog.lamatic.ai"] # Example blog start URL
+        "entity_username": "nikhilgupta1997",
+        "company_name": "limechat",
+        "run_linkedin_exec": True,
+        "run_blog_analysis": True,
+        "linkedin_profile_url": "https://www.linkedin.com/in/nikhilgupta1997/",
+        "company_url": "https://www.limechat.ai",
+        "blog_start_urls": ["https://www.limechat.ai/blog"],
+        "include_only_paths": ["/blog"]
     }
     
-    test_name = "Content Orchestrator Workflow Test"
+    test_name = "Lite Content Orchestrator Workflow Test"
     print(f"--- Starting {test_name} ---")
     
     # Execute the test
@@ -2404,7 +2232,7 @@ async def main_test_orchestrator():
         validate_output_func=partial(validate_orchestrator_output, test_inputs=TEST_INPUTS),
         stream_intermediate_results=True,
         poll_interval_sec=5,
-        tag="orchestrator_workflow_test",
+        tag="lite_orchestrator_workflow_test",
         timeout_sec=2400  # 40 minutes total timeout (multiple workflows)
     )
     
@@ -2413,7 +2241,7 @@ async def main_test_orchestrator():
 
 if __name__ == "__main__":
     print("=" * 50)
-    print("Executing Content Orchestrator Workflow Test")
+    print("Executing Lite Content Orchestrator Workflow Test")
     print("=" * 50)
     
     # Handle potential nested asyncio loop issues
@@ -2430,4 +2258,4 @@ if __name__ == "__main__":
         asyncio.run(main_test_orchestrator())
     
     print("\nRun this script from the project root directory using:")
-    print("poetry run python kiwi_client/workflows/active/content_diagnostics/wf_orchestrator_workflow.py")
+    print("poetry run python kiwi_client/workflows/active/content_diagnostics_LITE_version/LITE_wf_orchestrator_workflow.py")

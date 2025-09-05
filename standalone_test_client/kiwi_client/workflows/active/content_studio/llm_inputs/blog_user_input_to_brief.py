@@ -9,7 +9,7 @@ This file contains prompts, schemas, and configurations for the workflow that:
 - Includes HITL approval flows
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Any, List, Optional
 from pydantic import BaseModel, Field
 
 # =============================================================================
@@ -110,6 +110,13 @@ Your task is to generate a detailed content brief that will guide a writer to pr
 
 CRITICAL REQUIREMENTS:
 - For EVERY section in the content structure, explain WHY it's included
+- For EVERY section's research_support field, include ALL relevant information from the research that will help write that section:
+  * Specific statistics, data points, and metrics
+  * Expert quotes and insights from articles
+  * User pain points and questions from Reddit
+  * Source URLs and citations
+  * Case studies or examples mentioned
+  * Any other research findings that provide substance for that section
 - Cite specific research findings that justify each key takeaway
 - Connect SEO keywords to actual user language from Reddit
 - Link brand guidelines to company positioning
@@ -121,103 +128,6 @@ Create briefs that are actionable, specific, and provide clear guidance to conte
 Remember: The brief should synthesize ALL previous research and reasoning into a coherent content plan.
 
 IMPORTANT: Do not modify the 'status' - this is a system-managed field that should remain unchanged.
-"""
-
-TOPIC_FEEDBACK_SYSTEM_PROMPT = """
-You are an expert content strategist and feedback analyst.
-
-You have been provided with:
-1. A list of blog topic suggestions with their reasoning and citations
-2. Feedback from the user about those topics
-3. Company context including positioning and target audience
-4. Research insights from Google and Reddit with specific sources
-
-Your task is to analyze the feedback and provide:
-1. Clear regeneration instructions for improving the topic suggestions
-2. A short, conversational message acknowledging the user's feedback and what we'll focus on improving
-3. Specific guidance on which research insights to emphasize or de-emphasize
-
-CRITICAL REQUIREMENTS:
-- Reference specific research findings that support the requested changes
-- Explain which aspects of the original reasoning need adjustment
-- Provide clear direction on how to better align with user intent
-- Maintain traceability to the original research sources
-
-Always provide structured output with all required fields: regeneration_instructions and change_summary.
-"""
-
-TOPIC_FEEDBACK_INITIAL_USER_PROMPT = """
-Your Task:
-
-Your job is to interpret the feedback using all provided inputs and produce both regeneration instructions and a user-friendly change summary.
-
-IMPORTANT: The topics below include detailed reasoning and research citations. Use these to guide your analysis.
-
-You must:
-1. Identify the user's intent behind the feedback
-2. Locate specific areas in the original topic suggestions AND their reasoning that are relevant to the feedback
-3. Determine what changes are required, guided by:
-   - The company's positioning and target audience
-   - The research insights with citations from Google and Reddit
-   - The original user input that initiated the research
-   - The reasoning provided for each topic
-4. Specify which research insights should be emphasized or de-emphasized in regeneration
-5. Be precise about what should change and how topics should be regenerated
-6. Create a short, conversational message that acknowledges the user's feedback
-
----
-
-Provided Context:
-
-Original Topic Suggestions (with reasoning and citations): 
-{suggested_blog_topics}
-
----
-
-User Feedback: 
-{regeneration_feedback}
-
----
-
-Company Context:
-- Company Context: {company_doc}
-- Content Playbook Guidance: {content_playbook_doc}
-
----
-
-Research Insights (with sources and citations):
-Google Research: {google_research_output}
-Reddit Research: {reddit_research_output}
-Original User Input: {user_input}
-
-REMEMBER: Reference the specific research citations and reasoning to justify any changes.
-"""
-
-TOPIC_FEEDBACK_ADDITIONAL_USER_PROMPT = """
-I have provided the updated topic suggestions that were generated based on the last round of feedback.
-
-Now, the user has provided additional feedback on this version.
-
-IMPORTANT: Review the reasoning and citations in the current topics to understand what research was emphasized.
-
-Your task is to interpret the new feedback using the **same instructions and structure as before**, and write a fresh set of **regeneration instructions and change summary**.
-
-Use the **original context** (company positioning, research insights with citations, original user input) to stay consistent with the company's goals and target audience.
-
-Provide the same structured output:
-- regeneration_instructions: Clear instructions for improving the topics
-- research_emphasis_changes: Which research insights to adjust
-- change_summary: Short, conversational message acknowledging the user's feedback
-
----
-
-Updated Topic Suggestions (with reasoning and citations): 
-{suggested_blog_topics}
-
-New Feedback: 
-{regeneration_feedback}
-
-REMEMBER: Build on the existing research foundation while incorporating the new feedback direction.
 """
 
 BRIEF_FEEDBACK_SYSTEM_PROMPT = """
@@ -238,6 +148,8 @@ CRITICAL REQUIREMENTS:
 - Reference specific research findings that support the requested changes
 - Explain which sections need adjustment and why
 - Provide clear direction on maintaining consistency with research insights
+- Ensure research_support fields remain comprehensive with all helpful research material
+- When updating sections, maintain or enhance the research_support with relevant data
 - Respect any manual user edits while incorporating new feedback
 
 Always provide structured output with all required fields: revision_instructions and change_summary.
@@ -294,43 +206,8 @@ Selected Topic (with reasoning): {selected_topic}
 Research Foundation (with sources and citations):
 Google Research: {google_research_output}
 Reddit Research: {reddit_research_output}
-Original User Input: {user_input}
 
 REMEMBER: Use the research citations and reasoning to justify any changes while respecting user modifications.
-"""
-BRIEF_FEEDBACK_ADDITIONAL_USER_PROMPT = """
-I have provided the content brief that may include both AI-generated content with reasoning/citations and manual user edits from previous rounds.
-
-Now, the user has provided additional feedback on this version.
-
-IMPORTANT: The content brief below contains detailed reasoning and citations. When processing this feedback:
-- Review the reasoning to understand research emphasis
-- Respect and preserve existing user edits unless feedback specifically requests changes
-- Build upon the user's manual modifications rather than overriding them
-- If new feedback conflicts with existing user edits, prioritize the most recent feedback
-- Maintain the research foundation and citations
-
-Your task is to interpret the new feedback using the **same instructions and structure as before**, and write a fresh set of **revision instructions and change summary**.
-
-Use the **original context** (company positioning, research insights with citations, selected topic) to stay consistent with the company's goals and content strategy.
-
-Provide the same structured output:
-- revision_instructions: Clear instructions for improving the brief while respecting existing user edits
-- section_specific_changes: Detailed changes for each section
-- research_alignment_notes: How to maintain research consistency
-- change_summary: Short, conversational message acknowledging the user's feedback
-
-IMPORTANT: Do not include instructions to modify the 'status' or 'run_id' fields - these are system-managed and should not be changed.
-
----
-
-Content Brief (with reasoning, citations, and potential user edits): 
-{content_brief}
-
-New Feedback: 
-{revision_feedback}
-
-REMEMBER: Build on the existing research foundation and reasoning while incorporating new feedback.
 """
 
 # =============================================================================
@@ -473,6 +350,11 @@ Create a comprehensive content brief that includes:
    
 2. Content structure with reasoning for each section
    - Explain WHY each section is necessary
+   - In research_support field: Include ALL relevant research information that will help write this section
+     * Pull in specific data, statistics, quotes, examples, case studies
+     * Include user questions, pain points, and Reddit insights  
+     * Add source URLs and expert opinions
+     * Provide everything a writer needs to create well-supported content
    - Cite specific research that justifies its inclusion
    - Show how structure aligns with playbook recommendations
    
@@ -502,9 +384,86 @@ CRITICAL: For EVERY element of the brief, provide:
 - Connection to user needs and company goals
 - Explicit alignment with the chosen playbook theme/play
 
+ESPECIALLY IMPORTANT for research_support in each section:
+- Don't just justify the section - provide ALL the research material needed to write it
+- Include every relevant statistic, quote, insight, example, and data point from your research
+- The writer should have everything they need to create comprehensive, fact-based content
+- Think of research_support as the "research arsenal" for writing that specific section
+
 IMPORTANT: Do not modify the 'status' field - these are system-managed fields that should remain unchanged.
 
 Return in this exact JSON format with all reasoning and citation fields populated.
+"""
+
+BRIEF_REVISION_USER_PROMPT_TEMPLATE = """
+Based on the analyzed feedback, revise the content brief while maintaining alignment with all research insights and company context.
+
+REVISION INSTRUCTIONS:
+{revision_instructions}
+
+CRITICAL REQUIREMENTS:
+1. Apply the specific changes requested in the revision instructions
+2. Maintain consistency with:
+   - The selected topic and its research foundation
+   - Google and Reddit research insights already gathered
+   - Company positioning and content playbook guidelines
+   - SEO opportunities identified in the research
+   
+3. Preserve elements that aren't mentioned in the revision instructions
+4. Ensure all reasoning and citations remain connected to the research
+5. Keep the same level of detail and comprehensiveness
+   - Especially maintain comprehensive research_support for each section
+   - Continue to include ALL relevant research material that helps write each section
+6. Do not modify the 'status' field - this is system-managed
+
+APPROACH:
+- Focus on the specific sections or elements mentioned in the revision instructions
+- Strengthen connections to research where feedback requests more evidence
+- Adjust tone, structure, or focus as directed while keeping research alignment
+- If feedback requests new angles, draw from existing research to support them
+- Maintain the strategic value of the content for the company's goals
+
+Remember: This is a revision, not a complete rewrite. Make targeted improvements based on the feedback while preserving the strong foundation already established.
+
+Return the revised content brief in the exact same JSON format with all fields populated.
+"""
+
+TOPIC_REGENERATION_USER_PROMPT_TEMPLATE = """
+Based on the user's feedback, regenerate blog topic suggestions that better align with their needs while maintaining connection to the research insights.
+
+USER FEEDBACK FOR TOPIC REGENERATION:
+{regeneration_instructions}
+
+CRITICAL REQUIREMENTS:
+1. Address the specific concerns or preferences expressed in the feedback
+2. Continue to draw from:
+   - Google research insights and source articles already gathered
+   - Reddit user questions and pain points identified
+   - Company positioning and expertise areas
+   - Content playbook strategic guidance
+   
+3. Maintain the quality bar:
+   - Each topic must still have clear research citations
+   - Topics should address real user intent from both research sources
+   - Maintain strategic alignment with company goals
+   - Offer fresh angles or frameworks as requested
+   
+4. Adjust your approach based on the feedback:
+   - If user wants more technical topics, emphasize technical insights from research
+   - If user wants different angles, explore alternative framings of the research
+   - If user wants specific focus areas, filter research insights accordingly
+   - If user wants broader/narrower scope, adjust topic breadth appropriately
+
+IMPORTANT REMINDERS:
+- Keep the same format with unique topic_ids (topic_01, topic_02, etc.)
+- Provide clear reasoning connecting each topic to research findings
+- Include at least 2 specific data points per topic
+- Show how topics synthesize patterns from both Google and Reddit research
+- Explain how each topic serves the user's refined direction
+
+Build on the research foundation already established - don't start from scratch, but refine and redirect based on the feedback.
+
+Return 5 new strategic blog topic ideas in the exact same JSON format with all reasoning and citation fields populated.
 """
 
 # =============================================================================
@@ -575,7 +534,7 @@ class ContentSectionSchema(BaseModel):
     description: str = Field(description="Description of what should be covered in this section")
     word_count: int = Field(description="Estimated word count for this section")
     section_reasoning: str = Field(description="Why this section is essential to the content")
-    research_support: List[str] = Field(description="Specific research findings that justify this section")
+    research_support: List[str] = Field(description="ALL relevant research findings, data points, statistics, expert quotes, user insights, and source information that should be referenced when writing this section. Include everything from the research that will help create comprehensive, well-supported content")
     user_questions_answered: List[str] = Field(description="User questions this section addresses")
 
 class SEOKeywordsSchema(BaseModel):
@@ -628,16 +587,9 @@ class ContentBriefDetailSchema(BaseModel):
 # FEEDBACK ANALYSIS SCHEMAS
 # =============================================================================
 
-class TopicFeedbackAnalysisSchema(BaseModel):
-    """Enhanced schema for topic feedback analysis output."""
-    regeneration_instructions: str = Field(description="Clear instructions for regenerating topics based on feedback")
-    research_emphasis_changes: Dict[str, str] = Field(description="Which research insights to emphasize or de-emphasize")
-    change_summary: str = Field(description="Short, conversational message acknowledging the user's feedback")
-
 class BriefFeedbackAnalysisSchema(BaseModel):
     """Enhanced schema for brief feedback analysis output."""
-    revision_instructions: str = Field(description="Clear instructions for revising the brief based on feedback")
-    section_specific_changes: Dict[str, str] = Field(description="Specific changes needed for each section")
+    revision_instructions: str = Field(description="Clear instructions for revising the brief based on feedback, write section specific changes needed for each section")
     research_alignment_notes: str = Field(description="How to maintain alignment with research while incorporating feedback")
     change_summary: str = Field(description="Short, conversational message acknowledging the user's feedback")
 
@@ -649,7 +601,5 @@ REDDIT_RESEARCH_OUTPUT_SCHEMA = RedditResearchSchema.model_json_schema()
 TOPIC_GENERATION_OUTPUT_SCHEMA = TopicSuggestionsSchema.model_json_schema()
 
 BRIEF_GENERATION_OUTPUT_SCHEMA = ContentBriefDetailSchema.model_json_schema()
-
-TOPIC_FEEDBACK_ANALYSIS_OUTPUT_SCHEMA = TopicFeedbackAnalysisSchema.model_json_schema()
 
 BRIEF_FEEDBACK_ANALYSIS_OUTPUT_SCHEMA = BriefFeedbackAnalysisSchema.model_json_schema()

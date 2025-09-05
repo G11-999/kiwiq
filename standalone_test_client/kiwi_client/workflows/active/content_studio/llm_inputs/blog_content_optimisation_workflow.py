@@ -18,7 +18,14 @@ for the blog content optimization workflow including:
 CONTENT_ANALYZER_SYSTEM_PROMPT = """You are an expert content strategist specializing in blog optimization and content structure analysis.
 
 ## Your Role
-Analyze blog content to identify specific, actionable issues that directly impact reader engagement, content effectiveness, and conversion potential.
+Analyze blog content to identify the MOST IMPORTANT actionable issues that directly impact reader engagement, content effectiveness, and conversion potential.
+
+## Analysis Guidelines - IMPORTANT
+- **Total Issues**: Identify 8-9 TOTAL issues maximum across ALL categories
+- **Per Category**: Maximum 3-4 issues per category
+- **Quality Over Quantity**: Focus on the most impactful problems only
+- **Optional Categories**: Skip categories if no significant issues exist
+- **Prioritization**: Only report issues that meaningfully affect content performance
 
 ## Input Information You Will Receive
 1. **Blog Content**: The complete blog post text to analyze
@@ -28,32 +35,36 @@ Analyze blog content to identify specific, actionable issues that directly impac
 ## Your Analysis Framework
 You must evaluate content across four critical dimensions:
 
-### 1. Structure Analysis
+### 1. Structure Analysis (MAX 3-4 issues)
 - Assess headline effectiveness using the 4 U's framework (Useful, Urgent, Unique, Ultra-specific)
 - Evaluate information architecture and logical flow
 - Identify missing or weak transitional elements
 - Analyze CTA placement and effectiveness
 - Check for proper content hierarchy (H1, H2, H3 usage)
+**Only report the MOST critical structural problems**
 
-### 2. Readability Analysis
+### 2. Readability Analysis (MAX 3-4 issues)
 - Apply Flesch-Kincaid readability standards for the target audience
 - Identify sentences exceeding 20 words that could be simplified
 - Flag paragraphs longer than 3-4 sentences
 - Detect passive voice usage that weakens impact
 - Spot jargon or technical terms needing clarification
+**Focus on issues that significantly hinder comprehension**
 
-### 3. Tone & Brand Alignment
+### 3. Tone & Brand Alignment (MAX 3-4 issues)
 - Compare writing style against target audience expectations
 - Identify inconsistencies in voice (formal vs. conversational)
 - Flag language that doesn't match buyer persona sophistication level
 - Detect areas where emotional engagement could be enhanced
 - Verify alignment with company's value proposition
+**Only flag major tone misalignments, not minor variations**
 
-### 4. Content Completeness
+### 4. Content Completeness (MAX 3-4 issues)
 - Identify critical topics competitors typically cover but are missing
 - Spot opportunities for supporting evidence (stats, case studies, examples)
 - Detect areas needing more depth for audience education level
 - Flag missing trust-building elements (social proof, credibility markers)
+**Focus on truly missing essential elements, not nice-to-haves**
 
 ## Output Requirements
 - Provide **concise, one-line issues** that are immediately actionable
@@ -61,16 +72,18 @@ You must evaluate content across four critical dimensions:
 - Focus on **problems with clear solutions**, not general observations
 - Prioritize issues by **impact on content goals**
 - Each issue must be **independently fixable** without requiring other changes
+- **DO NOT force issues** - if a category has no significant problems, skip it
 
 ## Quality Criteria
 Your analysis will be considered successful if:
+- Total issues stay within 8-9 range
 - Each identified issue can be addressed in under 5 minutes
 - Issues are specific enough that any editor could fix them
 - No vague or subjective feedback is provided
 - All recommendations tie directly to improving measurable outcomes"""
 
 
-CONTENT_ANALYZER_USER_PROMPT_TEMPLATE = """Analyze this blog post and identify clear, actionable issues that need to be fixed.
+CONTENT_ANALYZER_USER_PROMPT_TEMPLATE = """Analyze this blog post and identify the MOST IMPORTANT actionable issues that need to be fixed.
 
 **Target Audience:** {target_audience}
 **Content Goals:** {content_goals}
@@ -78,32 +91,43 @@ CONTENT_ANALYZER_USER_PROMPT_TEMPLATE = """Analyze this blog post and identify c
 **Blog Content to Analyze:**
 {original_blog}
 
-Identify specific issues in these categories:
+Identify specific issues in these categories (8-9 TOTAL issues maximum, 3-4 per category MAX):
 
-1. **Structure Issues:** 
-   - Problems with headlines, introduction, flow, section organization, CTAs
+1. **Structure Issues:** (0-4 issues)
+   - Only the most critical problems with headlines, introduction, flow, section organization, CTAs
    - One-line descriptions of what's wrong and needs fixing
+   - Skip if structure is generally good
 
-2. **Readability Issues:**
-   - Complex sentences, long paragraphs, unclear explanations
+2. **Readability Issues:** (0-4 issues)
+   - Only major readability problems that significantly impact comprehension
    - One-line descriptions of specific readability problems
+   - Skip minor issues
 
-3. **Tone Issues:**
-   - Brand voice misalignment, inappropriate formality, engagement problems
+3. **Tone Issues:** (0-4 issues)
+   - Only significant brand voice misalignment or engagement problems
    - One-line descriptions of tone problems
+   - Skip if tone is generally appropriate
 
-4. **Missing Sections:**
-   - Important content sections that should be added
+4. **Missing Sections:** (0-4 issues)
+   - Only essential missing content that competitors always include
    - One-line suggestions for what's missing
+   - Skip nice-to-have additions
 
-Provide concise, actionable issues - not detailed explanations. Focus on problems that can be clearly fixed.
+Remember: Quality over quantity. Only report issues that truly matter for content effectiveness. If a category has no significant issues, skip it entirely.
 
 **Output Format:** Provide your analysis in proper markdown format only."""
 
 SEO_INTENT_ANALYZER_SYSTEM_PROMPT = """You are an expert SEO analyst specializing in search intent optimization and technical SEO for B2B content.
 
 ## Your Role
-Conduct comprehensive SEO analysis to identify specific optimization opportunities that will improve search visibility, click-through rates, and search intent alignment.
+Conduct focused SEO analysis to identify the MOST IMPORTANT optimization opportunities that will meaningfully improve search visibility, click-through rates, and search intent alignment.
+
+## Analysis Guidelines - IMPORTANT
+- **Total Issues**: Identify 8-9 TOTAL issues maximum across ALL categories
+- **Per Category**: Maximum 3-4 issues per category
+- **Impact Focus**: Only report issues that significantly affect SEO performance
+- **Optional Categories**: Skip categories if no major SEO problems exist
+- **Prioritization**: Focus on high-impact, easy-to-fix optimizations
 
 ## Input Information You Will Receive
 1. **Blog Content**: The complete blog post to analyze for SEO optimization
@@ -113,50 +137,50 @@ Conduct comprehensive SEO analysis to identify specific optimization opportuniti
 
 ## Your SEO Analysis Framework
 
-### 1. Keyword Optimization Analysis
+### 1. Keyword Optimization Analysis (MAX 3-4 issues)
 - **Primary Keyword Assessment**: Evaluate presence, density (target: 1-2%), and natural integration
 - **LSI & Semantic Keywords**: Identify missing related terms that strengthen topical relevance
 - **Keyword Placement Audit**: Check presence in title, H1, first 100 words, meta description, URL
 - **Long-tail Opportunities**: Spot chances to target specific, high-intent queries
-- **Keyword Cannibalization**: Detect competing focus that dilutes ranking potential
+**Only report the most impactful keyword issues**
 
-### 2. Meta Elements & Technical SEO
+### 2. Meta Elements & Technical SEO (MAX 3-4 issues)
 - **Title Tag Optimization**: Check length (50-60 chars), keyword placement, click-worthiness
 - **Meta Description**: Evaluate length (150-160 chars), CTA inclusion, keyword presence
 - **Header Hierarchy**: Verify proper H1→H2→H3 structure with keyword distribution
 - **URL Structure**: Assess readability, keyword inclusion, length optimization
-- **Schema Markup Opportunities**: Identify applicable structured data types
+**Focus on meta elements that directly impact CTR and rankings**
 
-### 3. Search Intent Alignment
+### 3. Search Intent Alignment (MAX 3-4 issues)
 - **Intent Classification**: Determine if content matches informational, navigational, transactional, or commercial intent
-- **SERP Feature Optimization**: Identify opportunities for featured snippets, People Also Ask, Knowledge Panels
+- **SERP Feature Optimization**: Identify opportunities for featured snippets, People Also Ask
 - **Query-Content Match**: Evaluate if content directly answers likely search queries
 - **User Journey Stage**: Verify alignment with awareness, consideration, or decision stage
-- **Competitor Gap Analysis**: Compare intent coverage against top-ranking competitors
+**Only flag major intent mismatches**
 
-### 4. Technical Optimization Opportunities
+### 4. Technical Optimization Opportunities (MAX 3-4 issues)
 - **Internal Linking**: Identify missing contextual links to related content
 - **External Linking**: Spot opportunities for authoritative outbound links
 - **Image Optimization**: Check for missing alt text, file names, compression needs
-- **Page Speed Factors**: Flag content elements that could impact Core Web Vitals
-- **Mobile Optimization**: Identify formatting issues for mobile readers
+- **Schema Markup**: Identify applicable structured data types
+**Focus on technical issues with clear SEO impact**
 
 ## Output Requirements
 - Provide **specific, measurable issues** with clear SEO impact
 - Include **priority level** (High/Medium/Low) based on ranking potential
 - Reference **specific SERP features** that could be targeted
-- Cite **search volume or difficulty** estimates where relevant
 - Each issue must include **expected impact** on organic performance
+- **DO NOT force issues** - quality over quantity
 
 ## Success Metrics
 Your analysis achieves excellence when:
 - Issues directly correlate to ranking factor improvements
 - Recommendations follow current Google guidelines
 - Each fix has measurable impact on organic visibility
-- Suggestions balance SEO with user experience"""
+- Total issues stay within the 8-9 range"""
 
 
-SEO_INTENT_ANALYZER_USER_PROMPT_TEMPLATE = """Analyze this blog post and identify specific SEO issues that need to be fixed.
+SEO_INTENT_ANALYZER_USER_PROMPT_TEMPLATE = """Analyze this blog post and identify the MOST IMPORTANT SEO issues that need to be fixed.
 
 **Company Information:**
 - Target Audience: {target_audience}
@@ -166,32 +190,43 @@ SEO_INTENT_ANALYZER_USER_PROMPT_TEMPLATE = """Analyze this blog post and identif
 **Blog Content to Analyze:**
 {original_blog}
 
-Identify specific SEO problems in these categories:
+Identify specific SEO problems in these categories (8-9 TOTAL issues maximum, 3-4 per category MAX):
 
-1. **Keyword Issues:**
-   - Problems with primary/secondary keyword usage, density, placement
+1. **Keyword Issues:** (0-4 issues)
+   - Only critical problems with primary/secondary keyword usage, density, placement
    - One-line descriptions of keyword optimization issues
+   - Skip if keywords are generally well-optimized
 
-2. **Meta Issues:**
-   - Problems with title tag, meta description, header structure (H1, H2, H3)
+2. **Meta Issues:** (0-4 issues)
+   - Only significant problems with title tag, meta description, header structure
    - One-line descriptions of meta element issues
+   - Skip minor meta optimizations
 
-3. **Search Intent Issues:**
-   - Misalignment with user search intent, missing query variations
+3. **Search Intent Issues:** (0-4 issues)
+   - Only major misalignments with user search intent
    - One-line descriptions of intent alignment problems
+   - Skip if intent is generally matched
 
-4. **Technical SEO Issues:**
-   - Missing schema, poor internal linking, featured snippet opportunities
+4. **Technical SEO Issues:** (0-4 issues)
+   - Only important technical problems affecting rankings
    - One-line descriptions of technical SEO problems
+   - Skip minor technical improvements
 
-Provide specific, fixable issues - not general analysis. Focus on clear problems that can be addressed.
+Remember: Focus on high-impact SEO issues only. If a category has no significant problems, skip it entirely.
 
 **Output Format:** Provide your analysis in proper markdown format only."""
 
 CONTENT_GAP_FINDER_SYSTEM_PROMPT = """You are an expert competitive intelligence analyst specializing in content gap analysis and market research for B2B content strategy.
 
 ## Your Role
-Conduct thorough competitive research to identify content gaps, missing topics, and opportunities to create superior content that outperforms competitors.
+Conduct focused competitive research to identify the MOST IMPORTANT content gaps and opportunities that will meaningfully differentiate and improve the content.
+
+## Analysis Guidelines - IMPORTANT
+- **Total Gaps**: Identify 8-9 TOTAL gaps maximum across ALL categories
+- **Per Category**: Maximum 3-4 gaps per category
+- **Significance Focus**: Only report gaps that competitors consistently cover
+- **Optional Categories**: Skip categories if no major gaps exist
+- **Value Prioritization**: Focus on gaps that add substantial reader value
 
 ## Input Information You Will Receive
 1. **Blog Content**: The current blog post to evaluate against market standards
@@ -199,72 +234,72 @@ Conduct thorough competitive research to identify content gaps, missing topics, 
 
 ## Your Research Methodology
 
-### 1. Competitive Content Audit
+### 1. Competitive Content Audit (MAX 3-4 gaps)
 - **Topic Coverage Analysis**: Research what subtopics top-ranking content includes
-- **Depth Comparison**: Evaluate comprehensiveness versus competitor articles
 - **Unique Value Identification**: Find angles competitors haven't explored
-- **Format Innovation**: Identify content formats competitors use effectively
 - **Authority Signals**: Spot missing credibility elements competitors include
+**Only report gaps found in majority of top competitors**
 
-### 2. Audience Needs Assessment
+### 2. Audience Needs Assessment (MAX 3-4 gaps)
 - **Common Questions**: Research frequently asked questions in this topic area
 - **Pain Point Coverage**: Identify unaddressed challenges your audience faces
 - **Use Case Gaps**: Find practical applications not currently covered
-- **Industry Examples**: Spot missing sector-specific illustrations
-- **Tool/Resource Mentions**: Identify helpful resources competitors reference
+**Focus on gaps that directly serve audience needs**
 
-### 3. Content Depth Analysis
+### 3. Content Depth Analysis (MAX 3-4 gaps)
 - **Statistical Support**: Find data points and research competitors cite
-- **Expert Insights**: Identify thought leader perspectives to include
 - **Case Study Opportunities**: Spot chances for real-world examples
-- **Visual Content Gaps**: Identify infographics, charts, or diagrams needed
 - **Step-by-Step Guides**: Find process explanations competitors provide
+**Only flag significant depth differences**
 
-### 4. Differentiation Opportunities
+### 4. Differentiation Opportunities (MAX 3-4 gaps)
 - **Unique Perspectives**: Identify contrarian or innovative viewpoints
-- **Original Research**: Spot opportunities for proprietary insights
 - **Interactive Elements**: Find engagement features competitors use
-- **Multimedia Integration**: Identify video, audio, or interactive content gaps
-- **Community Insights**: Spot user-generated content opportunities
+- **Visual Content Gaps**: Identify infographics, charts, or diagrams needed
+**Focus on differentiators that add clear value**
 
 ## Research Requirements
 - Use **web search** to analyze top 5-10 ranking articles for the topic
 - Identify **specific examples** from competitor content
 - Provide **quantifiable gaps** (e.g., "Competitors average 5 examples, we have 1")
-- Include **source URLs** for verification when possible
 - Focus on **actionable additions** that can be implemented
+- **Quality over quantity** - only report meaningful gaps
 
 ## Output Excellence Criteria
 - Each gap represents a **concrete content addition**
 - Recommendations are **backed by competitive research**
 - Suggestions **enhance rather than replicate** competitor content
-- Gaps are **prioritized by audience value**
+- Total gaps stay within 8-9 range
 - All recommendations **maintain content focus** and coherence"""
 
-CONTENT_GAP_FINDER_USER_PROMPT_TEMPLATE = """Research and identify specific content gaps in this blog post compared to top-performing competitor content.
+CONTENT_GAP_FINDER_USER_PROMPT_TEMPLATE = """Research and identify the MOST IMPORTANT content gaps in this blog post compared to top-performing competitor content.
 
 **Blog Content to Analyze:**
 {original_blog}
 
-**Research and identify gaps in these categories:**
+**Research and identify gaps in these categories (8-9 TOTAL gaps maximum, 3-4 per category MAX):**
 
-1. **Missing Topics:**
-   - Important subtopics or themes that competitors cover but we don't
+1. **Missing Topics:** (0-4 gaps)
+   - Only important subtopics that majority of competitors cover
    - One-line descriptions of missing topics that should be added
+   - Skip if topic coverage is comprehensive
 
-2. **Competitor Advantages:**
-   - Specific areas where competitors provide better or more comprehensive coverage
+2. **Competitor Advantages:** (0-4 gaps)
+   - Only significant areas where competitors provide clearly better coverage
    - One-line descriptions of what competitors do better
+   - Skip minor competitor advantages
 
-3. **Depth Gaps:**
-   - Sections that need more detailed explanations, examples, or information
+3. **Depth Gaps:** (0-4 gaps)
+   - Only sections that truly need more detailed explanations or examples
    - One-line descriptions of areas needing more depth
+   - Skip if depth is generally adequate
 
-4. **Format Improvements:**
-   - Better content structures, lists, sections, or formats competitors use
+4. **Format Improvements:** (0-4 gaps)
+   - Only format changes that significantly improve user experience
    - One-line suggestions for formatting improvements
+   - Skip minor formatting suggestions
 
-Focus on specific, actionable gaps that can be filled to improve the content. Provide research-backed suggestions that are clear and implementable.
+Remember: Focus on gaps that will make a real difference. Quality over quantity. If a category has no significant gaps, skip it entirely.
 
 **Output Format:** Provide your analysis in proper markdown format only."""
 
@@ -675,44 +710,56 @@ class ContentAnalyzerOutputSchema(BaseModel):
         description="2-3 sentence executive summary of main content issues and overall quality"
     )
     structure_issues_reasoning: List[str] = Field(
-        description="Reasoning for each structure issue - why it's a problem and its impact"
+        description="Reasoning for each structure issue - why it's a problem and its impact (MAX 4 items)",
+        max_items=4
     )
     structure_issues: List[str] = Field(
-        description="One-line issues with content structure (headlines, flow, CTAs)"
+        description="One-line issues with content structure (headlines, flow, CTAs) - MAX 4 issues, skip if none",
+        max_items=4
     )
     structure_issues_citations: Optional[List[str]] = Field(
         default=None,
-        description="Best practice references or guidelines supporting each structure recommendation"
+        description="Best practice references or guidelines supporting each structure recommendation",
+        max_items=4
     )
     readability_issues_reasoning: List[str] = Field(
-        description="Reasoning for each readability issue - how it affects comprehension and engagement"
+        description="Reasoning for each readability issue - how it affects comprehension and engagement (MAX 4 items)",
+        max_items=4
     )
     readability_issues: List[str] = Field(
-        description="One-line readability problems (complex sentences, long paragraphs)"
+        description="One-line readability problems (complex sentences, long paragraphs) - MAX 4 issues, skip if none",
+        max_items=4
     )
     readability_issues_metrics: Optional[List[str]] = Field(
         default=None,
-        description="Relevant metrics for each issue (e.g., 'Sentence length: 45 words', 'Flesch score: 25')"
+        description="Relevant metrics for each issue (e.g., 'Sentence length: 45 words', 'Flesch score: 25')",
+        max_items=4
     )
     tone_issues_reasoning: List[str] = Field(
-        description="Reasoning for each tone issue - how it misaligns with brand or audience"
+        description="Reasoning for each tone issue - how it misaligns with brand or audience (MAX 4 items)",
+        max_items=4
     )
     tone_issues: List[str] = Field(
-        description="One-line tone and brand alignment issues"
+        description="One-line tone and brand alignment issues - MAX 4 issues, skip if none",
+        max_items=4
     )
     tone_issues_citations: Optional[List[str]] = Field(
         default=None,
-        description="Brand guidelines or audience research references"
+        description="Brand guidelines or audience research references",
+        max_items=4
     )
     missing_sections_reasoning: List[str] = Field(
-        description="Reasoning for each missing section - why it's important for the audience"
+        description="Reasoning for each missing section - why it's important for the audience (MAX 4 items)",
+        max_items=4
     )
     missing_sections: List[str] = Field(
-        description="One-line suggestions for missing content sections"
+        description="One-line suggestions for missing content sections - MAX 4 suggestions, skip if none",
+        max_items=4
     )
     missing_sections_competitive_context: Optional[List[str]] = Field(
         default=None,
-        description="How competitors handle these missing topics"
+        description="How competitors handle these missing topics",
+        max_items=4
     )
     improvement_potential_score: int = Field(
         description="Score from 1-10 indicating how much the content can be improved"
@@ -724,58 +771,74 @@ class SEOIntentAnalyzerOutputSchema(BaseModel):
         description="2-3 sentence executive summary of SEO status and main opportunities"
     )
     keyword_issues_reasoning: List[str] = Field(
-        description="Reasoning for each keyword issue - SEO impact and ranking potential"
+        description="Reasoning for each keyword issue - SEO impact and ranking potential (MAX 4 items)",
+        max_items=4
     )
     keyword_issues: List[str] = Field(
-        description="One-line keyword optimization problems"
+        description="One-line keyword optimization problems - MAX 4 issues, skip if none",
+        max_items=4
     )
     keyword_issues_recommendations: List[str] = Field(
-        description="Specific actions to fix each keyword issue"
+        description="Specific actions to fix each keyword issue",
+        max_items=4
     )
     keyword_issues_citations: Optional[List[str]] = Field(
         default=None,
-        description="SEO best practices or Google guidelines references"
+        description="SEO best practices or Google guidelines references",
+        max_items=4
     )
     meta_issues_reasoning: List[str] = Field(
-        description="Reasoning for each meta issue - impact on CTR and rankings"
+        description="Reasoning for each meta issue - impact on CTR and rankings (MAX 4 items)",
+        max_items=4
     )
     meta_issues: List[str] = Field(
-        description="One-line meta tag and header issues (title, description, H1-H3)"
+        description="One-line meta tag and header issues (title, description, H1-H3) - MAX 4 issues, skip if none",
+        max_items=4
     )
     meta_issues_recommendations: List[str] = Field(
-        description="Suggested improvements for each meta element"
+        description="Suggested improvements for each meta element",
+        max_items=4
     )
     meta_issues_citations: Optional[List[str]] = Field(
         default=None,
-        description="Technical SEO guidelines references"
+        description="Technical SEO guidelines references",
+        max_items=4
     )
     search_intent_issues_reasoning: List[str] = Field(
-        description="Reasoning for each intent issue - mismatch and user expectation gap"
+        description="Reasoning for each intent issue - mismatch and user expectation gap (MAX 4 items)",
+        max_items=4
     )
     search_intent_issues: List[str] = Field(
-        description="One-line search intent alignment problems"
+        description="One-line search intent alignment problems - MAX 4 issues, skip if none",
+        max_items=4
     )
     search_intent_query_examples: Optional[List[str]] = Field(
         default=None,
-        description="Example search queries affected by each intent issue"
+        description="Example search queries affected by each intent issue",
+        max_items=4
     )
     technical_seo_issues_reasoning: List[str] = Field(
-        description="Reasoning for each technical issue - impact on crawling, indexing, or ranking"
+        description="Reasoning for each technical issue - impact on crawling, indexing, or ranking (MAX 4 items)",
+        max_items=4
     )
     technical_seo_issues: List[str] = Field(
-        description="One-line technical SEO improvements needed"
+        description="One-line technical SEO improvements needed - MAX 4 issues, skip if none",
+        max_items=4
     )
     technical_seo_priority: Optional[List[str]] = Field(
         default=None,
-        description="Priority level for each technical SEO issue"
+        description="Priority level for each technical SEO issue",
+        max_items=4
     )
     technical_seo_citations: Optional[List[str]] = Field(
         default=None,
-        description="Technical documentation or guidelines references"
+        description="Technical documentation or guidelines references",
+        max_items=4
     )
     estimated_ranking_potential: Literal["low", "medium", "high"] = Field(
         description="Overall assessment of ranking potential after fixes"
     )
+
 # Simplified Content Gap Finder Schema
 class ContentGapFinderOutputSchema(BaseModel):
     """Enhanced schema for content gap analysis with competitive research"""
@@ -783,49 +846,63 @@ class ContentGapFinderOutputSchema(BaseModel):
         description="2-3 sentence summary of competitive landscape and main opportunities"
     )
     missing_topics_reasoning: List[str] = Field(
-        description="Reasoning for each missing topic - importance based on competitive research"
+        description="Reasoning for each missing topic - importance based on competitive research (MAX 4 items)",
+        max_items=4
     )
     missing_topics: List[str] = Field(
-        description="One-line descriptions of important topics missing from content"
+        description="One-line descriptions of important topics missing from content - MAX 4 gaps, skip if none",
+        max_items=4
     )
     missing_topics_competitor_coverage: List[str] = Field(
-        description="How competitors cover each missing topic"
+        description="How competitors cover each missing topic",
+        max_items=4
     )
     missing_topics_sources: Optional[List[str]] = Field(
         default=None,
-        description="Competitor URLs where each topic was identified"
+        description="Competitor URLs where each topic was identified",
+        max_items=4
     )
     competitor_advantages_reasoning: List[str] = Field(
-        description="Reasoning for each competitor advantage - why it gives them an edge"
+        description="Reasoning for each competitor advantage - why it gives them an edge (MAX 4 items)",
+        max_items=4
     )
     competitor_advantages: List[str] = Field(
-        description="One-line descriptions of what competitors cover better"
+        description="One-line descriptions of what competitors cover better - MAX 4 advantages, skip if none",
+        max_items=4
     )
     competitor_advantages_examples: List[str] = Field(
-        description="Specific examples from competitor content for each advantage"
+        description="Specific examples from competitor content for each advantage",
+        max_items=4
     )
     competitor_advantages_sources: Optional[List[str]] = Field(
         default=None,
-        description="Competitor URLs demonstrating each advantage"
+        description="Competitor URLs demonstrating each advantage",
+        max_items=4
     )
     depth_gaps_reasoning: List[str] = Field(
-        description="Reasoning for each depth gap - why more detail would benefit audience"
+        description="Reasoning for each depth gap - why more detail would benefit audience (MAX 4 items)",
+        max_items=4
     )
     depth_gaps: List[str] = Field(
-        description="One-line descriptions of areas needing more detail"
+        description="One-line descriptions of areas needing more detail - MAX 4 gaps, skip if none",
+        max_items=4
     )
     depth_gaps_recommendations: List[str] = Field(
-        description="Specific elements to add for more depth in each area"
+        description="Specific elements to add for more depth in each area",
+        max_items=4
     )
     format_improvements_reasoning: List[str] = Field(
-        description="Reasoning for each format improvement - UX and engagement benefits"
+        description="Reasoning for each format improvement - UX and engagement benefits (MAX 4 items)",
+        max_items=4
     )
     format_improvements: List[str] = Field(
-        description="One-line suggestions for better content formatting"
+        description="One-line suggestions for better content formatting - MAX 4 improvements, skip if none",
+        max_items=4
     )
     format_improvements_examples: Optional[List[str]] = Field(
         default=None,
-        description="Examples of each format done well"
+        description="Examples of each format done well",
+        max_items=4
     )
     content_competitiveness_score: int = Field(
         description="Score from 1-10 comparing our content to top competitors",
@@ -836,31 +913,12 @@ class ContentGapFinderOutputSchema(BaseModel):
         description="URLs of top competitor content analyzed",
         max_items=10
     )
+
 # Simplified Final Output Schema
 class FinalOutputSchema(BaseModel):
     """Enhanced schema for final optimized output with comprehensive tracking"""
     optimized_blog_content: str = Field(
         description="The final optimized blog post content in markdown format"
-    )
-    improvements_made_reasoning: List[str] = Field(
-        description="Reasoning for each key improvement - why it was made and expected impact"
-    )
-    improvements_made: List[str] = Field(
-        description="One-line descriptions of key improvements made"
-    )
-    improvements_made_locations: Optional[List[str]] = Field(
-        default=None,
-        description="Specific locations where each improvement was made"
-    )
-    remaining_suggestions_reasoning: Optional[List[str]] = Field(
-        default=None,
-        description="Reasoning for additional suggestions - why they would add value"
-    )
-    remaining_suggestions: List[str] = Field(
-        description="Optional additional suggestions for future improvements"
-    )
-    competitive_positioning: str = Field(
-        description="Brief assessment of how the optimized content compares to competitors"
     )
     
 # Convert Pydantic models to JSON schemas for LLM use

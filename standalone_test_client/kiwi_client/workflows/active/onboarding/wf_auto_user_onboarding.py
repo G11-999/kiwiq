@@ -694,81 +694,31 @@ async def validate_onboarding_output(outputs: Optional[Dict[str, Any]], test_inp
 
 async def main_test_onboarding():
     test_inputs = {
-        "entity_username": "example-user-2-1a4b25172",
-        "company_name": "ExampleCorp",
-        "perform_linkedin_onboarding": True,
-        "perform_blog_onboarding": True,
-        "linkedin_profile_url": "https://www.linkedin.com/in/example-user-2-1a4b25172/",
-        "company_url": "https://www.gumloop.com/blog",
-        "linkedin_additional_context": """
-LinkedIn Profile Asset (Founder)
-Founder(s): Max Brodeur‑Urbas (Co‑founder)
+    "entity_username": "chuckwhiteman",
+    "company_name": "lamatic",
+    "perform_linkedin_onboarding": True,
+    "perform_blog_onboarding": True,
+    "linkedin_profile_url": "https://www.linkedin.com/in/chuckwhiteman/",
+    "company_url": "https://blog.lamatic.ai",
+    "linkedin_additional_context": """
+Primary audience focus:
+- Founders at early-stage companies building AI SaaS products.
+- Secondary: founders of small to mid-sized software development shops (building agentic software development practices).
+- CTOs at small-to-midsize enterprises who need secure, vendor-agnostic AI middleware for multiple teams.
+- Developers seeking the most marketable skills in building agentic systems (PLG focus).
+""",
+    "blog_additional_context": """
+Strategic goals for the next 3 months:
+1. Create an army of SaaS Founders adopting Lamatic’s framework for building AI-powered products that iterate quickly to win in hyper-competitive markets (driven by 'Lamatic for Startups' and 'Lamatic for Accelerators').
+2. Create an army of Developers who see Lamatic skills as the most marketable way to transition into the Software 3.0 era (PLG-driven).
+3. Create an army of Dev Shops that recognize Lamatic as the most scalable and profitable platform to build their agentic software development practices (driven by the 'Lamatic Partner Program').
+"""
+}
 
-
-Founder LinkedIn: https://www.linkedin.com/in/example-user-2-1a4b25172/
-
-
-Persona Tags: AI Automation; Ops; Go‑to‑Market
-
-
-Content Goals: Primary — Use‑case demos; Secondary — Partner stories
-
-
-Posting Schedule: 3 posts/week; Days — Mon, Wed, Fri; Exclude weekends — Yes
-
-
-Timezone: PT
-        """,
-        "blog_additional_context": """
-Blog URL: https://www.gumloop.com/blog
-
-
-Asset Name: ExampleCorp Blog
-
-
-Value Proposition: Drag-and-drop AI automation—connect data, apps, and LLMs to ship business workflows fast.
-
-
-ICP
-
-
-Name: Ops & RevOps Automation
-
-
-Target Industry: SaaS & E-commerce
-
-
-Company Size: 50–500
-
-
-Buyer Persona: RevOps Lead / Growth Ops / BizOps
-
-
-Pain Points:
-
-
-Manual outreach & enrichment
-
-
-Fragmented tooling
-
-
-Non-technical teams blocked on scripts
-
-
-Competitors: Zapier; Make; Tines
-
-
-Goals: 3 customer stories/quarter; 20 demo requests/month from blog
-
-
-Posting Schedule: 3 posts/month
-        """,
-    }
 
     # approve revise
     # {"blog_user_action": "approve", "linkedin_user_action": "approve", "blog_revision_feedback": "", "linkedin_revision_feedback": ""}
-    # {"blog_user_action": "revise", "linkedin_user_action": "approve", "blog_revision_feedback": "My business goals are incorrect, please correct after researching my startup stage and make correct assumptions.", "linkedin_revision_feedback": ""}
+    # {"blog_user_action": "revise", "linkedin_user_action": "approve", "blog_revision_feedback": "Dify, Vellum, n8n use these as competitors and make icps a list of atleat 3 icps", "linkedin_revision_feedback": ""}
 
     await run_workflow_test(
         test_name="User Onboarding Workflow",

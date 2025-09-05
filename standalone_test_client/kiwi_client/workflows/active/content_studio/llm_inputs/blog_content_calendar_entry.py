@@ -167,7 +167,7 @@ class ResearchOutput(BaseModel):
         description="Executive summary of key research findings and overall user sentiment around the theme"
     )
     
-    user_questions: List[Dict[str, str]] = Field(
+    user_questions: List[str] = Field(
         description="Specific questions users are asking, with context about frequency and platform"
     )
     
@@ -179,7 +179,7 @@ class ResearchOutput(BaseModel):
         description="Current hot topics and emerging trends within the theme"
     )
     
-    competitive_gaps: List[Dict[str, str]] = Field(
+    competitive_gaps: List[str] = Field(
         description="Content gaps where competitors haven't provided adequate coverage"
     )
     
@@ -187,7 +187,7 @@ class ResearchOutput(BaseModel):
         description="Differentiated perspectives we can take on this theme"
     )
     
-    recommended_depth_levels: Dict[str, str] = Field(
+    recommended_depth_levels: List[str] = Field(
         description="Suggested content depth for different subtopics (beginner/intermediate/advanced)"
     )
 
@@ -224,12 +224,26 @@ TOPIC_SYSTEM_PROMPT_TEMPLATE = """You are an expert blog content strategist spec
 - Include SEO optimization without sacrificing quality
 - Build upon but don't duplicate previous content
 
-# Scheduling Requirements
-Current Date: {current_datetime}
-- Schedule topics across the next 2 weeks starting from tomorrow
-- Never select dates in the past
-- Distribute evenly across the period
-- Use ISO 8601 UTC format (YYYY-MM-DDTHH:MM:SSZ)
+## Important Context About Previous Topic Ideas
+**CRITICAL**: The "Previous Topic Ideas (Avoid Repetition)" section contains topic ideas that users have already reviewed and did NOT approve or like. These are rejected ideas that should be avoided. However, you CAN reuse the scheduled dates from these previous ideas since the dates themselves are not the issue - only the topic content was rejected. For initial topic generation, schedule for TODAY or TOMORROW regardless of what dates appear in previous rejected ideas.
+
+**Timezone and Scheduling Requirements:**
+1. **Timezone Information Processing:**
+   - Process complete timezone information including:
+     - iana_identifier: Technical timezone code (e.g., "Europe/London")
+     - display_name: User-friendly name (e.g., "British Time - London")  
+     - utc_offset: Standard offset (e.g., "+00:00")
+     - current_offset: Current offset accounting for DST (e.g., "+01:00")
+     - supports_dst: Whether timezone uses daylight saving time
+
+2. **Date Selection:**
+   - Current Date: {current_datetime}
+   - CRITICAL: NEVER select a date that is in the past or before the current date
+   - For initial topic generation: Schedule for TODAY or TOMORROW
+   - For additional topic sets: Schedule based on previously suggested dates and posts per week frequency
+   - Validate final date is:
+     a) Not in the past
+     b) Appropriate for the topic generation context (initial vs additional)
 
 # Output Schema
 {schema}"""
@@ -254,12 +268,15 @@ TOPIC_USER_PROMPT_TEMPLATE = """Generate strategic blog topic suggestions based 
 {research_insights}
 
 ## Previous Topic Ideas (Avoid Repetition)
+**IMPORTANT**: These are topic ideas that users have already reviewed and did NOT like or approve. Avoid these rejected topics completely, but you can use similar scheduled dates since the dates themselves were not the issue - only the topic content was rejected.
 {previous_topics}
 
 # Topic Generation Requirements
 
 ## Topic Set Composition
 Create exactly **4 interconnected topics** for the scheduled date that:
+
+**CRITICAL SCHEDULING REQUIREMENT**: The scheduled date for your topic ideas should be TODAY or TOMORROW ({current_datetime}). Do not schedule posts for dates beyond tomorrow unless specifically generating additional topic sets.
 
 ### 1. Comprehensive Theme Coverage
 - **Topic 1**: Address the most pressing user question/pain point from research
@@ -309,7 +326,7 @@ class EnhancedContentTopic(BaseModel):
     """Individual blog topic with comprehensive planning details"""
     
     topic_reasoning: str = Field(
-        description="Detailed reasoning for selecting this topic based on research insights and strategy"
+        description="Detailed reasoning for selecting this topic based on research insights and strategy, keep it short and concise"
     )
     
     title: str = Field(
@@ -317,7 +334,7 @@ class EnhancedContentTopic(BaseModel):
     )
     
     description: str = Field(
-        description="Comprehensive description of content coverage, main points, and reader value"
+        description="Comprehensive description of content coverage, main points, and reader value, keep it short and concise"
     )
     
     research_connection: str = Field(
@@ -325,7 +342,7 @@ class EnhancedContentTopic(BaseModel):
     )
     
     target_audience_segment: str = Field(
-        description="Specific audience segment this content serves (e.g., 'CTOs evaluating ERP solutions')"
+        description="Specific audience segment this content serves (e.g., 'CTOs evaluating ERP solutions'), keep it short and concise"
     )
 
 class EnhancedBlogContentTopicsOutput(BaseModel):
@@ -364,23 +381,23 @@ TOPIC_LLM_OUTPUT_SCHEMA = EnhancedBlogContentTopicsOutput.model_json_schema()
 
 # --- Additional Theme Prompt for Multiple Iterations ---
 
-THEME_ADDITIONAL_USER_PROMPT_TEMPLATE = """Select a NEW strategic theme for additional blog content, considering the topics already generated.
+THEME_ADDITIONAL_USER_PROMPT_TEMPLATE = """The previously suggested theme has been successfully used to generate blog content. Now you must strategically plan and select the NEXT theme for the content calendar.
 
-# Context
+# Strategic Context:
 
-## Previously Generated Topics This Session
-{all_generated_topics}
-
-## Company Profile
-{company_doc}
-
-## Content Strategy/Playbook
-{playbook}
-
-## All Previous Topic Ideas
+## Previously Generated Topics: These are the topics that have already been generated and you can use scheduled_date to check what are the themes that we have used previously. And based on that you can select the next theme.
 {previous_topics}
 
-# Theme Selection Requirements
+{all_generated_topics}
+
+
+## Content Planning Status
+- The previous theme selection has been completed and blog posts have been generated
+- You are now planning the NEXT strategic theme in the content calendar sequence
+- This requires strategic thinking to ensure optimal content distribution and audience engagement
+- Consider the overall content strategy trajectory and long-term planning goals
+
+# Strategic Theme Selection Requirements
 
 ## Play Weightage Consideration
 Review the playbook's play weightages and the distribution of already-generated topics:
@@ -395,15 +412,17 @@ The new theme must:
 - Complement (not duplicate) existing topic coverage
 - Fill identified content gaps
 
-## Strategic Reasoning
-Provide clear reasoning for why this additional theme is needed:
-- Which strategic gap it fills
-- How it balances the overall content calendar
-- Why this timing is appropriate
-- What unique value it adds
+## Strategic Planning and Reasoning
+Use strategic thinking to determine the optimal NEXT theme by considering:
+- **Content Calendar Balance**: How this theme complements and balances the overall content strategy
+- **Strategic Gap Analysis**: Which critical gaps in content coverage this theme will address
+- **Audience Journey Progression**: How this theme advances the audience through their content journey
+- **Timing Optimization**: Why this specific theme is strategically optimal for the next content cycle
+- **Competitive Positioning**: How this theme strengthens market positioning and thought leadership
+- **Long-term Content Trajectory**: How this theme fits into the broader content planning roadmap
 
 # Required Output
-Provide the NEW theme selection with comprehensive reasoning and research guidance following the same structure as before."""
+Provide the strategically planned NEXT theme selection with comprehensive reasoning and research guidance. This should demonstrate strategic thinking about content calendar progression and long-term content planning objectives."""
 
 # --- Additional Topic Generation Prompt for Multiple Iterations ---
 
@@ -411,23 +430,14 @@ TOPIC_ADDITIONAL_USER_PROMPT_TEMPLATE = """Generate additional strategic blog to
 
 # Context
 
-## Company Profile
-{company_doc}
-
-## Content Strategy/Playbook
-{playbook}
-
 ## Current Date
 {current_datetime}
 
-## Selected Theme and Strategic Context
+## Selected Theme and Strategic Context for this topic
 {selected_theme}
 
 ## Research Insights
 {research_insights}
-
-## Previous Topic Ideas (Avoid Repetition)
-{previous_topics}
 
 # Additional Topic Generation Requirements
 
@@ -440,11 +450,18 @@ This is a follow-up iteration to generate more topics. Consider:
 - Keep the user's/company context and tone consistent with the playbook
 
 ## Scheduling Requirements
-The previously suggested topic set has been saved to the calendar. This set is the NEXT entry in sequence. Therefore:
-- Determine the most recent scheduled_date in the previously saved topics (see {previous_topics}) and schedule this set strictly AFTER that date
+CRITICAL: This is a COMPLETELY NEW and SEPARATE topic set that must be scheduled on a DIFFERENT date:
+- The previously suggested topic set has already been saved to the calendar
+- This new set is the NEXT entry in the content calendar sequence
+- MUST use a different date than any previously generated topics in this session
 - Never choose a date in the past relative to {current_datetime}
-- If no previous scheduled_date exists, schedule starting from tomorrow relative to {current_datetime}
+- Never schedule on the same date as previously generated topics
 - Use ISO 8601 UTC format (YYYY-MM-DDTHH:MM:SSZ)
+- **CRITICAL SCHEDULING LOGIC**: Calculate the next scheduled date based on:
+  1. The most recent previously suggested date from this session
+  2. The user's posting frequency ({posts_per_week} posts per week)
+  3. Appropriate spacing: If 2 posts/week = space 3-4 days apart, if 1 post/week = schedule for the following week
+  4. The next date should be the immediate next posting date according to this frequency, not randomly within 2 weeks
 
 ## Topic Set Composition
 Create exactly **4 new interconnected topics** that:

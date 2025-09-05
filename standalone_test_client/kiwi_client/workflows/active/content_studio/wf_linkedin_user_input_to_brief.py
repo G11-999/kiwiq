@@ -84,11 +84,11 @@ LLM_MODEL = "claude-sonnet-4-20250514"
 TEMPERATURE = 0.7
 MAX_TOKENS = 4000
 
-# Perplexity Configuration for Reddit Research
-PERPLEXITY_PROVIDER = "perplexity"
-PERPLEXITY_MODEL = "sonar-pro"
-PERPLEXITY_TEMPERATURE = 0.5
-PERPLEXITY_MAX_TOKENS = 3000
+# # Perplexity Configuration for Reddit Research
+# PERPLEXITY_PROVIDER = "perplexity"
+# PERPLEXITY_MODEL = "sonar-pro"
+# PERPLEXITY_TEMPERATURE = 0.5
+# PERPLEXITY_MAX_TOKENS = 3000
 
 # Workflow Limits
 MAX_REGENERATION_ATTEMPTS = 3
@@ -563,7 +563,7 @@ workflow_graph_schema = {
             "node_id": "route_brief_approval",
             "node_name": "router_node",
             "node_config": {
-                "choices": ["check_iteration_limit", "output_node", "save_brief", "save_final_brief"],
+                "choices": ["check_iteration_limit", "delete_draft_brief", "save_brief", "save_final_brief"],
                 "allow_multiple": False,
                 "choices_with_conditions": [
                     {
@@ -577,7 +577,7 @@ workflow_graph_schema = {
                         "target_value": "provide_feedback"
                     },
                     {
-                        "choice_id": "output_node",
+                        "choice_id": "delete_draft_brief",
                         "input_path": "user_brief_action",
                         "target_value": "cancel_workflow"
                     },
@@ -587,7 +587,7 @@ workflow_graph_schema = {
                         "target_value": "draft"
                     }
                 ],
-                "default_choice": "output_node"
+                "default_choice": "delete_draft_brief"
             }
         },
 
@@ -810,6 +810,20 @@ workflow_graph_schema = {
                         ]
                     }
                 ],
+            }
+        },
+        
+        # 22.5. Delete Draft Brief - When user cancels at brief approval
+        "delete_draft_brief": {
+            "node_id": "delete_draft_brief", 
+            "node_name": "delete_customer_data",
+            "node_config": {
+                "search_params": {
+                    "input_namespace_field": "entity_username",
+                    "input_namespace_field_pattern": LINKEDIN_BRIEF_NAMESPACE_TEMPLATE,
+                    "input_docname_field": "brief_uuid",
+                    "input_docname_field_pattern": LINKEDIN_BRIEF_DOCNAME
+                }
             }
         },
         
@@ -1210,8 +1224,8 @@ workflow_graph_schema = {
         },
         {
             "src_node_id": "route_brief_approval",
-            "dst_node_id": "output_node",
-            "description": "Route to output if workflow cancelled"
+            "dst_node_id": "delete_draft_brief",
+            "description": "Route to delete draft if workflow cancelled"
         },
         {
             "src_node_id": "route_brief_approval",
@@ -1394,6 +1408,26 @@ workflow_graph_schema = {
             "mappings": [
                 {"src_field": "transformed_data", "dst_field": "transformed_data"}
             ]
+        },
+        
+        # Delete Draft Brief edges (when user cancels at brief approval)
+        {
+            "src_node_id": "$graph_state",
+            "dst_node_id": "delete_draft_brief",
+            "mappings": [
+                {"src_field": "entity_username", "dst_field": "entity_username"},
+                {"src_field": "brief_uuid", "dst_field": "brief_uuid"}
+            ],
+            "description": "Pass entity_username and brief_uuid to delete the draft"
+        },
+        {
+            "src_node_id": "delete_draft_brief",
+            "dst_node_id": "output_node",
+            "mappings": [
+                {"src_field": "deleted_count", "dst_field": "draft_deleted_count"},
+                {"src_field": "deleted_documents", "dst_field": "deleted_draft_documents"}
+            ],
+            "description": "Route to output after deleting draft"
         }
     ],
     
@@ -1690,239 +1724,239 @@ async def main_test_content_brief_workflow():
             "regeneration_feedback": None
         },
         # 3) Brief approval: provide feedback first (allows one revision loop)
-        {
-            "user_brief_action": "provide_feedback",
-            "revision_feedback": "Tighten the hook and add one concrete remote-team scenario. Keep the 80/20 framing, but make success metrics more specific.",
-            "updated_content_brief": {
-                "content_brief": {
-                    "title": "The 80/20 Rule of AI in Project Management",
-                    "content_type": "LinkedIn Post",
-                    "content_format": "Thought leadership with practical framework",
-                    "target_audience": "Operations Managers and Project Managers at 50-500 employee tech companies",
-                    "content_goal": "Educate executives on where to apply AI vs. retain human leadership in PM",
-                    "key_message": "Use AI for high-leverage, repetitive PM tasks and preserve human judgment for people, priorities, and context.",
-                    "content_structure": [
-                        {
-                            "section_title": "Hook & Context",
-                            "key_points": [
-                                "Executives wrestle with what to automate vs. what needs human leadership",
-                                "A simple 80/20 model clarifies where AI delivers outsized leverage"
-                            ],
-                            "estimated_word_count": 60
-                        },
-                        {
-                            "section_title": "80/20 Framework",
-                            "key_points": [
-                                "Automate: status reporting, basic risk flags, capacity snapshots, meeting notes",
-                                "Keep Human: prioritization trade-offs, stakeholder alignment, coaching, escalation calls"
-                            ],
-                            "estimated_word_count": 140
-                        },
-                        {
-                            "section_title": "Examples & Tools",
-                            "key_points": [
-                                "Real examples of AI assisting remote teams without reducing connection",
-                                "Tool patterns that augment—not replace—relationships"
-                            ],
-                            "estimated_word_count": 120
-                        },
-                        {
-                            "section_title": "Implementation Tips",
-                            "key_points": [
-                                "Start with low-risk automations and expand",
-                                "Define decision guardrails and human-in-the-loop checkpoints"
-                            ],
-                            "estimated_word_count": 120
-                        },
-                        {
-                            "section_title": "CTA",
-                            "key_points": [
-                                "Invite readers to share their biggest AI adoption challenge",
-                                "Offer a checklist to assess AI readiness"
-                            ],
-                            "estimated_word_count": 60
-                        }
-                    ],
-                    "seo_keywords": [
-                        "AI in project management",
-                        "human-in-the-loop",
-                        "remote teams",
-                        "automation best practices"
-                    ],
-                    "call_to_action": "Comment your top AI adoption challenge and get the AI readiness checklist.",
-                    "success_metrics": "Engagement rate, saves, qualified inbound conversations, and 2 exec follow-up calls",
-                    "estimated_total_word_count": 500,
-                    "difficulty_level": "Intermediate",
-                    "writing_guidelines": [
-                        "Conversational yet authoritative tone",
-                        "Data-informed with practical examples",
-                        "Emphasize augmentation over replacement"
-                    ],
-                    "knowledge_base_sources": [
-                        "Internal implementation notes",
-                        "Public case studies on AI-assisted PM",
-                        "Vendor documentation for summarization and risk flagging tools"
-                    ]
-                }
-            }
-        },
-        # 4) Brief approval: save as draft (avoid hitting iteration limits)
-        {
-            "user_brief_action": "draft",
-            "revision_feedback": None,
-            "updated_content_brief": {
-                "content_brief": {
-                    "title": "The 80/20 Rule of AI in Project Management",
-                    "content_type": "LinkedIn Post",
-                    "content_format": "Thought leadership with practical framework",
-                    "target_audience": "Operations Managers and Project Managers at 50-500 employee tech companies",
-                    "content_goal": "Educate executives on where to apply AI vs. retain human leadership in PM",
-                    "key_message": "Use AI for high-leverage, repetitive PM tasks and preserve human judgment for people, priorities, and context.",
-                    "content_structure": [
-                        {
-                            "section_title": "Hook & Context",
-                            "key_points": [
-                                "Executives wrestle with what to automate vs. what needs human leadership",
-                                "A simple 80/20 model clarifies where AI delivers outsized leverage"
-                            ],
-                            "estimated_word_count": 60
-                        },
-                        {
-                            "section_title": "80/20 Framework",
-                            "key_points": [
-                                "Automate: status reporting, basic risk flags, capacity snapshots, meeting notes",
-                                "Keep Human: prioritization trade-offs, stakeholder alignment, coaching, escalation calls"
-                            ],
-                            "estimated_word_count": 140
-                        },
-                        {
-                            "section_title": "Examples & Tools",
-                            "key_points": [
-                                "Real examples of AI assisting remote teams without reducing connection",
-                                "Tool patterns that augment—not replace—relationships"
-                            ],
-                            "estimated_word_count": 120
-                        },
-                        {
-                            "section_title": "Implementation Tips",
-                            "key_points": [
-                                "Start with low-risk automations and expand",
-                                "Define decision guardrails and human-in-the-loop checkpoints"
-                            ],
-                            "estimated_word_count": 120
-                        },
-                        {
-                            "section_title": "CTA",
-                            "key_points": [
-                                "Invite readers to share their biggest AI adoption challenge",
-                                "Offer a checklist to assess AI readiness"
-                            ],
-                            "estimated_word_count": 60
-                        }
-                    ],
-                    "seo_keywords": [
-                        "AI in project management",
-                        "human-in-the-loop",
-                        "remote teams",
-                        "automation best practices"
-                    ],
-                    "call_to_action": "Comment your top AI adoption challenge and get the AI readiness checklist.",
-                    "success_metrics": "Engagement rate, saves, and qualified inbound conversations",
-                    "estimated_total_word_count": 500,
-                    "difficulty_level": "Intermediate",
-                    "writing_guidelines": [
-                        "Conversational yet authoritative tone",
-                        "Data-informed with practical examples",
-                        "Emphasize augmentation over replacement"
-                    ],
-                    "knowledge_base_sources": [
-                        "Internal implementation notes",
-                        "Public case studies on AI-assisted PM",
-                        "Vendor documentation for summarization and risk flagging tools"
-                    ]
-                }
-            }
-        },
-        # 5) Brief approval: provide feedback again, then proceed to save in next step
-        {
-            "user_brief_action": "provide_feedback",
-            "revision_feedback": "Looks good. Please make the CTA more outcome-oriented and add one metric example (e.g., 20% faster status reporting).",
-            "updated_content_brief": {
-                "content_brief": {
-                    "title": "The 80/20 Rule of AI in Project Management",
-                    "content_type": "LinkedIn Post",
-                    "content_format": "Thought leadership with practical framework",
-                    "target_audience": "Operations Managers and Project Managers at 50-500 employee tech companies",
-                    "content_goal": "Educate executives on where to apply AI vs. retain human leadership in PM",
-                    "key_message": "Use AI for high-leverage, repetitive PM tasks and preserve human judgment for people, priorities, and context.",
-                    "content_structure": [
-                        {
-                            "section_title": "Hook & Context",
-                            "key_points": [
-                                "Executives wrestle with what to automate vs. what needs human leadership",
-                                "A simple 80/20 model clarifies where AI delivers outsized leverage"
-                            ],
-                            "estimated_word_count": 60
-                        },
-                        {
-                            "section_title": "80/20 Framework",
-                            "key_points": [
-                                "Automate: status reporting, basic risk flags, capacity snapshots, meeting notes",
-                                "Keep Human: prioritization trade-offs, stakeholder alignment, coaching, escalation calls"
-                            ],
-                            "estimated_word_count": 140
-                        },
-                        {
-                            "section_title": "Examples & Tools",
-                            "key_points": [
-                                "Real examples of AI assisting remote teams without reducing connection",
-                                "Tool patterns that augment—not replace—relationships"
-                            ],
-                            "estimated_word_count": 120
-                        },
-                        {
-                            "section_title": "Implementation Tips",
-                            "key_points": [
-                                "Start with low-risk automations and expand",
-                                "Define decision guardrails and human-in-the-loop checkpoints"
-                            ],
-                            "estimated_word_count": 120
-                        },
-                        {
-                            "section_title": "CTA",
-                            "key_points": [
-                                "Invite readers to share their biggest AI adoption challenge",
-                                "Offer a checklist to assess AI readiness"
-                            ],
-                            "estimated_word_count": 60
-                        }
-                    ],
-                    "seo_keywords": [
-                        "AI in project management",
-                        "human-in-the-loop",
-                        "remote teams",
-                        "automation best practices"
-                    ],
-                    "call_to_action": "Comment your top AI adoption challenge and get the AI readiness checklist.",
-                    "success_metrics": "Engagement rate, saves, qualified inbound conversations, and 2 exec follow-up calls",
-                    "estimated_total_word_count": 500,
-                    "difficulty_level": "Intermediate",
-                    "writing_guidelines": [
-                        "Conversational yet authoritative tone",
-                        "Data-informed with practical examples",
-                        "Emphasize augmentation over replacement"
-                    ],
-                    "knowledge_base_sources": [
-                        "Internal implementation notes",
-                        "Public case studies on AI-assisted PM",
-                        "Vendor documentation for summarization and risk flagging tools"
-                    ]
-                }
-            }
-        },
+        # {
+        #     "user_brief_action": "provide_feedback",
+        #     "revision_feedback": "Tighten the hook and add one concrete remote-team scenario. Keep the 80/20 framing, but make success metrics more specific.",
+        #     "updated_content_brief": {
+        #         "content_brief": {
+        #             "title": "The 80/20 Rule of AI in Project Management",
+        #             "content_type": "LinkedIn Post",
+        #             "content_format": "Thought leadership with practical framework",
+        #             "target_audience": "Operations Managers and Project Managers at 50-500 employee tech companies",
+        #             "content_goal": "Educate executives on where to apply AI vs. retain human leadership in PM",
+        #             "key_message": "Use AI for high-leverage, repetitive PM tasks and preserve human judgment for people, priorities, and context.",
+        #             "content_structure": [
+        #                 {
+        #                     "section_title": "Hook & Context",
+        #                     "key_points": [
+        #                         "Executives wrestle with what to automate vs. what needs human leadership",
+        #                         "A simple 80/20 model clarifies where AI delivers outsized leverage"
+        #                     ],
+        #                     "estimated_word_count": 60
+        #                 },
+        #                 {
+        #                     "section_title": "80/20 Framework",
+        #                     "key_points": [
+        #                         "Automate: status reporting, basic risk flags, capacity snapshots, meeting notes",
+        #                         "Keep Human: prioritization trade-offs, stakeholder alignment, coaching, escalation calls"
+        #                     ],
+        #                     "estimated_word_count": 140
+        #                 },
+        #                 {
+        #                     "section_title": "Examples & Tools",
+        #                     "key_points": [
+        #                         "Real examples of AI assisting remote teams without reducing connection",
+        #                         "Tool patterns that augment—not replace—relationships"
+        #                     ],
+        #                     "estimated_word_count": 120
+        #                 },
+        #                 {
+        #                     "section_title": "Implementation Tips",
+        #                     "key_points": [
+        #                         "Start with low-risk automations and expand",
+        #                         "Define decision guardrails and human-in-the-loop checkpoints"
+        #                     ],
+        #                     "estimated_word_count": 120
+        #                 },
+        #                 {
+        #                     "section_title": "CTA",
+        #                     "key_points": [
+        #                         "Invite readers to share their biggest AI adoption challenge",
+        #                         "Offer a checklist to assess AI readiness"
+        #                     ],
+        #                     "estimated_word_count": 60
+        #                 }
+        #             ],
+        #             "seo_keywords": [
+        #                 "AI in project management",
+        #                 "human-in-the-loop",
+        #                 "remote teams",
+        #                 "automation best practices"
+        #             ],
+        #             "call_to_action": "Comment your top AI adoption challenge and get the AI readiness checklist.",
+        #             "success_metrics": "Engagement rate, saves, qualified inbound conversations, and 2 exec follow-up calls",
+        #             "estimated_total_word_count": 500,
+        #             "difficulty_level": "Intermediate",
+        #             "writing_guidelines": [
+        #                 "Conversational yet authoritative tone",
+        #                 "Data-informed with practical examples",
+        #                 "Emphasize augmentation over replacement"
+        #             ],
+        #             "knowledge_base_sources": [
+        #                 "Internal implementation notes",
+        #                 "Public case studies on AI-assisted PM",
+        #                 "Vendor documentation for summarization and risk flagging tools"
+        #             ]
+        #         }
+        #     }
+        # },
+        # # 4) Brief approval: save as draft (avoid hitting iteration limits)
+        # {
+        #     "user_brief_action": "draft",
+        #     "revision_feedback": None,
+        #     "updated_content_brief": {
+        #         "content_brief": {
+        #             "title": "The 80/20 Rule of AI in Project Management",
+        #             "content_type": "LinkedIn Post",
+        #             "content_format": "Thought leadership with practical framework",
+        #             "target_audience": "Operations Managers and Project Managers at 50-500 employee tech companies",
+        #             "content_goal": "Educate executives on where to apply AI vs. retain human leadership in PM",
+        #             "key_message": "Use AI for high-leverage, repetitive PM tasks and preserve human judgment for people, priorities, and context.",
+        #             "content_structure": [
+        #                 {
+        #                     "section_title": "Hook & Context",
+        #                     "key_points": [
+        #                         "Executives wrestle with what to automate vs. what needs human leadership",
+        #                         "A simple 80/20 model clarifies where AI delivers outsized leverage"
+        #                     ],
+        #                     "estimated_word_count": 60
+        #                 },
+        #                 {
+        #                     "section_title": "80/20 Framework",
+        #                     "key_points": [
+        #                         "Automate: status reporting, basic risk flags, capacity snapshots, meeting notes",
+        #                         "Keep Human: prioritization trade-offs, stakeholder alignment, coaching, escalation calls"
+        #                     ],
+        #                     "estimated_word_count": 140
+        #                 },
+        #                 {
+        #                     "section_title": "Examples & Tools",
+        #                     "key_points": [
+        #                         "Real examples of AI assisting remote teams without reducing connection",
+        #                         "Tool patterns that augment—not replace—relationships"
+        #                     ],
+        #                     "estimated_word_count": 120
+        #                 },
+        #                 {
+        #                     "section_title": "Implementation Tips",
+        #                     "key_points": [
+        #                         "Start with low-risk automations and expand",
+        #                         "Define decision guardrails and human-in-the-loop checkpoints"
+        #                     ],
+        #                     "estimated_word_count": 120
+        #                 },
+        #                 {
+        #                     "section_title": "CTA",
+        #                     "key_points": [
+        #                         "Invite readers to share their biggest AI adoption challenge",
+        #                         "Offer a checklist to assess AI readiness"
+        #                     ],
+        #                     "estimated_word_count": 60
+        #                 }
+        #             ],
+        #             "seo_keywords": [
+        #                 "AI in project management",
+        #                 "human-in-the-loop",
+        #                 "remote teams",
+        #                 "automation best practices"
+        #             ],
+        #             "call_to_action": "Comment your top AI adoption challenge and get the AI readiness checklist.",
+        #             "success_metrics": "Engagement rate, saves, and qualified inbound conversations",
+        #             "estimated_total_word_count": 500,
+        #             "difficulty_level": "Intermediate",
+        #             "writing_guidelines": [
+        #                 "Conversational yet authoritative tone",
+        #                 "Data-informed with practical examples",
+        #                 "Emphasize augmentation over replacement"
+        #             ],
+        #             "knowledge_base_sources": [
+        #                 "Internal implementation notes",
+        #                 "Public case studies on AI-assisted PM",
+        #                 "Vendor documentation for summarization and risk flagging tools"
+        #             ]
+        #         }
+        #     }
+        # },
+        # # 5) Brief approval: provide feedback again, then proceed to save in next step
+        # {
+        #     "user_brief_action": "provide_feedback",
+        #     "revision_feedback": "Looks good. Please make the CTA more outcome-oriented and add one metric example (e.g., 20% faster status reporting).",
+        #     "updated_content_brief": {
+        #         "content_brief": {
+        #             "title": "The 80/20 Rule of AI in Project Management",
+        #             "content_type": "LinkedIn Post",
+        #             "content_format": "Thought leadership with practical framework",
+        #             "target_audience": "Operations Managers and Project Managers at 50-500 employee tech companies",
+        #             "content_goal": "Educate executives on where to apply AI vs. retain human leadership in PM",
+        #             "key_message": "Use AI for high-leverage, repetitive PM tasks and preserve human judgment for people, priorities, and context.",
+        #             "content_structure": [
+        #                 {
+        #                     "section_title": "Hook & Context",
+        #                     "key_points": [
+        #                         "Executives wrestle with what to automate vs. what needs human leadership",
+        #                         "A simple 80/20 model clarifies where AI delivers outsized leverage"
+        #                     ],
+        #                     "estimated_word_count": 60
+        #                 },
+        #                 {
+        #                     "section_title": "80/20 Framework",
+        #                     "key_points": [
+        #                         "Automate: status reporting, basic risk flags, capacity snapshots, meeting notes",
+        #                         "Keep Human: prioritization trade-offs, stakeholder alignment, coaching, escalation calls"
+        #                     ],
+        #                     "estimated_word_count": 140
+        #                 },
+        #                 {
+        #                     "section_title": "Examples & Tools",
+        #                     "key_points": [
+        #                         "Real examples of AI assisting remote teams without reducing connection",
+        #                         "Tool patterns that augment—not replace—relationships"
+        #                     ],
+        #                     "estimated_word_count": 120
+        #                 },
+        #                 {
+        #                     "section_title": "Implementation Tips",
+        #                     "key_points": [
+        #                         "Start with low-risk automations and expand",
+        #                         "Define decision guardrails and human-in-the-loop checkpoints"
+        #                     ],
+        #                     "estimated_word_count": 120
+        #                 },
+        #                 {
+        #                     "section_title": "CTA",
+        #                     "key_points": [
+        #                         "Invite readers to share their biggest AI adoption challenge",
+        #                         "Offer a checklist to assess AI readiness"
+        #                     ],
+        #                     "estimated_word_count": 60
+        #                 }
+        #             ],
+        #             "seo_keywords": [
+        #                 "AI in project management",
+        #                 "human-in-the-loop",
+        #                 "remote teams",
+        #                 "automation best practices"
+        #             ],
+        #             "call_to_action": "Comment your top AI adoption challenge and get the AI readiness checklist.",
+        #             "success_metrics": "Engagement rate, saves, qualified inbound conversations, and 2 exec follow-up calls",
+        #             "estimated_total_word_count": 500,
+        #             "difficulty_level": "Intermediate",
+        #             "writing_guidelines": [
+        #                 "Conversational yet authoritative tone",
+        #                 "Data-informed with practical examples",
+        #                 "Emphasize augmentation over replacement"
+        #             ],
+        #             "knowledge_base_sources": [
+        #                 "Internal implementation notes",
+        #                 "Public case studies on AI-assisted PM",
+        #                 "Vendor documentation for summarization and risk flagging tools"
+        #             ]
+        #         }
+        #     }
+        # },
         # 6) Brief approval: complete (save final)
         {
-            "user_brief_action": "complete",
+            "user_brief_action": "cancel_workflow",
             "revision_feedback": None,
             "updated_content_brief": {
                 "content_brief": {

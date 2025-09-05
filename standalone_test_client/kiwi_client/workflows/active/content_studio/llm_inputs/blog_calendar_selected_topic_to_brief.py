@@ -72,8 +72,8 @@ class GoogleResearchOutput(BaseModel):
     trending_subtopics: List[str] = Field(description="Related trending topics in this space")
     competitor_angles: List[str] = Field(description="How competitors approach this topic")
     content_gaps: List[str] = Field(description="Gaps in existing content that we can fill")
-    key_statistics: List[Dict[str, str]] = Field(description="Important statistics with sources")
-    expert_opinions: List[Dict[str, str]] = Field(description="Expert quotes and opinions with attribution")
+    key_statistics: List[str] = Field(description="Important statistics with sources")
+    expert_opinions: List[str] = Field(description="Expert quotes and opinions with attribution")
     common_questions: List[str] = Field(description="Frequently asked questions about this topic")
     insights: List[GoogleSearchInsight] = Field(description="Detailed insights from search")
     research_summary: str = Field(description="Executive summary of Google research findings")
@@ -108,7 +108,7 @@ class ContentSectionSchema(BaseModel):
     description: str = Field(description="Detailed description of what should be covered in this section")
     word_count: int = Field(description="Estimated word count for this section")
     key_points_to_cover: List[str] = Field(description="Specific points that must be covered in this section")
-    research_support: List[str] = Field(description="Specific research findings from Google/Reddit that justify this section")
+    research_support: List[str] = Field(description="ALL relevant research findings, data points, statistics, expert quotes, user insights, and source information from Google/Reddit that should be referenced when writing this section. Include everything from the research that will help create comprehensive, well-supported content")
     user_questions_answered: List[str] = Field(description="User questions from research that this section addresses")
     playbook_alignment: str = Field(description="How this section aligns with playbook guidelines")
     data_to_include: List[str] = Field(description="Specific statistics or data points to include")
@@ -128,7 +128,7 @@ class SEOKeywordsSchema(BaseModel):
     user_language_incorporated: List[str] = Field(description="Actual user language from Reddit incorporated as keywords")
     semantic_keywords: List[str] = Field(description="Related semantic keywords for topic authority")
     search_intent_analysis: str = Field(description="Analysis of search intent behind keyword strategy")
-    keyword_placement_guide: Dict[str, str] = Field(description="Where to place each type of keyword in content")
+    keyword_placement_guide: List[str] = Field(description="Where to place each type of keyword in content")
 
 class BrandGuidelinesSchema(BaseModel):
     """Enhanced schema for brand guidelines."""
@@ -222,6 +222,10 @@ You are responsible for:
 ## 1. Research Integration
 - **USE ALL AVAILABLE RESEARCH**: You have Google and Reddit research at your disposal - use both extensively
 - Every recommendation must reference specific research findings
+- **CRITICAL for research_support fields**: Include ALL relevant research material that helps write each section
+  * Don't just justify the section - provide the complete research arsenal
+  * Include statistics, quotes, examples, case studies, user insights
+  * Pull in everything a writer needs to create fact-based, comprehensive content
 - Identify patterns across multiple research sources
 - Highlight unique insights that competitors might miss
 - Note gaps in research that writers should fill
@@ -505,6 +509,12 @@ Therefore:
 #### For Content Structure:
 - Each section must have section_reasoning FIRST
 - Include specific user questions that section answers
+- **CRITICAL for research_support field**: Include ALL relevant research material:
+  * All statistics, data points, metrics from research
+  * Expert quotes and insights from articles
+  * User pain points and Reddit discussions
+  * Case studies, examples, and source URLs
+  * Everything needed to write comprehensive, fact-based content for that section
 - Note which research insights support that section
 - Provide transition guidance between sections
 - Include specific examples or data to use
@@ -571,6 +581,86 @@ Generate a complete ContentBriefDetailSchema with:
 6. Measurable success metrics
 
 Remember: This brief is the foundation for exceptional content. Make it so comprehensive and clear that a writer can begin immediately with confidence, knowing exactly what to create and why.
+"""
+
+BRIEF_REVISION_USER_PROMPT_TEMPLATE = """
+Based on the analyzed feedback, revise the content brief while maintaining strategic alignment with the selected topic, research insights, and playbook guidelines.
+
+REVISION INSTRUCTIONS:
+{revision_instructions}
+
+CRITICAL REQUIREMENTS FOR REVISION:
+
+## 1. Maintain Topic Alignment
+The brief MUST continue to serve the originally selected topic:
+- Preserve the core theme and objective from the topic selection
+- Keep the scheduled date and strategic context in mind
+- Ensure the play alignment (thought leadership, how-to, etc.) remains consistent
+- Don't drift from the "why_important" rationale
+
+## 2. Apply Specific Changes
+Follow the revision instructions precisely:
+- Focus on the sections or elements explicitly mentioned
+- Make targeted improvements based on the feedback analysis
+- Preserve successful elements not mentioned in the revision
+- Maintain comprehensive research_support with all helpful research material
+- When updating sections, keep or enhance the research_support field with relevant data
+- Maintain the depth and quality of reasoning throughout
+
+## 3. Research Foundation Consistency
+Keep all revisions grounded in research:
+- Google research insights must continue to inform the content
+- Reddit community insights should remain integrated
+- Don't abandon research-backed elements unless specifically directed
+- Strengthen research connections where feedback requests more evidence
+
+## 4. Playbook Compliance
+Ensure continued alignment with content playbook:
+- Maintain the content type structure (word counts, sections)
+- Keep tone and voice consistent with guidelines
+- Preserve SEO best practices from the playbook
+- Follow quality standards throughout revisions
+
+## 5. Preserve Strategic Elements
+Don't lose sight of strategic components:
+- Company positioning and differentiation
+- Target audience needs and expectations
+- Competitive differentiation already established
+- User journey positioning
+- Success metrics and objectives
+
+## REVISION APPROACH:
+
+1. **Start with what's working**: Keep strong sections and effective reasoning intact
+2. **Target specific improvements**: Focus changes on areas mentioned in revision instructions
+3. **Enhance, don't replace**: Build upon existing foundation rather than starting over
+4. **Maintain coherence**: Ensure all changes work harmoniously with unchanged elements
+5. **Strengthen evidence**: Use existing research to support any new directions
+
+## IMPORTANT REMINDERS:
+
+- This is a REVISION, not a rewrite - preserve the strong foundation
+- The selected topic context is fixed - work within those parameters
+- Research has already been conducted - use it to support changes
+- Playbook alignment is mandatory - stay within guidelines
+- Every reasoning field should remain substantive and specific
+- Do not modify the 'status' field - this is system-managed
+- Maintain all the detailed reasoning that makes the brief actionable
+
+## QUALITY STANDARDS FOR REVISION:
+
+Your revised brief must:
+- Address all points in the revision instructions
+- Maintain or improve the level of detail and reasoning
+- Keep research citations specific and relevant
+- Preserve successful differentiation strategies
+- Ensure writing instructions remain clear and actionable
+- Maintain measurable success metrics
+- Keep all sections coherent and connected
+
+Remember: The goal is to improve specific aspects based on feedback while preserving the strategic value and research foundation already established. Make the brief better, not different.
+
+Return the revised content brief in the exact same JSON format with all fields populated, maintaining the high quality of reasoning and research integration throughout.
 """
 
 BRIEF_FEEDBACK_INITIAL_USER_PROMPT = """

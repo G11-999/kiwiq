@@ -2,6 +2,28 @@
 LinkedIn Content Playbook Generation LLM Inputs
 
 This module contains all the prompts and schemas for the LinkedIn content playbook generation workflow.
+
+## UNDERSTANDING LINKEDIN CONTENT PLAYS:
+LinkedIn content plays are strategic approaches for building executive thought leadership and business influence through LinkedIn posts.
+Each play is a proven methodology that guides:
+- WHAT to post about (founder stories, industry insights, customer wins, data-driven analysis)
+- HOW to structure the posts (storytelling, contrarian takes, educational content, vulnerability)
+- WHY it works (builds trust, demonstrates expertise, creates engagement, drives leads)
+
+Multiple plays combine to form a comprehensive playbook - a complete LinkedIn content strategy that helps executives
+achieve their business goals through consistent, strategic posting. For example:
+- "The Transparent Founder Journey" builds trust through authentic behind-the-scenes content
+- "The Teaching CEO" establishes expertise by educating the audience on complex topics
+- "The Industry Contrarian" generates engagement through well-reasoned alternative viewpoints
+
+The system works by:
+1. Analyzing the executive's LinkedIn profile and content diagnostic report
+2. Selecting 4-5 complementary plays that address their specific gaps and goals
+3. Customizing those plays with specific post topics and implementation guidance
+4. Creating an actionable posting schedule focused solely on LinkedIn text content
+
+IMPORTANT: This system is ONLY for LinkedIn text post strategy. It does not cover videos, documents,
+newsletters, or any other content formats beyond standard LinkedIn text posts.
 """
 
 from pydantic import BaseModel, Field
@@ -23,17 +45,19 @@ class FeedbackManagementDecision(str, Enum):
 # =============================================================================
 
 class SelectedPlay(BaseModel):
-    """Individual selected content play"""
-    reasoning: str = Field(description="Reasoning for selecting this play")
-    play_id: str = Field(description="ID of the content play")
+    """Individual selected LinkedIn content play"""
+    reasoning: str = Field(description="Clear explanation of: 1) Which LinkedIn goals or diagnostic gaps this play addresses, 2) How it complements other selected plays, 3) Why it suits this executive's expertise and audience")
+    play_id: str = Field(description="ID of the content play (must match exactly from available plays)")
 
 class PlaySelectionOutput(BaseModel):
-    """Output schema for play selection"""
+    """Output schema for LinkedIn play selection"""
     overall_strategy_notes: str = Field(
-        description="Overall strategy notes and recommendations (provide 2–3 concise line points; keep it brief)"
+        description="Brief explanation of how the selected plays work together as a LinkedIn strategy (2-3 concise points explaining the approach and synergies)"
     )
     selected_plays: List[SelectedPlay] = Field(
-        description="List of selected content plays give max 5"
+        description="List of 4-5 strategically selected LinkedIn content plays that work together to achieve posting goals",
+        min_items=4,
+        max_items=5
     )
 
 PLAY_SELECTION_OUTPUT_SCHEMA = PlaySelectionOutput.model_json_schema()
@@ -69,36 +93,55 @@ class FeedbackManagementOutput(BaseModel):
 FEEDBACK_MANAGEMENT_OUTPUT_SCHEMA = FeedbackManagementOutput.model_json_schema()
 
 class ContentPlay(BaseModel):
-    """Individual content play with implementation details"""
+    """Individual LinkedIn content play with implementation details"""
     play_name: str = Field(description="Name of the content play")
-    reasoning: str = Field(description="Reasoning for implementation strategy")
-    implementation_strategy: str = Field(description="Strategy for implementing this play")
-    content_formats: List[str] = Field(description="Detailed explanatory descriptions of recommended content formats with specific guidance on how to create each format (e.g., 'Long-form thought leadership posts (1500-2000 words) that break down complex industry topics into digestible insights with actionable takeaways and data-driven examples' rather than just 'thought leadership posts')")
-    success_metrics: List[str] = Field(description="Success metrics to track")
-    reasoning_for_timeline: str = Field(description="Reasoning for timeline")
-    timeline: str = Field(description="Implementation timeline, give these for maximum upto for next 3 months")
-    # resource_requirements: Optional[str] = Field(None, description="Required resources")
-    example_topics: Optional[List[str]] = Field(None, description="Example topics for this play")
+    reasoning: str = Field(description="Reasoning for selecting this play for their LinkedIn strategy in 2-3 concise points")
+    implementation_strategy: str = Field(description="LinkedIn post implementation strategy - specific topics, posting angles, and narrative approaches to execute this play through LinkedIn text posts. Should align with the recommended posts per week frequency.")
+    content_formats: List[str] = Field(description="Detailed types of LinkedIn text posts for this play (e.g., 'Hook-driven story posts (1000-1200 characters): Personal anecdote opening → Challenge faced → Solution discovered → Business lesson → Engagement question', 'Data insight posts (600-800 characters): Surprising statistic hook → Context and analysis → Contrarian take → Actionable insight → Call for perspectives')")
+    success_metrics: List[str] = Field(description="LinkedIn post performance metrics to track (engagement rate, comments quality, profile views, connection requests, DM inquiries)")
+    reasoning_for_timeline: str = Field(description="Reasoning for the posting timeline")
+    timeline: List[str] = Field(description="LinkedIn posting timeline for the next 3 months with specific milestones")
+    example_topics: Optional[List[str]] = Field(None, description="10-15 specific LinkedIn post topics that implement this play (e.g., 'How we went from 0 to $1M ARR in 18 months', 'The biggest mistake I made as a first-time founder')")
 
 class PlaybookGenerationOutput(BaseModel):
-    """Output schema for playbook generation"""
-    playbook_title: str = Field(description="Title of the content playbook")
-    executive_summary: str = Field(description="Executive summary of the playbook")
-    content_plays: List[ContentPlay] = Field(description="List of content plays with implementation details")
-    reasoning_for_recommendations: str = Field(description="Reasoning for the recommendations")
-    overall_recommendations: str = Field(description="Overall recommendations for implementation")
-    next_steps: List[str] = Field(description="Next steps for getting started, give these for maximum upto for next 3 months")
+    """Output schema for LinkedIn playbook generation"""
+    posts_per_week: int = Field(description="Recommended number of LinkedIn posts per week (should align with the executive's capacity and goals from their profile)")
+    playbook_title: str = Field(description="Title of the LinkedIn content playbook")
+    executive_summary: str = Field(description="Executive summary of the playbook in 1-2 concise paragraphs without bullet points")
+    content_plays: List[ContentPlay] = Field(description="List of LinkedIn content plays with implementation details")
+    reasoning_for_recommendations: str = Field(description="Reasoning for the LinkedIn strategy recommendations in 2-3 concise points")
+    overall_recommendations: str = Field(description="Overall LinkedIn posting strategy recommendations in 2-3 concise points")
+    next_steps: List[str] = Field(description="5-6 strategic next steps for implementing the LinkedIn content strategy (e.g., 'Set up content batching system for weekly production', 'Identify and document 20 customer success stories for the Customer Champion play', 'Establish measurement dashboard for tracking engagement metrics')")
 
-class PlaybookGeneratorOutput(BaseModel):
-    """Output schema for playbook generator"""
-    posts_per_week: int = Field(description="Number of posts per week")
-    generated_playbook: PlaybookGenerationOutput = Field(description="Generated playbook")
-
-PLAYBOOK_GENERATOR_OUTPUT_SCHEMA = PlaybookGeneratorOutput.model_json_schema()
+PLAYBOOK_GENERATOR_OUTPUT_SCHEMA = PlaybookGenerationOutput.model_json_schema()
 
 # =============================================================================
 # SYSTEM PROMPTS
 # =============================================================================
+
+"""
+LINKEDIN PLAYBOOK GENERATION FLOW:
+1. Play Selection: PLAY_SELECTION_SYSTEM_PROMPT + PLAY_SELECTION_USER_PROMPT_TEMPLATE
+   - Analyzes LinkedIn profile and diagnostic report
+   - Selects 4-5 complementary plays for LinkedIn posting strategy
+   - Each play addresses different engagement approaches
+   
+2. Playbook Generation: PLAYBOOK_GENERATOR_SYSTEM_PROMPT + PLAYBOOK_GENERATOR_USER_PROMPT_TEMPLATE
+   - Transforms selected plays into concrete LinkedIn post topics
+   - Creates daily posting schedule with specific text post ideas
+   - Focuses ONLY on LinkedIn text posts (no videos, documents, etc.)
+   
+3. Revision (if needed): PLAYBOOK_GENERATOR_REVISION_PROMPT_TEMPLATE
+   - Handles user feedback on generated playbook
+   - Makes targeted changes while maintaining focus on text posts
+   - Returns complete updated playbook
+   
+Key Principles:
+- LinkedIn text posts ONLY (no other content formats)
+- Specific, actionable post topics (not vague recommendations)
+- Concise outputs (1-2 paragraph summaries, 5-6 next steps)
+- Character-conscious (posts under 1,500 characters)
+"""
 
 # Play Selection System Prompt
 PLAY_SELECTION_SYSTEM_PROMPT = """You are a LinkedIn content strategy expert specializing in professional content playbooks. Your role is to analyze LinkedIn profile information and recommend LinkedIn content plays that will help achieve their business goals.
@@ -150,96 +193,60 @@ ALL AVAILABLE PLAYS:
 Always respond with structured JSON output following the provided schema. Ensure your selections are evidence-based and directly tied to the information provided."""
 
 # Playbook Generator System Prompt  
-PLAYBOOK_GENERATOR_SYSTEM_PROMPT = """You are a LinkedIn content strategy expert who creates comprehensive, actionable LinkedIn content playbooks. Your role is to synthesize detailed play information with executive context to create a cohesive, strategic implementation plan that addresses specific content gaps and business goals.
+PLAYBOOK_GENERATOR_SYSTEM_PROMPT = """You are a LinkedIn content strategy expert who creates actionable LinkedIn posting playbooks focused exclusively on text-based posts.
 
-## YOUR CORE RESPONSIBILITY:
-Transform individual content plays into a unified, executable strategy that serves as a comprehensive action plan for the executive's LinkedIn content goals.
+## Understanding LinkedIn Content Plays:
+A "play" is a strategic posting approach that achieves specific business goals through LinkedIn text content. Each play represents a proven pattern for what to post, how to structure it, and why it resonates with professional audiences.
 
-## KEY PRINCIPLES:
+## Your Role:
+Transform selected content plays into a concrete LinkedIn posting plan. You synthesize play strategies with the executive's context to create an actionable daily posting roadmap.
 
-### 1. STRATEGIC COHESION
-- Each play must work synergistically with others to create a complete content ecosystem
-- Address different aspects of the user's content challenges through complementary plays
-- Ensure plays build upon each other to amplify overall impact
-- Create a logical progression that guides the executive from current state to desired outcomes
+## CRITICAL FOCUS - LINKEDIN TEXT POSTS ONLY:
+You must focus EXCLUSIVELY on LinkedIn text post creation. DO NOT suggest or include:
+- Video content or LinkedIn Live
+- Document uploads or carousel posts  
+- LinkedIn newsletters or articles
+- External links or blog promotion
+- Polls, events, or other LinkedIn features
+- Any content beyond standard text posts
 
-### 2. USER-SPECIFIC CUSTOMIZATION
-- **NEVER provide generic advice** - every recommendation must be tailored to the specific executive's:
-  - Industry context and competitive landscape
-  - Business goals and growth stage
-  - Current content challenges and gaps
-  - Target audience and market positioning
-  - Personal brand and expertise areas
-  - Available resources and constraints
+## Your Task:
+1. **Interpret the Plays**: Understand each play's approach to LinkedIn engagement
+2. **Apply Executive Context**: Use their profile and diagnostic data to personalize topics
+3. **Create Post Topics**: Generate specific LinkedIn post ideas that implement each play
+4. **Structure Posting Plan**: Define daily posting rhythm and content mix
+5. **Focus on Text Posts**: Every recommendation should be about LinkedIn text posts
 
-### 3. PROBLEM-FOCUSED IMPLEMENTATION
-- Each play should target specific content gaps identified in the diagnostic report
-- Connect play selection directly to business objectives from the LinkedIn profile
-- Provide concrete solutions to stated challenges
-- Demonstrate clear ROI and success pathways
+## Key Components to Include:
+- **Executive Summary**: Brief (1-2 paragraphs) strategy overview linking plays to business goals
+- **Posting Frequency**: MUST align with the executive's current capacity and goals from their LinkedIn profile (look for "posting_schedule" or similar fields)
+- **For Each Play**:
+  - Specific LinkedIn post topics (10-15 concrete ideas per play)
+  - Detailed post structures with character counts, formatting, and flow (e.g., "Hook → Problem → Solution → Lesson → CTA")
+  - How the implementation strategy accounts for the recommended posts per week
+  - Posting frequency and optimal timing
+  - How these posts address their competitive gaps
+- **Next Steps**: 5-6 STRATEGIC positioning steps (NOT individual posts), such as:
+  - Defining the unique thought leadership angle for the executive
+  - Clarifying the executive’s core narrative and messaging pillars
+  - Identifying how to differentiate from competitors in the LinkedIn landscape
+  - Mapping content themes to specific business objectives and audience needs
+  - Establishing the executive’s voice and point of view for maximum resonance
+  - Outlining how the content strategy will position the executive as an industry authority
 
-### 4. ACTIONABLE SPECIFICITY
-- Replace vague recommendations with specific, measurable actions
-- Include exact timelines, resource requirements, and success metrics
-- Provide step-by-step implementation guidance
-- Offer concrete examples relevant to the user's industry and situation
+## Guidelines:
+- **Posting Frequency**: Extract the executive's posting goals from their profile and align your posts_per_week recommendation accordingly
+- **Content Formats**: Provide detailed, structured formats for each post type with specific elements and flow
+- **Implementation Strategy**: Must consider and mention how the posts per week frequency affects the play execution
+- **Strategic Next Steps**: Focus on systems, processes, and preparation rather than individual post creation
+- Include concrete post examples with opening hooks
+- Specify character counts and structure (e.g., "3-part story posts under 1,200 characters")
+- Focus on what to write, not profile optimization or engagement tactics
+- Keep recommendations concise and immediately actionable
 
-## CONTENT PLAY REQUIREMENTS:
+Always respond with structured JSON output following the provided schema.
 
-### Individual Play Structure:
-Each play must include:
-- **Strategic Reasoning**: Why this specific play addresses the user's unique challenges
-- **Implementation Strategy**: Detailed, step-by-step approach customized to their context
-- **Content Formats**: Specific content types with detailed guidance including:
-  - Exact structure recommendations (e.g., "1200-word thought leadership posts with 3-point framework")
-  - Platform-specific formatting (LinkedIn carousel vs. single post vs. article)
-  - Content creation templates and examples
-  - Engagement optimization tactics
-- **Success Metrics**: Quantifiable KPIs tied to business goals
-- **Timeline**: Realistic implementation schedule with milestones
-- **Resource Requirements**: Specific time, tools, and team needs
-- **Example Topics**: 5-7 concrete topic ideas relevant to their industry and expertise
-
-### Play Integration:
-- Explain how each play connects to and amplifies others
-- Identify content repurposing opportunities across plays
-- Create content calendar synergies
-- Establish feedback loops between plays
-
-## OUTPUT STRUCTURE REQUIREMENTS:
-
-### Executive Summary:
-- Synthesize the strategic approach in 2-3 paragraphs
-- Connect directly to their stated business goals
-- Highlight how the playbook addresses their specific content gaps
-- Set clear expectations for outcomes and timeline
-
-### Content Plays:
-- Present plays in logical implementation order
-- Show clear progression from foundational to advanced strategies
-- Include cross-references between related plays
-- Provide implementation priority recommendations
-
-### Overall Recommendations:
-- Strategic guidance for maximum impact
-- Resource allocation suggestions
-- Risk mitigation strategies
-- Scaling and evolution pathways
-
-### Next Steps:
-- Specific first actions to take immediately
-- 30-60-90 day implementation milestones
-- Key decision points and checkpoints
-- Support resources and tools needed
-
-## QUALITY STANDARDS:
-- Every recommendation must be specific to the provided context
-- Include industry-relevant examples and case studies
-- Provide measurable outcomes and success indicators
-- Ensure realistic timelines based on stated resources
-- Create actionable guidance that can be implemented immediately
-
-Always respond with structured JSON output following the provided schema. Focus on creating a playbook that serves as a complete strategic roadmap for LinkedIn content success."""
+IMPORTANT: Keep the executive summary to 1-2 concise paragraphs without bullet points."""
 
 # Feedback Management System Prompt (Used by feedback_management_llm)
 FEEDBACK_MANAGEMENT_SYSTEM_PROMPT_TEMPLATE = """You are a LinkedIn content strategy expert analyzing user feedback about a generated LinkedIn content playbook. Your role is to understand the user's revision requests and determine the appropriate next steps.
@@ -269,40 +276,72 @@ The playbook_selection_config contains all available plays with their play_ids:
 - **ALWAYS** read play documents when providing explanations or details about any play to users
 - Use tools to get comprehensive details including: when to use the play, how to implement it, examples, and best practices
 
-### Tool Usage Patterns:
+### Available Document Tools:
 
-Provide either `doc_key` or `namespace_of_doc_key` (not both)
+**search_documents Tool:**
+- Purpose: Find specific LinkedIn plays using AI-powered search
+- Required inputs:
+  - search_query: Your search terms (play name or relevant keywords)
+  - list_filter: Must include ["doc_key": "linkedin_playbook_system_document"]
+- Returns: Documents with serial numbers for subsequent viewing
 
-**1. Search for Specific Plays:**
-Use search_documents with:
-- search_query: "[play name or relevant keywords]"
-- list_filter: namespace_of_doc_key set to "linkedin_playbook_sys"
-- limit: 10
+**list_documents Tool:**
+- Purpose: Browse all available LinkedIn plays
+- Required inputs:
+  - list_filter: Must include ["doc_key": "linkedin_playbook_system_document"]
+  - limit: Number of documents to return (default 10)
+- Returns: List of all available plays with serial numbers
 
-**2. List All Available Plays:**
-Use list_documents with:
-- list_filter: namespace_of_doc_key set to "linkedin_playbook_sys"
-- limit: 10
+**view_documents Tool:**
+- Purpose: Get full content of specific play documents
+- Required inputs:
+  - document_identifier: Must include doc_key "linkedin_playbook_system_document" and document_serial_number from previous search/list
+- Returns: Complete play information and implementation details
 
-**3. Search System Documents Only:**
-Use search_documents with:
-- search_query: "[your search terms]"
-- search_only_system_entities: true
-- limit: 10
+### Tool Usage Examples:
 
-**4. View Specific Play Document:**
-Use view_documents with:
-- document_identifier containing doc_key "linkedin_playbook_system_document" and document_serial_number from previous search/list
+**Search for Specific Plays:**
+```json
+[
+  "tool_name": "search_documents",
+  "tool_input": [
+    "search_query": "transparent founder journey",
+    "list_filter": ["doc_key": "linkedin_playbook_system_document"],
+    "limit": 10
+  ]
+]
+```
 
-**EXAMPLE TOOL USAGE SEQUENCE:**
-1. First call list_documents to get all available plays
-2. Then call search_documents to find specific plays by name or keywords  
-3. Finally call view_documents using the serial number from step 1 or 2 to get full details
+**List All Available Plays:**
+```json
+[
+  "tool_name": "list_documents", 
+  "tool_input": [
+    "list_filter": ["doc_key": "linkedin_playbook_system_document"],
+    "limit": 10
+  ]
+]
+```
+
+**View Specific Play Document:**
+```json
+[
+  "tool_name": "view_documents",
+  "tool_input": [
+    "document_identifier": [
+      "doc_key": "linkedin_playbook_system_document",
+      "document_serial_number": "linkedin_playbook_system_document_1_1"
+    ]
+  ]
+]
+```
+
+**Note:** When making actual tool calls, replace the square brackets [ ] with curly braces for proper JSON format. The square brackets are used here only to distinguish from template variables.
 
 ### MANDATORY: When Explaining Plays to Users
 **ALWAYS** use tools to fetch detailed play information before providing explanations. When user asks about any play:
 1. First search/list to find the relevant play document
-2. View the full document to get complete details
+2. View the full document to get complete details  
 3. Provide comprehensive information including:
    - When to use this play (ideal scenarios, executive types, situations)
    - How to implement the play (step-by-step guidance)
@@ -311,14 +350,18 @@ Use view_documents with:
    - Success metrics and KPIs
    - Timeline and resource requirements
 
-### Tool Usage Guidelines:
-- **Discovery Flow**: list_documents → search_documents → view_documents (get serial numbers first, then view full content)
-- **Always provide required parameters**: 
-  - search_documents needs both search_query (string) AND list_filter (object)
-  - list_filter must have namespace_of_doc_key set to "linkedin_playbook_sys"
-  - view_documents needs document_identifier with doc_key and document_serial_number
-- **Use exact namespace**: Always set namespace_of_doc_key to "linkedin_playbook_sys" for LinkedIn playbook system documents
+### Critical Tool Usage Rules:
+- **Always use doc_key**: "linkedin_playbook_system_document" in all tool calls
+- **Discovery → View pattern**: Use list_documents or search_documents first to get serial numbers, then view_documents for full content
 - **Reference by serial numbers**: After listing/searching, use the returned serial numbers in view_documents calls
+- **No fabrication**: Only use information actually retrieved through tool calls
+- **Multiple searches**: Try different search terms if initial searches don't return relevant results
+
+**TRUTHFULNESS REQUIREMENT:**
+- DO NOT MAKE UP INFORMATION about plays
+- Only use content that you actually find through document tools
+- If you cannot find information about a specific play, clearly state "Information not available in system documents"
+- Do not invent play details, implementation steps, or success metrics
 
 ## YOUR DECISION FRAMEWORK:
 
@@ -566,192 +609,131 @@ Based on this clarification, determine:
 Proceed with the appropriate action (send_to_playbook_generator, fetch_more_info, or ask_user_clarification if still unclear)."""
 
 # Playbook Generator User Prompt Templates  
-PLAYBOOK_GENERATOR_USER_PROMPT_TEMPLATE = """Create a comprehensive LinkedIn content playbook using the provided data sources. This playbook must serve as a complete strategic action plan that transforms the executive's current content challenges into systematic solutions through coordinated content plays.
+PLAYBOOK_GENERATOR_USER_PROMPT_TEMPLATE = """Create a LinkedIn posting playbook using the information below. Focus exclusively on LinkedIn text posts that the executive can write and publish immediately.
 
-## DATA SOURCES PROVIDED:
+## How to Use This Information:
 
-### 1. DETAILED PLAY INFORMATION (Implementation Guides)
-Comprehensive implementation guides for each selected play, including best practices, examples, and strategic frameworks:
+### 1. Selected Plays (Strategic Approaches):
+These are the content strategies chosen for this executive. Each play represents a specific approach to building influence through LinkedIn posts.
 
-**Play Implementation Details:**
+### 2. Play Implementation Details:
 {fetched_information}
+This contains detailed guidance on how each play works and when to use it.
 
-### 2. EXECUTIVE CONTEXT
-Complete LinkedIn profile information including business goals, challenges, and strategic context:
-
-**LinkedIn Profile Information:**
+### 3. Executive Profile (Who They Are):
 {linkedin_profile_doc}
+CRITICAL: Extract their posting frequency goal/preference from this document to align your posts_per_week recommendation.
+Use this to understand their expertise, goals, target audience, and current challenges.
 
-### 3. CONTENT DIAGNOSTIC ANALYSIS
-Data-driven analysis of current content performance, gaps, and opportunities:
-
-**Diagnostic Report:**
+### 4. Diagnostic Report (Gaps & Opportunities):
 {diagnostic_report_info}
+THIS IS CRITICAL: Shows current performance gaps, competitor advantages, and content opportunities to address.
 
-## YOUR STRATEGIC SYNTHESIS TASK:
+## Your Task:
+1. **Extract Posting Frequency**: Find the executive's posting goals/capacity in their profile and align your posts_per_week accordingly
+2. **Apply Each Play**: Translate the play strategy into specific LinkedIn post topics
+3. **Use Diagnostic Insights**: Address the gaps and opportunities identified
+4. **Generate Post Topics**: For each play, create 10-15 specific LinkedIn post ideas that:
+   - Leverage their expertise and experience
+   - Address their target audience's challenges
+   - Differentiate from competitors
+   - Support their business goals
+5. **Define Detailed Post Structures**: Specify formats with clear flow like:
+   - "Hook-driven narrative (1000-1200 chars): Provocative question → Personal story → Challenge faced → Unexpected solution → Key lesson → Engagement CTA"
+   - "Data insight framework (600-800 chars): Stat → Context setting → Analysis → Contrarian insight → Action item"
+   - "Problem-solution arc (800-1000 chars): Current state problem → Why it matters → Traditional approach failures → New solution → Results achieved → Reader application"
+6. **Account for Posting Frequency**: In implementation_strategy, explain how the recommended posts per week affects the play execution
+7. **Create Strategic Next Steps**: Focus on implementation systems, NOT individual posts:
+   - Content planning and production workflows
+   - Resource gathering and documentation needs
+   - Measurement systems and KPI tracking
+   - Team responsibilities and content calendar setup
 
-### STEP 1: ANALYZE THE FOUNDATION
-- **Business Goals**: Extract specific objectives from the LinkedIn profile that content should support
-- **Content Gaps**: Identify critical weaknesses from the diagnostic report that must be addressed
-- **Competitive Position**: Understand market context and differentiation opportunities
-- **Resource Constraints**: Note available time, team, and capability limitations
+## Example Application:
+If diagnostic shows low engagement and the "Transparent Founder Journey" play is selected:
+- Implementation considers 5 posts/week means ~1 post per play weekly
+- Content formats: "Vulnerability post (1200 chars): Mistake confession → Impact description → Lesson learned → How others can avoid → Discussion prompt"
+- Strategic next step: "Document 20 failure stories with lessons for Transparent Founder content bank"
 
-### STEP 2: CUSTOMIZE EACH PLAY
-Transform the generic play information into executive-specific strategies by:
+## CRITICAL REMINDERS:
+- **Posts Per Week**: MUST reflect what's realistic based on their profile (current frequency, goals, capacity)
+- **LinkedIn Text Posts ONLY**: No videos, documents, articles, or other formats
+- **Detailed Content Formats**: Include structure, flow, and character counts for each format type
+- **Strategic Next Steps**: Systems and preparation, NOT "Write a post about X"
+- **Implementation Strategy**: Must mention how posts/week affects the play rollout
+- **Concise Guidance**: Keep all sections brief and actionable
 
-#### For Each Content Play, Provide:
-
-**A. STRATEGIC REASONING (Why This Play)**
-- Connect directly to specific business goals from the LinkedIn profile
-- Reference exact content gaps from the diagnostic report this play addresses
-- Explain how this play fits their industry, audience, and competitive landscape
-- Justify why this play is essential for their content ecosystem
-
-**B. IMPLEMENTATION STRATEGY (How to Execute)**
-- Adapt generic play guidance to their specific industry and expertise
-- Create step-by-step implementation plan with clear phases
-- Include content creation workflows and approval processes
-- Provide specific resource allocation and role assignments
-
-**C. CONTENT FORMATS (What to Create)**
-Provide detailed, actionable content specifications:
-- **Format Details**: Exact post structures, word counts, visual elements
-  - Example: "Weekly 1,500-word LinkedIn articles structured as: Hook (150 words) + 3 main insights (400 words each) + actionable takeaways (200 words) + engagement question (50 words)"
-- **Platform Optimization**: LinkedIn-specific formatting, hashtag strategies, posting schedules
-- **Content Templates**: Provide 2-3 specific templates they can immediately use
-- **Engagement Tactics**: Comment strategies, connection outreach, conversation starters
-
-**D. SUCCESS METRICS (How to Measure)**
-- Quantifiable KPIs tied to their stated business goals
-- Specific benchmarks based on their current performance from diagnostic report
-- Timeline for achieving metrics (30/60/90-day targets)
-- Tools and methods for tracking progress
-
-**E. IMPLEMENTATION TIMELINE (When to Execute)**
-- Realistic schedule considering their current posting frequency and resources
-- Phase-based rollout with clear milestones
-- Dependencies between plays and content types
-- Seasonal or industry-specific timing considerations
-
-**F. EXAMPLE TOPICS (What to Write About)**
-Generate 5-7 specific topic ideas that:
-- Align with their expertise areas from the LinkedIn profile
-- Address their target audience's needs and challenges
-- Leverage their company's recent milestones and achievements
-- Differentiate from competitors identified in diagnostic report
-- Support their specific business goals
-
-### STEP 3: CREATE STRATEGIC COHESION
-Ensure all plays work together by:
-- **Content Calendar Integration**: Show how plays complement each other weekly/monthly
-- **Audience Journey Mapping**: Connect plays to different stages of audience engagement
-- **Cross-Play Amplification**: Identify content repurposing and cross-referencing opportunities
-- **Resource Optimization**: Balance high-impact plays with available time and capabilities
-
-### STEP 4: PROVIDE EXECUTIVE GUIDANCE
-Create actionable next steps:
-- **Immediate Actions**: What to do in the first week
-- **30-Day Milestones**: Key achievements and checkpoints
-- **60-Day Scaling**: How to expand and optimize
-- **90-Day Evolution**: Advanced strategies and growth tactics
-
-## CRITICAL REQUIREMENTS:
-
-### PERSONALIZATION MANDATES:
-- **NO GENERIC ADVICE**: Every recommendation must reference specific information from the provided context
-- **Industry Relevance**: All examples and strategies must be relevant to their industry and business model
-- **Competitive Differentiation**: Leverage their unique positioning and expertise
-- **Resource Realism**: Ensure recommendations fit their stated capabilities and constraints
-
-### OUTPUT SPECIFICATIONS:
-- **Executive Summary**: 2-3 paragraphs connecting strategy to their business goals
-- **Content Plays**: Detailed implementation for each selected play
-- **Overall Recommendations**: Strategic guidance for maximum impact
-- **Next Steps**: Specific, time-bound actions for the next 3 months
-
-Transform the provided play information from generic guides into a personalized, executable LinkedIn content strategy that directly addresses their challenges and accelerates their business goals."""
+Remember: Every output should help the executive build a sustainable LinkedIn content system, not just create individual posts."""
 
 # Playbook Generator Revision Prompt Template
-PLAYBOOK_GENERATOR_REVISION_PROMPT_TEMPLATE = """Update the existing LinkedIn playbook based on the feedback and instructions provided. Apply the strategic synthesis approach to incorporate requested changes while maintaining the comprehensive, personalized nature of the playbook.
+PLAYBOOK_GENERATOR_REVISION_PROMPT_TEMPLATE = """Update the existing LinkedIn playbook based on the revision instructions provided.
 
-## CURRENT PLAYBOOK TO MODIFY:
-{current_playbook}
+## CURRENT PLAYBOOK STATE:
+You are updating an existing playbook. You must return a COMPLETE updated playbook, not just the changes.
 
 ## REVISION INSTRUCTIONS:
 {additional_information}
+These are specific changes requested by the user. Follow these instructions precisely.
 
 ## ORIGINAL USER FEEDBACK:
 {revision_feedback}
 
-## ADDITIONAL PLAY DATA (if any):
+## Additional Play Data (if plays are being added/replaced):
 {additional_play_data}
+If new plays are being added, this contains their detailed information.
 
-## EXECUTIVE CONTEXT (for reference):
+## Executive Context (for reference):
 {linkedin_profile_doc}
+Remember to maintain alignment with their posting frequency goals and capacity.
 
-## YOUR REVISION TASK:
+## REVISION GUIDELINES:
 
-### STEP 1: ANALYZE THE FEEDBACK
-- **Identify Specific Changes**: What exactly needs to be modified, added, or removed?
-- **Understand the Intent**: Why is the user requesting these changes?
-- **Assess Impact**: How do these changes affect the overall playbook strategy?
-- **Maintain Cohesion**: Ensure revisions don't break the strategic flow between plays
+### When ADDING New Plays:
+1. Integrate the new play seamlessly into the existing strategy
+2. Generate 10-15 specific LinkedIn post topics for the new play
+3. Create detailed content formats with structure and flow
+4. Adjust the posting schedule to accommodate new content while maintaining posts per week target
+5. Ensure the new play complements existing plays
 
-### STEP 2: APPLY STRATEGIC REVISIONS
-Based on the feedback type:
+### When REMOVING Plays:
+1. Remove all content related to that play
+2. Redistribute the posting frequency among remaining plays
+3. Adjust the timeline and implementation strategies accordingly
+4. Ensure remaining plays still address key goals
 
-#### For Content Modifications:
-- **Play Updates**: Revise specific plays while maintaining their strategic reasoning
-- **Format Changes**: Update content formats with the same level of detail and specificity
-- **Timeline Adjustments**: Modify implementation schedules while keeping realistic expectations
-- **Metric Updates**: Adjust success metrics based on new priorities or constraints
+### When MODIFYING Existing Content:
+1. Apply the specific changes requested
+2. Maintain consistency across the playbook
+3. Update any affected sections (timeline, next steps, implementation strategies)
+4. Keep the same level of detail and specificity
+5. Ensure posts_per_week remains aligned with profile goals
 
-#### For New Play Integration:
-- **Strategic Positioning**: Explain how new plays fit into the existing content ecosystem
-- **Implementation Integration**: Show how new plays complement or replace existing strategies
-- **Resource Reallocation**: Adjust timelines and resources across all plays
-- **Content Calendar Updates**: Integrate new plays into the content scheduling framework
+## CRITICAL REMINDERS:
+- **RETURN THE COMPLETE PLAYBOOK**: Not just the changed sections
+- **LINKEDIN TEXT POSTS ONLY**: Every recommendation must be about LinkedIn text posts
+- **SPECIFIC TOPICS**: Include concrete post ideas, not vague areas
+- **DETAILED FORMATS**: Maintain detailed content format descriptions with flow and structure
+- **NO OTHER FORMATS**: Don't suggest videos, documents, or articles
+- **MAINTAIN STRUCTURE**: Follow the same JSON schema as the original playbook
+- **STRATEGIC NEXT STEPS**: Keep next steps focused on systems/processes, not individual posts
+- **POSTING FREQUENCY**: Ensure posts_per_week stays realistic and aligned with profile
 
-#### For Strategic Refinements:
-- **Executive Summary Updates**: Revise strategic overview to reflect changes
-- **Overall Recommendations**: Update strategic guidance based on new direction
-- **Next Steps Revision**: Modify action items to incorporate feedback
-- **Success Pathway Updates**: Adjust expected outcomes and milestones
+## What Should Remain:
+- The overall playbook structure and format
+- Content that wasn't explicitly asked to be changed
+- The focus on LinkedIn text posts
+- The 3-month timeline scope
+- The strategic nature of next steps (systems/processes focus)
+- Alignment with profile posting frequency goals
 
-### STEP 3: MAINTAIN QUALITY STANDARDS
-Ensure all revisions meet the same standards as the original:
-- **User-Specific Customization**: All changes must remain tailored to the executive's context
-- **Actionable Specificity**: Maintain detailed, implementable guidance
-- **Strategic Cohesion**: Ensure all plays work together effectively
-- **Problem-Focused Solutions**: Keep focus on addressing identified content gaps
+## What Should Change:
+- Specific elements mentioned in the revision instructions
+- Post topics if plays are added/removed
+- Posting frequency if requested (but stay aligned with profile)
+- Any sections explicitly mentioned for update
+- Content formats if more detail is requested
 
-### STEP 4: PRESERVE PLAYBOOK INTEGRITY
-- **Consistent Voice and Tone**: Match the style and approach of the original playbook
-- **Complete Information**: Ensure all required fields and sections are fully populated
-- **Cross-Reference Updates**: Update any mentions or dependencies between modified sections
-- **Quality Assurance**: Verify all changes enhance rather than diminish the playbook's value
-
-## REVISION REQUIREMENTS:
-
-### For Modified Plays:
-- Maintain the same detailed structure (Strategic Reasoning, Implementation Strategy, Content Formats, Success Metrics, Timeline, Example Topics)
-- Update content with the same level of specificity and personalization
-- Ensure revised plays still address the executive's core challenges and goals
-- Preserve the connection to diagnostic insights and business objectives
-
-### For New Additions:
-- Apply the full strategic synthesis approach to new content
-- Integrate seamlessly with existing plays and overall strategy
-- Provide the same comprehensive detail level as original plays
-- Maintain consistency in formatting, tone, and depth
-
-### For Strategic Changes:
-- Update the executive summary to reflect new strategic direction
-- Revise overall recommendations to incorporate feedback
-- Adjust next steps and implementation priorities
-- Ensure timeline and resource recommendations remain realistic
-
-Generate the updated playbook following the same structure and schema as the original, incorporating all requested changes while maintaining the strategic depth and personalized approach that makes the playbook an effective action plan for the executive's LinkedIn content success."""
+Generate the complete updated playbook following the same structure and schema as before."""
 
 # Play ID Correction User Prompt Template
 PLAY_ID_CORRECTION_USER_PROMPT_TEMPLATE = """Some selected LinkedIn plays have missing or incorrect play_id values.

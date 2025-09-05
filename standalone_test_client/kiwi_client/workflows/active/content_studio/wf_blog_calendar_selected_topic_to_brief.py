@@ -55,8 +55,7 @@ from kiwi_client.workflows.active.content_studio.llm_inputs.blog_calendar_select
     # User prompt templates
     BRIEF_GENERATION_USER_PROMPT_TEMPLATE,
     BRIEF_FEEDBACK_INITIAL_USER_PROMPT,
-    BRIEF_FEEDBACK_ADDITIONAL_USER_PROMPT,
-    
+    BRIEF_REVISION_USER_PROMPT_TEMPLATE,    
     # Output schemas
     BRIEF_FEEDBACK_ANALYSIS_OUTPUT_SCHEMA
 )
@@ -74,7 +73,7 @@ from kiwi_client.workflows.active.content_studio.llm_inputs.blog_user_input_to_b
 LLM_PROVIDER = "anthropic"
 LLM_MODEL = "claude-sonnet-4-20250514"
 TEMPERATURE = 0.7
-MAX_TOKENS = 4000
+MAX_TOKENS = 8000
 
 # Workflow Limits
 MAX_ITERATIONS = 10  # Maximum iterations for HITL feedback loops
@@ -357,7 +356,7 @@ workflow_graph_schema = {
             "node_config": {},
             "dynamic_output_schema": {
                 "fields": {
-                    "user_action": {
+                    "user_brief_action": {
                         "type": "enum",
                         "enum_values": ["complete", "revise_brief", "cancel_workflow", "draft"],
                         "required": True,
@@ -382,31 +381,31 @@ workflow_graph_schema = {
             "node_id": "route_brief_approval",
             "node_name": "router_node",
             "node_config": {
-                "choices": ["save_brief", "check_iteration_limit", "output_node", "save_as_draft"],
+                "choices": ["save_brief", "check_iteration_limit", "delete_on_cancel", "save_as_draft"],
                 "allow_multiple": False,
                 "choices_with_conditions": [
                     {
                         "choice_id": "save_brief",
-                        "input_path": "user_action",
+                        "input_path": "user_brief_action",
                         "target_value": "complete"
                     },
                     {
                         "choice_id": "check_iteration_limit",
-                        "input_path": "user_action",
+                        "input_path": "user_brief_action",
                         "target_value": "revise_brief"
                     },
                     {
-                        "choice_id": "output_node",
-                        "input_path": "user_action",
+                        "choice_id": "delete_on_cancel",
+                        "input_path": "user_brief_action",
                         "target_value": "cancel_workflow"
                     },
                     {
                         "choice_id": "save_as_draft",
-                        "input_path": "user_action",
+                        "input_path": "user_brief_action",
                         "target_value": "draft"
                     }
                 ],
-                "default_choice": "output_node"
+                "default_choice": "delete_on_cancel"
             }
         },
         
@@ -433,7 +432,7 @@ workflow_graph_schema = {
                         },
                         "extra_fields": [
                             {
-                                "src_path": "user_action",
+                                "src_path": "user_brief_action",
                                 "dst_path": "status"
                             },
                             {
@@ -450,7 +449,21 @@ workflow_graph_schema = {
             }
         },
         
-        # 9. Check Iteration Limit
+        # 9. Delete on Cancel - Delete the saved brief document
+        "delete_on_cancel": {
+            "node_id": "delete_on_cancel",
+            "node_name": "delete_customer_data",
+            "node_config": {
+                "search_params": {
+                    "input_namespace_field": "company_name",
+                    "input_namespace_field_pattern": BLOG_CONTENT_BRIEF_NAMESPACE_TEMPLATE,
+                    "input_docname_field": "brief_uuid",
+                    "input_docname_field_pattern": BLOG_CONTENT_BRIEF_DOCNAME
+                }
+            }
+        },
+        
+        # 10. Check Iteration Limit
         "check_iteration_limit": {
             "node_id": "check_iteration_limit",
             "node_name": "if_else_condition",
@@ -473,7 +486,7 @@ workflow_graph_schema = {
             }
         },
         
-        # 10. Route Based on Iteration Limit Check
+        # 11. Route Based on Iteration Limit Check
         "route_on_limit_check": {
             "node_id": "route_on_limit_check",
             "node_name": "router_node",
@@ -495,7 +508,7 @@ workflow_graph_schema = {
             }
         },
         
-        # 11. Brief Feedback Prompt Constructor
+        # 12. Brief Feedback Prompt Constructor
         "construct_brief_feedback_prompt": {
             "node_id": "construct_brief_feedback_prompt",
             "node_name": "prompt_constructor",
@@ -528,7 +541,7 @@ workflow_graph_schema = {
             }
         },
         
-        # 12. Brief Feedback Analysis
+        # 13. Brief Feedback Analysis
         "analyze_brief_feedback": {
             "node_id": "analyze_brief_feedback",
             "node_name": "llm",
@@ -548,7 +561,7 @@ workflow_graph_schema = {
             }
         },
         
-        # 13. Brief Revision - Enhanced Prompt Constructor
+        # 14. Brief Revision - Enhanced Prompt Constructor
         "construct_brief_revision_prompt": {
             "node_id": "construct_brief_revision_prompt",
             "node_name": "prompt_constructor",
@@ -556,54 +569,19 @@ workflow_graph_schema = {
                 "prompt_templates": {
                     "brief_revision_user_prompt": {
                         "id": "brief_revision_user_prompt",
-                        "template": BRIEF_GENERATION_USER_PROMPT_TEMPLATE + "\n\n**Revision Instructions:**\n{revision_instructions}",
+                        "template": BRIEF_REVISION_USER_PROMPT_TEMPLATE,
                         "variables": {
-                            "selected_topic": None,
-                            "company_doc": None,
-                            "playbook_doc": None,
-                            "google_research_output": None,
-                            "reddit_research_output": None,
                             "revision_instructions": None
                         },
                         "construct_options": {
-                            "selected_topic": "selected_topic",
-                            "company_doc": "company_doc",
-                            "playbook_doc": "playbook_doc",
-                            "google_research_output": "google_research_output",
-                            "reddit_research_output": "reddit_research_output",
                             "revision_instructions": "brief_feedback_analysis.revision_instructions"
                         }
-                    },
-                    "brief_revision_system_prompt": {
-                        "id": "brief_revision_system_prompt",
-                        "template": BRIEF_GENERATION_SYSTEM_PROMPT,
-                        "variables": {},
                     }
                 }
             }
         },
         
-        # 14. Brief Revision - LLM Node
-        "brief_revision_llm": {
-            "node_id": "brief_revision_llm",
-            "node_name": "llm",
-            "node_config": {
-                "llm_config": {
-                    "model_spec": {
-                        "provider": LLM_PROVIDER,
-                        "model": LLM_MODEL
-                    },
-                    "temperature": TEMPERATURE,
-                    "max_tokens": MAX_TOKENS
-                },
-                "output_schema": {
-                    "schema_definition": BRIEF_GENERATION_OUTPUT_SCHEMA,
-                    "convert_loaded_schema_to_pydantic": False
-                }
-            }
-        },
-        
-        # 15. Save Brief - Store Customer Data
+        # 16. Save Brief - Store Customer Data
         "save_brief": {
             "node_id": "save_brief",
             "node_name": "store_customer_data",
@@ -626,7 +604,7 @@ workflow_graph_schema = {
                         },
                         "extra_fields": [
                             {
-                                "src_path": "user_action",
+                                "src_path": "user_brief_action",
                                 "dst_path": "status"
                             },
                             {
@@ -643,7 +621,7 @@ workflow_graph_schema = {
             }
         },
         
-        # 17. Output Node
+        # 18. Output Node
         "output_node": {
             "node_id": "output_node",
             "node_name": "output_node",
@@ -847,7 +825,7 @@ workflow_graph_schema = {
             "src_node_id": "brief_approval_hitl",
             "dst_node_id": "route_brief_approval",
             "mappings": [
-                {"src_field": "user_action", "dst_field": "user_action"}
+                {"src_field": "user_brief_action", "dst_field": "user_brief_action"}
             ]
         },
         
@@ -858,7 +836,7 @@ workflow_graph_schema = {
             "mappings": [
                 {"src_field": "revision_feedback", "dst_field": "current_revision_feedback"},
                 {"src_field": "updated_content_brief", "dst_field": "current_content_brief"},
-                {"src_field": "user_action", "dst_field": "user_action"}
+                {"src_field": "user_brief_action", "dst_field": "user_brief_action"}
             ]
         },
         
@@ -875,8 +853,8 @@ workflow_graph_schema = {
         },
         {
             "src_node_id": "route_brief_approval",
-            "dst_node_id": "output_node",
-            "description": "Route to output if workflow cancelled"
+            "dst_node_id": "delete_on_cancel",
+            "description": "Route to delete node if workflow cancelled"
         },
         {
             "src_node_id": "route_brief_approval",
@@ -918,7 +896,7 @@ workflow_graph_schema = {
             "dst_node_id": "save_as_draft",
             "mappings": [
                 {"src_field": "current_content_brief", "dst_field": "current_content_brief"},
-                {"src_field": "user_action", "dst_field": "user_action"},
+                {"src_field": "user_brief_action", "dst_field": "user_brief_action"},
                 {"src_field": "company_name", "dst_field": "company_name"},
                 {"src_field": "brief_uuid", "dst_field": "brief_uuid"}
             ]
@@ -926,6 +904,26 @@ workflow_graph_schema = {
         
         # Save as Draft -> brief approval hitl
         {"src_node_id": "save_as_draft", "dst_node_id": "brief_approval_hitl"},
+        
+        # State -> Delete on Cancel
+        {
+            "src_node_id": "$graph_state",
+            "dst_node_id": "delete_on_cancel",
+            "mappings": [
+                {"src_field": "company_name", "dst_field": "company_name"},
+                {"src_field": "brief_uuid", "dst_field": "brief_uuid"}
+            ]
+        },
+        
+        # Delete on Cancel -> Output
+        {
+            "src_node_id": "delete_on_cancel",
+            "dst_node_id": "output_node",
+            "mappings": [
+                {"src_field": "deleted_count", "dst_field": "deleted_count"},
+                {"src_field": "deleted_documents", "dst_field": "deleted_documents"}
+            ]
+        },
         
         # State -> Brief Feedback Prompt Constructor
         {
@@ -978,55 +976,12 @@ workflow_graph_schema = {
             ]
         },
         
-        # State -> Brief Revision Prompt Constructor
-        {
-            "src_node_id": "$graph_state",
-            "dst_node_id": "construct_brief_revision_prompt",
-            "mappings": [
-                {"src_field": "selected_topic", "dst_field": "selected_topic"},
-                {"src_field": "company_doc", "dst_field": "company_doc"},
-                {"src_field": "playbook_doc", "dst_field": "playbook_doc"},
-                {"src_field": "google_research_output", "dst_field": "google_research_output"},
-                {"src_field": "reddit_research_output", "dst_field": "reddit_research_output"}
-            ]
-        },
-        
         # Brief Revision Prompt -> LLM
         {
             "src_node_id": "construct_brief_revision_prompt",
-            "dst_node_id": "brief_revision_llm",
+            "dst_node_id": "brief_generation_llm",
             "mappings": [
                 {"src_field": "brief_revision_user_prompt", "dst_field": "user_prompt"},
-                {"src_field": "brief_revision_system_prompt", "dst_field": "system_prompt"}
-            ]
-        },
-        
-        # State -> Brief Revision LLM (message history)
-        {
-            "src_node_id": "$graph_state",
-            "dst_node_id": "brief_revision_llm",
-            "mappings": [
-                {"src_field": "brief_generation_messages_history", "dst_field": "messages_history"}
-            ]
-        },
-        
-        # Brief Revision LLM -> HITL (loop back)
-        {
-            "src_node_id": "brief_revision_llm",
-            "dst_node_id": "brief_approval_hitl",
-            "mappings": [
-                {"src_field": "structured_output", "dst_field": "content_brief"}
-            ]
-        },
-        
-        # Brief Revision LLM -> State
-        {
-            "src_node_id": "brief_revision_llm",
-            "dst_node_id": "$graph_state",
-            "mappings": [
-                {"src_field": "structured_output", "dst_field": "current_content_brief"},
-                {"src_field": "current_messages", "dst_field": "brief_generation_messages_history"},
-                {"src_field": "metadata", "dst_field": "generation_metadata"}
             ]
         },
         
@@ -1037,7 +992,7 @@ workflow_graph_schema = {
             "mappings": [
                 {"src_field": "company_name", "dst_field": "company_name"},
                 {"src_field": "current_content_brief", "dst_field": "final_content_brief"},
-                {"src_field": "user_action", "dst_field": "user_action"},
+                {"src_field": "user_brief_action", "dst_field": "user_brief_action"},
                 {"src_field": "brief_uuid", "dst_field": "brief_uuid"}
             ]
         },
@@ -1063,7 +1018,7 @@ workflow_graph_schema = {
                 "generation_metadata": "replace",
                 "brief_generation_messages_history": "add_messages",
                 "brief_feedback_analysis_messages_history": "add_messages",
-                "user_action": "replace",
+                "user_brief_action": "replace",
                 "selected_topic": "replace",
                 "company_doc": "replace",
                 "playbook_doc": "replace",
@@ -1305,7 +1260,7 @@ async def main_test_selected_topic_brief_workflow():
     predefined_hitl_inputs = [
         # First HITL: Request revision
         {
-            "user_action": "revise_brief",
+            "user_brief_action": "provide_feedback",
             "revision_feedback": "The brief needs more focus on specific cost categories and should include more concrete examples. Please add a section about hidden costs like opportunity cost of sales reps not selling.",
             "updated_content_brief": {
                 "title": "The Hidden Cost of Manual CRM Data Entry: A CFO's Perspective",
@@ -1369,9 +1324,9 @@ async def main_test_selected_topic_brief_workflow():
                 ]
             }
         },
-        # Second HITL: Save as draft
+        # # Second HITL: Save as draft
         {
-            "user_action": "draft",
+            "user_brief_action": "draft",
             "updated_content_brief": {
                 "title": "The Hidden Cost of Manual CRM Data Entry: A CFO's Perspective (Revised)",
                 "target_audience": "CFOs and Finance Leaders at Enterprise SaaS companies",
@@ -1448,7 +1403,7 @@ async def main_test_selected_topic_brief_workflow():
         },
         # Third HITL: Request another revision after draft
         {
-            "user_action": "revise_brief",
+            "user_brief_action": "revise_brief",
             "revision_feedback": "The brief looks good but needs a stronger executive summary section and should include more industry-specific examples. Also, please add a section about implementation considerations from a CFO perspective.",
             "updated_content_brief": {
                 "title": "The Hidden Cost of Manual CRM Data Entry: A CFO's Perspective (Draft)",
@@ -1526,7 +1481,7 @@ async def main_test_selected_topic_brief_workflow():
         },
         # Fourth HITL: Final completion
         {
-            "user_action": "complete",
+            "user_brief_action": "complete",
             "updated_content_brief": {
                 "title": "The Hidden Cost of Manual CRM Data Entry: A CFO's Perspective (Final)",
                 "target_audience": "CFOs and Finance Leaders at Enterprise SaaS companies",

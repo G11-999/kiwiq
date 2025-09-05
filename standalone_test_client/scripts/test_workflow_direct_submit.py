@@ -14,49 +14,48 @@ from kiwi_client.schemas import workflow_api_schemas as wf_schemas
 
 logger = logging.getLogger(__name__)
 
-workflow_key = "orchestrator_workflow"
+workflow_key = "content_calendar_entry_workflow"
 
-workflow_inputs = {
-    "entity_username": "example-user-1",  # LinkedIn username
-    "company_name": "Entelligence.ai",  # Company name for analysis
-    "run_linkedin_exec": True,  # Execute LinkedIn workflows
-    "run_blog_analysis": True,  # Skip company workflows for now
-    "linkedin_profile_url": "https://www.linkedin.com/in/example-user-1/",  # LinkedIn URL
-    "company_url": "https://www.entelligence.ai/",  # Company website URL (optional)
-    "blog_start_urls": ["https://www.entelligence.ai/"] # Example blog start URL
+entity_username = "mahak-vedi"
+workflow_inputs =  {
+    "entity_username": entity_username,
+    "weeks_to_generate": 1,
+    "customer_context_doc_configs": [
+        {
+            "filename_config": {
+                "input_namespace_field_pattern": "user_strategy_{item}",
+                "input_namespace_field": "entity_username",
+                "static_docname": "user_dna_doc"
+            },
+            "output_field_name": "user_dna"
+        },
+        {
+            "filename_config": {
+                "input_namespace_field_pattern": "user_inputs_{item}",
+                "input_namespace_field": "entity_username",
+                "static_docname": "user_preferences_doc"
+            },
+            "output_field_name": "user_preferences"
+        },
+        {
+            "filename_config": {
+                "input_namespace_field_pattern": "user_strategy_{item}",
+                "input_namespace_field": "entity_username",
+                "static_docname": "content_strategy_doc"
+            },
+            "output_field_name": "strategy_doc"
+        },
+        {
+            "filename_config": {
+                "input_namespace_field_pattern": "scraping_results_{item}",
+                "input_namespace_field": "entity_username",
+                "static_docname": "linkedin_scraped_posts_doc"
+            },
+            "output_field_name": "scraped_posts"
+        }
+    ],
+    "past_context_posts_limit": 20
 }
-
-workflow_inputs_1 = {
-    "entity_username": "example-user-2-1a4b25172",  # LinkedIn username
-    "company_name": "ExampleCorp",  # Company name for analysis
-    "run_linkedin_exec": True,  # Execute LinkedIn workflows
-    "run_blog_analysis": True,  # Skip company workflows for now
-    "linkedin_profile_url": "https://www.linkedin.com/in/example-user-2-1a4b25172/",  # LinkedIn URL
-    "company_url": "https://www.gumloop.com/blog",  # Company website URL (optional)
-    "blog_start_urls": ["https://www.gumloop.com/blog"] # Example blog start URL
-}
-
-workflow_inputs_2 = {
-    "entity_username": "example-user-3",  # LinkedIn username
-    "company_name": "Astronomer",  # Company name for analysis
-    "run_linkedin_exec": True,  # Execute LinkedIn workflows
-    "run_blog_analysis": True,  # Skip company workflows for now
-    "linkedin_profile_url": "https://www.linkedin.com/in/example-user-3/",  # LinkedIn URL
-    "company_url": "https://www.astronomer.io/blog",  # Company website URL (optional)
-    "blog_start_urls": ["https://www.astronomer.io/blog"] # Example blog start URL
-}
-
-workflow_inputs_3 = {
-    "entity_username": "example-user-4",  # LinkedIn username
-    "company_name": "hex",  # Company name for analysis
-    "run_linkedin_exec": True,  # Execute LinkedIn workflows
-    "run_blog_analysis": True,  # Skip company workflows for now
-    "linkedin_profile_url": "https://www.linkedin.com/in/example-user-4/",  # LinkedIn URL
-    "company_url": "https://hex.tech/blog/",  # Company website URL (optional)
-    "blog_start_urls": ["https://hex.tech/blog/"] # Example blog start URL
-}
-
-workflow_inputs = [workflow_inputs_1, workflow_inputs_2, workflow_inputs_3]
 
 workflow_version = None
 predefined_hitl_inputs = []
@@ -117,16 +116,13 @@ async def test(workflow_name, inputs, workflow_version=None, parallel_submit_lim
         resolved_workflow_id = found_workflow.id
 
         for i in range(parallel_submit_limit):
-            if not isinstance(inputs, list):
-                inputs = [inputs]
-            for input in inputs:
-                submitted_run = await run_client.submit_run(
-                    workflow_id=resolved_workflow_id, 
-                    inputs=input,
-                    # streaming_mode=False,
-                    # on_behalf_of_user_id=on_behalf_of_user_id,
-                    # thread_id=thread_id
-                )
+            submitted_run = await run_client.submit_run(
+                workflow_id=resolved_workflow_id, 
+                inputs=inputs,
+                # streaming_mode=False,
+                # on_behalf_of_user_id=on_behalf_of_user_id,
+                # thread_id=thread_id
+            )
 
 if __name__ == "__main__":
-    asyncio.run(test(workflow_name=workflow_key, inputs=workflow_inputs, parallel_submit_limit=1))
+    asyncio.run(test(workflow_name=workflow_key, inputs=workflow_inputs, parallel_submit_limit=50))

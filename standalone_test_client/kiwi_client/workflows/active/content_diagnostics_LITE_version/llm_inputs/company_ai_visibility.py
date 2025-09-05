@@ -545,23 +545,20 @@ BLOG_COVERAGE_SYSTEM_PROMPT = (
 )
 
 BLOG_COVERAGE_USER_PROMPT_TEMPLATE = (
-    "Generate EXACTLY 15 search queries for blog visibility analysis based on the company and competitive data.\n\n"
+    "Generate EXACTLY 6-7 search queries for blog visibility analysis based on the company and competitive data.\n\n"
     "Current Date: {current_date}\n\n"
     "Query Distribution Requirements:\n"
-    "- industry_insights (3-4): Trends, market analysis, future predictions\n"
-    "- educational_guides (3-4): How-to, tutorials, best practices, frameworks\n"
-    "- problem_solutions (3-4): Challenge-focused, troubleshooting, optimization\n"
-    "- thought_leadership (2-3): Opinion pieces, strategic perspectives, innovation\n"
-    "- comparative_analysis (1-2): Versus content, alternatives, decision criteria\n\n"
+    "- industry_insights (1-2): Trends, market analysis, future predictions\n"
+    "- educational_guides (1-2): How-to, tutorials, best practices, frameworks\n"
+    "- problem_solutions (1-2): Challenge-focused, troubleshooting, optimization\n\n"
     "Query Construction Rules:\n"
     "1. Mix query formats:\n"
     "   - Questions: 'How do I...', 'What is the best way to...', 'Why should...'\n"
-    "   - Statements: 'guide to...', 'best practices for...', 'trends in...'\n"
-    "   - Comparisons: 'X vs Y for...', 'alternatives to...', 'choosing between...'\n\n"
+    "   - Statements: 'guide to...', 'best practices for...', 'trends in...'\n\n"
     "2. Include industry-specific terminology from the documentation\n"
     "3. Vary specificity levels (broad industry to specific use cases)\n"
     "4. Consider different user personas (technical, business, strategic)\n"
-    "5. Total must equal EXACTLY 15 queries\n\n"
+    "5. Total must equal EXACTLY 6 queries\n\n"
     "Company Documentation:\n{blog_company_data}\n\n"
     "Competitive Analysis:\n{competitive_analysis}\n\n"
     "Return only JSON matching the schema."
@@ -572,23 +569,15 @@ class EnhancedBlogCoverageQueries(BaseModel):
     
     industry_insights: List[str] = Field(
         description="Queries about industry trends, market analysis, future predictions",
-        min_items=2, max_items=3
+        min_items=1, max_items=2
     )
     educational_guides: List[str] = Field(
         description="How-to guides, tutorials, best practices, implementation frameworks",
-        min_items=2, max_items=3
+        min_items=1, max_items=2
     )
     problem_solutions: List[str] = Field(
         description="Problem-solving, troubleshooting, optimization queries",
-        min_items=2, max_items=3
-    )
-    thought_leadership: List[str] = Field(
-        description="Strategic perspectives, innovation, industry opinions",
-        min_items=2, max_items=3
-    )
-    comparative_analysis: List[str] = Field(
-        description="Comparison queries, alternatives, decision criteria",
-        min_items=2, max_items=3
+        min_items=1, max_items=2
     )
 
 BLOG_COVERAGE_QUERIES_SCHEMA = EnhancedBlogCoverageQueries.model_json_schema()
@@ -612,19 +601,16 @@ COMPANY_COMP_SYSTEM_PROMPT = (
 )
 
 COMPANY_COMP_USER_PROMPT_TEMPLATE = (
-    "Generate EXACTLY 15 buyer research queries for company and competitor analysis.\n\n"
-    "Query Categories (15 total):\n"
-    "1. discovery_research (3): Initial company/product understanding\n"
-    "2. capability_assessment (3): Features, functionalities, limitations\n"
-    "3. competitive_comparison (3): Direct comparisons, alternatives, differentiation\n"
-    "4. implementation_technical (3): Integration, deployment, technical requirements\n"
-    "5. validation_proof (3): Reviews, case studies, ROI, references\n\n"
+    "Generate EXACTLY 6 buyer research queries for company and competitor analysis.\n\n"
+    "Query Categories (6 total):\n"
+    "1. capability_assessment (1-2): Features, functionalities, limitations\n"
+    "2. competitive_comparison (1-2): Direct comparisons, alternatives, differentiation\n"
+    "3. implementation_technical (1-2): Integration, deployment, technical requirements\n\n"
     "Query Patterns to Include:\n"
     "- Direct entity queries: 'Company [aspect]'\n"
     "- Comparison queries: 'Company vs Competitor'\n"
     "- Evaluation queries: 'Is Company good for [use case]'\n"
     "- Technical queries: 'How to integrate Company with [system]'\n"
-    "- Proof queries: 'Company customer success stories'\n"
     "- Problem queries: 'Company limitations', 'problems with Company'\n\n"
     "Stakeholder Perspectives:\n"
     "- Technical: APIs, integration, security, performance\n"
@@ -632,437 +618,317 @@ COMPANY_COMP_USER_PROMPT_TEMPLATE = (
     "- User: Ease of use, features, training, adoption\n\n"
     "Company Documentation:\n{blog_company_data}\n\n"
     "Competitive Analysis:\n{competitive_analysis}\n\n"
-    "Output exactly 15 queries as JSON matching the schema."
+    "Output exactly 6 queries as JSON matching the schema."
 )
 
 class EnhancedCompanyCompetitorQueries(BaseModel):
     """Buyer journey query set for company evaluation."""
     
-    discovery_research: List[str] = Field(
-        description="Initial discovery and understanding queries",
-        min_items=3, max_items=3
-    )
     capability_assessment: List[str] = Field(
         description="Feature and functionality evaluation queries",
-        min_items=3, max_items=3
+        min_items=1, max_items=2
     )
     competitive_comparison: List[str] = Field(
         description="Direct comparison and alternative queries",
-        min_items=3, max_items=3
+        min_items=1, max_items=2
     )
     implementation_technical: List[str] = Field(
         description="Technical integration and deployment queries",
-        min_items=3, max_items=3
-    )
-    validation_proof: List[str] = Field(
-        description="Social proof, reviews, and validation queries",
-        min_items=3, max_items=3
+        min_items=1, max_items=2
     )
 
 COMPANY_COMP_QUERIES_SCHEMA = EnhancedCompanyCompetitorQueries.model_json_schema()
 
-# ============================================
-# 6. REPORT GENERATION - ENHANCED
-# ============================================
 
-# Blog Coverage Report - Enhanced
-BLOG_COVERAGE_REPORT_SYSTEM_PROMPT = (
-    "You are a content intelligence analyst producing comprehensive, evidence-based blog visibility reports "
-    "that provide actionable insights for content strategy optimization across AI platforms.\n\n"
-    "CRITICAL REQUIREMENT - QUERY CITATION MANDATE:\n"
-    "- EVERY finding, insight, problem, opportunity, or recommendation MUST include the exact queries that revealed it\n"
-    "- NO statement should be made without listing the specific search queries used as evidence\n"
-    "- Include source_queries field for every major finding\n"
-    "- Populate citation_reasoning with clear connections between queries and conclusions\n\n"
-    "Analysis Framework:\n"
-    "1. EVIDENCE COLLECTION: Extract and cite specific results with platforms, positions, and EXACT QUERIES\n"
-    "2. PATTERN RECOGNITION: Identify visibility patterns, content gaps, competitive advantages WITH QUERY SOURCES\n"
-    "3. QUANTITATIVE ANALYSIS: Calculate metrics with clear methodology and SUPPORTING QUERIES\n"
-    "4. COMPETITIVE BENCHMARKING: Compare performance against identified competitors WITH QUERY EVIDENCE\n"
-    "5. STRATEGIC SYNTHESIS: Convert findings into prioritized, actionable recommendations WITH QUERY CITATIONS\n\n"
-    "Evidence Standards:\n"
-    "- Every finding must cite: platform, query, position, source domain, excerpt, AND original search queries\n"
-    "- Confidence levels: HIGH (multiple sources agree), MEDIUM (single strong source), LOW (inferred)\n"
-    "- Verification status: VERIFIED (confirmed across platforms), PARTIAL (some confirmation), UNVERIFIED\n"
-    "- Include timestamps for all evidence\n"
-    "- List the exact queries that led to each conclusion in source_queries fields\n\n"
-    "Metric Definitions:\n"
-    "- visibility_score = weighted average of (presence * position * relevance)\n"
-    "- content_authority = (unique authoritative sources citing content) / (total sources) * 100\n"
-    "- competitive_index = (client visibility score) / (average competitor visibility) * 100\n"
-    "- coverage_rate = (queries with client presence) / (total queries) * 100\n"
-    "- dominance_score = (queries where client ranks #1) / (queries with presence) * 100\n\n"
-    "Report Depth Requirements:\n"
-    "- Include 3-5 evidence citations per major finding WITH QUERY SOURCES\n"
-    "- Provide confidence and verification status for all claims\n"
-    "- Explain methodology for calculated metrics\n"
-    "- Include competitive context for all assessments\n"
-    "- MANDATORY: Every insight must trace back to specific queries that revealed it"
-)
 
-BLOG_COVERAGE_REPORT_USER_PROMPT_TEMPLATE = (
-    "Generate a comprehensive Blog Coverage Intelligence Report with detailed evidence and analysis.\n\n"
-    "Search Results Data:\n{loaded_query_results}\n\n"
-    "MANDATORY QUERY CITATION REQUIREMENTS:\n"
-    "- For EVERY finding, gap, opportunity, threat, or recommendation, you MUST specify the exact queries that revealed it\n"
-    "- Fill source_queries fields with the specific search queries used\n"
-    "- Complete citation_reasoning fields explaining how the queries led to each conclusion\n"
-    "- NO insight should be provided without clear query traceability\n"
-    "- When mentioning competitor advantages, list the queries that showed this\n"
-    "- When identifying content gaps, specify which queries revealed the gaps\n\n"
-    "Report Requirements:\n\n"
-    "1. OVERALL ANALYSIS (Aggregate across all platforms):\n"
-    "   - Executive summary with key metrics and findings + SOURCE QUERIES\n"
-    "   - Overall visibility score with calculation methodology + SUPPORTING QUERIES\n"
-    "   - Competitive positioning assessment with evidence + QUERY SOURCES\n"
-    "   - Critical gaps and opportunities + REVEALING QUERIES\n\n"
-    "2. PROVIDER-SPECIFIC ANALYSIS for each (perplexity, google, openai):\n"
-    "   - Platform-specific visibility metrics + MEASUREMENT QUERIES\n"
-    "   - Top performing content/topics with evidence + SOURCE QUERIES\n"
-    "   - Competitive dynamics on this platform + ANALYSIS QUERIES\n"
-    "   - Platform-specific optimization opportunities + OPPORTUNITY QUERIES\n\n"
-    "3. DETAILED EVIDENCE REQUIREMENTS:\n"
-    "   - For each finding, include 2-3 DetailedEvidence objects WITH ORIGINAL QUERIES\n"
-    "   - Quote relevant excerpts (up to 500 chars) + QUERY THAT FOUND IT\n"
-    "   - Include source URLs where available + SEARCH QUERY USED\n"
-    "   - Note result positions and timestamps + EXACT QUERY TEXT\n\n"
-    "4. QUERY-LEVEL DEEP DIVE:\n"
-    "   - Analyze top 10 most important queries WITH RESULTS BREAKDOWN\n"
-    "   - Show exact results and positioning FOR EACH QUERY\n"
-    "   - Identify patterns and anomalies ACROSS QUERIES\n"
-    "   - Explain what each query reveals about visibility\n\n"
-    "5. COMPETITIVE INTELLIGENCE:\n"
-    "   - Detailed competitor performance by platform + ANALYSIS QUERIES\n"
-    "   - Head-to-head visibility comparisons + COMPARISON QUERIES\n"
-    "   - Competitive threats and opportunities + THREAT-REVEALING QUERIES\n\n"
-    "6. STRATEGIC RECOMMENDATIONS:\n"
-    "   - 5-7 prioritized actions with evidence + SUPPORTING QUERIES\n"
-    "   - Expected impact scores (1-100) + IMPACT-INDICATING QUERIES\n"
-    "   - Implementation complexity assessment + COMPLEXITY-REVEALING QUERIES\n"
-    "   - Success metrics and KPIs + MEASUREMENT QUERIES\n\n"
-    "CRITICAL: Every content_gaps, content_opportunities, competitive_analysis, and recommendations object MUST have:\n"
-    "- source_queries: List of exact queries that revealed this insight\n"
-    "- citation_reasoning: Clear explanation of how the queries support the finding\n\n"
-    "Output valid JSON matching BlogCoverageReport schema."
-)
 
-# Enhanced Report Schema Classes
 
-class VisibilityMetrics(BaseModel):
-    """Comprehensive visibility metrics with methodology."""
-    visibility_score: float = Field(description="Overall visibility score (0-100)")
-    calculation_method: str = Field(description="How the score was calculated")
-    coverage_rate: float = Field(description="% of queries with presence")
-    average_position: float = Field(description="Average position when present")
-    dominance_score: float = Field(description="% of #1 rankings when present")
-    content_authority: float = Field(description="Authority score based on sources")
-    competitive_index: float = Field(description="Performance vs competitors (100 = average)")
 
-class QueryAnalysis(BaseModel):
-    """Deep analysis of individual query performance."""
-    query: str = Field(description="The analyzed query")
-    platforms_present: List[str] = Field(description="Platforms where client appears")
-    best_position: int = Field(description="Best position achieved")
-    client_presence: str = Field(description="How client appears in results")
-    competitor_dynamics: List[str] = Field(description="Competitor positioning")
-    content_type: str = Field(description="Type of content surfaced")
-    optimization_opportunity: str = Field(description="How to improve for this query")
-    supporting_evidence: List[DetailedEvidence] = Field(description="Evidence for findings")
 
-class CompetitorPerformance(BaseModel):
-    """Detailed competitor performance analysis."""
-    competitor_name: str
-    visibility_score: float = Field(description="Competitor's visibility score")
-    queries_dominated: List[str] = Field(description="Queries where competitor ranks #1")
-    content_advantages: List[str] = Field(description="Content areas where competitor excels")
-    platform_strength: PlatformStrengthMetrics = Field(description="Performance by platform")
-    competitive_threats: List[str] = Field(description="Specific threats posed")
-    evidence_samples: List[DetailedEvidence] = Field(description="Supporting evidence")
-    analysis_queries: List[str] = Field(description="Queries used to analyze this competitor")
-    citation_reasoning: List[CitationReason] = Field(description="Citations for competitor analysis findings")
 
-class ContentGap(BaseModel):
-    """Identified content gap with business impact."""
-    gap_description: str = Field(description="What content is missing")
-    affected_queries: List[str] = Field(description="Queries impacted by this gap")
-    competitor_advantage: str = Field(description="How competitors benefit")
-    priority_score: int = Field(description="Priority to address (1-100)")
-    recommended_content: List[str] = Field(description="Specific content to create")
-    evidence: List[DetailedEvidence] = Field(description="Evidence of the gap")
-    source_queries: List[str] = Field(description="Original queries that revealed this gap")
-    citation_reasoning: CitationReason = Field(description="Citation and reasoning for this gap identification")
 
-class StrategicRecommendation(BaseModel):
-    """Actionable recommendation with full context."""
-    action: str = Field(description="Specific action to take")
-    rationale: str = Field(description="Why this will improve visibility")
-    expected_impact: int = Field(description="Impact score (1-100)")
-    implementation_complexity: str = Field(description="low/medium/high")
-    success_metrics: List[str] = Field(description="How to measure success")
-    supporting_evidence: List[DetailedEvidence] = Field(description="Evidence supporting this recommendation")
-    example_implementation: str = Field(description="Concrete example of implementation")
-    source_queries: List[str] = Field(description="Queries that led to this recommendation")
-    citation_reasoning: CitationReason = Field(description="Citation and reasoning for this recommendation")
 
-class PlatformBlogAnalysis(BaseModel):
-    """Platform-specific blog visibility analysis."""
-    platform: str = Field(description="Platform name: perplexity/google/openai")
-    metrics: VisibilityMetrics
-    top_performing_queries: List[QueryAnalysis] = Field(description="Best performing queries")
-    content_gaps: List[ContentGap] = Field(description="Platform-specific gaps")
-    competitive_landscape: List[CompetitorPerformance] = Field(description="Competitor performance")
-    optimization_priorities: List[str] = Field(description="Platform-specific priorities")
-    unique_insights: List[str] = Field(description="Insights unique to this platform")
+class BlogAIVisibilitySnapshot(BaseModel):
+    overall_score: str = Field(description="0-10 scale based on AI platform presence")
+    score_level: str = Field(description="Leading/Competing/Lagging/Invisible")
+    industry_position: str = Field(description="Market position relative to competitors on AI platforms")
+    biggest_win: str = Field(description="Primary strength in AI visibility - if any")
+    biggest_threat: str = Field(description="Primary vulnerability or competitive threat")
+    market_context: str = Field(description="Industry AI visibility trends and importance")
 
-class EnhancedBlogCoverageReport(BaseModel):
-    """Comprehensive blog coverage intelligence report."""
-    
-    # Executive Summary
-    executive_summary: str = Field(description="High-level findings and key takeaways")
-    report_confidence: str = Field(description="Overall confidence in findings: high/medium/low")
-    data_quality_assessment: str = Field(description="Assessment of data completeness and quality")
-    
-    # Overall Metrics
-    overall_metrics: VisibilityMetrics
-    
-    # Detailed Query Analysis
-    query_performance: List[QueryAnalysis] = Field(
-        description="Performance analysis for each query"
-    )
-    
-    # Competitive Intelligence
-    competitive_analysis: List[CompetitorPerformance] = Field(
-        description="Detailed competitor performance"
-    )
-    
-    # Content Strategy
-    content_gaps: List[ContentGap] = Field(
-        description="Identified content gaps with impact"
-    )
-    content_opportunities: List[ContentOpportunity] = Field(
-        description="Content opportunities identified"
-    )
-    
-    # Platform-Specific Analysis
-    platform_analyses: List[PlatformBlogAnalysis] = Field(
-        description="Detailed analysis per platform"
-    )
-    
-    # Strategic Recommendations
-    recommendations: List[StrategicRecommendation] = Field(
-        description="Prioritized strategic recommendations",
-        min_items=5, max_items=7
-    )
-    
-    # Risk Assessment
-    visibility_risks: List[str] = Field(description="Identified risks to visibility")
-    
-    # Monitoring Plan
-    kpi_targets: KPITargets = Field(description="Target KPIs for next period")
-    monitoring_frequency: str = Field(description="Recommended monitoring cadence")
+class AIMetric(BaseModel):
+    name: str = Field(description="Metric name")
+    level: str = Field(description="Performance level: excellent/good/poor/invisible")
+    score: str = Field(description="Score 0-10")
+    insight: str = Field(description="Analysis insight")
 
-BLOG_COVERAGE_REPORT_SCHEMA = EnhancedBlogCoverageReport.model_json_schema()
+class AISearchPresence(AIMetric):
+    benchmark_comparison: str = Field(description="Performance vs industry average")
 
-# Company & Competitor Report - Enhanced
-COMPANY_COMP_REPORT_SYSTEM_PROMPT = (
-    "You are a competitive intelligence expert producing comprehensive market positioning reports "
-    "based on AI platform analysis, providing strategic insights for market dominance.\n\n"
-    "CRITICAL REQUIREMENT - QUERY CITATION MANDATE:\n"
-    "- EVERY finding, insight, threat, opportunity, or strategic recommendation MUST include the exact queries that revealed it\n"
-    "- NO analysis should be made without listing the specific search queries used as evidence\n"
-    "- Include source_queries or analysis_queries fields for every major finding\n"
-    "- Populate citation_reasoning with clear connections between queries and strategic conclusions\n"
-    "- When identifying buyer journey patterns, specify which queries revealed each stage\n"
-    "- When assessing competitive positioning, list the queries that showed relative strengths/weaknesses\n\n"
-    "Intelligence Framework:\n"
-    "1. BUYER JOURNEY MAPPING: Understand how buyers research and evaluate WITH QUERY EVIDENCE\n"
-    "2. COMPETITIVE POSITIONING: Assess relative market position with evidence AND SUPPORTING QUERIES\n"
-    "3. PERCEPTION ANALYSIS: Understand market sentiment and narrative WITH PERCEPTION QUERIES\n"
-    "4. OPPORTUNITY IDENTIFICATION: Find gaps and advantages to exploit WITH OPPORTUNITY QUERIES\n"
-    "5. STRATEGIC PLANNING: Convert insights into executable strategy WITH STRATEGIC QUERIES\n\n"
-    "Evidence Requirements:\n"
-    "- Multiple evidence points per strategic finding (minimum 3) WITH ORIGINAL QUERIES\n"
-    "- Cross-platform validation for major claims WITH VALIDATING QUERIES\n"
-    "- Timestamp and position data for all evidence WITH SOURCE QUERIES\n"
-    "- Confidence scoring with rationale AND QUERY SUPPORT\n"
-    "- Competitive context for all assessments WITH COMPARISON QUERIES\n\n"
-    "Analysis Depth:\n"
-    "- Include verbatim quotes showing market perception WITH ORIGINATING QUERIES\n"
-    "- Trace buyer decision factors to specific evidence AND REVEALING QUERIES\n"
-    "- Quantify competitive advantages/disadvantages WITH MEASUREMENT QUERIES\n"
-    "- Provide before/after scenarios for recommendations WITH SUPPORTING QUERIES\n"
-    "- Include risk assessment for each strategic move WITH RISK-INDICATING QUERIES"
-)
+class ContentCitationRate(AIMetric):
+    top_cited_content: List[str] = Field(description="List of most-referenced content pieces")
 
-COMPANY_COMP_REPORT_USER_PROMPT_TEMPLATE = (
-    "Generate a comprehensive Company & Competitor Intelligence Report with deep evidence.\n\n"
-    "Search Results Data:\n{loaded_query_results}\n\n"
-    "MANDATORY QUERY CITATION REQUIREMENTS:\n"
-    "- For EVERY strategic finding, competitive insight, buyer journey pattern, or recommendation, you MUST specify the exact queries that revealed it\n"
-    "- Fill analysis_queries, positioning_queries, perception_queries, and driving_queries fields\n"
-    "- Complete citation_reasoning fields explaining how the queries led to each strategic conclusion\n"
-    "- NO strategic insight should be provided without clear query traceability\n"
-    "- When identifying competitive threats, list the queries that revealed the threat\n"
-    "- When analyzing buyer journey stages, specify which queries showed each stage behavior\n"
-    "- When assessing market perception, list the queries that revealed sentiment\n\n"
-    "Report Structure:\n\n"
-    "1. EXECUTIVE INTELLIGENCE BRIEFING:\n"
-    "   - Market position assessment with evidence + ASSESSMENT QUERIES\n"
-    "   - Competitive threats and opportunities + THREAT-REVEALING QUERIES\n"
-    "   - Strategic imperatives with urgency levels + IMPERATIVE-DRIVING QUERIES\n\n"
-    "2. BUYER JOURNEY INTELLIGENCE:\n"
-    "   - How buyers discover and research the company + DISCOVERY QUERIES\n"
-    "   - Decision factors and evaluation criteria found + DECISION QUERIES\n"
-    "   - Comparison patterns and alternative considerations + COMPARISON QUERIES\n"
-    "   - Purchase barriers and accelerators identified + BARRIER/ACCELERATOR QUERIES\n\n"
-    "3. COMPETITIVE POSITIONING ANALYSIS:\n"
-    "   - Head-to-head comparisons with evidence + COMPARISON QUERIES\n"
-    "   - Win/loss factors from search results + WIN/LOSS QUERIES\n"
-    "   - Competitive advantages and vulnerabilities + ADVANTAGE/VULNERABILITY QUERIES\n"
-    "   - Market share of voice analysis + VOICE-SHARE QUERIES\n\n"
-    "4. PLATFORM-SPECIFIC ANALYSIS (perplexity, google, openai):\n"
-    "   - Platform-specific positioning + POSITIONING QUERIES\n"
-    "   - Unique narratives per platform + NARRATIVE QUERIES\n"
-    "   - Platform optimization opportunities + OPPORTUNITY QUERIES\n\n"
-    "5. MARKET PERCEPTION INSIGHTS:\n"
-    "   - Sentiment analysis with examples + SENTIMENT QUERIES\n"
-    "   - Key narratives and themes + NARRATIVE QUERIES\n"
-    "   - Perception gaps vs reality + GAP-REVEALING QUERIES\n"
-    "   - Reputation risks and opportunities + RISK/OPPORTUNITY QUERIES\n\n"
-    "6. STRATEGIC RECOMMENDATIONS:\n"
-    "   - 10-12 prioritized actions + SUPPORTING QUERIES\n"
-    "   - Expected outcomes with metrics + OUTCOME-INDICATING QUERIES\n"
-    "   - Implementation roadmap + IMPLEMENTATION QUERIES\n"
-    "   - Competitive response scenarios + RESPONSE-SCENARIO QUERIES\n\n"
-    "Evidence Standards:\n"
-    "- Include 3-5 DetailedEvidence objects per major finding WITH ORIGINAL QUERIES\n"
-    "- Show exact quotes and positions WITH SOURCE QUERIES\n"
-    "- Note cross-platform validation WITH VALIDATING QUERIES\n"
-    "- Assess confidence levels WITH CONFIDENCE-SUPPORTING QUERIES\n\n"
-    "CRITICAL: Every buyer_journey_analysis, competitive_positioning, market_perception, strategic_imperatives, reputation_risks, and competitive_risks object MUST have:\n"
-    "- Appropriate query fields (analysis_queries, positioning_queries, perception_queries, driving_queries, etc.)\n"
-    "- citation_reasoning: Clear explanation of how the queries support the strategic finding\n\n"
-    "Output valid JSON matching the enhanced schema."
-)
+class QueryCoverage(AIMetric):
+    missing_query_types: List[str] = Field(description="Categories of queries where company is absent")
 
-class BuyerJourneyStage(BaseModel):
-    """Analysis of specific buyer journey stage."""
-    stage_name: str = Field(description="Journey stage: awareness/consideration/decision")
-    key_queries: List[str] = Field(description="Queries typical of this stage")
-    client_visibility: str = Field(description="How visible client is at this stage")
-    competitor_presence: List[str] = Field(description="Competitors prominent at this stage")
-    decision_factors: List[str] = Field(description="Key factors influencing buyers")
-    content_effectiveness: str = Field(description="How well content serves this stage")
-    optimization_needs: List[str] = Field(description="What's needed to improve")
-    evidence: List[DetailedEvidence] = Field(description="Supporting evidence")
-    analysis_queries: List[str] = Field(description="Specific queries used to analyze this stage")
-    citation_reasoning: List[CitationReason] = Field(description="Citations for buyer journey findings")
+class CompetitiveShareOfVoice(AIMetric):
+    voice_share_percentage: str = Field(description="Actual percentage vs competitors")
 
-class CompetitivePositioning(BaseModel):
-    """Detailed competitive positioning analysis."""
-    competitor_name: str
-    relative_strength: float = Field(description="Strength vs client (0-100)")
-    head_to_head_wins: List[str] = Field(description="Where competitor wins")
-    head_to_head_losses: List[str] = Field(description="Where client wins")
-    differentiation_factors: List[str] = Field(description="Key differentiators")
-    market_narrative: str = Field(description="How market perceives comparison")
-    threat_level: str = Field(description="high/medium/low threat assessment")
-    counter_strategies: List[str] = Field(description="How to counter this competitor")
-    evidence_base: List[DetailedEvidence] = Field(description="Evidence for analysis")
-    positioning_queries: List[str] = Field(description="Queries used to assess competitive positioning")
-    citation_reasoning: List[CitationReason] = Field(description="Citations for positioning analysis")
+class BlogAIKeyMetrics(BaseModel):
+    ai_search_presence: AISearchPresence = Field(description="AI Search Results Presence")
+    content_citation_rate: ContentCitationRate = Field(description="Content Citation by AI Platforms")
+    query_coverage: QueryCoverage = Field(description="Industry Query Coverage")
+    competitive_share_of_voice: CompetitiveShareOfVoice = Field(description="AI Platform Share of Voice")
 
-class MarketPerception(BaseModel):
-    """Market perception and sentiment analysis."""
-    overall_sentiment: str = Field(description="positive/neutral/negative/mixed")
-    sentiment_score: float = Field(description="Sentiment score (-100 to +100)")
-    key_narratives: List[str] = Field(description="Main stories about company")
-    perception_strengths: List[str] = Field(description="Positive perceptions")
-    perception_weaknesses: List[str] = Field(description="Negative perceptions")
-    narrative_examples: List[DetailedEvidence] = Field(description="Example narratives")
-    perception_gaps: List[str] = Field(description="Gaps between reality and perception")
-    narrative_opportunities: List[str] = Field(description="Opportunities to shape narrative")
-    perception_queries: List[str] = Field(description="Queries used to assess market perception")
-    citation_reasoning: List[CitationReason] = Field(description="Citations for perception analysis")
+class PlatformPerformance(BaseModel):
+    platform: str = Field(description="Platform name")
+    score: str = Field(description="Score 0-10")
+    status: str = Field(description="Winning/Competing/Losing/Invisible")
+    key_insight: str = Field(description="Platform-specific performance analysis")
+    top_queries_present: List[str] = Field(description="List of queries where company appears")
+    major_gaps: List[str] = Field(description="Key areas where company is missing")
 
-class StrategicImperative(BaseModel):
-    """High-priority strategic action."""
-    imperative: str = Field(description="What must be done")
-    urgency: str = Field(description="critical/high/medium/low")
-    business_case: str = Field(description="Why this matters to business")
-    expected_impact: str = Field(description="Expected business impact")
-    implementation_steps: List[str] = Field(description="How to implement")
-    success_criteria: List[str] = Field(description="How to measure success")
-    risk_mitigation: str = Field(description="How to mitigate risks")
-    evidence_foundation: List[DetailedEvidence] = Field(description="Evidence driving this imperative")
-    driving_queries: List[str] = Field(description="Queries that revealed the need for this imperative")
-    citation_reasoning: CitationReason = Field(description="Citation and reasoning for this strategic imperative")
+class BlogAIPlatformPerformance(BaseModel):
+    chatgpt: PlatformPerformance = Field(description="ChatGPT/OpenAI performance")
+    perplexity: PlatformPerformance = Field(description="Perplexity AI performance")
 
-class PlatformCompanyAnalysis(BaseModel):
-    """Platform-specific company analysis."""
-    platform: str
-    visibility_metrics: VisibilityMetrics
-    positioning_narrative: str = Field(description="How company is positioned")
-    competitive_landscape: List[CompetitivePositioning]
-    unique_challenges: List[str] = Field(description="Platform-specific challenges")
-    optimization_priorities: List[str] = Field(description="Platform-specific priorities")
-    content_performance: ContentPerformance = Field(description="Content performance metrics")
+class TopCompetitor(BaseModel):
+    name: str = Field(description="Competitor name")
+    ai_visibility_score: str = Field(description="Their 0-10 AI platform score")
+    advantage: str = Field(description="Their key competitive advantage on AI platforms")
+    dominant_query_types: List[str] = Field(description="Types of queries they dominate")
+    opportunity: str = Field(description="Specific strategies to compete and win against them")
+    content_strategy_insights: str = Field(description="What makes their content AI-platform friendly")
 
-class EnhancedCompanyCompetitorReport(BaseModel):
-    """Comprehensive company and competitor intelligence report."""
-    
-    # Executive Briefing
-    executive_briefing: str = Field(description="C-suite level strategic summary")
-    market_position_score: float = Field(description="Overall market position (0-100)")
-    competitive_threat_level: str = Field(description="Overall threat assessment")
-    
-    # Buyer Journey Intelligence
-    buyer_journey_analysis: List[BuyerJourneyStage] = Field(
-        description="Analysis by buyer journey stage"
-    )
-    purchase_drivers: List[str] = Field(description="Key factors driving purchase decisions")
-    purchase_barriers: List[str] = Field(description="Barriers preventing purchase")
-    
-    # Competitive Intelligence
-    competitive_positioning: List[CompetitivePositioning] = Field(
-        description="Detailed competitive analysis"
-    )
-    market_share_voice: float = Field(description="Estimated share of voice (0-100)")
-    competitive_advantages: List[str] = Field(description="Sustainable competitive advantages")
-    competitive_vulnerabilities: List[str] = Field(description="Exploitable vulnerabilities")
-    
-    # Market Perception
-    market_perception: MarketPerception
-    
-    # Platform-Specific Analysis
-    platform_analyses: List[PlatformCompanyAnalysis] = Field(
-        description="Analysis per platform"
-    )
-    
-    # Strategic Imperatives
-    strategic_imperatives: List[StrategicImperative] = Field(
-        description="Priority strategic actions",
-        min_items=10, max_items=12
-    )
-    
-    # Risk Assessment
-    reputation_risks: List[ReputationRisk] = Field(
-        description="Identified reputation risks with severity"
-    )
-    competitive_risks: List[CompetitiveRisk] = Field(
-        description="Competitive threats requiring monitoring"
-    )
-    
-    # Success Metrics
-    kpi_dashboard: KPIDashboard = Field(
-        description="Current KPIs and targets"
-    )
-    monitoring_triggers: List[str] = Field(
-        description="Events requiring immediate action"
-    )
-    
-    # Data Quality
-    data_confidence: str = Field(description="Overall confidence in data: high/medium/low")
-    evidence_summary: str = Field(description="Summary of evidence base")
+class BlogAITopCompetitors(BaseModel):
+    competitor_1: TopCompetitor = Field(description="Top competitor analysis")
+    competitor_2: TopCompetitor = Field(description="Second competitor analysis")
+    competitor_3: TopCompetitor = Field(description="Third competitor analysis")
 
-COMPANY_COMP_REPORT_SCHEMA = EnhancedCompanyCompetitorReport.model_json_schema()
+class CriticalGap(BaseModel):
+    area: str = Field(description="Specific gap area")
+    impact: str = Field(description="Business impact")
+    current_performance: str = Field(description="Current state vs ideal state")
+    quick_win: str = Field(description="Immediate 30-60 day solution")
+    long_term_strategy: str = Field(description="6-12 month strategic approach")
+
+class BlogAICriticalGaps(BaseModel):
+    gap_1: CriticalGap = Field(description="First critical gap")
+    gap_2: CriticalGap = Field(description="Second critical gap")
+    gap_3: CriticalGap = Field(description="Third critical gap")
+
+class HighIntentQueries(BaseModel):
+    queries_missed: List[str] = Field(description="List of buying-intent queries where company is absent")
+    competitor_dominance: List[str] = Field(description="Which competitors own these queries")
+    revenue_impact: str = Field(description="Estimated impact of missing these opportunities")
+
+class ContentConsumptionPatterns(BaseModel):
+    preferred_content_types: List[str] = Field(description="What content types AI platforms favor for citations")
+    optimal_content_structure: str = Field(description="Content structure that gets cited most")
+    citation_triggers: List[str] = Field(description="What makes content get referenced by AI")
+
+class BuyerIntentAnalysis(BaseModel):
+    high_intent_queries: HighIntentQueries = Field(description="High intent queries analysis")
+    content_consumption_patterns: ContentConsumptionPatterns = Field(description="Content consumption patterns")
+
+class ImmediateOptimization(BaseModel):
+    existing_content_upgrades: str = Field(description="How to optimize current content for AI platforms")
+    structural_improvements: str = Field(description="Schema, formatting, structure changes needed")
+    quick_citation_wins: str = Field(description="Content pieces most likely to get AI citations with minor updates")
+
+class NetNewContentNeeds(BaseModel):
+    missing_topic_areas: str = Field(description="Content topics that need to be created")
+    format_gaps: str = Field(description="Content formats missing from current portfolio")
+    authority_building_content: str = Field(description="Content needed to establish thought leadership")
+
+class ContentOptimizationOpportunities(BaseModel):
+    immediate_optimization: ImmediateOptimization = Field(description="Immediate optimization opportunities")
+    net_new_content_needs: NetNewContentNeeds = Field(description="New content needs")
+
+class PriorityRecommendation(BaseModel):
+    title: str = Field(description="Specific problem identification title")
+    priority: str = Field(description="critical/high/medium/low")
+    problem_citations: str = Field(description="Data and citations proving this is a real issue")
+    business_case: str = Field(description="Why this problem matters to business outcomes")
+    competitive_context: str = Field(description="How competitors are capitalizing on this gap")
+    market_opportunity: str = Field(description="Size and value of the opportunity being missed")
+    risk_of_inaction: str = Field(description="What happens if this problem isn't addressed")
+
+class BlogAIPriorityRecommendations(BaseModel):
+    recommendation_1: PriorityRecommendation = Field(description="First priority recommendation")
+    recommendation_2: PriorityRecommendation = Field(description="Second priority recommendation")
+    recommendation_3: PriorityRecommendation = Field(description="Third priority recommendation")
+
+class BlogAIVisibilityReportSchema(BaseModel):
+    """Blog AI Visibility Report schema"""
+    visibility_snapshot: BlogAIVisibilitySnapshot = Field(description="Visibility snapshot")
+    key_metrics: BlogAIKeyMetrics = Field(description="Key performance metrics")
+    platform_performance: BlogAIPlatformPerformance = Field(description="Platform-specific performance")
+    top_competitors: BlogAITopCompetitors = Field(description="Top competitors analysis")
+    critical_gaps: BlogAICriticalGaps = Field(description="Critical gaps analysis")
+    buyer_intent_analysis: BuyerIntentAnalysis = Field(description="Buyer intent analysis")
+    content_optimization_opportunities: ContentOptimizationOpportunities = Field(description="Content optimization opportunities")
+    priority_recommendations: BlogAIPriorityRecommendations = Field(description="Priority recommendations")
+
+BLOG_AI_VISIBILITY_REPORT_SCHEMA = BlogAIVisibilityReportSchema.model_json_schema()
+
+
+
+BLOG_AI_VISIBILITY_REPORT_SYSTEM_PROMPT = """
+You are an expert AI visibility analyst specializing in evaluating how companies perform across AI platforms (ChatGPT, Claude, Gemini, Perplexity) and their competitive positioning in AI-generated search results. Your role is to analyze raw AI visibility data and transform it into compelling, citations-based insights that convince executives of critical problems requiring attention.
+
+**Your Core Expertise:**
+
+- AI platform algorithm understanding and content citation patterns
+- Competitive intelligence analysis for digital visibility
+- Business impact quantification for AI visibility gaps
+- Strategic problem identification and prioritization
+
+**Analysis Approach:**
+
+- Focus on problem validation over solution implementation
+- Use concrete data to prove issues exist and matter
+- Quantify business impact and competitive threats
+- Build compelling cases for why executives should care
+- Prioritize citations-based insights over generic recommendations
+
+**Output Requirements:**
+
+- Generate insights that convince rather than instruct
+- Use specific data points and competitive comparisons
+- Focus on "why this matters" rather than "how to fix it"
+- Make recommendations feel urgent and necessary
+- Quantify opportunities and risks wherever possible
+"""
+
+
+BLOG_AI_VISIBILITY_REPORT_USER_PROMPT = """
+You will receive two comprehensive AI visibility analysis reports as input. Your task is to synthesize this data into a persuasive executive summary that convinces leadership of critical AI visibility problems requiring immediate attention.
+
+### Input Report Descriptions:
+Company Context Doc: This is a document that contains the context of our company.
+{company_context_doc}
+
+
+### INPUT DATA:
+```json
+{blog_ai_visibility_data}
+```
+```json
+{company_ai_visibility_data}
+```
+
+**Report 1: blog_ai_visibility_doc**
+This report contains:
+
+- **Query Coverage Analysis**: 28 industry-relevant queries tested across AI platforms with client presence tracking
+- **Client Visibility Metrics**: Specific appearance rates, ranking positions, and overall visibility scores
+- **Competitor Performance Data**: How competitors like Otter.ai, Fireflies.ai, Microsoft Teams perform on the same queries
+- **Content Opportunity Gaps**: Specific content types and topics where client is missing but competitors dominate
+- **Market Context**: Industry growth data (e.g., AI transcription market $4.5B growing at 15.6% CAGR)
+
+**How to Use This Report:**
+
+- Extract client appearance rates across queries to prove visibility problems
+- Use competitor mention frequencies to show competitive disadvantage
+- Leverage market growth data to quantify missed opportunity size
+- Identify specific query categories where client has zero presence
+- Use top sources data to understand what content AI platforms prefer
+
+**Report 2: company_ai_visibility_doc**
+This report contains:
+
+- **Company Positioning Analysis**: How the client (Otter.ai) is perceived across AI platforms
+- **Competitive Benchmarking**: Detailed comparison with competitors like Sonix.ai, Rev.com, MeetGeek.ai
+- **Market Perception Insights**: User sentiment, common complaints, and positioning strengths/weaknesses
+- **Buyer Intent Patterns**: What potential customers are searching for and evaluating
+- **Positioning Opportunities**: Strategic gaps where client could differentiate or improve
+
+**How to Use This Report:**
+
+- Extract positioning strengths/weaknesses to understand current market perception
+- Use competitor analysis data to identify specific competitive threats
+- Leverage buyer intent patterns to show what opportunities are being missed
+- Use market perception insights to understand reputation risks
+- Extract competitive gap data to prioritize problems by business impact
+
+### Analysis Instructions:
+
+Ensure you are doing the analysis on behalf of the company mentioned in the company context doc.
+
+**1. Visibility Snapshot Creation:**
+
+- Calculate overall AI visibility score from client appearance data
+- Determine industry position by comparing client vs competitor performance
+- Identify the biggest threat using competitive dominance data
+- Extract biggest win (if any) from positive performance areas
+
+**2. Critical Gaps Identification:**
+
+- Use zero appearance data to identify content/topic gaps
+- Quantify business impact using market size and competitor performance
+- Focus on gaps where competitors are winning and client is absent
+- Prioritize gaps by potential revenue impact and competitive threat level
+
+**3. Competitive Intelligence:**
+
+- Extract top 3 competitors by AI platform performance
+- Identify their specific advantages using performance and positioning data
+- Determine what query types each competitor dominates
+- Analyze their content strategies that make them AI-platform friendly
+
+**4. Business Impact Quantification:**
+
+- Use market growth data to size missed opportunities
+- Calculate potential revenue impact of visibility gaps
+- Assess competitive threat level based on competitor dominance
+- Quantify brand authority and thought leadership risks
+
+**5. Problem Validation:**
+
+- Use specific query data to prove problems exist (e.g., "0 appearances across 28 queries")
+- Reference competitor performance to show what's possible
+- Use market data to prove the opportunity size
+- Include buyer intent analysis to show customer demand being missed
+
+### Key Data Points to Extract and Use:
+
+From blog_ai_visibility_doc:
+
+- Total queries analyzed and client appearance rate
+- Specific competitor mention counts and performance
+- Market size data and growth projections
+- Query categories with zero client presence
+- Industry trend insights
+
+From company_ai_visibility_doc:
+
+- Market perception themes and sentiment analysis
+- Competitive positioning strengths/weaknesses
+- Buyer intent patterns and evaluation criteria
+- Specific competitive gaps and opportunities
+- Customer pain points and satisfaction issues
+
+### Output Requirements:
+
+Generate a JSON report following the provided schema that:
+
+- **Convinces through data**: Every insight backed by specific metrics
+- **Shows competitive urgency**: Uses competitor performance to prove threats are real
+- **Quantifies business impact**: Translates visibility gaps into revenue/market share implications
+- **Validates problems exist**: Uses concrete citations to prove each identified issue
+- **Creates urgency**: Shows what happens if problems aren't addressed
+
+Focus on making executives think: "We have a serious problem that needs immediate attention" rather than "Here's a nice-to-have improvement project."
+
+**Critical Success Factors:**
+
+- Use specific numbers and percentages from the data
+- Reference competitor names and their exact performance advantages
+- Include market size and growth data to show opportunity cost
+- Quote buyer intent patterns to show customer demand being missed
+- Highlight reputation and positioning risks with concrete examples
+
+Generate the analysis now, ensuring every recommendation is a compelling problem statement supported by irrefutable data from the input reports.
+
+"""

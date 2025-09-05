@@ -278,7 +278,7 @@ For each content theme in the analysis:
 
 ### Step 5: Goal Alignment Analysis (Optional - if goals provided)
 
-For each goal from user profile:
+For each business goal from user profile:
 
 - Map relevant content themes that support the goal
 - Assess content effectiveness in achieving the goal using performance metrics
@@ -1787,6 +1787,102 @@ class ImplementationPriority(str, Enum):
     MEDIUM = "Medium"
     LOW = "Low"
 
+
+# NEW: LinkedIn Content Performance Analysis Schema
+class LinkedInPerformanceOverview(BaseModel):
+    """Overall LinkedIn content performance metrics"""
+    total_themes_analyzed: int = Field(description="Number of distinct content themes identified")
+    total_posts_analyzed: int = Field(description="Total number of posts analyzed across all themes")
+    overall_engagement_health: str = Field(description="Overall content health assessment: Excellent/Good/Needs Improvement/Poor")
+    average_engagement_rate: float = Field(description="Average engagement rate across all content")
+    posting_consistency: str = Field(description="Assessment of posting frequency and consistency")
+    content_diversity_score: float = Field(description="Score indicating variety in content themes and formats (0-100)")
+
+class ThemePerformanceMetrics(BaseModel):
+    """Performance metrics for a specific content theme"""
+    theme_name: str = Field(description="Name of the content theme")
+    theme_description: str = Field(description="Brief description of what this theme covers")
+    posts_in_theme: int = Field(description="Number of posts in this theme")
+    avg_likes: float = Field(description="Average likes per post in this theme")
+    avg_comments: float = Field(description="Average comments per post in this theme")
+    avg_reposts: float = Field(description="Average reposts per post in this theme")
+    engagement_rate: float = Field(description="Engagement rate for this theme")
+    performance_trend: str = Field(description="Trending up/down/stable")
+    key_success_factors: List[str] = Field(description="What makes this theme successful (provide exactly 3 items)", max_items=2)
+    improvement_opportunities: List[str] = Field(description="Areas for improvement in this theme (provide exactly 3 items)", max_items=3)
+
+class ContentFormatPerformance(BaseModel):
+    """Performance analysis for different content formats"""
+    format_type: str = Field(description="Type of content format (Text-only, Image, Video, Article, Carousel, etc.)")
+    usage_percentage: float = Field(description="Percentage of total content using this format")
+    avg_engagement: float = Field(description="Average engagement for this format")
+    effectiveness_score: float = Field(description="Effectiveness score (0-100) based on engagement and reach")
+    best_use_cases: List[str] = Field(description="When this format works best (provide exactly 3 items)", max_items=2)
+    optimization_tips: List[str] = Field(description="How to improve this format's performance (provide exactly 3 items)", max_items=3)
+
+class ContentQualityAssessment(BaseModel):
+    """Assessment of content quality metrics"""
+    avg_readability_score: float = Field(description="Average readability score across all content (0-100)")
+    avg_clarity_score: float = Field(description="Average clarity score (0-100)")
+    avg_uniqueness_score: float = Field(description="Average uniqueness/originality score (0-100)")
+    avg_value_proposition_strength: float = Field(description="Average strength of value propositions (0-100)")
+    content_depth_analysis: str = Field(description="Assessment of content depth and substance")
+    quality_improvement_priorities: List[str] = Field(description="Top priorities for quality improvement", max_items=5)
+
+class TopPerformingContent(BaseModel):
+    """Details about top performing content"""
+    post_id: str = Field(description="Identifier for the post")
+    theme: str = Field(description="Theme this post belongs to")
+    engagement_metrics: str = Field(description="Engagement metrics (likes, comments, reposts)")
+    success_factors: List[str] = Field(description="Why this content performed well (provide exactly 3 items)", max_items=3)
+    replicable_elements: List[str] = Field(description="Elements that can be replicated (provide exactly 3 items)", max_items=3)
+
+class ContentOptimizationOpportunity(BaseModel):
+    """Specific opportunity for content optimization"""
+    opportunity_area: str = Field(description="Area where optimization is needed")
+    current_performance: str = Field(description="Current performance in this area")
+    improvement_potential: str = Field(description="Potential improvement if optimized")
+    recommended_actions: List[str] = Field(description="Specific actions to take (provide exactly 3 items)", max_items=3)
+    expected_impact: str = Field(description="Expected impact on overall performance")
+    priority_level: str = Field(description="High/Medium/Low priority")
+
+class ContentGoalAlignment(BaseModel):
+    """How well content aligns with stated goals"""
+    business_goal: str = Field(description="Specific business goal from user profile")
+    supporting_themes: List[str] = Field(description="Themes that support this goal")
+    alignment_score: float = Field(description="How well content aligns with goal (0-100)")
+    content_gaps: List[str] = Field(description="Content gaps preventing goal achievement", max_items=3)
+    recommended_content_focus: List[str] = Field(description="Content to create for this goal", max_items=3)
+
+class LinkedInContentPerformanceAnalysisSchema(BaseModel):
+    """Comprehensive LinkedIn content performance analysis based on theme analysis data"""
+    
+    # Overview
+    performance_overview: LinkedInPerformanceOverview = Field(description="Overall performance metrics and health assessment")
+    
+    # Theme Performance
+    theme_performance: List[ThemePerformanceMetrics] = Field(description="Performance breakdown by content theme", max_items=3)
+    
+    # Format Analysis
+    format_performance: List[ContentFormatPerformance] = Field(description="Performance by content format", max_items=3)
+    
+    # Quality Assessment
+    content_quality: ContentQualityAssessment = Field(description="Overall content quality assessment")
+    
+    # Top Content
+    top_performing_posts: List[TopPerformingContent] = Field(description="Top performing content examples", max_items=3)
+    
+    # Goal Alignment (Optional - only if goals provided)
+    goal_alignment: Optional[List[ContentGoalAlignment]] = Field(None, description="How content aligns with business goals", max_items=3)
+    
+    # Optimization Opportunities
+    optimization_opportunities: List[ContentOptimizationOpportunity] = Field(description="Prioritized optimization opportunities", min_items=3, max_items=4)
+    
+    # Key Insights
+    key_strengths: List[str] = Field(description="Top content strengths to maintain", min_items=3, max_items=5)
+    critical_weaknesses: List[str] = Field(description="Critical weaknesses to address", min_items=3, max_items=5)
+    immediate_actions: List[str] = Field(description="Immediate actions to improve performance", min_items=3, max_items=4)
+
 # LinkedIn Competitive Intelligence Schema Models
 class LinkedInExecutiveSummary(BaseModel):
     industry_content_maturity: str = Field(description="Assessment of how sophisticated peer content strategies are in AI/tech space")
@@ -2270,7 +2366,6 @@ class PlatformPerformance(BaseModel):
 
 class BlogAIPlatformPerformance(BaseModel):
     chatgpt: PlatformPerformance = Field(description="ChatGPT/OpenAI performance")
-    gemini: PlatformPerformance = Field(description="Google Gemini performance")
     perplexity: PlatformPerformance = Field(description="Perplexity AI performance")
 
 class TopCompetitor(BaseModel):
@@ -2654,101 +2749,6 @@ class BlogStrategicRecommendationsSchema(BaseModel):
     content_recommendations: List[BlogContentRecommendation] = Field(description="Core content strategy recommendations", min_items=3, max_items=6)
     ai_content_priorities: List[AIContentPriority] = Field(description="AI-specific content optimization priorities", max_items=4)
     content_quality_fixes: List[ContentQualityFix] = Field(description="Specific content quality improvements needed", max_items=5)
-
-# NEW: LinkedIn Content Performance Analysis Schema
-class LinkedInPerformanceOverview(BaseModel):
-    """Overall LinkedIn content performance metrics"""
-    total_themes_analyzed: int = Field(description="Number of distinct content themes identified")
-    total_posts_analyzed: int = Field(description="Total number of posts analyzed across all themes")
-    overall_engagement_health: str = Field(description="Overall content health assessment: Excellent/Good/Needs Improvement/Poor")
-    average_engagement_rate: float = Field(description="Average engagement rate across all content")
-    posting_consistency: str = Field(description="Assessment of posting frequency and consistency")
-    content_diversity_score: float = Field(description="Score indicating variety in content themes and formats (0-100)")
-
-class ThemePerformanceMetrics(BaseModel):
-    """Performance metrics for a specific content theme"""
-    theme_name: str = Field(description="Name of the content theme")
-    theme_description: str = Field(description="Brief description of what this theme covers")
-    posts_in_theme: int = Field(description="Number of posts in this theme")
-    avg_likes: float = Field(description="Average likes per post in this theme")
-    avg_comments: float = Field(description="Average comments per post in this theme")
-    avg_reposts: float = Field(description="Average reposts per post in this theme")
-    engagement_rate: float = Field(description="Engagement rate for this theme")
-    performance_trend: str = Field(description="Trending up/down/stable")
-    key_success_factors: List[str] = Field(description="What makes this theme successful (provide exactly 3 items)", max_items=2)
-    improvement_opportunities: List[str] = Field(description="Areas for improvement in this theme (provide exactly 3 items)", max_items=3)
-
-class ContentFormatPerformance(BaseModel):
-    """Performance analysis for different content formats"""
-    format_type: str = Field(description="Type of content format (Text-only, Image, Video, Article, Carousel, etc.)")
-    usage_percentage: float = Field(description="Percentage of total content using this format")
-    avg_engagement: float = Field(description="Average engagement for this format")
-    effectiveness_score: float = Field(description="Effectiveness score (0-100) based on engagement and reach")
-    best_use_cases: List[str] = Field(description="When this format works best (provide exactly 3 items)", max_items=2)
-    optimization_tips: List[str] = Field(description="How to improve this format's performance (provide exactly 3 items)", max_items=3)
-
-class ContentQualityAssessment(BaseModel):
-    """Assessment of content quality metrics"""
-    avg_readability_score: float = Field(description="Average readability score across all content (0-100)")
-    avg_clarity_score: float = Field(description="Average clarity score (0-100)")
-    avg_uniqueness_score: float = Field(description="Average uniqueness/originality score (0-100)")
-    avg_value_proposition_strength: float = Field(description="Average strength of value propositions (0-100)")
-    content_depth_analysis: str = Field(description="Assessment of content depth and substance")
-    quality_improvement_priorities: List[str] = Field(description="Top priorities for quality improvement", max_items=5)
-
-class TopPerformingContent(BaseModel):
-    """Details about top performing content"""
-    post_id: str = Field(description="Identifier for the post")
-    theme: str = Field(description="Theme this post belongs to")
-    engagement_metrics: str = Field(description="Engagement metrics (likes, comments, reposts)")
-    success_factors: List[str] = Field(description="Why this content performed well (provide exactly 3 items)", max_items=3)
-    replicable_elements: List[str] = Field(description="Elements that can be replicated (provide exactly 3 items)", max_items=3)
-
-class ContentOptimizationOpportunity(BaseModel):
-    """Specific opportunity for content optimization"""
-    opportunity_area: str = Field(description="Area where optimization is needed")
-    current_performance: str = Field(description="Current performance in this area")
-    improvement_potential: str = Field(description="Potential improvement if optimized")
-    recommended_actions: List[str] = Field(description="Specific actions to take (provide exactly 3 items)", max_items=3)
-    expected_impact: str = Field(description="Expected impact on overall performance")
-    priority_level: str = Field(description="High/Medium/Low priority")
-
-class ContentGoalAlignment(BaseModel):
-    """How well content aligns with stated goals"""
-    business_goal: str = Field(description="Specific business goal from user profile")
-    supporting_themes: List[str] = Field(description="Themes that support this goal")
-    alignment_score: float = Field(description="How well content aligns with goal (0-100)")
-    content_gaps: List[str] = Field(description="Content gaps preventing goal achievement", max_items=3)
-    recommended_content_focus: List[str] = Field(description="Content to create for this goal", max_items=3)
-
-class LinkedInContentPerformanceAnalysisSchema(BaseModel):
-    """Comprehensive LinkedIn content performance analysis based on theme analysis data"""
-    
-    # Overview
-    performance_overview: LinkedInPerformanceOverview = Field(description="Overall performance metrics and health assessment")
-    
-    # Theme Performance
-    theme_performance: List[ThemePerformanceMetrics] = Field(description="Performance breakdown by content theme", max_items=3)
-    
-    # Format Analysis
-    format_performance: List[ContentFormatPerformance] = Field(description="Performance by content format", max_items=3)
-    
-    # Quality Assessment
-    content_quality: ContentQualityAssessment = Field(description="Overall content quality assessment")
-    
-    # Top Content
-    top_performing_posts: List[TopPerformingContent] = Field(description="Top performing content examples", max_items=3)
-    
-    # Goal Alignment (Optional - only if goals provided)
-    goal_alignment: Optional[List[ContentGoalAlignment]] = Field(None, description="How content aligns with business goals", max_items=3)
-    
-    # Optimization Opportunities
-    optimization_opportunities: List[ContentOptimizationOpportunity] = Field(description="Prioritized optimization opportunities", min_items=3, max_items=4)
-    
-    # Key Insights
-    key_strengths: List[str] = Field(description="Top content strengths to maintain", min_items=3, max_items=5)
-    critical_weaknesses: List[str] = Field(description="Critical weaknesses to address", min_items=3, max_items=5)
-    immediate_actions: List[str] = Field(description="Immediate actions to improve performance", min_items=3, max_items=4)
 
 # Export all schemas for use in workflows
 LINKEDIN_COMPETITIVE_INTELLIGENCE_SCHEMA = LinkedInCompetitiveIntelligenceSchema.model_json_schema()
@@ -3168,9 +3168,7 @@ Generate a comprehensive LinkedIn Executive Summary that synthesizes insights fr
 - For citations_source and information_source fields, cite specific data sources like "LinkedIn posts from [executive name]", "engagement metrics from competitor analysis", "industry studies from [source]" - DO NOT mention internal report names
 - If specific data is not available in the inputs, leave fields empty rather than making assumptions
 - All recommendations must include rationale with supporting citations from the input data
-- Focus EXCLUSIVELY on LinkedIn content creation, optimization, strategy, and performance
-
-**CRITICAL FOCUS REQUIREMENT: This executive summary must focus EXCLUSIVELY on LinkedIn content creation, optimization, strategy, and performance. Do not include general business advice, platform features, networking tactics, or non-content related recommendations.**
+- Focus EXCLUSIVELY on LinkedIn content creation, optimization, strategy, and performance. Do not include general business advice, platform features, networking tactics, or non-content related recommendations.**
 
 ### INPUT REPORT SOURCES & CONTENT FOCUS USAGE:
 

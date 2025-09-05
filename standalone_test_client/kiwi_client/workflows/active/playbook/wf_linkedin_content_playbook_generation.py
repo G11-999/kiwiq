@@ -2512,12 +2512,33 @@ async def main_test_playbook_workflow():
     # Predefined HITL inputs - leaving empty for interactive testing
     predefined_hitl_inputs = []
     
-    # VALID HUMAN INPUTS FOR MANUAL TESTING:
-    # Play Selection HITL:
-    # {"user_action": "approve_plays", "final_selected_plays": [...]}
-    # {"user_action": "modify_plays", "feedback": "Add more technical plays", "final_selected_plays": [...]}
-    # {"user_action": "revise_plays", "feedback": "Please regenerate different play recommendations"}
-    # {"user_action": "cancel_workflow"}
+#     {
+#   "user_action": "approve_plays",
+#   "feedback": null,
+#   "final_selected_plays": [
+#     {
+#       "play_id": "the_transparent_founder_journey",
+#       "play_name": "The Transparent Founder Journey"
+#     },
+#     {
+#       "play_id": "the_teaching_ceo",
+#       "play_name": "The Teaching CEO"
+#     },
+#     {
+#       "play_id": "the_industry_contrarian",
+#       "play_name": "The Industry Contrarian"
+#     },
+#     {
+#       "play_id": "the_customer_champion",
+#       "play_name": "The Customer Champion"
+#     },
+#     {
+#       "play_id": "the_data_driven_executive",
+#       "play_name": "The Data-Driven Executive"
+#     }
+#   ]
+# }
+
     
     # Playbook Review HITL:
     # {"user_action": "approve_playbook"}

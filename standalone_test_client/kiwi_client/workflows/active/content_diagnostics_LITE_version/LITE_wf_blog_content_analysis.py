@@ -48,32 +48,17 @@ Schema Markup Types
 """
 
 from kiwi_client.workflows.active.document_models.customer_docs import (
-    BLOG_CLASSIFIED_POSTS_DOCNAME,
-    BLOG_CLASSIFIED_POSTS_NAMESPACE_TEMPLATE,
-    BLOG_CONTENT_ANALYSIS_DOCNAME,
-    BLOG_CONTENT_ANALYSIS_NAMESPACE_TEMPLATE,
-    BLOG_CONTENT_PORTFOLIO_ANALYSIS_DOCNAME,
-    BLOG_CONTENT_PORTFOLIO_ANALYSIS_NAMESPACE_TEMPLATE,
-    BLOG_TECHNICAL_ANALYSIS_DOCNAME,
-    BLOG_TECHNICAL_ANALYSIS_NAMESPACE_TEMPLATE,
+    LITE_BLOG_CONTENT_ANALYSIS_DOCNAME,
+    LITE_BLOG_CONTENT_ANALYSIS_NAMESPACE_TEMPLATE,
 )
 
-from kiwi_client.workflows.active.content_diagnostics.llm_inputs.blog_content_analysis import (
+from kiwi_client.workflows.active.content_diagnostics_LITE_version.llm_inputs.blog_content_analysis import (
     BATCH_CLASSIFICATION_SCHEMA,
     FUNNEL_STAGE_ANALYSIS_SCHEMA,
     POST_CLASSIFICATION_USER_PROMPT_TEMPLATE,
     POST_CLASSIFICATION_SYSTEM_PROMPT_TEMPLATE,
     FUNNEL_STAGE_ANALYSIS_USER_PROMPT_TEMPLATE,
     FUNNEL_STAGE_ANALYSIS_SYSTEM_PROMPT_TEMPLATE,
-    FINAL_ANALYSIS_SCHEMA,
-    FINAL_ANALYSIS_SYSTEM_PROMPT,
-    FINAL_ANALYSIS_USER_PROMPT,
-    FINAL_SYNTHESIS_USER_PROMPT,
-)
-from kiwi_client.workflows.active.content_diagnostics.llm_inputs.technical_seo_analysis import (
-    TECHNICAL_SEO_REPORT_SCHEMA,
-    TECHNICAL_SEO_SYSTEM_PROMPT_TEMPLATE,
-    TECHNICAL_SEO_USER_PROMPT_TEMPLATE,
 )
 
 import json
@@ -82,17 +67,11 @@ from typing import List, Optional, Dict, Any, Literal
 
 # --- Workflow Constants ---
 LLM_PROVIDER = "openai"
-CLASSIFICATION_MODEL = "gpt-5"
+CLASSIFICATION_MODEL = "gpt-5-mini"
 ANALYSIS_MODEL = "gpt-5"
 LLM_TEMPERATURE = 0.5
 LLM_MAX_TOKENS_CLASSIFY = 20000
 LLM_MAX_TOKENS_ANALYSIS = 20000
-LLM_MAX_TOKENS_TECHNICAL_SEO = 10000
-# New model for portfolio analysis with code execution
-PORTFOLIO_ANALYSIS_MODEL = "gpt-5"
-PORTFOLIO_FINAL_ANALYSIS_MODEL = "gpt-5"
-LLM_MAX_TOKENS_PORTFOLIO_ANALYSIS = 10000
-LLM_MAX_TOKENS_PORTFOLIO_FINAL_ANALYSIS = 20000
 
 POST_BATCH_SIZE = 10
 POST_BATCH_SIZE_ANALYSIS = 20
@@ -140,13 +119,13 @@ workflow_graph_schema = {
                     "max_urls_per_domain": {
                         "type": "int",
                         "required": False,
-                        "default": 10,
+                        "default": 100,
                         "description": "Maximum URLs to discover per domain"
                     },
                     "max_processed_urls_per_domain": {
                         "type": "int",
                         "required": False,
-                        "default": 10,
+                        "default": 100,
                         "description": "Maximum URLs to actually scrape per domain"
                     },
                     "max_crawl_depth": {
@@ -178,12 +157,6 @@ workflow_graph_schema = {
                         "items_type": "str",
                         "required": False,
                         "description": "Optional list of paths to include in the analysis"
-                    },
-                    "exclude_paths": {
-                        "type": "list",
-                        "items_type": "str",
-                        "required": False,
-                        "description": "Optional list of paths to exclude from the analysis"
                     }
                 }
             }
@@ -194,7 +167,6 @@ workflow_graph_schema = {
             "node_id": "web_crawler",
             "node_name": "crawler_scraper",
             "node_config": {
-                # Using defaults; blog classification is enabled by default
             }
         },
 
@@ -311,28 +283,6 @@ workflow_graph_schema = {
                         "secondary_join_key": "post_url",
                         "output_nesting_field": "funnel_classification",
                         "join_type": "one_to_one"
-                    }
-                ]
-            }
-        },
-
-        # --- 7. Store Classified Posts ---
-        "store_classified_posts": {
-            "node_id": "store_classified_posts",
-            "node_name": "store_customer_data",
-            "node_config": {
-                "global_versioning": {"is_versioned": False, "operation": "upsert"},
-                "global_is_shared": False,
-                "store_configs": [
-                    {
-                        "input_field_path": "mapped_data.merged_data.flat_classifications.flat_list",
-                        "target_path": {
-                            "filename_config": {
-                                "input_namespace_field_pattern": BLOG_CLASSIFIED_POSTS_NAMESPACE_TEMPLATE,
-                                "input_namespace_field": "company_name",
-                                "static_docname": BLOG_CLASSIFIED_POSTS_DOCNAME,
-                            }
-                        }
                     }
                 ]
             }
@@ -482,7 +432,7 @@ workflow_graph_schema = {
                     "model_spec": {"provider": LLM_PROVIDER, "model": ANALYSIS_MODEL},
                     "temperature": LLM_TEMPERATURE,
                     "max_tokens": LLM_MAX_TOKENS_ANALYSIS,
-                    "reasoning_effort_class": "high"
+                    "reasoning_effort_class": "low"
                 },
                 "output_schema": {
                     "schema_definition": FUNNEL_STAGE_ANALYSIS_SCHEMA,
@@ -503,172 +453,7 @@ workflow_graph_schema = {
             }
         },
 
-        # --- New: 11b. Portfolio Batch Router (50 posts per batch) ---
-        "portfolio_batch_router": {
-            "node_id": "portfolio_batch_router",
-            "node_name": "map_list_router_node",
-            "node_config": {
-                "choices": ["construct_portfolio_analysis_prompt"],
-                "map_targets": [
-                    {
-                        "source_path": "merged_data.flat_classifications.flat_list",
-                        "destinations": ["construct_portfolio_analysis_prompt"],
-                        "batch_size": 50,
-                        "batch_field_name": "posts_batch"
-                    }
-                ]
-            }
-        },
 
-        # --- New: 11c. Construct Portfolio Analysis Prompt (per batch) ---
-        "construct_portfolio_analysis_prompt": {
-            "node_id": "construct_portfolio_analysis_prompt",
-            "node_name": "prompt_constructor",
-            "private_input_mode": True,
-            "output_private_output_to_central_state": True,
-            "private_output_mode": True,
-            "node_config": {
-                "prompt_templates": {
-                    "portfolio_user_prompt": {
-                        "id": "portfolio_user_prompt",
-                        "template": FINAL_ANALYSIS_USER_PROMPT,
-                        "variables": {
-                            "post_analysis_data": None
-                        },
-                        "construct_options": {
-                            "post_analysis_data": "posts_batch"
-                        }
-                    },
-                    "portfolio_system_prompt": {
-                        "id": "portfolio_system_prompt",
-                        "template": FINAL_ANALYSIS_SYSTEM_PROMPT,
-                        "variables": {
-                        },
-                        "construct_options": {}
-                    }
-                }
-            }
-        },
-
-        # --- New: 11d. Run Portfolio Batch Analysis (LLM with code execution) ---
-        "run_portfolio_batch_analysis": {
-            "node_id": "run_portfolio_batch_analysis",
-            "node_name": "llm",
-            "private_input_mode": True,
-            "output_private_output_to_central_state": True,
-            "node_config": {
-                "llm_config": {
-                    "model_spec": {"provider": LLM_PROVIDER, "model": PORTFOLIO_ANALYSIS_MODEL},
-                    "temperature": LLM_TEMPERATURE,
-                    "max_tokens": LLM_MAX_TOKENS_PORTFOLIO_ANALYSIS,
-                    "reasoning_effort_class": "minimal"
-                },
-                # "tool_calling_config": {"enable_tool_calling": True, "parallel_tool_calls": True},
-                # "tools": [
-                #     {"tool_name": "code_interpreter", "is_provider_inbuilt_tool": True, "provider_inbuilt_user_config": None}
-                # ],
-                "output_schema": {"schema_definition": FINAL_ANALYSIS_SCHEMA, "convert_loaded_schema_to_pydantic": False}
-            }
-        },
-
-        # # --- New: 11e. Merge Portfolio Batch Reports ---
-        # "merge_portfolio_batch_reports": {
-        #     "node_id": "merge_portfolio_batch_reports",
-        #     "node_name": "merge_aggregate",
-        #     "enable_node_fan_in": True,
-        #     "node_config": {
-        #         "operations": [
-        #             {
-        #                 "output_field_name": "combined_reports",
-        #                 "select_paths": ["all_portfolio_batch_reports"],
-        #                 "merge_each_object_in_selected_list": False,
-        #                 "merge_strategy": {
-        #                     "reduce_phase": {
-        #                         "default_reducer": "combine_in_list"
-        #                     },
-        #                     "post_merge_transformations": {
-        #                         "flatten_op": {
-        #                             "operation_type": "recursive_flatten_list"
-        #                         }
-        #                     }
-        #                 }
-        #             }
-        #         ]
-        #     }
-        # },
-
-        # --- New: 11e. Construct Final Synthesis Prompt ---
-        "construct_final_synthesis_prompt": {
-            "node_id": "construct_final_synthesis_prompt",
-            "node_name": "prompt_constructor",
-            # "private_input_mode": True,
-            # "output_private_output_to_central_state": True,
-            # "private_output_mode": True,
-            "enable_node_fan_in": True,
-            "node_config": {
-                "prompt_templates": {
-                    "final_synthesis_user_prompt": {
-                        "id": "final_synthesis_user_prompt",
-                        "template": FINAL_SYNTHESIS_USER_PROMPT,
-                        "variables": {
-                            "batch_reports_json": None
-                        },
-                        "construct_options": {
-                            "batch_reports_json": "all_portfolio_batch_reports"
-                        }
-                    },
-                    "final_synthesis_system_prompt": {
-                        "id": "final_synthesis_system_prompt",
-                        "template": FINAL_ANALYSIS_SYSTEM_PROMPT,
-                        "variables": {},
-                        "construct_options": {}
-                    }
-                }
-            }
-        },
-
-        # --- New: 11f. Run Final Synthesis (LLM with code execution) ---
-        "run_final_synthesis": {
-            "node_id": "run_final_synthesis",
-            "node_name": "llm",
-            # "private_input_mode": True,
-            # "output_private_output_to_central_state": True,
-            "node_config": {
-                "llm_config": {
-                    "model_spec": {"provider": LLM_PROVIDER, "model": PORTFOLIO_FINAL_ANALYSIS_MODEL},
-                    "temperature": LLM_TEMPERATURE,
-                    "max_tokens": LLM_MAX_TOKENS_PORTFOLIO_FINAL_ANALYSIS,
-                    "reasoning_effort_class": "high"
-                },
-                "tool_calling_config": {"enable_tool_calling": True, "parallel_tool_calls": True},
-                "tools": [
-                    {"tool_name": "code_interpreter", "is_provider_inbuilt_tool": True, "provider_inbuilt_user_config": None}
-                ],
-                "output_schema": {"schema_definition": FINAL_ANALYSIS_SCHEMA, "convert_loaded_schema_to_pydantic": False}
-            }
-        },
-
-        # --- New: 12b. Store Portfolio Analysis Results ---
-        "store_portfolio_analysis": {
-            "node_id": "store_portfolio_analysis",
-            "node_name": "store_customer_data",
-            "node_config": {
-                "global_versioning": {"is_versioned": False, "operation": "upsert"},
-                "global_is_shared": False,
-                "store_configs": [
-                    {
-                        "input_field_path": "structured_output",
-                        "target_path": {
-                            "filename_config": {
-                                "input_namespace_field_pattern": BLOG_CONTENT_PORTFOLIO_ANALYSIS_NAMESPACE_TEMPLATE,
-                                "input_namespace_field": "company_name",
-                                "static_docname": BLOG_CONTENT_PORTFOLIO_ANALYSIS_DOCNAME
-                            }
-                        }
-                    }
-                ]
-            }
-        },
 
         # --- 12. Store Analysis Results ---
         "store_analysis": {
@@ -682,9 +467,9 @@ workflow_graph_schema = {
                         "input_field_path": "transformed_data.final_report_data",
                         "target_path": {
                             "filename_config": {
-                                "input_namespace_field_pattern": BLOG_CONTENT_ANALYSIS_NAMESPACE_TEMPLATE,
+                                "input_namespace_field_pattern": LITE_BLOG_CONTENT_ANALYSIS_NAMESPACE_TEMPLATE,
                                 "input_namespace_field": "company_name",
-                                "static_docname": BLOG_CONTENT_ANALYSIS_DOCNAME,
+                                "static_docname": LITE_BLOG_CONTENT_ANALYSIS_DOCNAME,
                             }
                         }
                     }
@@ -692,73 +477,7 @@ workflow_graph_schema = {
             }
         },
 
-        # --- 13. Technical SEO Analysis (LLM) ---
-        "construct_technical_analysis_prompt": {
-            "node_id": "construct_technical_analysis_prompt",
-            "node_name": "prompt_constructor",
-            "node_config": {
-                "prompt_templates": {
-                    "technical_user_prompt": {
-                        "id": "technical_user_prompt",
-                        "template": TECHNICAL_SEO_USER_PROMPT_TEMPLATE,
-                        "variables": {
-                            "data": None,
-                            "robots_analysis": None
-                            },
-                        "construct_options": {
-                            "data": "technical_audit_data",
-                            "robots_analysis": "robots_analysis"
-                        }
-                    },
-                    "technical_system_prompt": {
-                        "id": "technical_system_prompt",
-                        "template": TECHNICAL_SEO_SYSTEM_PROMPT_TEMPLATE,
-                        "variables": {},
-                        "construct_options": {}
-                    }
-                }
-            }
-        },
 
-        "run_technical_analysis": {
-            "node_id": "run_technical_analysis",
-            "node_name": "llm",
-            # "private_input_mode": True,
-            # "output_private_output_to_central_state": True,
-            "node_config": {
-                "llm_config": {
-                    "model_spec": {"provider": LLM_PROVIDER, "model": CLASSIFICATION_MODEL},
-                    "temperature": LLM_TEMPERATURE,
-                    "max_tokens": LLM_MAX_TOKENS_TECHNICAL_SEO,
-                    "reasoning_effort_class": "low"
-                },
-                "output_schema": {
-                    "schema_definition": TECHNICAL_SEO_REPORT_SCHEMA,
-                    "convert_loaded_schema_to_pydantic": False
-                }
-            }
-        },
-
-        "store_technical_analysis": {
-            "node_id": "store_technical_analysis",
-            "node_name": "store_customer_data",
-            "node_config": {
-                "global_versioning": {"is_versioned": False, "operation": "upsert"},
-                "global_is_shared": False,
-                "store_configs": [
-                    {
-                        "input_field_path": "structured_output",
-                        "target_path": {
-                            "filename_config": {
-                                "input_namespace_field_pattern": BLOG_TECHNICAL_ANALYSIS_NAMESPACE_TEMPLATE,
-                                "input_namespace_field": "company_name",
-                                "static_docname": BLOG_TECHNICAL_ANALYSIS_DOCNAME
-                            }
-                        }
-                    }
-                ]
-            }
-        },
 
         # --- 14. Output Node ---
         "output_node": {
@@ -785,8 +504,7 @@ workflow_graph_schema = {
             {"src_field": "use_cached_scraping_results", "dst_field": "use_cached_scraping_results"},
             {"src_field": "cache_lookback_period_days", "dst_field": "cache_lookback_period_days"},
             {"src_field": "is_shared", "dst_field": "is_shared"},
-            {"src_field": "include_only_paths", "dst_field": "include_only_paths"},
-            {"src_field": "exclude_paths", "dst_field": "exclude_paths"}
+            {"src_field": "include_only_paths", "dst_field": "include_only_paths"}
         ]},
         
         # Store posts in state for later joins
@@ -823,58 +541,15 @@ workflow_graph_schema = {
             {"src_field": "raw_posts_data", "dst_field": "raw_posts_data"}
         ]},
 
-        # New: route flat classifications into 50-sized batches for portfolio analysis
-        {"src_node_id": "flatten_classifications", "dst_node_id": "portfolio_batch_router", "mappings": [
-            {"src_field": "merged_data", "dst_field": "merged_data"}
-        ]},
-
-        {"src_node_id": "portfolio_batch_router", "dst_node_id": "construct_portfolio_analysis_prompt", "mappings": []},
-
-        {"src_node_id": "construct_portfolio_analysis_prompt", "dst_node_id": "run_portfolio_batch_analysis", "mappings": [
-            {"src_field": "portfolio_user_prompt", "dst_field": "user_prompt"},
-            {"src_field": "portfolio_system_prompt", "dst_field": "system_prompt"}
-        ]},
-        # Final synthesis across batch reports
-        {"src_node_id": "run_portfolio_batch_analysis", "dst_node_id": "$graph_state", "mappings": [
-            {"src_field": "structured_output", "dst_field": "all_portfolio_batch_reports"}
-        ]},
 
         
-        {"src_node_id": "run_portfolio_batch_analysis", "dst_node_id": "construct_final_synthesis_prompt", "mappings": [
-        ]},
-
-        {"src_node_id": "$graph_state", "dst_node_id": "construct_final_synthesis_prompt", "mappings": [
-            {"src_field": "all_portfolio_batch_reports", "dst_field": "all_portfolio_batch_reports"}
-        ]},
-
-        {"src_node_id": "construct_final_synthesis_prompt", "dst_node_id": "run_final_synthesis", "mappings": [
-            {"src_field": "final_synthesis_user_prompt", "dst_field": "user_prompt"},
-            {"src_field": "final_synthesis_system_prompt", "dst_field": "system_prompt"}
-        ]},
-
-        {"src_node_id": "run_final_synthesis", "dst_node_id": "store_portfolio_analysis", "mappings": [
-            {"src_field": "structured_output", "dst_field": "structured_output"}
-        ]},
-
-        {"src_node_id": "$graph_state", "dst_node_id": "store_portfolio_analysis", "mappings": [
-            {"src_field": "company_name", "dst_field": "company_name"}
-        ]},
-        
-        # Store classified posts
-        {"src_node_id": "join_classifications_to_posts", "dst_node_id": "store_classified_posts", "mappings": [
-            {"src_field": "mapped_data", "dst_field": "mapped_data"}
-        ]},
-
+        # Store mapped data in state for later use
         {"src_node_id": "join_classifications_to_posts", "dst_node_id": "$graph_state", "mappings": [
             {"src_field": "mapped_data", "dst_field": "mapped_data_flat_list"}
         ]},
         
-        {"src_node_id": "$graph_state", "dst_node_id": "store_classified_posts", "mappings": [
-            {"src_field": "company_name", "dst_field": "company_name"}
-        ]},
-        
         # Extract funnel stages
-        {"src_node_id": "store_classified_posts", "dst_node_id": "extract_funnel_stages", "mappings": []},
+        {"src_node_id": "join_classifications_to_posts", "dst_node_id": "extract_funnel_stages", "mappings": []},
         {"src_node_id": "$graph_state", "dst_node_id": "extract_funnel_stages", "mappings": [
             {"src_field": "funnel_stages_input", "dst_field": "funnel_stages_input"}
         ]},
@@ -925,31 +600,9 @@ workflow_graph_schema = {
             {"src_field": "company_name", "dst_field": "company_name"}
         ]},
 
-        # Technical SEO Analysis flow
-        {"src_node_id": "store_analysis", "dst_node_id": "construct_technical_analysis_prompt"},
-
-        {"src_node_id": "$graph_state", "dst_node_id": "construct_technical_analysis_prompt", "mappings": [
-            {"src_field": "technical_seo_summary", "dst_field": "technical_audit_data"},
-            {"src_field": "robots_analysis", "dst_field": "robots_analysis"}
-        ]},
-
-        {"src_node_id": "construct_technical_analysis_prompt", "dst_node_id": "run_technical_analysis", "mappings": [
-            {"src_field": "technical_user_prompt", "dst_field": "user_prompt"},
-            {"src_field": "technical_system_prompt", "dst_field": "system_prompt"}
-        ]},
-        
-        {"src_node_id": "run_technical_analysis", "dst_node_id": "store_technical_analysis", "mappings": [
-            {"src_field": "structured_output", "dst_field": "structured_output"}
-        ]},
-        {"src_node_id": "$graph_state", "dst_node_id": "store_technical_analysis", "mappings": [
-            {"src_field": "company_name", "dst_field": "company_name"}
-        ]},
-        
         # Output
         {"src_node_id": "store_analysis", "dst_node_id": "$graph_state", "mappings": []},
-        {"src_node_id": "store_classified_posts", "dst_node_id": "$graph_state", "mappings": []},
-        {"src_node_id": "store_technical_analysis", "dst_node_id": "$graph_state", "mappings": []},
-        {"src_node_id": "store_technical_analysis", "dst_node_id": "output_node", "mappings": [
+        {"src_node_id": "store_analysis", "dst_node_id": "output_node", "mappings": [
             {"src_field": "passthrough_data", "dst_field": "passthrough_data"}
         ]}
     ],
@@ -963,8 +616,7 @@ workflow_graph_schema = {
         "$graph_state": {
             "reducer": {
                 "all_classifications_batches": "collect_values",
-                "all_funnel_stage_reports": "collect_values",
-                "all_portfolio_batch_reports": "collect_values"
+                "all_funnel_stage_reports": "collect_values"
             }
         }
     }
@@ -983,9 +635,9 @@ logger = logging.getLogger(__name__)
 
 # Example Input
 TEST_INPUTS = {
-    "company_name": "lamatic",
-    "start_urls": "https://blog.lamatic.ai",
-    "exclude_paths": ["/announcements/*", "/resources/*", "/product-updates/*", "/about-2/*"]
+    "company_name": "retool",
+    "include_only_paths": ["/blog"],
+    "start_urls": "https://retool.com"
 }
 
 async def validate_output(outputs: Optional[Dict[str, Any]]) -> bool:

@@ -19,7 +19,7 @@ import logging
 from typing import Dict, Any, Optional, List, Union, ClassVar, Type
 import json
 from enum import Enum
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 # Using Pydantic for easier schema generation
 from pydantic import BaseModel, Field
@@ -63,7 +63,7 @@ logger = logging.getLogger(__name__)
 
 # LLM Configuration
 LLM_PROVIDER = "openai"
-GENERATION_MODEL = "gpt-5" # Or gpt-4-turbo etc.
+GENERATION_MODEL = "gpt-4.1" # Or gpt-4-turbo etc.
 LLM_TEMPERATURE = 1
 LLM_MAX_TOKENS = 5000 # Adjust as needed for topic generation
 
@@ -72,6 +72,19 @@ DEFAULT_WEEKS_TO_GENERATE = 2
 # DEFAULT_DRAFTS_LIMIT = 20 # Default number of latest drafts to load
 # DEFAULT_SCRAPED_LIMIT = 20 # Default number of scraped posts to load
 PAST_CONTEXT_POSTS_LIMIT = 10 # Limit the combined list of posts fed to the LLM
+
+# Search Params Default (for delete window)
+SEARCH_PARAMS_DEFAULT = {
+    "input_namespace_field": "entity_username",
+    "input_namespace_field_pattern": LINKEDIN_IDEA_NAMESPACE_TEMPLATE,
+    "docname_pattern": "*",
+    "value_filter": {
+        "scheduled_date": {
+            "$gt": None,
+            "$lte": None,
+        },
+    }
+}
 
 # --- Workflow Graph Schema Definition ---
 
@@ -87,6 +100,9 @@ workflow_graph_schema = {
                     "weeks_to_generate": { "type": "int", "required": False, "default": DEFAULT_WEEKS_TO_GENERATE, "description": f"Number of weeks ahead to generate topic suggestions for (default: {DEFAULT_WEEKS_TO_GENERATE})." },
                     "past_context_posts_limit": { "type": "int", "required": False, "default": PAST_CONTEXT_POSTS_LIMIT, "description": f"Max number of combined posts (drafts + scraped) to use for context (default: {PAST_CONTEXT_POSTS_LIMIT})."},
                     "entity_username": {"type": "str", "required": True},
+                    "start_date": {"type": "str", "required": True, "description": "Start date for generating topic suggestions"},
+                    "end_date": {"type": "str", "required": True, "description": "End date for generating topic suggestions"},
+                    "search_params": {"type": "dict", "required": False, "default": SEARCH_PARAMS_DEFAULT, "description": "Default search params object for load/delete nodes"},
                 }
             }
         },
@@ -290,7 +306,7 @@ workflow_graph_schema = {
       "node_id": "route_on_topic_count",
       "node_name": "router_node",
       "node_config": {
-        "choices": ["construct_additional_topic_prompt", "store_all_topics"],
+        "choices": ["construct_additional_topic_prompt", "construct_delete_search_params"],
         "allow_multiple": False,
         "choices_with_conditions": [
           {
@@ -299,14 +315,14 @@ workflow_graph_schema = {
             "target_value": True
           },
           {
-            "choice_id": "store_all_topics", # End loop and store topics
+            "choice_id": "construct_delete_search_params", # End loop and prepare delete
             "input_path": "if_else_condition_tag_results.topic_count_check",
             "target_value": False,
           }
         ]
       }
       # Reads: if_else_condition_tag_results, iteration_branch_result from check_topic_count
-      # Routes to: construct_additional_topic_prompt OR store_all_topics
+      # Routes to: construct_additional_topic_prompt OR construct_delete_search_params
     },
 
     # --- Construct Additional Topic Prompt ---
@@ -321,6 +337,31 @@ workflow_graph_schema = {
 
           },
         }
+      }
+    },
+
+    # --- Construct Delete Search Params ---
+    "construct_delete_search_params": {
+      "node_id": "construct_delete_search_params",
+      "node_name": "transform_data",
+      "node_config": {
+        "merge_conflicting_paths_as_list": False,
+        "mappings": [
+          { "source_path": "search_params.input_namespace_field", "destination_path": "input_namespace_field" },
+          { "source_path": "search_params.input_namespace_field_pattern", "destination_path": "input_namespace_field_pattern" },
+          { "source_path": "search_params.docname_pattern", "destination_path": "docname_pattern" },
+          { "source_path": "start_date", "destination_path": "value_filter.scheduled_date.$gt" },
+          { "source_path": "end_date", "destination_path": "value_filter.scheduled_date.$lte" }
+        ]
+      }
+    },
+
+    # --- Delete Existing Entries in Window ---
+    "delete_previous_entries": {
+      "node_id": "delete_previous_entries",
+      "node_name": "delete_customer_data",
+      "node_config": {
+        "search_params_input_path": "search_params"
       }
     },
 
@@ -370,6 +411,9 @@ workflow_graph_schema = {
         { "src_field": "weeks_to_generate", "dst_field": "weeks_to_generate" },
         { "src_field": "past_context_posts_limit", "dst_field": "past_context_posts_limit" },
         { "src_field": "entity_username", "dst_field": "entity_username" },
+        { "src_field": "start_date", "dst_field": "start_date" },
+        { "src_field": "end_date", "dst_field": "end_date" },
+        { "src_field": "search_params", "dst_field": "search_params" },
       ]
     },
 
@@ -476,10 +520,33 @@ workflow_graph_schema = {
     # --- Route on Topic Count -> Construct Additional Topic Prompt (if more topics needed)
     { "src_node_id": "route_on_topic_count", "dst_node_id": "construct_additional_topic_prompt" },
 
-    # --- Route on Topic Count -> Store All Topics (if all topics generated)
-    { "src_node_id": "route_on_topic_count", "dst_node_id": "store_all_topics" },
+    # --- Route on Topic Count -> Construct Delete Params (if all topics generated)
+    { "src_node_id": "route_on_topic_count", "dst_node_id": "construct_delete_search_params" },
 
-     # --- Trigger Storage (After Map Completes) ---
+    # --- State to Construct Delete Params ---
+    { "src_node_id": "$graph_state", "dst_node_id": "construct_delete_search_params", "mappings": [
+        { "src_field": "search_params", "dst_field": "search_params" },
+        { "src_field": "start_date", "dst_field": "start_date" },
+        { "src_field": "end_date", "dst_field": "end_date" }
+      ]
+    },
+
+    # --- Construct Delete Params to Delete Node ---
+    { "src_node_id": "construct_delete_search_params", "dst_node_id": "delete_previous_entries", "mappings": [
+        { "src_field": "transformed_data", "dst_field": "search_params" }
+      ]
+    },
+
+    # --- State to Delete Node (to resolve input_namespace_field path) ---
+    { "src_node_id": "$graph_state", "dst_node_id": "delete_previous_entries", "mappings": [
+        { "src_field": "entity_username", "dst_field": "entity_username" }
+      ]
+    },
+
+    # --- Delete then Store ---
+    { "src_node_id": "delete_previous_entries", "dst_node_id": "store_all_topics" },
+
+    # --- Trigger Storage (After Map Completes) ---
     { "src_node_id": "$graph_state", "dst_node_id": "store_all_topics", "mappings": [
         { "src_field": "all_generated_topics", "dst_field": "all_generated_topics"},
         { "src_field": "entity_username", "dst_field": "entity_username" }
@@ -531,7 +598,9 @@ async def main_test_linkedin_content_calendar_workflow():
     test_inputs = {
         "entity_username": test_entity_username,
         "weeks_to_generate": 2,  # Generate for 2 weeks
-        "past_context_posts_limit": PAST_CONTEXT_POSTS_LIMIT  # Combined limit for context
+        "past_context_posts_limit": PAST_CONTEXT_POSTS_LIMIT,  # Combined limit for context
+        "start_date": datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+        "end_date": (datetime.utcnow() + timedelta(days=14)).strftime('%Y-%m-%dT%H:%M:%SZ'),
     }
 
     # print(json.dumps(test_inputs, indent=4))

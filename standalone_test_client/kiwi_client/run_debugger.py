@@ -46,6 +46,6 @@ async def get_logs_state_for_run(run_id: Union[str, uuid.UUID], test_name: str):
     
 
 if __name__ == "__main__":
-    run_id = "dc67cca1-3fb9-4fb3-8ad6-4f82864148da"
-    test_name = "Test_workflow_diagnostics_GUMLOOP"
+    run_id = "57913692-0b32-4fda-b312-b13e02582197"
+    test_name = "Test_workflow_run_blog_content_playbook_generation"
     asyncio.run(get_logs_state_for_run(run_id, test_name)) # Run the main test function

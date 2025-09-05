@@ -167,14 +167,14 @@ If previous suggestion was "RevOps Education & Best Practices", this could be "F
 
 class ContentTopic(BaseModel):
     """Individual content topic suggestion"""
-    reasoning: str = Field(..., description="Reasoning for the suggested content topic")
+    reasoning: str = Field(..., description="Reasoning for the suggested content topic, keep it short and concise")
     title: str = Field(..., description="Suggested content topic/title")
-    description: str = Field(..., description="Description of suggested content topic/title")
+    description: str = Field(..., description="Description of suggested content topic/title, keep it short and concise")
 
 class ContentTopicsOutput(BaseModel):
     """Content topic suggestions with scheduling and strategic context"""
     suggested_topics: List[ContentTopic] = Field(..., description="List of content topic suggestions")
-    scheduled_date: datetime = Field(..., description="Scheduled date for the content in datetime format UTC TZ", format="date-time")
+    scheduled_date: datetime = Field(..., description="Scheduled date for the content in datetime format ISO 8601 UTC", format="date-time")
     theme: str = Field(..., description="Content theme this belongs to")
     play_aligned: str = Field(..., description="Which play this aligns with")
     objective: ContentObjective = Field(..., description="Primary objective for this content")
