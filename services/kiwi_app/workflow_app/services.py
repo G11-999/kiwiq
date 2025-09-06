@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status
 from pydantic import ValidationError # For schema validation
 from prefect.client.schemas import FlowRun
+from prefect import get_client
 
 from jsonschema import validate, ValidationError as JSONSchemaValidationError
 from jsonschema.validators import Draft202012Validator
@@ -214,6 +215,15 @@ class WorkflowService:
         return deleted_workflow is not None
 
     # --- Workflow Run Operations --- #
+
+    @staticmethod
+    async def get_run_name(run_id: str) -> str:
+        """
+        Get the name of a run.
+        """
+        async with get_client() as client:
+            flow_run = await client.read_flow_run(run_id)
+            return flow_run.name
 
     async def submit_workflow_run(
         self, 

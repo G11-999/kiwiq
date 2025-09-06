@@ -1144,6 +1144,22 @@ async def list_runs(
             limit=query_params.limit
         )
         workflow_logger.info(f"User {current_user.id} listed workflow runs for org {list_org_id}")
+
+        if current_user.is_superuser:
+            runs_dump = []
+            for run in runs:
+                run_dump = run.model_dump(mode="json")
+                run_ids = []
+                for prefect_run_id in run.prefect_run_ids.split(","):
+                    run_name = await services.WorkflowService.get_run_name(uuid.UUID(prefect_run_id))
+                    run_ids.append(f"{prefect_run_id}: {run_name}")
+
+                run_dump["run_ids"] = "; ".join(run_ids)
+
+                runs_dump.append(run_dump)
+
+            return runs_dump
+
         return runs
     except HTTPException as e:
         workflow_logger.warning(f"Permission error for user {current_user.id} listing runs: {str(e)}")
@@ -1240,7 +1256,21 @@ async def get_run_status(
         #         db=db, run_id=run.id, owner_org_id=run.owner_org_id, user=current_user # Use org_id from fetched run
         #     )
         workflow_logger.info(f"Retrieved workflow run status for run {run.id}")
-        return run
+        
+        run_dump = run.model_dump(mode="json")
+        if current_user.is_superuser:
+            run_ids = []
+            for prefect_run_id in run.prefect_run_ids.split(","):
+                run_name = await services.WorkflowService.get_run_name(uuid.UUID(prefect_run_id))
+                run_ids.append(f"{prefect_run_id}: {run_name}")
+
+            run_dump["run_ids"] = "; ".join(run_ids)
+
+            return run_dump
+        
+        run_dump["prefect_run_ids"] = None
+        return run_dump
+
     except HTTPException as e:
         raise e
     except Exception as e:

@@ -181,7 +181,7 @@ class WorkflowRunRead(WorkflowRunBase):
     ended_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
-    # run_ids: Optional[str] = Field(None, description="Comma-separated list of Prefect run IDs that are part of this run", alias="prefect_run_ids")
+    run_ids: Optional[str] = Field(None, description="Comma-separated list of P run IDs that are part of this run")
     tag: Optional[str] = Field(None, description="Optional tag marking this run for experimentation tracking")
     applied_workflow_config_overrides: Optional[str] = Field(None, description="Comma-separated list of override IDs that were applied to this run")
     parent_run_id: Optional[uuid.UUID] = Field(None, description="Optional parent run ID to reuse")
