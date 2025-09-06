@@ -505,6 +505,7 @@ class PromptConstructorNode(BaseDynamicNode):
                         self.info(f"Template '{template_id}': No image data found at path '{path}'")
                 except Exception as e:
                     self.error(f"Template '{template_id}': Error collecting images from path '{path}': {e}")
+                    raise e
         
         # Remove duplicates while preserving order
         seen = set()
@@ -647,14 +648,16 @@ class PromptConstructorNode(BaseDynamicNode):
                     template_def._load_error = err_details
 
             except Exception as e:
-                self.error(f"Template '{template_id}': Unexpected error during loading: {e}", exc_info=True)
                 err_details = {
                     "template_id": template_id, "config": entry_config.model_dump(),
                     "resolved_name": resolved_name, "resolved_version": resolved_version,
                     "error": f"Unexpected error: {str(e)}"
                 }
                 load_errors.append(err_details)
+                self.error(f"Template '{template_id}': Unexpected error during loading: {e} \n\n Error details: {json.dumps(err_details, default=str)}", exc_info=True)
                 template_def._load_error = err_details # Store error
+                
+                raise e
 
         return load_errors
 
@@ -764,6 +767,7 @@ class PromptConstructorNode(BaseDynamicNode):
                     self.info(f"Template '{template_id}': Collected {len(collected_images)} images")
             except Exception as e:
                 self.error(f"Template '{template_id}': Error during image collection: {e}")
+                raise e
                 template_images[template_id] = []
 
             for var_name in placeholders:
@@ -828,7 +832,6 @@ class PromptConstructorNode(BaseDynamicNode):
                 constructed_prompts[template_id] = self._build_prompt_string(template_str, resolved_vars_for_template)
                 self.debug(f"Successfully constructed prompt '{template_id}': {constructed_prompts[template_id]}")
             except ValueError as e:
-                self.error(f"Error constructing prompt for template ID '{template_id}': {e}")
                 missing_in_build = placeholders - set(resolved_vars_for_template.keys())
                 err_detail = {
                     "template_id": template_id, "error": f"Prompt construction failed: {e}",
@@ -836,8 +839,10 @@ class PromptConstructorNode(BaseDynamicNode):
                     "missing_variables": list(missing_in_build),
                     "required_placeholders": list(placeholders)
                 }
+                self.error(f"Error constructing prompt for template ID '{template_id}': {e} \n\n Error details: {json.dumps(err_detail, default=str)}")
                 construction_errors.append(err_detail)
                 # Do NOT add to constructed_prompts if construction fails
+                raise e
 
         # --- 5. Prepare Output Dictionary for Validation ---
         output_data_for_validation: Dict[str, Any] = {}
@@ -934,7 +939,7 @@ class PromptConstructorNode(BaseDynamicNode):
             # NOTE: this assumes that no complex / nested access is required for dict/list variables within the prompt!
             resolved_variables = {}
             for k, v in variables.items():
-                resolved_var = (json.dumps(v) if isinstance(v, (dict, list)) else v)
+                resolved_var = (json.dumps(v, default=str) if isinstance(v, (dict, list)) else v)
                 if isinstance(v, str) and v in SPECIAL_VAR_MAPPING:
                     resolved_var = SPECIAL_VAR_MAPPING[v]()
                 resolved_variables[k] = resolved_var
