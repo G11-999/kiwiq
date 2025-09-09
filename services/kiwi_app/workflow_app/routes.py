@@ -1151,8 +1151,9 @@ async def list_runs(
                 run_dump = run.model_dump(mode="json")
                 run_ids = []
                 for prefect_run_id in run.prefect_run_ids.split(","):
-                    run_name = await services.WorkflowService.get_run_name(uuid.UUID(prefect_run_id))
-                    run_ids.append(f"{prefect_run_id}: {run_name}")
+                    if prefect_run_id:
+                        run_name = await services.WorkflowService.get_run_name(uuid.UUID(prefect_run_id))
+                        run_ids.append(f"{prefect_run_id}: {run_name}")
 
                 run_dump["run_ids"] = "; ".join(run_ids)
 
@@ -1261,8 +1262,9 @@ async def get_run_status(
         if current_user.is_superuser:
             run_ids = []
             for prefect_run_id in run.prefect_run_ids.split(","):
-                run_name = await services.WorkflowService.get_run_name(uuid.UUID(prefect_run_id))
-                run_ids.append(f"{prefect_run_id}: {run_name}")
+                if prefect_run_id:
+                    run_name = await services.WorkflowService.get_run_name(uuid.UUID(prefect_run_id))
+                    run_ids.append(f"{prefect_run_id}: {run_name}")
 
             run_dump["run_ids"] = "; ".join(run_ids)
 
