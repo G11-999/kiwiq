@@ -1140,15 +1140,27 @@ def save_results_to_csv(final_run_outputs: Dict[str, Any], output_csv_filename: 
             row['emailId'] = lead.get('emailId', '')
             row['jobTitle'] = lead.get('jobTitle', '')
             
-            # Qualification result fields
-            qualification_result = lead.get('qualification_result', {})
-            row['industry'] = qualification_result.get('industry', '')
-            row['company_info'] = qualification_result.get('company_info', '')
-            row['funding_stage'] = qualification_result.get('funding_stage', '')
-            row['individual_info'] = qualification_result.get('individual_info', '')
-            row['employee_count_estimate'] = qualification_result.get('employee_count_estimate', '')
-            row['qualification_reasoning'] = qualification_result.get('qualification_reasoning', '')
-            row['qualification_check_passed'] = qualification_result.get('qualification_check_passed', False)
+            # Qualification result fields - handle both dict and JSON string formats
+            qualification_result_raw = lead.get('qualification_result', {})
+            if isinstance(qualification_result_raw, str):
+                try:
+                    qualification_result = json.loads(qualification_result_raw)
+                except (json.JSONDecodeError, TypeError):
+                    logger.warning(f"Failed to parse qualification_result as JSON: {qualification_result_raw}")
+                    qualification_result = {}
+            elif isinstance(qualification_result_raw, dict):
+                qualification_result = qualification_result_raw
+            else:
+                logger.warning(f"Unexpected qualification_result type: {type(qualification_result_raw)}")
+                qualification_result = {}
+                
+            row['industry'] = qualification_result.get('industry', '') if isinstance(qualification_result, dict) else ''
+            row['company_info'] = qualification_result.get('company_info', '') if isinstance(qualification_result, dict) else ''
+            row['funding_stage'] = qualification_result.get('funding_stage', '') if isinstance(qualification_result, dict) else ''
+            row['individual_info'] = qualification_result.get('individual_info', '') if isinstance(qualification_result, dict) else ''
+            row['employee_count_estimate'] = qualification_result.get('employee_count_estimate', '') if isinstance(qualification_result, dict) else ''
+            row['qualification_reasoning'] = qualification_result.get('qualification_reasoning', '') if isinstance(qualification_result, dict) else ''
+            row['qualification_check_passed'] = qualification_result.get('qualification_check_passed', False) if isinstance(qualification_result, dict) else False
             
             # ContentQ analysis (truncated for CSV readability)
             contentq_analysis = lead.get('contentq_and_content_analysis', '')
@@ -1158,31 +1170,43 @@ def save_results_to_csv(final_run_outputs: Dict[str, Any], output_csv_filename: 
             strategic_analysis = lead.get('strategic_analysis', '')
             row['strategic_analysis_summary'] = strategic_analysis[:500] + '...' if len(strategic_analysis) > 500 else strategic_analysis
             
-            # Talking points result
-            talking_points_result = lead.get('talking_points_result', {})
-            row['contentq_score'] = talking_points_result.get('contentq_score', 0.0)
-            row['contentq_score_text'] = talking_points_result.get('contentq_score_text', '')
-            row['contentq_pitch'] = talking_points_result.get('contentq_pitch', '')
-            row['email_subject_line'] = talking_points_result.get('email_subject_line', '')
+            # Talking points result - handle both dict and JSON string formats
+            talking_points_result_raw = lead.get('talking_points_result', {})
+            if isinstance(talking_points_result_raw, str):
+                try:
+                    talking_points_result = json.loads(talking_points_result_raw)
+                except (json.JSONDecodeError, TypeError):
+                    logger.warning(f"Failed to parse talking_points_result as JSON: {talking_points_result_raw}")
+                    talking_points_result = {}
+            elif isinstance(talking_points_result_raw, dict):
+                talking_points_result = talking_points_result_raw
+            else:
+                logger.warning(f"Unexpected talking_points_result type: {type(talking_points_result_raw)}")
+                talking_points_result = {}
+                
+            row['contentq_score'] = talking_points_result.get('contentq_score', 0.0) if isinstance(talking_points_result, dict) else 0.0
+            row['contentq_score_text'] = talking_points_result.get('contentq_score_text', '') if isinstance(talking_points_result, dict) else ''
+            row['contentq_pitch'] = talking_points_result.get('contentq_pitch', '') if isinstance(talking_points_result, dict) else ''
+            row['email_subject_line'] = talking_points_result.get('email_subject_line', '') if isinstance(talking_points_result, dict) else ''
             
             # Individual talking points
-            row['talking_point_1'] = talking_points_result.get('talking_point_1', '')
-            row['talking_point_2'] = talking_points_result.get('talking_point_2', '')
-            row['talking_point_3'] = talking_points_result.get('talking_point_3', '')
-            row['talking_point_4'] = talking_points_result.get('talking_point_4', '')
+            row['talking_point_1'] = talking_points_result.get('talking_point_1', '') if isinstance(talking_points_result, dict) else ''
+            row['talking_point_2'] = talking_points_result.get('talking_point_2', '') if isinstance(talking_points_result, dict) else ''
+            row['talking_point_3'] = talking_points_result.get('talking_point_3', '') if isinstance(talking_points_result, dict) else ''
+            row['talking_point_4'] = talking_points_result.get('talking_point_4', '') if isinstance(talking_points_result, dict) else ''
             
             # Reasoning for talking points (truncated)
             for i in range(1, 5):
                 reasoning_key = f'talking_point_{i}_reasoning_citations'
-                reasoning = talking_points_result.get(reasoning_key, '')
+                reasoning = talking_points_result.get(reasoning_key, '') if isinstance(talking_points_result, dict) else ''
                 row[f'talking_point_{i}_reasoning'] = reasoning[:300] + '...' if len(reasoning) > 300 else reasoning
             
             # ContentQ pitch reasoning
-            pitch_reasoning = talking_points_result.get('contentq_pitch_reasoning_citations', '')
+            pitch_reasoning = talking_points_result.get('contentq_pitch_reasoning_citations', '') if isinstance(talking_points_result, dict) else ''
             row['contentq_pitch_reasoning'] = pitch_reasoning[:300] + '...' if len(pitch_reasoning) > 300 else pitch_reasoning
             
             # Subject line reasoning
-            subject_reasoning = talking_points_result.get('subject_line_reasoning', '')
+            subject_reasoning = talking_points_result.get('subject_line_reasoning', '') if isinstance(talking_points_result, dict) else ''
             row['subject_line_reasoning'] = subject_reasoning[:200] + '...' if len(subject_reasoning) > 200 else subject_reasoning
             
             csv_rows.append(row)
@@ -1942,12 +1966,12 @@ Example CSV formats supported:
     default_input_csv = str(current_file_dir / "leads.csv")
     default_output_csv = str(current_file_dir / "results.csv")
     default_batch_folder = str(current_file_dir / "batch_results")
-    start_row = 165
-    end_row = 250  # 250
+    start_row = 0
+    end_row = 30  # 250
     batch_size = 15
     default_delay_in_between_batches = 90  # 60
     default_stop_on_failure = True
-    default_combine_batch_files_only_mode = True
+    default_combine_batch_files_only_mode = False
 
     kwargs = {
         'type': str,
