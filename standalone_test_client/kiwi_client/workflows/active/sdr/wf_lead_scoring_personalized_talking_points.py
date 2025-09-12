@@ -985,6 +985,9 @@ IMPORTANT: while citing sources in the citations field, make sure to cite the so
     # Define start and end
     "input_node_id": "input_node",
     "output_node_id": "output_node",
+    "runtime_config": {
+        "db_concurrent_pool_tier": "large"
+    },
 
     # State reducers - collect all results
     "metadata": {
@@ -1967,8 +1970,8 @@ Example CSV formats supported:
     default_output_csv = str(current_file_dir / "results.csv")
     default_batch_folder = str(current_file_dir / "batch_results")
     start_row = 0
-    end_row = 30  # 250
-    batch_size = 15
+    end_row = 100  # 250
+    batch_size = 100
     default_delay_in_between_batches = 90  # 60
     default_stop_on_failure = True
     default_combine_batch_files_only_mode = False
