@@ -49,6 +49,7 @@ from workflow_service.registry.schemas.reducers import ReducerRegistry
 from langchain_core.messages import AnyMessage, HumanMessage, AIMessage, SystemMessage
 from langgraph.graph.message import add_messages
 from langgraph.checkpoint.postgres import PostgresSaver
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
 # ===============================
 # Schema Definitions
@@ -736,9 +737,9 @@ async def run_ai_loop_test(use_db_checkpointer=False, thread_id=None) -> Dict[st
 
     
     if use_db_checkpointer:
-        from db.session import get_pool
-        with get_pool() as pool:
-            checkpointer = PostgresSaver(pool)
+        from db.session import get_async_pool
+        async with get_async_pool() as async_psycopg_pool:
+            checkpointer = AsyncPostgresSaver(async_psycopg_pool)
             runtime_config["checkpointer"] = checkpointer
             
             graph, result = await build_and_execute_langgraph(adapter, graph_entities, execute_graph_kwargs)
@@ -772,9 +773,10 @@ async def get_graph_state_from_db(thread_id="test_DB_ID") -> Dict[str, Any]:
     adapter = LangGraphRuntimeAdapter()
     graph_entities, runtime_config = build_graph_entities(thread_id)
 
-    from db.session import get_pool
-    with get_pool() as pool:
-        checkpointer = PostgresSaver(pool)
+   
+    from db.session import get_async_pool
+    async with get_async_pool() as async_psycopg_pool:
+        checkpointer = AsyncPostgresSaver(async_psycopg_pool)
         runtime_config["checkpointer"] = checkpointer
         graph = adapter.build_graph(graph_entities)
         lg_config = {

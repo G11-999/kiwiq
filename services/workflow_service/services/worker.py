@@ -24,7 +24,7 @@ from langchain_core.messages import AnyMessage, AIMessageChunk # Added AIMessage
 from langchain_core.load import dumps # Added dumps for logging complex objects
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from db.session import get_async_pool, get_async_db_as_manager, get_async_session # Assuming this provides psycopg pool
+from db.session import configure_database, get_async_pool, get_async_db_as_manager, get_async_session # Assuming this provides psycopg pool
 from global_config.settings import global_settings
 from global_config.logger import get_prefect_or_regular_python_logger
 from kiwi_app.billing.models import CreditType
@@ -150,6 +150,10 @@ async def workflow_execution_flow(
 
     # global external_context_global
     logger = get_prefect_or_regular_python_logger(name="workflow-execution-flow")
+    db_concurrent_pool_tier = run_job.graph_schema.runtime_config.db_concurrent_pool_tier
+    configure_database(pool_tier_size=db_concurrent_pool_tier)
+    if db_concurrent_pool_tier != "small":
+        logger.info(f"Configured database with larger pool tier size: {db_concurrent_pool_tier}")
     logger.info(f"Starting workflow execution for Run ID: {run_job.run_id}, Workflow ID: {run_job.workflow_id}")
     
     # Create application context for the LangGraph workflow

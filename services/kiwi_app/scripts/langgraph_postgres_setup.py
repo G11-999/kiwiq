@@ -1,5 +1,5 @@
 import asyncio
-from db.session import get_pool, get_async_pool
+from db.session import get_async_pool
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 

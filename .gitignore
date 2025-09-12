@@ -70,3 +70,7 @@ data/
 *.zip
 *.DONT_COMMIT_*
 billing_analysis_reports/
+
+# data files
+standalone_test_client/kiwi_client/workflows/**/*.json
+standalone_test_client/kiwi_client/workflows/**/*.csv

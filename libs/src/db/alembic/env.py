@@ -6,7 +6,7 @@ from sqlalchemy import pool
 from alembic import context
 from sqlmodel import SQLModel
 
-from db.session import async_engine, sync_engine
+from db.session import _db_manager
 
 # import services / libs models here for migrations discovery!
 # from services.linkedin_integration.models import LinkedInAccount, LinkedInPost, LinkedInComment, LinkedInReaction, LinkedInAnalytics, LinkedInPostAnalytics, EmployeeAdvocacy
@@ -68,7 +68,7 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    connectable = sync_engine
+    connectable = _db_manager.get_sync_engine()
     # engine_from_config(
     #     config.get_section(config.config_ini_section, {}),
     #     prefix="sqlalchemy.",
