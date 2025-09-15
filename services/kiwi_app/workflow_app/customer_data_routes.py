@@ -71,8 +71,14 @@ async def get_document(
         is_system_entity=is_system_entity,
     )
 
-    if ("raw_content" in document_result.document_contents and "source_filename" in document_result.document_contents):
+    if (isinstance(document_result.document_contents, dict) and "raw_content" in document_result.document_contents and "source_filename" in document_result.document_contents):
+        created_at = document_result.document_contents.get("created_at")
+        updated_at = document_result.document_contents.get("updated_at")
         document_result.document_contents = {"source_filename": document_result.document_contents["source_filename"], "status_message": "File uploaded as raw content. Use `/download` endpoint to download it."}
+        if created_at:
+            document_result.document_contents["created_at"] = created_at
+        if updated_at:
+            document_result.document_contents["updated_at"] = updated_at
 
     if not document_result:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Document {namespace}/{docname} not found")
@@ -983,8 +989,14 @@ async def search_documents_route(
     )
 
     for document in documents:
-        if "raw_content" in document.document_contents and "source_filename" in document.document_contents:
+        if isinstance(document.document_contents, dict) and "raw_content" in document.document_contents and "source_filename" in document.document_contents:
+            created_at = document.document_contents.get("created_at")
+            updated_at = document.document_contents.get("updated_at")
             document.document_contents = {"source_filename": document.document_contents["source_filename"], "status_message": "File uploaded as raw content. Use `/download` endpoint to download it."}
+            if created_at:
+                document.document_contents["created_at"] = created_at
+            if updated_at:
+                document.document_contents["updated_at"] = updated_at
     
     customer_data_logger.debug(f"Found {len(documents)} documents matching search criteria for org {active_org_id}")
     return documents

@@ -616,6 +616,12 @@ services:
       # RABBITMQ_HOST: rabbitmq
       # REDIS_HOST: redis
       # Ensure DATABASE_URL, MONGO_URL etc. are correctly set via .env.prod or here if needed directly
+      
+      # CodeRunner Docker-in-Docker configuration
+      # Set HOST_PROJECT_PATH for proper Docker-in-Docker mounting in production
+      # This tells CodeRunner how /app inside prefect-agent maps to the host filesystem
+      HOST_PROJECT_PATH: "/home/ec2-user/stealth-backend"  # In production, /app in container maps to /app on host
+    
     # Resource limits
     deploy:
       resources:

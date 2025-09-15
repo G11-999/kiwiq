@@ -15,6 +15,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Union, Type, ClassVar, Tuple, Set, get_origin
 
 from pydantic import Field, model_validator, BaseModel, ValidationError
+from pydantic.fields import FieldInfo
 
 # Internal dependencies
 from global_config.logger import get_prefect_or_regular_python_logger
@@ -35,7 +36,7 @@ from db.session import get_async_db_as_manager
 from global_utils.utils import datetime_now_utc
 
 # Base node/schema types
-from workflow_service.registry.schemas.base import BaseSchema, BaseNodeConfig
+from workflow_service.registry.schemas.base import BaseSchema, BaseNodeConfig, create_dynamic_schema_with_fields
 from workflow_service.registry.nodes.core.dynamic_nodes import DynamicSchema, BaseDynamicNode
 
 
@@ -651,6 +652,11 @@ class LoadCustomerDataConfig(BaseNodeConfig):
         None, description="Default User ID (as string) to act on behalf of (requires superuser privileges)."
     )
 
+    force_add_missing_fields: Optional[bool] = Field(
+        None,
+        description="If True, adds missing fields to the output schema (if any). In normal cases, graph edges add the missing fields since the loaded data will flow somewhere."
+    )
+
     @model_validator(mode='after')
     def check_config_source(self) -> 'LoadCustomerDataConfig':
         """Ensure either load_paths or load_configs_input_path is provided, but not both."""
@@ -935,6 +941,20 @@ class LoadCustomerDataNode(BaseDynamicNode):
             "output_metadata": output_meta,
             **output_data  # Add the dynamically loaded data fields
         }
+
+        missing_fields = {}
+        for field_name, field_value in output_data.items():
+            if field_name not in output_cls.model_fields:
+                missing_fields[field_name] = (Any, FieldInfo(
+                        default=None,
+                        annotation=Any,
+                    ))
+        
+        if missing_fields:
+            if self.config.force_add_missing_fields:
+                output_cls = create_dynamic_schema_with_fields(output_cls, {k:None for k in output_cls.model_fields} | missing_fields)
+            else:
+                self.warning(f"Output schema does not have fields: {list(missing_fields.keys())}. This might cause issues with the output data. Use force_add_missing_fields=True to add them.")
 
         # Hack for converting output data into correct list types from non-list if output schema is expecting list type
         for field_name, field_info in output_cls.model_fields.items():

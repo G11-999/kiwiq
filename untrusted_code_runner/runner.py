@@ -16,6 +16,14 @@ def main():
     out_dir = pathlib.Path("/work/out")
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # # Debug: Check what files exist in /work
+    # work_dir = pathlib.Path("/work")
+    # print(f"DEBUG CONTAINER: /work contents: {list(work_dir.iterdir()) if work_dir.exists() else 'not found'}", file=sys.stderr)
+    # code_py = pathlib.Path("/work/code.py")
+    # print(f"DEBUG CONTAINER: code.py exists={code_py.exists()}, is_file={code_py.is_file() if code_py.exists() else 'N/A'}", file=sys.stderr)
+    # if code_py.exists():
+    #     print(f"DEBUG CONTAINER: code.py stat={code_py.stat()}", file=sys.stderr)
+
     try:
         stdin_raw = sys.stdin.read() or "{}"
         payload = json.loads(stdin_raw)

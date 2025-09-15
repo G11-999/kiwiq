@@ -204,6 +204,7 @@ services:
       REDIS_URL: "redis://default:${REDIS_PASSWORD}@redis:6379/0" # Use 'default' user for Redis 6+
       WEAVIATE_HOST: "weaviate"
       # Add any other env vars needed by your flows
+      HOST_PROJECT_PATH: "/path/to/project"  # In production, /app in container maps to /app on host
     # Command to start the agent polling a specific work pool (replace 'default-pool' if needed)
     networks:
       - dev_network

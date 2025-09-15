@@ -38,6 +38,7 @@ from workflow_service.registry.nodes.tools.documents.document_crud_tools import 
     DocumentSearchTool,
     ListDocumentsTool,
 )
+from workflow_service.registry.nodes.code_runner.code_runner_node import CodeRunnerNode
 
 async def register_node_templates(db_registry: DBRegistry):
     from workflow_service.registry.nodes.scraping.crawler_scraper_node import CrawlerScraperNode
@@ -79,6 +80,8 @@ async def register_node_templates(db_registry: DBRegistry):
         EditDocumentTool,
         DocumentSearchTool,
         ListDocumentsTool,
+        # Code Runner
+        CodeRunnerNode,
     ]
     # assert None of the classes have duplicate node_names i.e. node types!
     assert len(set(node.node_name for node in node_classes)) == len(node_classes)

@@ -803,7 +803,7 @@ class FileUploadRequestPayload(BaseModel):
     (In admin portal): 
     {
         "global_defaults": {
-            "description": "This is a description for the uploaded file",
+            "description": "Eg CSV",
             "save_as_raw": true
         }
     }

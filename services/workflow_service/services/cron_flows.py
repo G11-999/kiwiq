@@ -1602,10 +1602,13 @@ class BatchDocumentBuilder:
                     self.current_pattern_skip = 0
                     continue
                 
-                # Filter out versioning metadata documents
+                # Filter out versioning metadata documents and raw content documents
+
                 filtered_results = [
                     result for result in search_results 
-                    if not result.metadata.is_versioning_metadata
+                    if (not result.metadata.is_versioning_metadata)
+                    # "File uploaded as raw content. Use `/download` endpoint to download it."
+                    and (not (isinstance(result.document_contents, dict) and "raw_content" in result.document_contents and "source_filename" in result.document_contents))
                 ]
                 
                 self.total_documents_seen += len(search_results)

@@ -753,6 +753,11 @@ class RAGService:
                 is_called_from_workflow=True  # Allow system access
             )
 
+            if isinstance(document.document_contents, dict) and "raw_content" in document.document_contents and "source_filename" in document.document_contents:
+                # "File uploaded as raw content. Use `/download` endpoint to download it."
+                # this is a raw content document, skip!
+                return
+
             return document
             # document_data = document.document_contents
             

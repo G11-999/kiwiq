@@ -5,12 +5,22 @@ FROM python:3.12-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies (including curl for installing Poetry, build tools, and postgres client dev libs)
+# Install system dependencies (including curl for installing Poetry, build tools, postgres client dev libs, and Docker CLI)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     gcc \
     build-essential \
     libpq-dev \
+    ca-certificates \
+    gnupg \
+    lsb-release \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Docker CLI
+RUN curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends docker-ce-cli \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Poetry (using the official installer)
@@ -28,8 +38,12 @@ RUN poetry config virtualenvs.create false && poetry install --without dev --no-
 
 # Copy the rest of the application code
 COPY . .
-# Set execution permissions for the setup script and worker entrypoint script
+# Set execution permissions for the setup script and worker-specific scripts
 RUN chmod +x /app/docker/setup.sh
+RUN chmod +x /app/docker/worker_build_runner_image.sh
+# Fix potential line ending issues (convert Windows CRLF to Unix LF)
+RUN apt-get update && apt-get install -y dos2unix && dos2unix /app/docker/worker_build_runner_image.sh && rm -rf /var/lib/apt/lists/*
+
 # Ensure the worker entrypoint script has proper permissions and format
 # RUN chmod 755 /app/docker/worker_entrypoint.sh
 # # Convert any potential Windows line endings to Unix format
@@ -53,7 +67,7 @@ RUN python -m spacy download en_core_web_sm
 # This starts both the workflow worker and the spider server with gunicorn
 # For testing, override the command with: PYTHONPATH=$(pwd):$(pwd)/services poetry run pytest
 # Virtual env not needed as poetry is installed without virtual env
-CMD ["bash", "-c", "trap 'kill $(jobs -p) 2>/dev/null' SIGTERM SIGINT; echo 'Running Redis pool cleanup before starting services...'; python services/workflow_service/services/scraping/browsers/scripts/cleanup_redis_pool.py; echo 'Redis cleanup completed, starting main services...'; python services/workflow_service/services/worker.py & gunicorn services.workflow_service.services.scraping.spider_server:app -c services/workflow_service/services/scraping/spider_gunicorn.conf.py & wait -n"]
+CMD ["bash", "-c", "trap 'kill $(jobs -p) 2>/dev/null' SIGTERM SIGINT; echo 'Building CodeRunner Docker image...'; bash /app/docker/worker_build_runner_image.sh || { echo 'ERROR: Failed to build CodeRunner image'; exit 1; }; echo 'Running Redis pool cleanup before starting services...'; python services/workflow_service/services/scraping/browsers/scripts/cleanup_redis_pool.py; echo 'Redis cleanup completed, starting main services...'; python services/workflow_service/services/worker.py & gunicorn services.workflow_service.services.scraping.spider_server:app -c services/workflow_service/services/scraping/spider_gunicorn.conf.py & wait -n"]
 # Previous script-based approach (had permission issues):
 # CMD ["/app/docker/worker_entrypoint.sh"]
 # Previous single-process command: CMD ["python", "services/workflow_service/services/worker.py"]

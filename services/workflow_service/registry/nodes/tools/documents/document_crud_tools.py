@@ -91,6 +91,16 @@ async def fetch_document_content(
                 is_system_entity=document_info.is_system_entity,
                 is_called_from_workflow=True
             )
+        
+        if isinstance(content, dict) and "raw_content" in content and "source_filename" in content:
+            created_at = content.get("created_at")
+            updated_at = content.get("updated_at")
+            content = {"source_filename": content["source_filename"], "status_message": "File uploaded as raw content. Use `/download` endpoint to download it."}
+            if created_at:
+                content["created_at"] = created_at
+            if updated_at:
+                content["updated_at"] = updated_at
+
         return content
     except Exception:
         return None
