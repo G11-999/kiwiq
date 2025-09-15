@@ -36,21 +36,54 @@ standalone_client/
 
 ---
 
-## ⚡ Critical Workflow Rules
+## ⚡ Critical Workflow Rules & New Features
 
-### Edge Mapping Restrictions
-- **NEVER use dot notation in edge mappings** (e.g., `list_template_vars.0.entity_name`)
-- **Problem**: Dot notation in edges doesn't work properly in the workflow system
-- **Solution**: Use transform_data nodes to restructure data before passing to next nodes
-- **Example**:
+### ✅ Dot Notation Now Fully Supported! (MAJOR UPDATE)
+- **NEW**: Full dot notation support in edge mappings for nested data access
+- **Use extensively**: Access nested objects, arrays, and complex API responses directly
+- **Examples**:
   ```python
-  # ❌ WRONG - Don't do this in edges:
-  {"src_field": "transformed_data.list_template_vars.0.entity_name", "dst_field": "entity_name"}
-  
-  # ✅ CORRECT - Map the entire field:
-  {"src_field": "transformed_data", "dst_field": "input_data"}
-  # Or restructure in the transform node itself
+  # ✅ NOW CORRECT - Dot notation fully supported:
+  {"src_field": "linkedin_response.profile.experience.0.company.name", "dst_field": "lead_info.current_company"}
+  {"src_field": "api_data.results.0.metadata.score", "dst_field": "analysis.quality_score"} 
+  {"src_field": "user_profile.contact.personal.email", "dst_field": "notification_data.email"}
   ```
+- **Benefits**: Eliminates need for many transform_data nodes, direct API response processing
+
+### Node-Level Edge Declaration (NEW FEATURE)
+- **Option 1**: Global edges list (traditional)
+- **Option 2**: Declare edges within node configurations using `"edges": [...]` field
+- **Don't mix**: Use either global or node-level, not both for the same node
+- **Benefits**: Better organization for nodes with many outgoing connections
+
+### Data-Only Edges (ADVANCED OPTIMIZATION)
+- **Purpose**: Pass large data efficiently without affecting execution flow
+- **Usage**: Add `"data_only_edge": true` to edge definition  
+- **Benefits**: Memory optimization, direct data reuse, reduced central state storage
+- **Use cases**: Large datasets (>10MB), non-consecutive data flow, API responses
+
+### Runtime Configuration & Database Pool Tiers (NEW)
+- **Purpose**: Optimize database connection pooling based on workflow intensity
+- **Tiers**: `"small"` (default), `"medium"`, `"large"`
+- **Usage**: Add to GraphSchema root level
+  ```json
+  {
+    "runtime_config": {
+      "db_concurrent_pool_tier": "medium"  // For moderate DB operations
+    }
+  }
+  ```
+- **Guidelines**: 
+  - `"small"`: Simple workflows, development, minimal DB usage
+  - `"medium"`: Moderate parallel operations, 10-25 concurrent DB ops
+  - `"large"`: Heavy parallel processing, 25+ concurrent operations, data-intensive
+
+### Private Mode Passthrough Data (ADVANCED)
+- **Purpose**: Preserve context data through parallel processing branches
+- **Key Configuration**: `"private_output_passthrough_data_to_central_state_keys": ["id", "name"]`
+- **Critical Insight**: Preserves data from node's **INPUT** state, not output
+- **Use Cases**: Item tracking through MapListRouter processing, metadata preservation
+- **Supports**: Dot notation for nested path mappings
 
 ---
 
@@ -74,6 +107,41 @@ poetry run python -c "from kiwi_client.workflows.{module} import {function}; {fu
 
 ## 📝 Workflow Implementation Patterns
 
+### Modern Data Flow Patterns (UPDATED)
+
+#### Direct API Response Processing (NEW - Replaces Transform Nodes)
+```json
+// ✅ NEW: Extract nested API data directly with dot notation
+{
+  "src_node_id": "linkedin_scraper",
+  "dst_node_id": "analysis_node",
+  "mappings": [
+    {"src_field": "scraping_results.profiles.0.basic_info.name", "dst_field": "analysis_input.lead_name"},
+    {"src_field": "scraping_results.profiles.0.experience.0.company.name", "dst_field": "analysis_input.current_company"},
+    {"src_field": "scraping_results.profiles.0.skills", "dst_field": "analysis_input.technical_skills"}
+  ]
+}
+```
+
+#### Organized Central State Pattern (NEW)
+```json
+// ✅ Use nested paths for organized central state management
+{"src_field": "quality_score", "dst_field": "lead_analysis.quality.score"},
+{"src_field": "confidence_level", "dst_field": "lead_analysis.quality.confidence"},
+{"src_field": "processing_time", "dst_field": "workflow_metrics.timing.analysis_duration"}
+```
+
+#### Data-Only Edge Pattern (NEW - Memory Optimization)
+```json
+// ✅ Pass large datasets efficiently without execution flow impact
+{
+  "src_node_id": "load_large_dataset",
+  "dst_node_id": "deep_analysis",
+  "data_only_edge": true,
+  "mappings": [{"src_field": "customer_profiles", "dst_field": "analysis_data"}]
+}
+```
+
 ### Check Iteration Limit Pattern
 When implementing iteration limits for HITL feedback loops:
 
@@ -82,7 +150,7 @@ When implementing iteration limits for HITL feedback loops:
 MAX_ITERATIONS = 10  # Maximum iterations for HITL feedback loops
 ```
 
-2. **Add check_iteration_limit node**:
+2. **Add check_iteration_limit node** - Now with dot notation access:
 ```python
 "check_iteration_limit": {
     "node_id": "check_iteration_limit",
@@ -93,7 +161,7 @@ MAX_ITERATIONS = 10  # Maximum iterations for HITL feedback loops
             "condition_groups": [{
                 "logical_operator": "and",
                 "conditions": [{
-                    "field": "generation_metadata.iteration_count",
+                    "field": "generation_metadata.iteration_count",  # Dot notation supported
                     "operator": "less_than",
                     "value": MAX_ITERATIONS
                 }]
@@ -109,6 +177,22 @@ MAX_ITERATIONS = 10  # Maximum iterations for HITL feedback loops
 4. **Update routing nodes** to go through check_iteration_limit
 5. **Add generation_metadata to state reducer**
 6. **Update LLM nodes** to store metadata with iteration counts
+
+### Parallel Processing with Context Preservation (UPDATED)
+```json
+// ✅ Most common pattern from real workflows
+{
+  "private_input_mode": true,
+  "output_private_output_to_central_state": true,
+  "private_output_passthrough_data_to_central_state_keys": ["id", "name"],  // Preserve from INPUT
+  "private_output_to_central_state_node_output_key": "output"
+}
+```
+
+### Edge Declaration Choice (NEW)
+- **Node-level**: Use `"edges": [...]` in node config for many outgoing connections
+- **Global**: Use traditional `"edges"` list for complex multi-source patterns
+- **Consistency**: Pick one style per node, don't mix
 
 ### Node Numbering
 - Don't focus on updating comment numbers when adding/modifying nodes
@@ -129,6 +213,31 @@ MAX_ITERATIONS = 10  # Maximum iterations for HITL feedback loops
 ### Long Workflow Execution Times
 - **Problem**: Workflows with multiple LLM calls can take 5-10+ minutes
 - **Solution**: Be patient, use background execution, set appropriate timeouts
+
+### New Feature-Related Pitfalls (UPDATED)
+
+#### Dot Notation Path Errors
+- **Problem**: `src_field` path doesn't exist in source data (e.g., `results.0.title` when results is empty)
+- **Solution**: System handles gracefully with warnings, but verify data structure. Consider bounds checking for arrays
+
+#### Edge Declaration Mixing
+- **Problem**: Using both node-level `edges` and global `edges` list for same node
+- **Solution**: Choose one style per node - either node-level OR global, not both
+
+#### Data-Only Edge Confusion  
+- **Problem**: Expecting data-only edges to trigger node execution
+- **Solution**: Data-only edges only pass data, use regular edges for execution control
+
+#### Database Pool Tier Mismatching
+- **Problem**: Using wrong pool tier causing performance issues or resource waste
+- **Solution**: 
+  - `"small"`: Simple workflows, development
+  - `"medium"`: 10-25 concurrent DB operations
+  - `"large"`: 25+ concurrent operations, data-intensive
+
+#### Private Mode Passthrough Misunderstanding
+- **Problem**: Expecting passthrough keys from node OUTPUT instead of INPUT
+- **Solution**: `private_output_passthrough_data_to_central_state_keys` preserves from INPUT state, not output
 
 ---
 
@@ -169,25 +278,57 @@ MAX_ITERATIONS = 10  # Maximum iterations for HITL feedback loops
 
 ## 📚 Recent Learnings
 
+### 2025-09-15: Major Workflow System Upgrade
+- **Dot Notation Revolution**: Full support for nested data access in edge mappings
+  - Eliminates need for many transform_data nodes
+  - Direct API response processing: `api_response.data.results.0.metadata.score`
+  - Array access patterns: `user_list.0.profile.name`
+- **Data-Only Edges**: Memory optimization for large datasets (>10MB)
+  - Pass data without execution flow impact
+  - Reduces central state storage requirements
+- **Node-Level Edge Declaration**: Better organization with `"edges": [...]` in node config
+- **Advanced Database Pool Tiers**: Optimize performance with `runtime_config`
+  - Small/Medium/Large tiers for different workflow intensities
+- **Private Mode Passthrough Evolution**: Enhanced context preservation through parallel branches
+  - Key insight: Preserves from INPUT state, not output
+  - Supports complex nested path mappings with dot notation
+
 ### 2025-08-07: Iteration Limit Implementation
 - Successfully implemented `check_iteration_limit` across 4 workflows
 - Pattern involves condition nodes, routing nodes, and metadata tracking
 - Prevents infinite HITL loops by limiting to MAX_ITERATIONS (10)
+- Now enhanced with dot notation support for condition field access
 
 ### Workflow Execution
 - Workflows require proper authentication (uses admin@example.com)
 - API endpoint: https://api.prod.kiwiq.ai
 - Workflows create temporary workflow instances during testing
 - HITL inputs must match expected schema exactly
+- Runtime config now supports optimized database connection pooling
 
 ---
 
 ## 🚀 Future Improvements & TODOs
 
+### Completed ✅
+- [x] Dot notation support in edge mappings (Sep 2025)
+- [x] Node-level edge declaration (Sep 2025)
+- [x] Data-only edges for memory optimization (Sep 2025)
+- [x] Advanced database pool tiers (Sep 2025)
+- [x] Enhanced private mode passthrough data (Sep 2025)
+
+### In Progress 🔄
 - [ ] Add automated testing for iteration limit functionality
-- [ ] Create workflow templates for common patterns
-- [ ] Document all HITL input schemas
-- [ ] Add performance benchmarks for workflows
+- [ ] Create workflow templates for common patterns using new dot notation
+- [ ] Document all HITL input schemas with dynamic schema support
+- [ ] Add performance benchmarks for workflows with new optimization features
+
+### New Opportunities 🆕
+- [ ] Create best practice guides for dot notation patterns
+- [ ] Develop data-only edge usage guidelines for different data sizes
+- [ ] Build automated pool tier recommendation system
+- [ ] Create advanced passthrough data pattern library
+- [ ] Explore mixed edge type optimization strategies
 
 ---
 
@@ -199,5 +340,20 @@ MAX_ITERATIONS = 10  # Maximum iterations for HITL feedback loops
 
 ---
 
-*Last Updated: 2025-08-07*
+## 🎯 Key Takeaways for New AI Assistants
+
+1. **Dot Notation is Your Friend**: The old restriction against dot notation is GONE. Use it extensively for direct API response processing and nested data access.
+
+2. **Optimize Memory Usage**: For workflows with large data (>10MB), use data-only edges instead of central state storage.
+
+3. **Choose Your Edge Style**: Node-level edge declaration improves organization for complex nodes with many outputs.
+
+4. **Right-Size Your Database**: Use appropriate pool tiers - don't over-provision for simple workflows or under-provision for data-intensive ones.
+
+5. **Master Private Mode**: Understand that passthrough data preserves from INPUT state, not output. Essential for parallel processing.
+
+---
+
+*Last Updated: 2025-09-15 (Major Feature Update)*
+*Previous Update: 2025-08-07*
 *Remember to update this file when you learn something new!*
