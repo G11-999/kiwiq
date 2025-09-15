@@ -1109,9 +1109,9 @@ class CodeRunnerNode(BaseNode[CodeRunnerInputSchema, CodeRunnerOutputSchema, Cod
             temp_dir = pathlib.Path(temp_dir_path)
             if temp_dir.exists():
                 shutil.rmtree(temp_dir, ignore_errors=True)
-                self.debug(f"Successfully cleaned up temporary directory: {temp_dir_path}")
+                self.info(f"Successfully cleaned up temporary directory: {temp_dir_path}")
             else:
-                self.debug(f"Temporary directory already cleaned up or doesn't exist: {temp_dir_path}")
+                self.info(f"Temporary directory already cleaned up or doesn't exist: {temp_dir_path}")
         except Exception as e:
             self.warning(f"Failed to cleanup temporary directory {temp_dir_path}: {e}")
 
