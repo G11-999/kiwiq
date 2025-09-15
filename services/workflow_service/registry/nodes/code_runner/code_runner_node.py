@@ -524,7 +524,7 @@ class CodeRunnerNode(BaseNode[CodeRunnerInputSchema, CodeRunnerOutputSchema, Cod
         # Check if we should fail the node on code execution error
         execution_success = execution_result.get("ok", False)
         if not execution_success and self.config.fail_node_on_code_error:
-            self._cleanup_temp_directory(execution_result)
+            await self._cleanup_temp_directory(execution_result)
             error_details = self._format_code_execution_error(execution_result)
             self.error(f"Code execution failed: {error_details}")
             raise RuntimeError(f"CodeRunner execution failed: {error_details}")
@@ -542,9 +542,9 @@ class CodeRunnerNode(BaseNode[CodeRunnerInputSchema, CodeRunnerOutputSchema, Cod
                     ext_context.customer_data_service
                 )
         except Exception as e:
-            self._cleanup_temp_directory(execution_result)
+            await self._cleanup_temp_directory(execution_result)
             raise e
-        self._cleanup_temp_directory(execution_result)
+        await self._cleanup_temp_directory(execution_result)
         
         # Step 4: Build response
         # Combine stdout and stderr logs into a single string
@@ -564,7 +564,6 @@ class CodeRunnerNode(BaseNode[CodeRunnerInputSchema, CodeRunnerOutputSchema, Cod
         else:
             logs_str = str(logs_data) if logs_data else ""
         
-        # self.warning(f"FUUUU Execution result: {execution_result}")
         return CodeRunnerOutputSchema(
             success=execution_result.get("ok", False),
             result=execution_result.get("result"),
@@ -1103,7 +1102,7 @@ class CodeRunnerNode(BaseNode[CodeRunnerInputSchema, CodeRunnerOutputSchema, Cod
             execution_result: Result from code execution containing temp directory path
         """
         temp_dir_path = execution_result.get("_temp_dir_to_cleanup")
-        self.warning(f"FUUUU Temp dir path: {temp_dir_path}")
+
         if not temp_dir_path:
             self.warning("No temporary directory to cleanup")
             return
@@ -1113,9 +1112,9 @@ class CodeRunnerNode(BaseNode[CodeRunnerInputSchema, CodeRunnerOutputSchema, Cod
             temp_dir = pathlib.Path(temp_dir_path)
             if temp_dir.exists():
                 shutil.rmtree(temp_dir, ignore_errors=True)
-                self.warning(f"Successfully cleaned up temporary directory: {temp_dir_path}")
+                self.info(f"Successfully cleaned up temporary directory: {temp_dir_path}")
             else:
-                self.warning(f"Temporary directory already cleaned up or doesn't exist: {temp_dir_path}")
+                self.info(f"Temporary directory already cleaned up or doesn't exist: {temp_dir_path}")
         except Exception as e:
             self.warning(f"Failed to cleanup temporary directory {temp_dir_path}: {e}")
 
