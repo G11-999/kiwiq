@@ -1,0 +1,5 @@
+# Keep this minimal, pinned, and stable. Examples:
+orjson==3.11.3
+pydantic==2.11.9
+pandas==2.3.2     # (optional, heavier)
+numpy==2.3.3      # (optional, heavier)

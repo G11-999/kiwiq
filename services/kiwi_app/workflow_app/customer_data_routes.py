@@ -1,9 +1,12 @@
 """Routes for customer data management."""
 
 import uuid
+import mimetypes
 from typing import List, Dict, Any, Optional, Union
 
-from fastapi import APIRouter, Depends, HTTPException, status, Path, Query, Body
+from bson.binary import Binary
+
+from fastapi import APIRouter, Depends, HTTPException, status, Path, Query, Body, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.session import get_async_db_dependency
@@ -68,11 +71,106 @@ async def get_document(
         is_system_entity=is_system_entity,
     )
 
+    if ("raw_content" in document_result.document_contents and "source_filename" in document_result.document_contents):
+        document_result.document_contents = {"source_filename": document_result.document_contents["source_filename"], "status_message": "File uploaded as raw content. Use `/download` endpoint to download it."}
+
     if not document_result:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Document {namespace}/{docname} not found")
     
     customer_data_logger.debug(f"Retrieved document {namespace}/{docname} (versioned: {document_result.metadata.is_versioned})")
     return document_result
+
+
+@customer_data_router.get(
+    "/{namespace}/{docname}/download",
+    dependencies=[Depends(RequireOrgDataReadActiveOrg)],
+    summary="Download a file uploaded as raw content",
+    description="""Downloads a file that was uploaded with save_as_raw=True option.
+    
+    This endpoint:
+    - Retrieves the document and checks if it contains raw_content (binary data)
+    - Returns the raw file content with appropriate Content-Type and Content-Disposition headers
+    - Preserves the original filename from the upload
+    - Only works with documents that have raw_content field (files uploaded with save_as_raw=True)
+    
+    Returns a binary file download response with appropriate headers.
+    """,
+    tags=["customer-data", "file-download"],
+)
+async def download_file(
+    namespace: str = Path(..., description="Namespace for the document"),
+    docname: str = Path(..., description="Name of the document"),
+    is_shared: bool = Query(..., description="Specify true for shared org document, false for user-specific document."),
+    version: Optional[str] = Query(None, description="Specific version to retrieve (only used for versioned documents). If not provided and document is versioned, retrieves the active version."),
+    is_system_entity: bool = Query(False, description="Whether this is a system entity (superusers only)."),
+    on_behalf_of_user_id: Optional[uuid.UUID] = Query(None, description="Optional user ID to act on behalf of (superusers only)."),
+    active_org_id: uuid.UUID = Depends(get_active_org_id),
+    current_user: User = Depends(get_current_active_verified_user),
+    service: CustomerDataService = Depends(get_customer_data_service_dependency),
+):
+    """Download a file that was uploaded as raw content."""
+    customer_data_logger.info(f"Downloading file: {namespace}/{docname} for org {active_org_id}, version {version}")
+    
+    # Get the document using the existing service method
+    document_result = await service.get_document(
+        org_id=active_org_id,
+        namespace=namespace,
+        docname=docname,
+        is_shared=is_shared,
+        user=current_user,
+        version=version,
+        on_behalf_of_user_id=on_behalf_of_user_id,
+        is_system_entity=is_system_entity,
+    )
+
+    if not document_result:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Document {namespace}/{docname} not found")
+    
+    document_contents = document_result.document_contents
+    
+    # Check if the document contains raw_content (binary data)
+    if not isinstance(document_contents, dict) or ("raw_content" not in document_contents or "source_filename" not in document_contents):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail=f"Document {namespace}/{docname} does not contain raw binary content. Only files uploaded with save_as_raw=True can be downloaded."
+        )
+    
+    raw_content = document_contents.get("raw_content")
+    if not (isinstance(raw_content, Binary) or isinstance(raw_content, bytes)):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Document {namespace}/{docname} raw_content is not in binary format."
+        )
+    
+    # Extract file information
+    source_filename = document_contents.get("source_filename", docname)
+    file_data = raw_content  # This is the BSON Binary object
+    
+    # Convert Binary to bytes
+    if hasattr(file_data, '__bytes__'):
+        file_bytes = bytes(file_data)
+    else:
+        file_bytes = file_data
+    
+    # Determine content type based on filename
+    content_type, _ = mimetypes.guess_type(source_filename)
+    if content_type is None:
+        content_type = "application/octet-stream"  # Default for unknown file types
+    
+    # Prepare headers for file download
+    headers = {
+        "Content-Disposition": f"attachment; filename=\"{source_filename}\"",
+        "Content-Length": str(len(file_bytes)),
+    }
+    
+    customer_data_logger.info(f"Downloaded file {namespace}/{docname} ({source_filename}, {len(file_bytes)} bytes, {content_type})")
+    
+    # Return the binary content as a response
+    return Response(
+        content=file_bytes,
+        media_type=content_type,
+        headers=headers
+    )
 
 
 @customer_data_router.post(
@@ -883,6 +981,10 @@ async def search_documents_route(
         sort_order=search_query.sort_order,
         # is_called_from_workflow=False # Assuming this route is not directly called from an internal workflow step
     )
+
+    for document in documents:
+        if "raw_content" in document.document_contents and "source_filename" in document.document_contents:
+            document.document_contents = {"source_filename": document.document_contents["source_filename"], "status_message": "File uploaded as raw content. Use `/download` endpoint to download it."}
     
     customer_data_logger.debug(f"Found {len(documents)} documents matching search criteria for org {active_org_id}")
     return documents

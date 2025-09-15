@@ -5,6 +5,8 @@ import tempfile
 import uuid
 from typing import Union, List, Dict, Any, Optional, Tuple
 
+from bson.binary import Binary
+
 from markitdown import MarkItDown
 from fastapi import APIRouter, UploadFile, File, Query, Depends, HTTPException, status, Form, Body
 
@@ -21,6 +23,9 @@ from db.session import get_async_db_dependency, AsyncSession
 md = MarkItDown()
 
 logger = get_kiwi_logger(__name__)
+
+# MongoDB document size limit (16MB)
+MAX_FILE_SIZE = 16 * 1024 * 1024  # 16MB in bytes
 
 upload_router = APIRouter(
     tags=["uploads"],
@@ -131,7 +136,7 @@ async def _validate_file_upload_configs(
                 config = config.model_copy(update=config_update_dict)
 
             if config.docname is None:
-                config.docname = os.path.splitext(filename)[0]
+                config.docname = filename
 
             validated_config = schemas.FileUploadConfig.model_validate(config.model_dump())
             logger.debug(f"Config validated for {filename}: {validated_config.model_dump(exclude_unset=True)}")
@@ -220,24 +225,31 @@ async def upload_documents(
     service: CustomerDataService = Depends(get_customer_data_service_dependency),
 ):
     """
-    Uploads one or more files, converts them to Markdown, and stores them
-    as customer data documents according to the provided configuration.
+    Uploads one or more files, converts them to Markdown or stores as raw binary,
+    and stores them as customer data documents according to the provided configuration.
 
     - Accepts a list of files via multipart/form-data.
     - Accepts a JSON string (`config_payload`) in the form data containing global
       and per-file configurations based on the `FileUploadRequestPayload` schema.
     - Uses the `CustomerDataService` to handle creation or upserting of
       versioned or unversioned documents in MongoDB.
+    - **File Size Limit**: Individual files cannot exceed 16MB due to MongoDB document size limit.
 
     **Configuration Defaults (if not specified):**
     - `namespace`: "uploaded_files"
     - `docname`: Inferred from filename (without extension)
+    - `description`: None
     - `is_shared`: False
     - `is_system_entity`: False
     - `on_behalf_of_user_id`: None
     - `mode`: "create"
     - `is_versioned`: False
+    - `save_as_raw`: False (converts to markdown by default)
     - `versioned_config`: None
+
+    **Storage Options:**
+    - `save_as_raw=False` (default): Converts files to markdown text using MarkItDown
+    - `save_as_raw=True`: Stores files as raw binary data using MongoDB Binary format
 
     Returns:
         A list of dictionaries, each detailing the result for a processed file.
@@ -288,8 +300,36 @@ async def upload_documents(
         # --- 2a. Read and Convert ---
         try:
             file_content_bytes = await file.read()
-            markdown_content = convert_to_markdown_from_raw_file_content(file_content_bytes, filename)
-            data_to_store = {"source_filename": filename, "markdown_content": markdown_content}
+            
+            # Validate file size (MongoDB has 16MB document limit)
+            if len(file_content_bytes) > MAX_FILE_SIZE:
+                logger.warning(f"File {filename} exceeds size limit: {len(file_content_bytes)} bytes > {MAX_FILE_SIZE} bytes")
+                results.append({
+                    "filename": filename, 
+                    "status": "error", 
+                    "message": f"File size exceeds 16MB limit. File size: {len(file_content_bytes):,} bytes ({len(file_content_bytes) / 1024 / 1024:.2f} MB)"
+                })
+                await file.close()
+                continue
+            
+            # Prepare base data structure
+            data_to_store = {"source_filename": filename}
+            
+            # Add description if provided
+            if config.description:
+                data_to_store["description"] = config.description
+            
+            # Choose storage format based on save_as_raw config
+            if config.save_as_raw:
+                # Save as raw bytes using MongoDB Binary format
+                data_to_store["raw_content"] = Binary(file_content_bytes)
+                logger.debug(f"Saving file {filename} as raw binary content ({len(file_content_bytes):,} bytes, {len(file_content_bytes) / 1024 / 1024:.2f} MB)")
+            else:
+                # Convert to markdown as before
+                markdown_content = convert_to_markdown_from_raw_file_content(file_content_bytes, filename)
+                data_to_store["markdown_content"] = markdown_content
+                logger.debug(f"Converted file {filename} to markdown (original: {len(file_content_bytes):,} bytes, markdown: {len(markdown_content):,} characters)")
+                
         except Exception as e:
             logger.error(f"Error reading or converting file {filename} during processing: {e}", exc_info=True)
             results.append({"filename": filename, "status": "error", "message": f"File processing error: {e}"})
