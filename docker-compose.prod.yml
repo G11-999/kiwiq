@@ -534,7 +534,7 @@ services:
       PREFECT_API_URL: "https://kq-prefect-server.prod.kiwiq.ai/api"
       # PREFECT_SERVER_UI_SERVE_BASE: "/"  # Not needed for subdomain approach
       PREFECT_SERVER_API_AUTH_STRING: ${PREFECT_AUTH_STRING}
-      PREFECT_SERVER_API_CSRF_PROTECTION_ENABLED: "false"  # Temporarily disabled to test auth flow
+      PREFECT_SERVER_API_CSRF_PROTECTION_ENABLED: "true"  # Temporarily disabled to test auth flow
       # Result Persistence (consider S3 or other external storage for production)
       PREFECT_TASKS_DEFAULT_PERSIST_RESULT: ${PREFECT_TASKS_DEFAULT_PERSIST_RESULT:-false}
       # PREFECT_RESULTS_DEFAULT_STORAGE_BLOCK: s3/your-prod-bucket # Example
