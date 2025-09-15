@@ -564,6 +564,7 @@ class CodeRunnerNode(BaseNode[CodeRunnerInputSchema, CodeRunnerOutputSchema, Cod
         else:
             logs_str = str(logs_data) if logs_data else ""
         
+        self.warning(f"FUUUU Execution result: {execution_result}")
         return CodeRunnerOutputSchema(
             success=execution_result.get("ok", False),
             result=execution_result.get("result"),
