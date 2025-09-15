@@ -1,3 +1,4 @@
+import logging
 from prefect import task, flow
 import tempfile, pathlib, subprocess, json, os, shutil, hashlib, uuid
 import copy
@@ -212,7 +213,8 @@ def run_untrusted_docker(
     allow_net: bool = False,                     # stretch goal toggle
     docker_network: str = "bridge",                # "none" or e.g. "bridge"/"runner_net"
     persist_root: str | None = None,             # e.g. "/srv/artifacts"; if set, we copy outputs here
-    keep_temp: bool = False                      # debug: keep tmp dir even if persisted
+    keep_temp: bool = False,                      # debug: keep tmp dir even if persisted
+    logger = None,
 ):
     """
     Returns:
@@ -223,6 +225,7 @@ def run_untrusted_docker(
         job_id
       }
     """
+    logger = logger or logging.getLogger(__name__) 
     host_temp_dir = host_temp_dir or temp_dir
     job_id = f"job-{uuid.uuid4().hex[:10]}"
     if temp_dir:
@@ -239,7 +242,17 @@ def run_untrusted_docker(
         out_dir = td / "out"
         inp_dir.mkdir(exist_ok=True)
         out_dir.mkdir(exist_ok=True)
-        os.chmod(out_dir, 0o777)  # allow container user 10001 to write
+        
+        # CRITICAL: Ensure proper permissions for Docker container user 10001 to write
+        # The py-runner container runs as user 10001:10001 and needs write access to these dirs
+        # This prevents PermissionError: [Errno 13] Permission denied: '/work/out' 
+        try:
+            os.chmod(inp_dir, 0o777)  # allow container user 10001 to read input files
+            os.chmod(out_dir, 0o777)  # allow container user 10001 to write output files
+            os.chmod(td, 0o755)       # parent directory must be accessible to user 10001
+        except Exception as chmod_error:
+            # Log but don't fail - permissions might already be set correctly in calling code
+            logger.warning(f"Warning: Could not set directory permissions in run_untrusted_docker: {chmod_error}")
 
         # Validate code_str is not empty
         if not code_str or not code_str.strip():
@@ -741,6 +754,24 @@ class CodeRunnerNode(BaseNode[CodeRunnerInputSchema, CodeRunnerOutputSchema, Cod
             inp_dir = temp_dir / "inputs"
             inp_dir.mkdir(exist_ok=True)
             
+            # Set up output directory early and ensure proper permissions for Docker user 10001
+            # The py-runner Docker container runs as user 10001:10001 and needs to be able to
+            # create and write to the /work/out directory (which maps to our temp_dir/out)
+            out_dir = temp_dir / "out"
+            out_dir.mkdir(exist_ok=True)
+            
+            # CRITICAL: Set permissions for Docker container user 10001 to write to these directories
+            # This fixes PermissionError: [Errno 13] Permission denied: '/work/out' in production
+            # The Docker container mounts temp_dir to /work and runs as user 10001:10001
+            try:
+                os.chmod(temp_dir, 0o755)  # Parent directory needs to be accessible to user 10001
+                os.chmod(inp_dir, 0o777)   # Input directory needs to be writable for file loading
+                os.chmod(out_dir, 0o777)   # Output directory needs to be writable for artifacts
+                self.debug(f"Set permissions on temp directories for Docker user 10001: {temp_dir}")
+            except Exception as e:
+                self.warning(f"Failed to set permissions on temp directories: {e}")
+                # Continue execution - permissions might already be correct or container might handle it
+            
             loaded_files_info = None
             file_hints = []
             
@@ -773,7 +804,8 @@ class CodeRunnerNode(BaseNode[CodeRunnerInputSchema, CodeRunnerOutputSchema, Cod
                     cpus=self.config.cpus,
                     allow_net=self.config.enable_network,
                     persist_root=None,  # We'll handle persistence ourselves
-                    keep_temp=True  # Keep temp directory so we can access artifacts
+                    keep_temp=True,  # Keep temp directory so we can access artifacts
+                    logger=self,
                 )
                 
                 self.info(f"Code execution completed. Success: {result.get('ok', False)}")
