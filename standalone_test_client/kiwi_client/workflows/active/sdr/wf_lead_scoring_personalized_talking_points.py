@@ -2139,13 +2139,13 @@ Example CSV formats supported:
     default_output_csv = str(current_file_dir / "results.csv")
     default_batch_folder = str(current_file_dir / "batch_results")
     start_row = 0
-    end_row = 2  # 250
-    batch_size = 2
+    end_row = 200  # 250
+    batch_size = 100
     default_delay_in_between_batches = 90  # 60
     default_stop_on_failure = True
     default_combine_batch_files_only_mode = False
     default_run_batches_in_parallel = True
-    default_batch_parallelism_limit = 5
+    default_batch_parallelism_limit = 2
 
     kwargs = {
         'type': str,

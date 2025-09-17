@@ -2100,7 +2100,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                         search_context_size = self.config.web_search_options.search_context_size
                     estimated_dollar_credits = model_metadata.perplexity_additional_request_price_by_search_context_per_K.get(search_context_size, 10.) / 1000.
                 
-                estimated_credits = estimated_dollar_credits *  settings.LLM_TOKEN_COST_MARKUP_FACTOR
+                estimated_credits = estimated_dollar_credits * settings.LLM_TOKEN_COST_MARKUP_FACTOR
                 
                 # Adjust allocated credits with actual cost
                 from kiwi_app.billing.models import CreditType
