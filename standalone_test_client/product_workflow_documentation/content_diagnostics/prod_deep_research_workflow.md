@@ -94,7 +94,7 @@ This workflow performs deep research on content strategy and LinkedIn executive 
 - Temperature: 0.8
 - Max Tokens: 100000
 - Max Tool Calls: 40
-- Tools: web_search_preview (provider built-in)
+- Tools: web_search (provider built-in)
 
 ### 6. LinkedIn Research Path
 **Node ID**: `construct_linkedin_prompt` → `deep_researcher_linkedin`
@@ -121,7 +121,7 @@ This workflow performs deep research on content strategy and LinkedIn executive 
 - Temperature: 0.8
 - Max Tokens: 100000
 - Max Tool Calls: 25
-- Tools: web_search_preview (provider built-in)
+- Tools: web_search (provider built-in)
 
 ### 7. Store Blog Research
 **Node ID**: `store_blog_research`
@@ -173,7 +173,7 @@ This workflow performs deep research on content strategy and LinkedIn executive 
 - **Combined Research**: Both analyses run in parallel with integrated insights
 
 ### Web Search Integration
-- Both research paths use web_search_preview tool
+- Both research paths use web_search tool
 - Enables real-time data gathering
 - Provides citations and sources
 - Parallel tool calls for efficiency

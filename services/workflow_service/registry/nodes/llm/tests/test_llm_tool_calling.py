@@ -1275,7 +1275,7 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
     #     # Set up web search tool
     #     openai_search_config = OpenAIWebSearchToolConfig().model_dump(exclude_none=True)
     #     tool_config = ToolConfig(
-    #         tool_name="web_search_preview",
+    #         tool_name="web_search",
     #         is_provider_inbuilt_tool=True,
     #         provider_inbuilt_user_config=openai_search_config
     #     )
@@ -1354,7 +1354,7 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
     #     # Set up web search tool
     #     openai_search_config = OpenAIWebSearchToolConfig().model_dump(exclude_none=True)
     #     tool_config = ToolConfig(
-    #         tool_name="web_search_preview",
+    #         tool_name="web_search",
     #         is_provider_inbuilt_tool=True,
     #         provider_inbuilt_user_config=openai_search_config
     #     )
@@ -1444,7 +1444,7 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
 
 
     # async def test_openai_gpt_4_1_tool_use_structured_output_reasoning(self):
-    #     """Test OpenAI GPT_4_1 with tool use (web_search_preview), structured output, and reasoning."""
+    #     """Test OpenAI GPT_4_1 with tool use (web_search), structured output, and reasoning."""
     #     # Ensure the model enum is available
 
     #     topic = "benefits of mindfulness meditation for stress reduction"
@@ -1452,7 +1452,7 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
 
     #     model_provider = LLMModelProvider.OPENAI
 
-    #     # Configure the OpenAI web_search_preview tool
+    #     # Configure the OpenAI web_search tool
     #     openai_search_config = OpenAIWebSearchToolConfig().model_dump(exclude_none=True)
     #     tool_config = ToolConfig(
     #         tool_name="web_search_tool",
@@ -1519,7 +1519,7 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
     #             type="tool",
     #             name="web_search_tool",
     #             status="success"
-    #             # "name": "web_search_preview"
+    #             # "name": "web_search"
     #         ) 
     #         # if model_provider == LLMModelProvider.ANTHROPIC else
     #         # {                               # append result message
@@ -1561,7 +1561,7 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
     #     print(f"OpenAI GPT_4_1 SR Reasoning - Turn 2 metadata: {result_turn2.get('metadata')}")
     
     # async def test_openai_GPT_4_1_tool_use_text_reasoning(self):
-    #     """Test OpenAI GPT_4_1 with tool use (web_search_preview), structured output, and reasoning."""
+    #     """Test OpenAI GPT_4_1 with tool use (web_search), structured output, and reasoning."""
     #     # Ensure the model enum is available
 
     #     # Ensure the model enum is available
@@ -1571,7 +1571,7 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
 
     #     model_provider = LLMModelProvider.OPENAI
 
-    #     # Configure the OpenAI web_search_preview tool
+    #     # Configure the OpenAI web_search tool
     #     openai_search_config = OpenAIWebSearchToolConfig().model_dump(exclude_none=True)
     #     tool_config = ToolConfig(
     #         tool_name="web_search_tool",
@@ -1635,7 +1635,7 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
     #             type="tool",
     #             name="web_search_tool",
     #             status="success"
-    #             # "name": "web_search_preview"
+    #             # "name": "web_search"
     #         ) 
     #         # if model_provider == LLMModelProvider.ANTHROPIC else
     #         # {                               # append result message
@@ -1667,7 +1667,7 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
 
 
     # async def test_openai_o4_mini_tool_use_structured_output_reasoning(self):
-    #     """Test OpenAI O4_MINI with tool use (web_search_preview), structured output, and reasoning."""
+    #     """Test OpenAI O4_MINI with tool use (web_search), structured output, and reasoning."""
     #     # Ensure the model enum is available
 
     #     topic = "benefits of mindfulness meditation for stress reduction"
@@ -1676,7 +1676,7 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
 
     #     model_provider = LLMModelProvider.OPENAI
 
-    #     # Configure the OpenAI web_search_preview tool
+    #     # Configure the OpenAI web_search tool
     #     openai_search_config = OpenAIWebSearchToolConfig().model_dump(exclude_none=True)
     #     tool_config = ToolConfig(
     #         tool_name="web_search_tool",
@@ -1744,7 +1744,7 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
     #             type="tool",
     #             name="web_search_tool",
     #             status="success"
-    #             # "name": "web_search_preview"
+    #             # "name": "web_search"
     #         ) 
     #         # if model_provider == LLMModelProvider.ANTHROPIC else
     #         # {                               # append result message
@@ -1787,7 +1787,7 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
     #     print(f"OpenAI O4_MINI SR Reasoning - Turn 2 metadata: {result_turn2.get('metadata')}")
     
     # async def test_openai_o4_mini_tool_use_text_reasoning(self):
-    #     """Test OpenAI O4_MINI with tool use (web_search_preview), structured output, and reasoning."""
+    #     """Test OpenAI O4_MINI with tool use (web_search), structured output, and reasoning."""
     #     # Ensure the model enum is available
 
     #     # Ensure the model enum is available
@@ -1798,7 +1798,7 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
 
     #     model_provider = LLMModelProvider.OPENAI
 
-    #     # Configure the OpenAI web_search_preview tool
+    #     # Configure the OpenAI web_search tool
     #     openai_search_config = OpenAIWebSearchToolConfig().model_dump(exclude_none=True)
     #     tool_config = ToolConfig(
     #         tool_name="web_search_tool",
@@ -1863,7 +1863,7 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
     #             type="tool",
     #             name="web_search_tool",
     #             status="success"
-    #             # "name": "web_search_preview"
+    #             # "name": "web_search"
     #         ) 
     #         # if model_provider == LLMModelProvider.ANTHROPIC else
     #         # {                               # append result message

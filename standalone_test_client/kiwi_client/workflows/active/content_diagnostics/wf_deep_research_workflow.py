@@ -241,7 +241,7 @@ workflow_graph_schema = {
                 },
                 "tools": [
                     {
-                        "tool_name": "web_search_preview",
+                        "tool_name": "web_search",
                         "is_provider_inbuilt_tool": True,
                     }
                 ]
@@ -269,7 +269,7 @@ workflow_graph_schema = {
                 },
                 "tools": [
                     {
-                        "tool_name": "web_search_preview",
+                        "tool_name": "web_search",
                         "is_provider_inbuilt_tool": True,
                     }
                 ]

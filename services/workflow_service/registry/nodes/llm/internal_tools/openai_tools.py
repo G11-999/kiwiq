@@ -44,8 +44,8 @@ class OpenAIWebSearchTool(BaseOpenAITool):
     
     This tool allows GPT models to search the web for information.
     """
-    type: ClassVar[str] = "web_search_preview"
-    name: ClassVar[str] = "web_search_preview"
+    type: ClassVar[str] = "web_search"
+    name: ClassVar[str] = "web_search"
     
     user_config: Optional[OpenAIWebSearchToolConfig] = None
 

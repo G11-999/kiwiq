@@ -125,7 +125,7 @@ Deep Research models must have web search capability configured to function prop
 {
   "tools": [
     {
-      "tool_name": "web_search_preview",
+      "tool_name": "web_search",
       "is_provider_inbuilt_tool": true,
       "provider_inbuilt_user_config": {
         "search_context_size": "high",
@@ -195,7 +195,7 @@ Deep Research models support `max_tool_calls` to control costs (this parameter i
     },
     "tools": [
       {
-        "tool_name": "web_search_preview",
+        "tool_name": "web_search",
         "is_provider_inbuilt_tool": true,
         "provider_inbuilt_user_config": {
           "search_context_size": "high"
@@ -250,7 +250,7 @@ OpenAI provides the most comprehensive set of models with strong reasoning capab
 
 #### Internal Tools
 
-**1. Web Search (`web_search_preview`)**
+**1. Web Search (`web_search`)**
 - Real-time web search integration
 - Configurable search context size
 - User location support for localized results
@@ -283,7 +283,7 @@ OpenAI provides the most comprehensive set of models with strong reasoning capab
     },
     "tools": [
       {
-        "tool_name": "web_search_preview",
+        "tool_name": "web_search",
         "is_provider_inbuilt_tool": true,
         "provider_inbuilt_user_config": {
           "search_context_size": "medium",

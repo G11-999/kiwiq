@@ -108,7 +108,7 @@ workflow_graph_schema = {
                 # "tools": [
                 #     # Web search tool (required for deep research models)
                 #     {
-                #         "tool_name": "web_search_preview",
+                #         "tool_name": "web_search",
                 #         "is_provider_inbuilt_tool": True,
                 #         # "provider_inbuilt_user_config": {
                 #         #     "search_context_size": "high",

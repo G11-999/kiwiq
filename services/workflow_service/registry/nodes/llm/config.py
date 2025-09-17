@@ -95,6 +95,8 @@ class ModelMetadata(BaseModel):
     # tool call prices
     web_search_tool_call_price_per_K: float = 0.
 
+    perplexity_additional_request_price_by_search_context_per_K: Dict[str, float] = {}
+
     # GPT-5 series: optional verbosity control support (unique to select models)
     verbosity_supported: bool = False
     verbosity_levels: Optional[List[str]] = None
@@ -231,10 +233,8 @@ class OpenAIModels(str, EnumWithAttr):
     GPT_4_1 = "gpt-4.1", ModelMetadata(**(DEFAULT_OPENAI_METADATA.model_dump() | {
         "context_limit": 1000000, 
         "output_token_limit": 32768,
-        "web_search_tool_call_price_per_K": 25.0,
     }))
     GPT_4o = "gpt-4o", ModelMetadata(**(DEFAULT_OPENAI_METADATA.model_dump() | {
-        "web_search_tool_call_price_per_K": 25.0,
     }))
     # ChatGPT-4o-latest model - optimized for conversational use without tool support
     CHATGPT_4O_LATEST = "chatgpt-4o-latest", ModelMetadata(**(DEFAULT_OPENAI_METADATA.model_dump() | {
@@ -243,8 +243,8 @@ class OpenAIModels(str, EnumWithAttr):
         "tool_choice": [],  # No tool choice options
         "parallel_tool_calling_configurable": False,  # No parallel tool calling
     }))
-    GPT_4_1_MINI = "gpt-4.1-mini", ModelMetadata(**(DEFAULT_OPENAI_METADATA.model_dump() | {"rate_limits": {"requests_per_minute": 30000, "tokens_per_minute": 150000000}, "context_limit": 1000000, "output_token_limit": 32768, "web_search_tool_call_price_per_K": 25.0,}))
-    GPT_4o_mini = "gpt-4o-mini", ModelMetadata(**(DEFAULT_OPENAI_METADATA.model_dump() | {"rate_limits": {"requests_per_minute": 30000, "tokens_per_minute": 150000000}, "web_search_tool_call_price_per_K": 25.0,}))
+    GPT_4_1_MINI = "gpt-4.1-mini", ModelMetadata(**(DEFAULT_OPENAI_METADATA.model_dump() | {"rate_limits": {"requests_per_minute": 30000, "tokens_per_minute": 150000000}, "context_limit": 1000000, "output_token_limit": 32768,}))
+    GPT_4o_mini = "gpt-4o-mini", ModelMetadata(**(DEFAULT_OPENAI_METADATA.model_dump() | {"rate_limits": {"requests_per_minute": 30000, "tokens_per_minute": 150000000},}))
     GPT_4_1_NANO = "gpt-4.1-nano", ModelMetadata(**(DEFAULT_OPENAI_METADATA.model_dump() | {"inbuilt_tools": {k:v for k,v in OPENAI_TOOLS_REGISTRY.items() if not k.startswith("web_search")}, "rate_limits": {"requests_per_minute": 30000, "tokens_per_minute": 150000000}, "context_limit": 1000000, "output_token_limit": 32768,}))
     # O1_MINI = "o1-mini", ModelMetadata(**(DEFAULT_OPENAI_METADATA.model_dump() | {
     #     "rate_limits": {"requests_per_minute": 30000, "tokens_per_minute": 150000000},
@@ -270,11 +270,9 @@ class OpenAIModels(str, EnumWithAttr):
     # """OpenAI web search model options."""
     GPT_4O_SEARCH_PREVIEW = "gpt-4o-search-preview", ModelMetadata(**(DEFAULT_OPENAI_SEARCH_METADATA.model_dump() | {
         "rate_limits": {"requests_per_minute": 1000, "tokens_per_minute": 3000000},
-        "web_search_tool_call_price_per_K": 25.0,
     }))
     GPT_4O_MINI_SEARCH_PREVIEW = "gpt-4o-mini-search-preview", ModelMetadata(**(DEFAULT_OPENAI_SEARCH_METADATA.model_dump() | {
         "rate_limits": {"requests_per_minute": 30000, "tokens_per_minute": 150000000},
-        "web_search_tool_call_price_per_K": 25.0,
     }))
 
     # GPT-5 series
@@ -519,7 +517,13 @@ DEFAULT_PERPLEXITY_SEARCH_METADATA = ModelMetadata(
     # return_images=True,
     # return_related_questions=True,
     search_context_size=True,  # Perplexity supports search context size
-    user_location=False  # Perplexity supports user location
+    user_location=False,  # Perplexity supports user location
+    perplexity_additional_request_price_by_search_context_per_K={
+        "low": 6.,
+        "medium": 10.,
+        "high": 14.,
+    },
+    web_search_tool_call_price_per_K=5.,
 )
 
 

@@ -906,7 +906,7 @@ IMPORTANT: while citing sources in the citations field, make sure to cite the so
     "input_node_id": "input_node",
     "output_node_id": "output_node",
     "runtime_config": {
-        "db_concurrent_pool_tier": "xlarge"
+        "db_concurrent_pool_tier": "large"
     },
 
     # State reducers - collect all results
@@ -1510,6 +1510,268 @@ def print_partial_statistics(overall_start_time: float,
     print(f"{'='*60}")
 
 
+async def run_single_batch_with_semaphore(
+    semaphore: asyncio.Semaphore,
+    input_csv: str,
+    batch_output_file: str,
+    batch_start: int,
+    batch_end: int,
+    batch_num: int,
+    total_batches: int,
+    delay: int = 0,
+    is_sequential: bool = False
+) -> Dict[str, Any]:
+    """
+    Run a single batch workflow with semaphore control for both parallel and sequential execution.
+    
+    Args:
+        semaphore: Asyncio semaphore to control concurrency
+        delay: Delay in seconds after batch completion (only for sequential mode)
+        is_sequential: If True, adds detailed progress reporting and delays
+    
+    Returns:
+        Dictionary containing batch results and timing information
+    """
+    async with semaphore:
+        if is_sequential:
+            print(f"{'='*60}")
+            print(f"BATCH {batch_num}/{total_batches}: Processing rows {batch_start}-{batch_end-1}")
+            print(f"{'='*60}")
+        else:
+            print(f"🔄 Starting Batch {batch_num}/{total_batches}: rows {batch_start}-{batch_end-1}")
+        
+        batch_status, batch_outputs, batch_duration, leads_processed = await run_batch_workflow(
+            input_csv=input_csv,
+            output_csv=batch_output_file,
+            batch_start=batch_start,
+            batch_end=batch_end,
+            batch_number=batch_num,
+            total_batches=total_batches
+        )
+        
+        # Return comprehensive batch result
+        result = {
+            'batch_num': batch_num,
+            'batch_start': batch_start,
+            'batch_end': batch_end,
+            'status': batch_status,
+            'outputs': batch_outputs,
+            'duration': batch_duration,
+            'leads_processed': leads_processed,
+            'avg_time_per_lead': batch_duration / leads_processed if leads_processed > 0 else 0,
+            'output_file': batch_output_file,
+            'success': batch_status and batch_status.status == WorkflowRunStatus.COMPLETED if batch_status else False,
+            'actual_delay_time': 0.0  # Will be updated if delay is applied
+        }
+        
+        # Print completion status
+        if result['success']:
+            print(f"✅ Batch {batch_num} completed in {batch_duration:.1f}s ({leads_processed} leads)")
+        else:
+            print(f"❌ Batch {batch_num} failed after {batch_duration:.1f}s")
+        
+        if is_sequential:
+            print(f"Batch {batch_num} completed. Progress: {batch_num}/{total_batches} batches")
+            
+            # Add delay between batches (except after the last batch) for sequential mode
+            if batch_num < total_batches and delay > 0:
+                print(f"⏳ Waiting {delay} seconds before next batch...")
+                delay_start_time = time.time()
+                await asyncio.sleep(delay)
+                delay_end_time = time.time()
+                actual_delay_time = delay_end_time - delay_start_time
+                result['actual_delay_time'] = actual_delay_time
+            print()
+        
+        return result
+
+
+async def run_batches_unified(
+    input_csv: str,
+    batch_folder_path: Path,
+    output_csv: str,
+    start_row: int,
+    actual_end_row: int,
+    batch_size: int,
+    total_batches: int,
+    batch_parallelism_limit: int,
+    stop_on_failure: bool,
+    batch_output_files: List[str],
+    delay: int = 0,
+    overall_start_time: float = None
+) -> tuple:
+    """
+    Run batches with semaphore-controlled concurrency (unified for both parallel and sequential modes).
+    
+    Args:
+        delay: Inter-batch delay in seconds (only applied when batch_parallelism_limit=1)
+        overall_start_time: Start time for partial statistics (only used for sequential mode failures)
+    
+    Returns:
+        Tuple of (successful_batches, failed_batches, batch_timings, total_leads_processed[, total_delay_time])
+        Returns total_delay_time only when batch_parallelism_limit=1 (sequential mode)
+    """
+    # Create semaphore to limit concurrent batches
+    semaphore = asyncio.Semaphore(batch_parallelism_limit)
+    is_sequential = batch_parallelism_limit == 1
+    
+    # Create batch tasks
+    batch_tasks = []
+    for batch_num in range(1, total_batches + 1):
+        batch_start = start_row + (batch_num - 1) * batch_size
+        batch_end = min(batch_start + batch_size, actual_end_row)
+        
+        # Create batch-specific output file
+        output_suffix = Path(output_csv).suffix
+        batch_output_file = batch_folder_path / f"batch_{batch_num:03d}_rows_{batch_start}-{batch_end-1}{output_suffix}"
+        batch_output_files.append(str(batch_output_file))
+        
+        # Create task for this batch
+        task = run_single_batch_with_semaphore(
+            semaphore=semaphore,
+            input_csv=input_csv,
+            batch_output_file=str(batch_output_file),
+            batch_start=batch_start,
+            batch_end=batch_end,
+            batch_num=batch_num,
+            total_batches=total_batches,
+            delay=delay,
+            is_sequential=is_sequential
+        )
+        batch_tasks.append(task)
+    
+    print(f"📊 Created {len(batch_tasks)} batch tasks for {'sequential' if is_sequential else 'parallel'} execution")
+    print(f"⚡ Running with concurrency limit: {batch_parallelism_limit}")
+    print()
+    
+    # Execute all batches concurrently
+    try:
+        if stop_on_failure:
+            # Use gather() with return_exceptions=False to stop on first failure
+            batch_results = await asyncio.gather(*batch_tasks, return_exceptions=False)
+        else:
+            # Use gather() with return_exceptions=True to collect all results
+            batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+    except Exception as e:
+        # Handle case where stop_on_failure=True and a batch failed
+        print(f"❌ Batch execution stopped due to failure: {str(e)}")
+        
+        # For sequential mode, provide partial statistics
+        if is_sequential and stop_on_failure and overall_start_time:
+            print_partial_statistics(
+                overall_start_time=overall_start_time,
+                batch_timings=[],  # No completed batches to report
+                total_leads_processed=0,
+                successful_batches=0,
+                failed_batches=1,
+                total_delay_time=0.0,
+                current_batch=1,  # Failed on first batch
+                total_batches=total_batches,
+                start_row=start_row,
+                batch_size=batch_size
+            )
+        
+        if stop_on_failure:
+            raise RuntimeError(f"Batch processing stopped due to batch failure: {str(e)}")
+        batch_results = []
+    
+    # Process results
+    successful_batches = 0
+    failed_batches = 0
+    batch_timings = []
+    total_leads_processed = 0
+    total_delay_time = 0.0  # Track delay time for sequential mode
+    
+    for i, result in enumerate(batch_results):
+        if isinstance(result, Exception):
+            # Handle exception results (when return_exceptions=True)
+            failed_batches += 1
+            batch_num = i + 1
+            print(f"❌ Batch {batch_num} failed with exception: {str(result)}")
+            
+            # For sequential mode with stop_on_failure, provide partial statistics
+            if is_sequential and stop_on_failure and overall_start_time:
+                print_partial_statistics(
+                    overall_start_time=overall_start_time,
+                    batch_timings=batch_timings,
+                    total_leads_processed=total_leads_processed,
+                    successful_batches=successful_batches,
+                    failed_batches=failed_batches,
+                    total_delay_time=total_delay_time,
+                    current_batch=batch_num,
+                    total_batches=total_batches,
+                    start_row=start_row,
+                    batch_size=batch_size
+                )
+                raise RuntimeError(f"Job stopped due to batch failure. Batch {batch_num} failed")
+            
+            # Add failed batch to timings with 0 stats
+            batch_timings.append({
+                'batch_num': batch_num,
+                'duration': 0.0,
+                'leads_processed': 0,
+                'avg_time_per_lead': 0.0
+            })
+        elif isinstance(result, dict):
+            # Handle successful batch results
+            if result['success']:
+                successful_batches += 1
+                total_leads_processed += result['leads_processed']
+            else:
+                failed_batches += 1
+                
+                # For sequential mode with stop_on_failure, provide partial statistics
+                if is_sequential and stop_on_failure and overall_start_time:
+                    print_partial_statistics(
+                        overall_start_time=overall_start_time,
+                        batch_timings=batch_timings,
+                        total_leads_processed=total_leads_processed,
+                        successful_batches=successful_batches,
+                        failed_batches=failed_batches,
+                        total_delay_time=total_delay_time,
+                        current_batch=result['batch_num'],
+                        total_batches=total_batches,
+                        start_row=start_row,
+                        batch_size=batch_size
+                    )
+                    raise RuntimeError(f"Job stopped due to batch failure. Batch {result['batch_num']} failed")
+            
+            # Track delay time for sequential mode
+            total_delay_time += result.get('actual_delay_time', 0.0)
+            
+            # Add to batch timings
+            batch_timings.append({
+                'batch_num': result['batch_num'],
+                'duration': result['duration'],
+                'leads_processed': result['leads_processed'],
+                'avg_time_per_lead': result['avg_time_per_lead']
+            })
+        else:
+            # Handle unexpected result type
+            failed_batches += 1
+            batch_num = i + 1
+            print(f"❌ Batch {batch_num} returned unexpected result type: {type(result)}")
+    
+    # Sort batch timings by batch number for consistent reporting
+    batch_timings.sort(key=lambda x: x['batch_num'])
+    
+    execution_mode = "SEQUENTIAL" if is_sequential else "PARALLEL"
+    print(f"\n📈 {execution_mode} EXECUTION SUMMARY:")
+    print(f"  Total batches: {total_batches}")
+    print(f"  Successful: {successful_batches}")
+    print(f"  Failed: {failed_batches}")
+    print(f"  Total leads processed: {total_leads_processed}")
+    if is_sequential and total_delay_time > 0:
+        print(f"  Total delay time: {total_delay_time:.1f}s")
+    print()
+    
+    # Return appropriate tuple based on mode (sequential mode includes delay time)
+    if is_sequential:
+        return successful_batches, failed_batches, batch_timings, total_leads_processed, total_delay_time
+    else:
+        return successful_batches, failed_batches, batch_timings, total_leads_processed
+
+
 async def main_batch_lead_scoring(input_csv: Optional[str] = None,
                                   output_csv: Optional[str] = None,
                                   batch_folder: Optional[str] = None,
@@ -1517,7 +1779,9 @@ async def main_batch_lead_scoring(input_csv: Optional[str] = None,
                                   end_row: Optional[int] = None,
                                   batch_size: int = 20,
                                   delay: int = 45,
-                                  stop_on_failure: bool = True):
+                                  stop_on_failure: bool = True,
+                                  run_batches_in_parallel: bool = True,
+                                  batch_parallelism_limit: int = 5):
     """
     Main function for batch processing lead scoring workflow.
     
@@ -1528,8 +1792,10 @@ async def main_batch_lead_scoring(input_csv: Optional[str] = None,
         start_row: Starting row index for processing (0-based, excluding header)
         end_row: Ending row index for processing (0-based, exclusive)
         batch_size: Number of leads to process in each batch
-        delay: Delay in seconds between consecutive batch workflows
+        delay: Delay in seconds between consecutive batch workflows (ignored for parallel processing)
         stop_on_failure: If True, stop processing and throw exception on batch failure
+        run_batches_in_parallel: If True, run batches concurrently instead of sequentially
+        batch_parallelism_limit: Maximum number of concurrent batches when parallel processing is enabled
     """
     print(f"--- Starting Batch Lead Scoring Workflow ---")
     print(f"Configuration:")
@@ -1538,7 +1804,13 @@ async def main_batch_lead_scoring(input_csv: Optional[str] = None,
     print(f"  Batch folder: {batch_folder}")
     print(f"  Row range: {start_row} to {end_row if end_row else 'end'}")
     print(f"  Batch size: {batch_size}")
-    print(f"  Inter-batch delay: {delay} seconds")
+    print(f"  Parallel processing: {run_batches_in_parallel}")
+    if run_batches_in_parallel:
+        print(f"  Max concurrent batches: {batch_parallelism_limit}")
+        if delay > 0:
+            print(f"  Inter-batch delay: {delay} seconds (ignored for parallel processing)")
+    else:
+        print(f"  Inter-batch delay: {delay} seconds")
     print(f"  Stop on failure: {stop_on_failure}")
     print()
     
@@ -1611,85 +1883,49 @@ async def main_batch_lead_scoring(input_csv: Optional[str] = None,
     failed_batches = 0
     
     # Timing tracking for batches
-    batch_timings = []
-    total_leads_processed = 0
-    total_delay_time = 0  # Track artificial delay time separately
     batch_processing_start_time = time.time()
     
-    # Process each batch sequentially
-    for batch_num in range(1, total_batches + 1):
-        batch_start = start_row + (batch_num - 1) * batch_size
-        batch_end = min(batch_start + batch_size, actual_end_row)
-        
-        # Create batch-specific output file in batch folder
-        output_suffix = Path(output_csv).suffix
-        batch_output_file = batch_folder_path / f"batch_{batch_num:03d}_rows_{batch_start}-{batch_end-1}{output_suffix}"
-        batch_output_files.append(str(batch_output_file))
-        
-        print(f"{'='*60}")
-        print(f"BATCH {batch_num}/{total_batches}: Processing rows {batch_start}-{batch_end-1}")
-        print(f"{'='*60}")
-        
-        # Run workflow for this batch
-        batch_status, batch_outputs, batch_duration, leads_processed = await run_batch_workflow(
+    # Choose processing mode based on configuration - use unified batch processor
+    if run_batches_in_parallel:
+        print(f"🚀 Running {total_batches} batches in PARALLEL mode (max {batch_parallelism_limit} concurrent)")
+        batch_result = await run_batches_unified(
             input_csv=input_csv,
-            output_csv=str(batch_output_file),
-            batch_start=batch_start,
-            batch_end=batch_end,
-            batch_number=batch_num,
-            total_batches=total_batches
+            batch_folder_path=batch_folder_path,
+            output_csv=output_csv,
+            start_row=start_row,
+            actual_end_row=actual_end_row,
+            batch_size=batch_size,
+            total_batches=total_batches,
+            batch_parallelism_limit=batch_parallelism_limit,
+            stop_on_failure=stop_on_failure,
+            batch_output_files=batch_output_files,
+            delay=0,  # No delays for parallel processing
+            overall_start_time=overall_start_time
         )
-        
-        # Track timing and processing stats
-        batch_timings.append({
-            'batch_num': batch_num,
-            'duration': batch_duration,
-            'leads_processed': leads_processed,
-            'avg_time_per_lead': batch_duration / leads_processed if leads_processed > 0 else 0
-        })
-        total_leads_processed += leads_processed
-        
-        # Check batch result
-        if batch_status and batch_status.status == WorkflowRunStatus.COMPLETED:
-            successful_batches += 1
-            print(f"✅ Batch {batch_num} completed in {batch_duration:.1f}s ({leads_processed} leads)")
-        else:
-            failed_batches += 1
-            error_msg = f"Batch {batch_num} failed"
-            print(f"❌ {error_msg}")
-            
-            if stop_on_failure:
-                print_partial_statistics(
-                    overall_start_time=overall_start_time,
-                    batch_timings=batch_timings,
-                    total_leads_processed=total_leads_processed,
-                    successful_batches=successful_batches,
-                    failed_batches=failed_batches,
-                    total_delay_time=total_delay_time,
-                    current_batch=batch_num,
-                    total_batches=total_batches,
-                    start_row=start_row,
-                    batch_size=batch_size
-                )
-                raise RuntimeError(f"Job stopped due to batch failure. {error_msg}")
-        
-        print(f"Batch {batch_num} completed. Progress: {batch_num}/{total_batches} batches")
-        
-        # Add delay between batches (except after the last batch)
-        if batch_num < total_batches and delay > 0:
-            print(f"⏳ Waiting {delay} seconds before next batch...")
-            delay_start_time = time.time()
-            await asyncio.sleep(delay)
-            delay_end_time = time.time()
-            actual_delay_time = delay_end_time - delay_start_time
-            total_delay_time += actual_delay_time
-        
-        print()
+        successful_batches, failed_batches, batch_timings, total_leads_processed = batch_result
+        total_delay_time = 0.0  # No delays in parallel mode
+    else:
+        print(f"🐌 Running {total_batches} batches in SEQUENTIAL mode")
+        batch_result = await run_batches_unified(
+            input_csv=input_csv,
+            batch_folder_path=batch_folder_path,
+            output_csv=output_csv,
+            start_row=start_row,
+            actual_end_row=actual_end_row,
+            batch_size=batch_size,
+            total_batches=total_batches,
+            batch_parallelism_limit=1,  # Sequential mode = semaphore limit 1
+            stop_on_failure=stop_on_failure,
+            batch_output_files=batch_output_files,
+            delay=delay,
+            overall_start_time=overall_start_time
+        )
+        successful_batches, failed_batches, batch_timings, total_leads_processed, total_delay_time = batch_result
     
     batch_processing_end_time = time.time()
     total_batch_processing_time = batch_processing_end_time - batch_processing_start_time
     
-    # Calculate pure workflow time (excluding artificial delays)
+    # Calculate pure workflow time (excluding artificial delays for sequential mode)
     pure_workflow_time = total_batch_processing_time - total_delay_time
     
     # Combine all batch results into final output file
@@ -1842,20 +2078,33 @@ Examples:
   # Continue processing even if some batches fail
   python wf_lead_scoring_personalized_talking_points.py --input leads.csv --output results.csv --continue-on-failure
   
+  # Run batches in parallel with custom concurrency limit (8 concurrent batches)
+  python wf_lead_scoring_personalized_talking_points.py --input leads.csv --output results.csv --batch-parallelism-limit 8
+  
+  # Run batches sequentially instead of in parallel
+  python wf_lead_scoring_personalized_talking_points.py --input leads.csv --output results.csv --sequential
+  
   # Combine existing batch files without running workflows
   python wf_lead_scoring_personalized_talking_points.py --output results.csv --combine-only
 
 Batch Processing:
   The workflow processes leads in batches to manage resource usage and provide progress tracking.
-  Each batch runs sequentially, with individual results stored in the batch folder.
+  Batches can run either in parallel (default) or sequentially, with results stored in the batch folder.
   After all batches complete, results are combined into the final output CSV file.
   
-  Default behavior: Process rows 0-250 in batches of 20 leads each with 60-second delays.
+  Default behavior: Process rows 0-200 in batches of 200 leads each in parallel (max 5 concurrent).
   Individual batch files are saved to batch_results/ folder and preserved for reference.
   
-  Inter-batch Delay:
+  Parallel Processing (Default):
+  By default, batches run in parallel with a concurrency limit of 5 simultaneous batches.
+  Use --batch-parallelism-limit to adjust concurrent batch count (e.g., --batch-parallelism-limit 8).
+  Use --sequential to disable parallel processing and run batches one at a time.
+  Inter-batch delays are ignored when running in parallel mode for maximum throughput.
+  
+  Sequential Processing:
+  Use --sequential to run batches one after another instead of in parallel.
   A configurable delay is added between batches to prevent API rate limiting and reduce server load.
-  Set --delay 0 to disable delays for faster processing (use with caution).
+  Set --delay 0 to disable delays for faster sequential processing (use with caution).
   
   Failure Handling:
   By default, the job stops and throws an exception if any batch fails (--stop-on-failure).
@@ -1890,11 +2139,13 @@ Example CSV formats supported:
     default_output_csv = str(current_file_dir / "results.csv")
     default_batch_folder = str(current_file_dir / "batch_results")
     start_row = 0
-    end_row = 200  # 250
-    batch_size = 200
+    end_row = 2  # 250
+    batch_size = 2
     default_delay_in_between_batches = 90  # 60
     default_stop_on_failure = True
     default_combine_batch_files_only_mode = False
+    default_run_batches_in_parallel = True
+    default_batch_parallelism_limit = 5
 
     kwargs = {
         'type': str,
@@ -1984,6 +2235,27 @@ Example CSV formats supported:
         help='Only combine existing batch files in batch folder without running workflows. Default: False'
     )
     
+    parser.add_argument(
+        '--run-batches-in-parallel',
+        action='store_true',
+        default=default_run_batches_in_parallel,
+        help=f'Run batches in parallel instead of sequentially. Default: {default_run_batches_in_parallel}'
+    )
+    
+    parser.add_argument(
+        '--sequential',
+        action='store_false',
+        dest='run_batches_in_parallel',
+        help='Run batches sequentially instead of in parallel. Overrides --run-batches-in-parallel'
+    )
+    
+    parser.add_argument(
+        '--batch-parallelism-limit',
+        type=int,
+        default=default_batch_parallelism_limit,
+        help=f'Maximum number of batches to run concurrently when parallel processing is enabled. Default: {default_batch_parallelism_limit}'
+    )
+    
     args = parser.parse_args()
     
     # Convert input path to absolute path and validate
@@ -2010,6 +2282,13 @@ Example CSV formats supported:
         
     if args.delay < 0:
         parser.error("Delay must be >= 0 seconds")
+        
+    if args.batch_parallelism_limit <= 0:
+        parser.error("Batch parallelism limit must be greater than 0")
+    
+    # Warn if delay is specified with parallel processing (delays don't apply to parallel execution)
+    if args.run_batches_in_parallel and args.delay > 0:
+        print("⚠️  Warning: Inter-batch delay is ignored when running batches in parallel")
     
     return args
 
@@ -2028,7 +2307,13 @@ if __name__ == "__main__":
     print(f"  Batch folder: {args.batch_folder}")
     print(f"  Row range: {args.start_row} to {args.end_row if args.end_row else 'end'}")
     print(f"  Batch size: {args.batch_size}")
-    print(f"  Inter-batch delay: {args.delay} seconds")
+    print(f"  Parallel processing: {args.run_batches_in_parallel}")
+    if args.run_batches_in_parallel:
+        print(f"  Max concurrent batches: {args.batch_parallelism_limit}")
+        if args.delay > 0:
+            print(f"  Inter-batch delay: {args.delay} seconds (ignored for parallel processing)")
+    else:
+        print(f"  Inter-batch delay: {args.delay} seconds")
     print(f"  Stop on failure: {args.stop_on_failure}")
     print(f"  Combine only: {args.combine_only}")
     print()
@@ -2048,5 +2333,7 @@ if __name__ == "__main__":
         end_row=args.end_row,
         batch_size=args.batch_size,
         delay=args.delay,
-        stop_on_failure=args.stop_on_failure
+        stop_on_failure=args.stop_on_failure,
+        run_batches_in_parallel=args.run_batches_in_parallel,
+        batch_parallelism_limit=args.batch_parallelism_limit
     ))

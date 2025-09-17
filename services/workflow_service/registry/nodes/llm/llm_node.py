@@ -2092,6 +2092,16 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                     web_search_billing_metadata["web_search_tool_calls"] = web_search_tool_calls
                     estimated_credits = web_search_tool_calls
                 
+                estimated_dollar_credits = estimated_credits * model_metadata.web_search_tool_call_price_per_K / 1000.
+
+                if model_metadata.provider == LLMModelProvider.PERPLEXITY and "deep-research" not in model_metadata.model_name:
+                    search_context_size = "low"
+                    if self.config.web_search_options and self.config.web_search_options.search_context_size:
+                        search_context_size = self.config.web_search_options.search_context_size
+                    estimated_dollar_credits = model_metadata.perplexity_additional_request_price_by_search_context_per_K.get(search_context_size, 10.) / 1000.
+                
+                estimated_credits = estimated_dollar_credits *  settings.LLM_TOKEN_COST_MARKUP_FACTOR
+                
                 # Adjust allocated credits with actual cost
                 from kiwi_app.billing.models import CreditType
                 from kiwi_app.billing.schemas import CreditConsumptionRequest
@@ -2101,8 +2111,8 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                         org_id=org_id,
                         user_id=user.id,
                         consumption_request=CreditConsumptionRequest(
-                            credit_type=CreditType.WEB_SEARCHES,
-                            credits_consumed=estimated_credits,
+                            credit_type=CreditType.DOLLAR_CREDITS,
+                            credits_consumed=estimated_dollar_credits,
                             event_type="web_search",
                             metadata=web_search_billing_metadata,
                         ),

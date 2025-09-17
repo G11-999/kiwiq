@@ -89,7 +89,7 @@ The `LLMNode` has a rich set of configuration options nested within the `node_co
           },
           // Example of a provider-inbuilt web search tool for OpenAI
           {
-            "tool_name": "web_search_preview", // Specific name for OpenAI's inbuilt web search
+            "tool_name": "web_search", // Specific name for OpenAI's inbuilt web search
             "is_provider_inbuilt_tool": true,
             "provider_inbuilt_user_config": { // Corresponds to OpenAIWebSearchToolConfig from openai_tools.py
               "search_context_size": "medium",
@@ -134,7 +134,7 @@ The `LLMNode` has a rich set of configuration options nested within the `node_co
           },
           // Provider-inbuilt tool (e.g., web search for OpenAI)
           {
-            "tool_name": "web_search_preview", // This is the specific name for OpenAI's web search tool
+            "tool_name": "web_search", // This is the specific name for OpenAI's web search tool
             "is_provider_inbuilt_tool": true,
             "provider_inbuilt_user_config": { 
               // This structure must match the config schema for the specific inbuilt tool
@@ -233,7 +233,7 @@ The `LLMNode` has a rich set of configuration options nested within the `node_co
     *   If enabled, `tools` **must** be a list defining allowed tools. Each item in the list is a `ToolConfig` object with the following fields:
         *   `tool_name`: **Required**.
             *   For *custom tools*: Must exactly match the `node_name` of a registered tool node in the platform that is designed for tool use.
-            *   For *provider-inbuilt tools*: Must be the specific name the provider uses for that tool (e.g., `"web_search_preview"` for OpenAI's search, `"code_interpreter"` for OpenAI's code interpreter, `"web_search"` for Anthropic's search). Check `config.py` or provider documentation.
+            *   For *provider-inbuilt tools*: Must be the specific name the provider uses for that tool (e.g., `"web_search"` for OpenAI's search, `"code_interpreter"` for OpenAI's code interpreter, `"web_search"` for Anthropic's search). Check `config.py` or provider documentation.
         *   `version`: (Optional) Specify a custom tool's version.
         *   `is_provider_inbuilt_tool`: (Optional, Default: `false`) Set to `true` if this tool is an internal capability provided by the LLM provider (like web search or code interpreter), rather than a custom workflow node.
         *   `provider_inbuilt_user_config`: (Optional) If `is_provider_inbuilt_tool` is `true`, this dictionary allows you to pass configuration specific to that inbuilt tool. The structure of this dictionary must match the configuration schema defined for that tool (e.g., `OpenAIWebSearchToolConfig` for OpenAI's web search, `OpenAICodeInterpreterToolConfig` for OpenAI's code interpreter, `AnthropicSearchToolConfig` for Anthropic's search). See `openai_tools.py` and `anthropic_tools.py` for examples.
@@ -365,7 +365,7 @@ OpenAI's Deep Research models (`o4-mini-deep-research` and `o3-deep-research`) a
 - **Autonomous**: These models will automatically conduct research by making multiple tool calls
 
 ### Required Configuration:
-1. **Web Search Tool** (mandatory): Must include `web_search_preview` in the tools array
+1. **Web Search Tool** (mandatory): Must include `web_search` in the tools array
 2. **Code Interpreter** (recommended): For data analysis and computational tasks
 3. **max_tool_calls**: Set this to control how many tool calls the model can make
 
@@ -386,7 +386,7 @@ OpenAI's Deep Research models (`o4-mini-deep-research` and `o3-deep-research`) a
   },
   "tools": [
     {
-      "tool_name": "web_search_preview",
+      "tool_name": "web_search",
       "is_provider_inbuilt_tool": true,
       "provider_inbuilt_user_config": {
         "search_context_size": "high"
