@@ -1,0 +1,6 @@
+Node Name,Evaluation Parameters,Score,Model Configuration
+Topic Generation Node (generate_topics),Strategic Alignment,,Provider: OpenAI
+,Information Integration,,Model: gpt-4.1
+,SEO Optimization,,Temperature: 1.0
+,Brand Consistency,,Max Tokens: 5000
+,Content Quality,,

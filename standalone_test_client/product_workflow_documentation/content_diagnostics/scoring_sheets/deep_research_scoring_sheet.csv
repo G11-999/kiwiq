@@ -1,0 +1,13 @@
+Node Name,Evaluation Parameters,Score,Model Configuration
+Content Strategy Research Node (content_strategy_research_llm),Strategic Intelligence Depth,,Provider: OpenAI
+,Market Research Integration,,Model: o4-mini-deep-research
+,Competitive Analysis Quality,,Temperature: 0.5
+,Industry-Specific Adaptation,,Max Tokens: 30000
+,Innovation Identification,,Tools: Web Search
+,Actionability of Insights,,
+
+LinkedIn Research Node (linkedin_research_llm),Peer Benchmarking Quality,,Provider: OpenAI
+,Competitive Intelligence Depth,,Model: o4-mini-deep-research
+,Engagement Strategy Relevance,,Temperature: 0.5
+,Platform-Specific Optimization,,Max Tokens: 30000
+,Executive Voice Development,,Tools: Web Search

@@ -38,7 +38,6 @@ class FeedbackManagementDecision(str, Enum):
     """Decisions for feedback management LLM"""
     SEND_TO_PLAYBOOK_GENERATOR = "send_to_playbook_generator"  # Clear on changes needed
     ASK_USER_CLARIFICATION = "ask_user_clarification"  # Need user clarification
-    FETCH_MORE_INFO = "fetch_more_info"  # Need to use tools to get more information
 
 # =============================================================================
 # PYDANTIC SCHEMAS
@@ -383,6 +382,12 @@ The playbook_selection_config contains all available plays with their play_ids:
 - Critical information is missing (which plays to add, what to change, etc.)
 - User references something not in the current context
 - You want to propose a few suggestion options and ask the user to pick/confirm
+- User is asking for more information about the plays 
+(IMPORTANT: Do not provide the play ids, those are for internal use only, instead provide play names and descriptions.
+structure the response as follows:
+    "play_name": "The David vs Goliath Playbook",
+    "play_description": "Win by systematically highlighting what incumbents structurally cannot or will not do."
+)
 
 **Example Clarification Format:**
 "I need clarification on your feedback. Could you specify:
@@ -399,7 +404,7 @@ Or reply with a custom preference."
 
 Important: Keep suggestions concise (3-5 options max), and still set action to ask_user_clarification.
 
-### 2. USE "fetch_more_info" WHEN:
+### 2. USE tools WHEN:
 - You need to search for additional play information using tools
 - User requests details not available in current context
 - You need to explore available resources before making changes
@@ -589,7 +594,7 @@ FEEDBACK_MANAGEMENT_PROMPT_TEMPLATE = """Analyze the user's feedback about the c
 2. **Determine** if the feedback is clear and actionable
 3. **Decide** on the appropriate action:
    - If unclear/vague → ask_user_clarification (with specific questions)
-   - If need more info → fetch_more_info (use tools to search)
+   - If need more info → use tools to search
    - If clear on changes → send_to_playbook_generator (with detailed instructions)
 
 ## WHEN TO ADD play_ids_to_fetch:
@@ -636,7 +641,7 @@ Based on this clarification, determine:
 2. Do you need to fetch any new plays or additional information?
 3. What specific instructions should be given to update the playbook?
 
-Proceed with the appropriate action (send_to_playbook_generator, fetch_more_info, or ask_user_clarification if still unclear)."""
+Proceed with the appropriate action (send_to_playbook_generator, tool use, or ask_user_clarification if still unclear)."""
 
 # Playbook Generator User Prompt Templates  
 PLAYBOOK_GENERATOR_USER_PROMPT_TEMPLATE = """Create a LinkedIn posting playbook using the information below. Focus exclusively on LinkedIn text posts that the executive can write and publish immediately.

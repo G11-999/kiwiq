@@ -1,0 +1,13 @@
+Node Name,Evaluation Parameters,Score,Model Configuration
+Data Scraping Operations (scrape_linkedin_profiles),Data Completeness,,No LLM - External API
+,Profile Information Accuracy,,Provider: Proxycurl
+,Posts Retrieval Success Rate,,
+,API Error Handling,,
+
+Data Filtering Operations (filter_posts),Filtering Accuracy,,No LLM - Programmatic
+,Allow-list Application,,
+,Data Preservation,,
+
+Data Storage Operations (store_raw_data & store_filtered_data),Storage Success Rate,,No LLM - Database Operations
+,Data Integrity,,
+,Versioning Accuracy,,

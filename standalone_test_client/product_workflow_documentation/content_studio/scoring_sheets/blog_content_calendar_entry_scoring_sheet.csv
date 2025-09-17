@@ -1,0 +1,19 @@
+Node Name,Evaluation Parameters,Score,Model Configuration
+Theme Suggestion Node (theme_suggestion_llm),Strategic Alignment,,Provider: OpenAI
+,Information Integration,,Model: gpt-4.1
+,SEO Optimization,,Temperature: 1.0
+,Brand Consistency,,Max Tokens: 5000
+,Content Quality,,
+
+Research Node (research_llm),Search Strategy Effectiveness,,Provider: Perplexity
+,Information Relevance,,Model: sonar-pro
+,Data Accuracy,,Temperature: 0.5
+,Coverage Completeness,,Max Tokens: 3000
+,Source Integration,,
+,Gap Transparency,,
+
+Topic Generation Node (generate_topics),Strategic Alignment,,Provider: OpenAI
+,Information Integration,,Model: gpt-4.1
+,SEO Optimization,,Temperature: 1.0
+,Brand Consistency,,Max Tokens: 5000
+,Content Quality,,

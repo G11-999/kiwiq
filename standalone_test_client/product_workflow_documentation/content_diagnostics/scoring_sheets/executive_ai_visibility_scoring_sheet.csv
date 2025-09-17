@@ -1,0 +1,11 @@
+Node Name,Evaluation Parameters,Score,Model Configuration
+Query Generation Node (generate_queries_llm),Query Authenticity,,Provider: Anthropic
+,Category Distribution,,Model: claude-sonnet-4-20250514
+,Executive Relevance,,Temperature: 0.3
+,Platform Optimization,,Max Tokens: 2000
+
+Visibility Report Generation Node (generate_visibility_report),Evidence Attribution Quality,,Provider: Anthropic
+,Metric Accuracy,,Model: claude-sonnet-4-20250514
+,Platform-Specific Analysis,,Temperature: 0.4
+,Strategic Recommendations,,Max Tokens: 10000
+,Executive Positioning Assessment,,

@@ -1398,7 +1398,7 @@ workflow_graph_schema = {
                                     {
                                         "field": "playbook_selection_config.play_id",
                                         "operator": "equals_any_of",
-                                        "value_path": "play_ids_to_fetch"
+                                        "value_path": "feedback_management_output.play_ids_to_fetch"
                                     }
                                 ],
                                 "logical_operator": "and"
@@ -2108,7 +2108,7 @@ workflow_graph_schema = {
             "dst_node_id": "filter_plays_for_update",
             "mappings": [
                 {"src_field": "playbook_selection_config", "dst_field": "playbook_selection_config"},
-                {"src_field": "feedback_management_output.play_ids_to_fetch", "dst_field": "play_ids_to_fetch"}
+                {"src_field": "feedback_management_output", "dst_field": "feedback_management_output"}
             ]
         },
         

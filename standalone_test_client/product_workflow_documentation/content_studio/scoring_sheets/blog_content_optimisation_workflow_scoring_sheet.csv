@@ -1,0 +1,37 @@
+Node Name,Evaluation Parameters,Score,Model Configuration
+Content Analyzer Node (content_analyzer_llm),Strategic Alignment,,Provider: Anthropic
+,Information Integration,,Model: claude-sonnet-4-20250514
+,SEO Optimization,,Temperature: 0.7
+,Brand Consistency,,Max Tokens: 8000
+,Content Quality,,
+
+SEO Intent Analyzer Node (seo_intent_analyzer_llm),Strategic Alignment,,Provider: Anthropic
+,Information Integration,,Model: claude-sonnet-4-20250514
+,SEO Optimization,,Temperature: 0.7
+,Brand Consistency,,Max Tokens: 8000
+,Content Quality,,
+
+Content Gap Finder Node (content_gap_finder_llm),Search Strategy Effectiveness,,Provider: Perplexity
+,Information Relevance,,Model: sonar-pro
+,Data Accuracy,,Temperature: 0.3
+,Coverage Completeness,,Max Tokens: 3000
+,Source Integration,,
+,Gap Transparency,,
+
+Content Gap Improvement Node (content_gap_improvement_llm),Strategic Alignment,,Provider: Anthropic
+,Information Integration,,Model: claude-sonnet-4-20250514
+,SEO Optimization,,Temperature: 0.7
+,Brand Consistency,,Max Tokens: 8000
+,Content Quality,,
+
+SEO Intent Improvement Node (seo_intent_improvement_llm),Strategic Alignment,,Provider: Anthropic
+,Information Integration,,Model: claude-sonnet-4-20250514
+,SEO Optimization,,Temperature: 0.7
+,Brand Consistency,,Max Tokens: 8000
+,Content Quality,,
+
+Structure Readability Improvement Node (structure_readability_improvement_llm),Strategic Alignment,,Provider: Anthropic
+,Information Integration,,Model: claude-sonnet-4-20250514
+,SEO Optimization,,Temperature: 0.7
+,Brand Consistency,,Max Tokens: 8000
+,Content Quality,,

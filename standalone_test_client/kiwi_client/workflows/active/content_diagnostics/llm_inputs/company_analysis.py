@@ -437,10 +437,10 @@ class ContentPillar(BaseModel):
 class FinalInsightsOutput(BaseModel):
     executive_summary: str = Field(description="High-level summary combining market insights with content strategy")
     
-    # Company Overview Section
-    what_company_does: str = Field(description="Clear, concise description of what the company does and their core business")
-    target_audience: str = Field(description="Specific description of who the company is targeting (demographics, job titles, company types)")
-    what_company_offers: List[str] = Field(description="Specific products, services, or solutions the company offers")
+    # # Company Overview Section
+    # what_company_does: str = Field(description="Clear, concise description of what the company does and their core business")
+    # target_audience: str = Field(description="Specific description of who the company is targeting (demographics, job titles, company types)")
+    # what_company_offers: List[str] = Field(description="Specific products, services, or solutions the company offers")
     
     # Market Intelligence Section
     critical_user_needs: List[CriticalUserNeed] = Field(description="Most important unmet user needs with demand indicators")

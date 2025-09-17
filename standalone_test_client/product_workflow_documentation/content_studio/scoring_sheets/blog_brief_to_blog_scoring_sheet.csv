@@ -1,0 +1,18 @@
+Node Name,Evaluation Parameters,Score,Model Configuration
+Knowledge Enrichment Node (knowledge_enrichment_llm),Search Strategy Effectiveness,,Provider: OpenAI
+,Information Relevance,,Model: gpt-5
+,Data Accuracy,,Temperature: 0.7
+,Coverage Completeness,,Max Tokens: 20000
+,Source Integration,,Tool Calling: Enabled
+,Gap Transparency,,Reasoning Effort: High
+
+Content Generation Node (content_generation_llm),Strategic Alignment,,Provider: OpenAI
+,Information Integration,,Model: gpt-4.1
+,SEO Optimization,,Temperature: 0.7
+,Brand Consistency,,Max Tokens: 20000
+,Content Quality,,
+
+Feedback Analysis Node (feedback_analysis_llm),Feedback Interpretation Accuracy,,Provider: OpenAI
+,Change Specification Clarity,,Model: gpt-4.1
+,Content Preservation,,Temperature: 0.7
+,Revision Scope,,Max Tokens: 20000

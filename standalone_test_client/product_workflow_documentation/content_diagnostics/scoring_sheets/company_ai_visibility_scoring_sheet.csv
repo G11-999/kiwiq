@@ -1,0 +1,29 @@
+Node Name,Evaluation Parameters,Score,Model Configuration
+Competitive Analysis Node (competitive_analysis_llm),Evidence Quality,,Provider: Perplexity
+,Competitive Accuracy,,Model: sonar-pro
+,Strategic Insight Depth,,Temperature: 0.8
+,Information Gap Recognition,,Max Tokens: 2000
+,Differentiation Clarity,,
+
+Blog Coverage Query Generation Node (generate_blog_queries),Query Authenticity,,Provider: Anthropic
+,Category Balance,,Model: claude-sonnet-4-20250514
+,Format Diversity,,Temperature: 0.3
+,Relevance to Company,,Max Tokens: 2000
+
+Company Comparison Query Generation Node (generate_company_comp_queries),Buyer Journey Alignment,,Provider: Anthropic
+,Stakeholder Coverage,,Model: claude-sonnet-4-20250514
+,Comparison Quality,,Temperature: 0.3
+,Technical Depth,,Max Tokens: 2000
+
+Blog Coverage Report Generation Node (generate_blog_coverage_report),Query Citation Completeness,,Provider: Anthropic
+,Metric Calculation Accuracy,,Model: claude-sonnet-4-20250514
+,Evidence Grounding,,Temperature: 0.4
+,Recommendation Quality,,Max Tokens: 10000
+,Competitive Analysis Depth,,
+,Gap Identification Precision,,
+
+Company Comparison Report Generation Node (generate_company_comp_report),Positioning Accuracy,,Provider: Anthropic
+,Evidence Quality,,Model: claude-sonnet-4-20250514
+,Differentiation Analysis,,Temperature: 0.4
+,Strategic Insight Value,,Max Tokens: 10000
+,Market Perception Assessment,,

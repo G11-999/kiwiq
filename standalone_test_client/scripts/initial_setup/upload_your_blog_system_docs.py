@@ -25,21 +25,20 @@ DOCUMENTS = [
         'name': 'Play 1: The Problem Authority Stack',  # Your document name
         'markdown_content': {"data": """## **Play 1: The Problem Authority Stack**
 
-### **1. Play Header & Overview**
+            ### **1. Play Header & Overview**
 
-**Play Name & One-Line Summary**: The Problem Authority Stack - Become the definitive expert on the problem before selling the solution.
+            **Play Name & One-Line Summary**: The Problem Authority Stack - Become the definitive expert on the problem before selling the solution.
 
-**Strategic Theory**: People trust those who deeply understand their pain. By comprehensively documenting every aspect of a business problem - its causes, costs, variations, and evolution - you become the trusted advisor before ever mentioning your product. This play works because it captures prospects earlier in their journey when they're still trying to understand and articulate their challenge. Authority built through problem expertise creates stronger positioning than solution-focused content because it demonstrates genuine understanding of customer reality.
+            **Strategic Theory**: People trust those who deeply understand their pain. By comprehensively documenting every aspect of a business problem - its causes, costs, variations, and evolution - you become the trusted advisor before ever mentioning your product. This play works because it captures prospects earlier in their journey when they're still trying to understand and articulate their challenge. Authority built through problem expertise creates stronger positioning than solution-focused content because it demonstrates genuine understanding of customer reality.
 
-**Expected Timeline**: 90 days to establish initial problem authority and build foundational expertise in the problem space.
+            **Expected Timeline**: 90 days to establish initial problem authority and build foundational expertise in the problem space.
 
-### **2. Content System Structure**
+            ### **2. Content System Structure**
 
-**Content Themes**:
+            **Content Themes**:
 
-```
-[LLM INSTRUCTION] Generate 3-5 core content themes for {COMPANY_NAME} using The Problem Authority Stack approach. Focus on different aspects of the problem they solve: root causes, industry variations, cost implications, measurement frameworks, and evolution trends. Consider their product ({PRODUCT_DESCRIPTION}), target audience ({TARGET_AUDIENCE}), main competitors ({COMPETITORS}), and unique insights ({UNIQUE_ADVANTAGES}). Each theme should position them as the definitive problem expert, not solution seller. Themes should cover: 1) Problem definition and scope, 2) Cost/impact quantification, 3) Root cause analysis, 4) Industry-specific variations, 5) Problem evolution and trends. Format: Theme name + 2-3 sentence description focusing on problem expertise angle.
-```
+            [LLM INSTRUCTION] Generate 3-5 core content themes for {COMPANY_NAME} using The Problem Authority Stack approach. Focus on different aspects of the problem they solve: root causes, industry variations, cost implications, measurement frameworks, and evolution trends. Consider their product ({PRODUCT_DESCRIPTION}), target audience ({TARGET_AUDIENCE}), main competitors ({COMPETITORS}), and unique insights ({UNIQUE_ADVANTAGES}). Each theme should position them as the definitive problem expert, not solution seller. Themes should cover: 1) Problem definition and scope, 2) Cost/impact quantification, 3) Root cause analysis, 4) Industry-specific variations, 5) Problem evolution and trends. Format: Theme name + 2-3 sentence description focusing on problem expertise angle.
+
 
 **Content Types**:
 - **Comprehensive Problem Reports**: Annual state-of-the-problem industry analyses

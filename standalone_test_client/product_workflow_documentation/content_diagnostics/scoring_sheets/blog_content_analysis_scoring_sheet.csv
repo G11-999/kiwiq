@@ -1,0 +1,32 @@
+Node Name,Evaluation Parameters,Score,Model Configuration
+Post Classification Node (classify_batch),Classification Accuracy,,Provider: OpenAI
+,Scoring Consistency,,Model: gpt-5
+,E-E-A-T Assessment Precision,,Temperature: 0.5
+,Topic Extraction Quality,,Max Tokens: 20000
+,Structural Element Detection,,
+,Cross-batch Consistency,,
+
+Funnel Stage Analysis Node (analyze_funnel_stage_group),Theme Extraction Accuracy,,Provider: OpenAI
+,Pattern Recognition,,Model: gpt-5
+,Strategic Insight Quality,,Temperature: 0.5
+,Evidence Grounding,,Max Tokens: 20000
+,,,Reasoning Effort: high
+
+Portfolio Batch Analysis Node (run_portfolio_batch_analysis),Metric Calculation Accuracy,,Provider: OpenAI
+,Topic Authority Assessment,,Model: gpt-5
+,Gap Identification Precision,,Temperature: 0.5
+,Strategic Recommendation Quality,,Max Tokens: 10000
+,Data Grounding,,Reasoning Effort: minimal
+
+Portfolio Final Synthesis Node (run_final_synthesis),Consolidation Accuracy,,Provider: OpenAI
+,Deduplication Quality,,Model: gpt-5
+,Summary Coherence,,Temperature: 0.5
+,Prioritization Logic,,Max Tokens: 20000
+,,,Reasoning Effort: high
+,,,Tools: Code Interpreter
+
+Technical SEO Analysis Node (run_technical_analysis),Metric Interpretation Accuracy,,Provider: OpenAI
+,Issue Prioritization,,Model: gpt-5
+,Recommendation Specificity,,Temperature: 0.5
+,Robots.txt Analysis Quality,,Max Tokens: 10000
+,,,Reasoning Effort: low

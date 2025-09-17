@@ -1,0 +1,48 @@
+Node Name,Evaluation Parameters,Score,Model Configuration
+Google Research Node (google_research_llm),Search Strategy Effectiveness,,Provider: Perplexity
+,Information Relevance,,Model: sonar-pro
+,Data Accuracy,,Temperature: 0.3
+,Coverage Completeness,,Max Tokens: 3000
+,Source Integration,,
+,Gap Transparency,,
+
+Reddit Research Node (reddit_research_llm),Search Strategy Effectiveness,,Provider: Perplexity
+,Information Relevance,,Model: sonar-pro
+,Data Accuracy,,Temperature: 0.3
+,Coverage Completeness,,Max Tokens: 3000
+,Source Integration,,Domain Filter: reddit.com, quora.com
+,Gap Transparency,,
+
+Topic Generation Node (topic_generation_llm),Strategic Alignment,,Provider: OpenAI
+,Information Integration,,Model: gpt-4.1
+,SEO Optimization,,Temperature: 0.7
+,Brand Consistency,,Max Tokens: 4000
+,Content Quality,,
+
+Feedback Analysis Node (analyze_topic_feedback),Feedback Interpretation Accuracy,,Provider: OpenAI
+,Change Specification Clarity,,Model: gpt-4.1
+,Content Preservation,,Temperature: 0.7
+,Revision Scope,,Max Tokens: 4000
+
+Topic Regeneration Node (topic_regeneration_llm),Strategic Alignment,,Provider: OpenAI
+,Information Integration,,Model: gpt-4.1
+,SEO Optimization,,Temperature: 0.7
+,Brand Consistency,,Max Tokens: 4000
+,Content Quality,,
+
+Brief Generation Node (brief_generation_llm),Strategic Alignment,,Provider: OpenAI
+,Information Integration,,Model: gpt-4.1
+,SEO Optimization,,Temperature: 0.7
+,Brand Consistency,,Max Tokens: 4000
+,Content Quality,,
+
+Brief Feedback Analysis Node (analyze_brief_feedback),Feedback Interpretation Accuracy,,Provider: OpenAI
+,Change Specification Clarity,,Model: gpt-4.1
+,Content Preservation,,Temperature: 0.7
+,Revision Scope,,Max Tokens: 4000
+
+Brief Revision Node (brief_revision_llm),Strategic Alignment,,Provider: OpenAI
+,Information Integration,,Model: gpt-4.1
+,SEO Optimization,,Temperature: 0.7
+,Brand Consistency,,Max Tokens: 4000
+,Content Quality,,

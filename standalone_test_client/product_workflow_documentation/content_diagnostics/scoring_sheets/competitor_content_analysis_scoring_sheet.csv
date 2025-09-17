@@ -1,0 +1,7 @@
+Node Name,Evaluation Parameters,Score,Model Configuration
+Competitor Content Analysis Node (analyze_competitor_content),Data Accuracy,,Provider: Perplexity
+,Theme Extraction Quality,,Model: sonar-pro
+,E-E-A-T Assessment Precision,,Temperature: 0.5
+,Scoring Consistency,,Max Tokens: 4000
+,Strategic Insight Depth,,
+,Funnel Stage Distribution,,

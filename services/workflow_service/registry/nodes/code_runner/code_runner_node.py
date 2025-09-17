@@ -32,6 +32,9 @@ from workflow_service.registry.nodes.db.customer_data import (
 
 RUNNER_IMAGE = "py-runner:3.12"
 
+# MongoDB has a 16MB document size limit, so we enforce this for artifact files
+MAX_FILE_SIZE = 16 * 1024 * 1024  # 16 MB in bytes
+
 # --- Save Configuration Schemas ---
 
 class SaveFileConfig(BaseNodeConfig):
@@ -878,21 +881,21 @@ class CodeRunnerNode(BaseNode[CodeRunnerInputSchema, CodeRunnerOutputSchema, Cod
         self.info(f"Saving {len(artifacts)} output artifacts as customer data")
         
         for artifact in artifacts:
-            try:
-                saved_file = await self._save_single_artifact(
-                    artifact,
-                    execution_result,
-                    org_id,
-                    user,
-                    run_id,
-                    customer_data_service,
-                    save_overrides
-                )
-                if saved_file:
-                    saved_files.append(saved_file)
+            # try:
+            saved_file = await self._save_single_artifact(
+                artifact,
+                execution_result,
+                org_id,
+                user,
+                run_id,
+                customer_data_service,
+                save_overrides
+            )
+            if saved_file:
+                saved_files.append(saved_file)
                     
-            except Exception as e:
-                self.error(f"Failed to save artifact {artifact.get('relpath', 'unknown')}: {e}", exc_info=True)
+            # except Exception as e:
+            #     self.error(f"Failed to save artifact {artifact.get('relpath', 'unknown')}: {e}", exc_info=True)
         
         self.info(f"Successfully saved {len(saved_files)} artifacts as customer data")
         return saved_files
@@ -951,6 +954,14 @@ class CodeRunnerNode(BaseNode[CodeRunnerInputSchema, CodeRunnerOutputSchema, Cod
             with open(artifact_path, 'rb') as f:
                 file_content = f.read()
             
+            # Validate file size (MongoDB has 16MB document limit)
+            if len(file_content) > MAX_FILE_SIZE:
+                self.warning(f"File {filename} exceeds size limit: {len(file_content)} bytes > {MAX_FILE_SIZE} bytes")
+                error_msg = f"Artifact {filename} rejected - File size exceeds 16MB limit. File size: {len(file_content):,} bytes ({len(file_content) / 1024 / 1024:.2f} MB)"
+                self.error(error_msg)
+                raise ValueError(error_msg)
+                # return None
+            
             # Prepare data for storage (using raw binary format like file_processing.py)
             data_to_store = {
                 "source_filename": filename,
@@ -992,7 +1003,7 @@ class CodeRunnerNode(BaseNode[CodeRunnerInputSchema, CodeRunnerOutputSchema, Cod
             
         except Exception as e:
             self.error(f"Error saving artifact {artifact.get('relpath', 'unknown')}: {e}", exc_info=True)
-            return None
+            raise e
 
     def _get_save_config_for_file(
         self,

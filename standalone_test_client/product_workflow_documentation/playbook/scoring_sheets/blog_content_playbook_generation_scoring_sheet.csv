@@ -1,0 +1,19 @@
+Node Name,Evaluation Parameters,Score,Model Configuration
+Play Selection Node (play_suggestion_llm),Strategic Diversity,,Provider: OpenAI
+,Evidence Quality,,Model: gpt-5
+,Source Attribution Accuracy,,Temperature: 0.7
+,Play Complementarity,,Max Tokens: 20000
+,Business Alignment,,
+,ID Validity,,
+
+Playbook Generator Node (playbook_generator_llm),Implementation Specificity,,Provider: OpenAI
+,Topic Relevance,,Model: gpt-5
+,Timeline Feasibility,,Temperature: 0.7
+,Source Attribution Quality,,Max Tokens: 20000
+,Strategic Coherence,,Tool Support: Document Search
+
+Feedback Management Node (feedback_management_llm),Feedback Interpretation Accuracy,,Provider: OpenAI
+,Action Decision Quality,,Model: gpt-5
+,Instruction Clarity,,Temperature: 0.7
+,Play ID Accuracy,,Max Tokens: 20000
+,,,Reasoning Effort: High

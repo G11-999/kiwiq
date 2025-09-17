@@ -1,0 +1,11 @@
+Node Name,Evaluation Parameters,Score,Model Configuration
+Content Generation Node (generate_content),Strategic Alignment,,Provider: OpenAI
+,Information Integration,,Model: gpt-5
+,SEO Optimization,,Temperature: 1.0
+,Brand Consistency,,Max Tokens: 4000
+,Content Quality,,
+
+Feedback Analysis Node (analyze_feedback),Feedback Interpretation Accuracy,,Provider: OpenAI
+,Change Specification Clarity,,Model: gpt-5
+,Content Preservation,,Temperature: 1.0
+,Revision Scope,,Max Tokens: 4000

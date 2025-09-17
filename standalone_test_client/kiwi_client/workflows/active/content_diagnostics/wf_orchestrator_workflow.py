@@ -132,7 +132,7 @@ LLM_MAX_TOKENS_FOR_STRATEGIC_RECOMMENDATIONS = 20000
 LLM_PROVIDER = "anthropic"
 LLM_MODEL = "claude-sonnet-4-20250514"
 LLM_TEMPERATURE = 0.7
-LLM_MAX_TOKENS = 4000
+LLM_MAX_TOKENS = 8000
 
 CACHE_ENABLED = True
 
@@ -2755,14 +2755,15 @@ async def main_test_orchestrator():
     
     # --- Test Inputs ---
     TEST_INPUTS = {
-        "entity_username": "test_run_example-user",
-    "company_name": "test_run_kiwiq",
+    "entity_username": "nikhilgupta1997",
+    "company_name": "limechat.ai",
     "run_linkedin_exec": True,
     "run_blog_analysis": True,
-    "linkedin_profile_url": "https://www.linkedin.com/in/example-user/",
-    "company_url": "https://kiwiq.ai",
-        "blog_start_urls": ["https://kiwiq.ai"] # Example blog start URL
-    }
+    "linkedin_profile_url": "https://www.linkedin.com/in/nikhilgupta1997/",
+    "company_url": "https://www.limechat.ai/blog",
+    "blog_start_urls": ["https://www.limechat.ai/blog"],
+    "include_only_paths": ["/blog"]
+}
     
     test_name = "Content Orchestrator Workflow Test"
     print(f"--- Starting {test_name} ---")

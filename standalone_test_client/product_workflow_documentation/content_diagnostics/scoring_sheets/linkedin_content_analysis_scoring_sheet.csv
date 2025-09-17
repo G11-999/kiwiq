@@ -1,0 +1,15 @@
+Node Name,Evaluation Parameters,Score,Model Configuration
+Theme Extraction Node (identify_themes_llm),Theme Distinctiveness,,Provider: OpenAI
+,Theme Relevance,,Model: gpt-4o
+,Evidence Quality,,Temperature: 0.5
+,Naming Clarity,,Max Tokens: 2000
+
+Post Classification Node (classify_batch_llm),Classification Accuracy,,Provider: OpenAI
+,Theme Assignment Quality,,Model: gpt-4o
+,Confidence Scoring Reliability,,Temperature: 0.5
+,Cross-batch Consistency,,Max Tokens: 10000
+
+Theme Analysis Node (analyze_theme_llm),Theme Performance Analysis,,Provider: OpenAI
+,Engagement Pattern Recognition,,Model: gpt-4o
+,Optimization Recommendation Quality,,Temperature: 0.5
+,Strategic Value,,Max Tokens: 5000

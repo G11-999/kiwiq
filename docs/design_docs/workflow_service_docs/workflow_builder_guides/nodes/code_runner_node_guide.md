@@ -95,6 +95,7 @@ RESULT = result
    - `persist_artifacts`: Whether to save output files as customer data (default: True)
    - `default_save_namespace`: Default namespace pattern for saved files. `{run_id}` is replaced with workflow run ID
    - `default_save_is_shared`: Default sharing setting for saved files
+   - **File Size Limit**: Output files are limited to 16MB due to MongoDB document size restrictions
 
 5. **Error Handling**:
    - `fail_node_on_code_error`: If True, node fails when code execution fails. If False, returns error info in output.
@@ -132,6 +133,8 @@ Your Python code runs in a secure environment with these global variables availa
 - **`FILES`**: Dictionary of loaded files (filename -> file path mapping) - available when files are loaded
 - **`OUT_DIR`**: String path to output directory where you can create files (typically "out/")
 - **`RESULT`**: Set this variable to return data from your code to the workflow
+
+**Important**: Files created in `OUT_DIR` must not exceed 16MB in size, as they will be rejected during the save process due to MongoDB document size limitations.
 
 ### Code Structure Example:
 
@@ -496,6 +499,7 @@ The node provides comprehensive error information:
 - **Timeout Errors**: Execution timeouts are handled gracefully
 - **Resource Limit Errors**: Memory or CPU limit violations are reported
 - **File Access Errors**: Problems loading or saving files are logged and reported
+- **File Size Errors**: Output files exceeding 16MB are rejected and logged as errors
 
 ## Notes for Non-Coders
 
@@ -509,3 +513,4 @@ The node provides comprehensive error information:
 - Set `fail_node_on_code_error` to `True` if you want the workflow to stop when code fails
 - Use `default_save_namespace` to control where output files are stored
 - Output files are automatically saved as customer data documents for later use
+- **Important**: Output files cannot exceed 16MB in size - larger files will be rejected with an error

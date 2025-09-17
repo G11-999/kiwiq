@@ -1,0 +1,55 @@
+Node Name,Evaluation Parameters,Score,Model Configuration
+LinkedIn Profile Analysis Report (generate_linkedin_profile_analysis_report),Data Synthesis Quality,,Provider: OpenAI
+,Profile Insight Depth,,Model: gpt-4o
+,Strategic Recommendations,,Temperature: 0.5
+,,,Max Tokens: 10000
+
+LinkedIn Content Strategy Report (generate_linkedin_content_strategy_report),Strategy Coherence,,Provider: OpenAI
+,Theme Integration,,Model: gpt-4o
+,Actionability,,Temperature: 0.5
+,Platform Optimization,,Max Tokens: 10000
+
+LinkedIn Executive Summary Report (generate_linkedin_executive_summary_report),Summary Clarity,,Provider: OpenAI
+,Key Insight Prioritization,,Model: gpt-4o
+,Executive Relevance,,Temperature: 0.5
+,,,Max Tokens: 5000
+
+LinkedIn Competitor Analysis Report (generate_linkedin_competitor_analysis_report),Competitive Intelligence Quality,,Provider: OpenAI
+,Differentiation Opportunities,,Model: gpt-4o
+,Benchmarking Accuracy,,Temperature: 0.5
+,,,Max Tokens: 10000
+
+LinkedIn Action Plan Report (generate_linkedin_action_plan_report),Timeline Feasibility,,Provider: OpenAI
+,Action Specificity,,Model: gpt-4o
+,Priority Alignment,,Temperature: 0.5
+,Resource Consideration,,Max Tokens: 10000
+
+Blog Content Analysis Report (generate_blog_content_analysis_report),Content Portfolio Assessment,,Provider: OpenAI
+,Gap Identification,,Model: gpt-4o
+,Quality Metrics Accuracy,,Temperature: 0.5
+,,,Max Tokens: 10000
+
+Blog SEO Strategy Report (generate_blog_seo_strategy_report),SEO Recommendation Quality,,Provider: OpenAI
+,Keyword Strategy Relevance,,Model: gpt-4o
+,Technical SEO Coverage,,Temperature: 0.5
+,,,Max Tokens: 10000
+
+Blog Competitor Intelligence Report (generate_blog_competitor_intelligence_report),Competitor Strategy Analysis,,Provider: OpenAI
+,Content Opportunity Identification,,Model: gpt-4o
+,Market Positioning Insights,,Temperature: 0.5
+,,,Max Tokens: 10000
+
+Blog Content Calendar Report (generate_blog_content_calendar_report),Topic Prioritization,,Provider: OpenAI
+,Publishing Schedule Feasibility,,Model: gpt-4o
+,Content Mix Balance,,Temperature: 0.5
+,,,Max Tokens: 10000
+
+Blog Executive Summary Report (generate_blog_executive_summary_report),Executive Communication Quality,,Provider: OpenAI
+,Strategic Priority Clarity,,Model: gpt-4o
+,ROI Focus,,Temperature: 0.5
+,,,Max Tokens: 5000
+
+Blog Action Plan Report (generate_blog_action_plan_report),Implementation Roadmap Clarity,,Provider: OpenAI
+,Resource Allocation,,Model: gpt-4o
+,Milestone Definition,,Temperature: 0.5
+,Success Metrics,,Max Tokens: 10000

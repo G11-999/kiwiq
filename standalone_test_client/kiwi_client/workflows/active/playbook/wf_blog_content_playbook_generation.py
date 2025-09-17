@@ -1818,7 +1818,7 @@ workflow_graph_schema = {
                                     {
                                         "field": "playbook_selection_config.play_id",
                                         "operator": "equals_any_of",
-                                        "value_path": "play_ids_to_fetch"
+                                        "value_path": "feedback_management_output.play_ids_to_fetch"
                                     }
                                 ],
                                 "logical_operator": "and"
@@ -2539,8 +2539,13 @@ workflow_graph_schema = {
                 {"src_field": "playbook", "dst_field": "additional_playbook_data"}
             ]
         },
-        
-        
+
+        {
+            "src_node_id": "load_selected_playbooks_for_update",
+            "dst_node_id": "construct_playbook_update_prompt",
+            "mappings": []
+        },
+         
         # State -> Check Play IDs to Fetch (provide feedback output)
         {
             "src_node_id": "$graph_state",
@@ -2578,7 +2583,7 @@ workflow_graph_schema = {
             "dst_node_id": "filter_plays_for_update",
             "mappings": [
                 {"src_field": "playbook_selection_config", "dst_field": "playbook_selection_config"},
-                {"src_field": "feedback_management_output.play_ids_to_fetch", "dst_field": "play_ids_to_fetch"}
+                {"src_field": "feedback_management_output", "dst_field": "feedback_management_output"}
             ]
         },
         
@@ -2906,31 +2911,31 @@ async def main_test_playbook_workflow():
     predefined_hitl_inputs = [
 # {"user_action":"revise_plays","feedback":"suggest some other plays","final_selected_plays":[{"play_id":"the_david_vs_goliath_playbook","play_name":"The David vs Goliath Playbook"},{"play_id":"the_practitioners_handbook","play_name":"The Practitioner's Handbook"},{"play_id":"the_vertical_dominator","play_name":"The Vertical Dominator"}]},
 
-# {
-#   "user_action": "approve_plays",
-#   "feedback": null,
-#   "final_selected_plays": [
-#     {
-#       "play_id": "the_david_vs_goliath_playbook",
-#       "play_name": "The David vs Goliath Playbook",
-#       "play_description": "Win by systematically highlighting what incumbents structurally cannot or will not do."
-#     },
-#     {
-#       "play_id": "the_practitioners_handbook",
-#       "play_name": "The Practitioner's Handbook",
-#       "play_description": "Share tactical, in-the-trenches expertise so deep that it becomes the industry's operational bible."
-#     },
-#     {
-#       "play_id": "the_vertical_dominator",
-#       "play_name": "The Vertical Dominator",
-#       "play_description": "Achieve category leadership by becoming the undisputed expert for one specific industry."
-#     }
-#   ]
-# },
+{
+  "user_action": "approve_plays",
+  "feedback": None,
+  "final_selected_plays": [
+    {
+      "play_id": "the_david_vs_goliath_playbook",
+      "play_name": "The David vs Goliath Playbook",
+      "play_description": "Win by systematically highlighting what incumbents structurally cannot or will not do."
+    },
+    {
+      "play_id": "the_practitioners_handbook",
+      "play_name": "The Practitioner's Handbook",
+      "play_description": "Share tactical, in-the-trenches expertise so deep that it becomes the industry's operational bible."
+    },
+    {
+      "play_id": "the_vertical_dominator",
+      "play_name": "The Vertical Dominator",
+      "play_description": "Achieve category leadership by becoming the undisputed expert for one specific industry."
+    }
+  ]
+},
 
-# {"user_action":"request_revisions","revision_feedback":"suggest some other plays which are relevant for my profile","generated_playbook":{"playbook_title":"TechVenture Solutions Blog Content Playbook: Dominating the SMB Digital Transformation Market","executive_summary":"TechVenture Solutions is positioned to capture significant market share in the SMB digital transformation space through strategic content plays that leverage your unique positioning as \"David vs Goliath,\" establish deep practitioner credibility, and dominate vertical-specific conversations. With a current diagnostic score of 6.8/10, this playbook addresses your core challenges of limited content resources and ROI measurement while capitalizing on your competitive advantages of SMB focus, exceptional customer support, and enterprise-grade features at accessible pricing. The three selected plays will establish thought leadership, generate qualified leads, and create measurable content ROI within 12 weeks of implementation.","content_plays":[{"play_name":"The David vs Goliath Playbook","implementation_strategy":"Position TechVenture Solutions as the scrappy, customer-focused alternative to enterprise giants. Create content that highlights how smaller, agile companies can outmaneuver larger competitors through better customer service, faster implementation, and more flexible pricing. Focus on authentic storytelling that resonates with SMB decision-makers who feel overlooked by enterprise solutions.","content_formats":["Comparison blog posts","Customer success stories","Behind-the-scenes content","Founder/executive thought leadership pieces","Video testimonials","Interactive comparison tools"],"example_topics":["Why SMBs Choose Agile Solutions Over Enterprise Giants","The Real Cost of Enterprise Software for Small Businesses","Customer Support That Actually Cares: Our Story","How We Built Enterprise Features for SMB Budgets","David vs Goliath: 5 Ways Small Companies Win"],"success_metrics":["Brand sentiment score improvement","Share of voice vs competitors","Customer acquisition cost reduction","Content engagement rates","Lead quality scores","Organic traffic growth"],"timeline":"8-10 weeks for full implementation","resource_requirements":"1 content strategist, 1 writer, 1 video producer, executive participation for authenticity"},{"play_name":"The Practitioner's Handbook","implementation_strategy":"Establish TechVenture Solutions as the go-to resource for practical digital transformation guidance. Create in-depth, actionable content that SMB leaders can immediately implement. Focus on tactical advice, step-by-step guides, and real-world applications that demonstrate deep understanding of SMB operational challenges.","content_formats":["Comprehensive how-to guides","Implementation checklists","Template downloads","Video tutorials","Webinar series","Interactive assessments","Podcast series"],"example_topics":["The Complete SMB Digital Transformation Checklist","Security Compliance Made Simple for Small Businesses","Integration Challenges: A Practitioner's Guide","AI Implementation for SMBs: Start Here","Measuring ROI on Digital Transformation"],"success_metrics":["Content download rates","Time spent on page","Return visitor rates","Email list growth","Webinar attendance","Content sharing rates","Lead nurturing progression"],"timeline":"10-12 weeks for comprehensive resource library","resource_requirements":"2 subject matter experts, 1 technical writer, 1 designer for templates, marketing automation setup"},{"play_name":"The Vertical Dominator","implementation_strategy":"Dominate specific industry verticals by creating highly targeted content that addresses unique challenges and opportunities in key SMB sectors. Focus on 2-3 high-potential verticals initially, creating comprehensive content ecosystems that establish TechVenture Solutions as the industry expert for digital transformation in those sectors.","content_formats":["Industry-specific case studies","Vertical market reports","Sector-focused webinars","Industry newsletter","Vertical-specific landing pages","Industry partnership content"],"example_topics":["Digital Transformation in Manufacturing SMBs","Healthcare Practice Management: Technology Solutions","Retail Revolution: SMB Digital Strategies","Professional Services Automation Guide","Construction Industry Tech Adoption"],"success_metrics":["Vertical market share growth","Industry-specific organic rankings","Qualified leads by vertical","Industry event speaking opportunities","Partnership development","Vertical content engagement"],"timeline":"12-16 weeks per vertical (staggered approach)","resource_requirements":"Industry research analyst, vertical-specific writers, industry relationship manager, targeted advertising budget"}],"reasoning_for_recommendations":"These three plays directly address TechVenture Solutions' competitive position and business goals. The David vs Goliath approach leverages your natural positioning against larger competitors while building authentic brand connection. The Practitioner's Handbook establishes the thought leadership you need while providing immediate value to prospects, addressing the content ROI challenge through clear lead generation metrics. The Vertical Dominator creates the industry-specific content you're lacking while allowing focused resource allocation. Together, these plays create a comprehensive content ecosystem that builds brand awareness, generates qualified leads, and establishes measurable thought leadership in the SMB digital transformation space.","overall_recommendations":"Start with The David vs Goliath Playbook for immediate brand differentiation and quick wins, as it requires the least resources and can generate early momentum. Simultaneously begin research for The Practitioner's Handbook to establish your content foundation. Once these are showing results (8-10 weeks), launch The Vertical Dominator focusing on your two highest-opportunity verticals. Implement robust analytics tracking from day one to measure content ROI and optimize resource allocation. Consider partnering with industry experts or freelance specialists to supplement your limited internal resources while maintaining quality and consistency.","next_steps":["Conduct competitive content analysis to identify specific David vs Goliath messaging opportunities","Interview 5-10 existing customers for authentic success stories and testimonials","Set up content performance tracking dashboard with ROI metrics","Identify and recruit subject matter experts for Practitioner's Handbook content","Research and prioritize 2-3 target verticals based on current customer concentration and market opportunity","Establish content calendar with staggered play implementation timeline","Create content templates and brand guidelines for consistency across plays","Set up lead scoring system to measure content-driven lead quality improvement"]}},
+{"user_action":"request_revisions","revision_feedback":"I need you to give me all the options of different plays that we have and I will select some other plays, i do not like the current plays","generated_playbook":{"playbook_title":"TechVenture Solutions Blog Content Playbook: Dominating the SMB Digital Transformation Market","executive_summary":"TechVenture Solutions is positioned to capture significant market share in the SMB digital transformation space through strategic content plays that leverage your unique positioning as \"David vs Goliath,\" establish deep practitioner credibility, and dominate vertical-specific conversations. With a current diagnostic score of 6.8/10, this playbook addresses your core challenges of limited content resources and ROI measurement while capitalizing on your competitive advantages of SMB focus, exceptional customer support, and enterprise-grade features at accessible pricing. The three selected plays will establish thought leadership, generate qualified leads, and create measurable content ROI within 12 weeks of implementation.","content_plays":[{"play_name":"The David vs Goliath Playbook","implementation_strategy":"Position TechVenture Solutions as the scrappy, customer-focused alternative to enterprise giants. Create content that highlights how smaller, agile companies can outmaneuver larger competitors through better customer service, faster implementation, and more flexible pricing. Focus on authentic storytelling that resonates with SMB decision-makers who feel overlooked by enterprise solutions.","content_formats":["Comparison blog posts","Customer success stories","Behind-the-scenes content","Founder/executive thought leadership pieces","Video testimonials","Interactive comparison tools"],"example_topics":["Why SMBs Choose Agile Solutions Over Enterprise Giants","The Real Cost of Enterprise Software for Small Businesses","Customer Support That Actually Cares: Our Story","How We Built Enterprise Features for SMB Budgets","David vs Goliath: 5 Ways Small Companies Win"],"success_metrics":["Brand sentiment score improvement","Share of voice vs competitors","Customer acquisition cost reduction","Content engagement rates","Lead quality scores","Organic traffic growth"],"timeline":"8-10 weeks for full implementation","resource_requirements":"1 content strategist, 1 writer, 1 video producer, executive participation for authenticity"},{"play_name":"The Practitioner's Handbook","implementation_strategy":"Establish TechVenture Solutions as the go-to resource for practical digital transformation guidance. Create in-depth, actionable content that SMB leaders can immediately implement. Focus on tactical advice, step-by-step guides, and real-world applications that demonstrate deep understanding of SMB operational challenges.","content_formats":["Comprehensive how-to guides","Implementation checklists","Template downloads","Video tutorials","Webinar series","Interactive assessments","Podcast series"],"example_topics":["The Complete SMB Digital Transformation Checklist","Security Compliance Made Simple for Small Businesses","Integration Challenges: A Practitioner's Guide","AI Implementation for SMBs: Start Here","Measuring ROI on Digital Transformation"],"success_metrics":["Content download rates","Time spent on page","Return visitor rates","Email list growth","Webinar attendance","Content sharing rates","Lead nurturing progression"],"timeline":"10-12 weeks for comprehensive resource library","resource_requirements":"2 subject matter experts, 1 technical writer, 1 designer for templates, marketing automation setup"},{"play_name":"The Vertical Dominator","implementation_strategy":"Dominate specific industry verticals by creating highly targeted content that addresses unique challenges and opportunities in key SMB sectors. Focus on 2-3 high-potential verticals initially, creating comprehensive content ecosystems that establish TechVenture Solutions as the industry expert for digital transformation in those sectors.","content_formats":["Industry-specific case studies","Vertical market reports","Sector-focused webinars","Industry newsletter","Vertical-specific landing pages","Industry partnership content"],"example_topics":["Digital Transformation in Manufacturing SMBs","Healthcare Practice Management: Technology Solutions","Retail Revolution: SMB Digital Strategies","Professional Services Automation Guide","Construction Industry Tech Adoption"],"success_metrics":["Vertical market share growth","Industry-specific organic rankings","Qualified leads by vertical","Industry event speaking opportunities","Partnership development","Vertical content engagement"],"timeline":"12-16 weeks per vertical (staggered approach)","resource_requirements":"Industry research analyst, vertical-specific writers, industry relationship manager, targeted advertising budget"}],"reasoning_for_recommendations":"These three plays directly address TechVenture Solutions' competitive position and business goals. The David vs Goliath approach leverages your natural positioning against larger competitors while building authentic brand connection. The Practitioner's Handbook establishes the thought leadership you need while providing immediate value to prospects, addressing the content ROI challenge through clear lead generation metrics. The Vertical Dominator creates the industry-specific content you're lacking while allowing focused resource allocation. Together, these plays create a comprehensive content ecosystem that builds brand awareness, generates qualified leads, and establishes measurable thought leadership in the SMB digital transformation space.","overall_recommendations":"Start with The David vs Goliath Playbook for immediate brand differentiation and quick wins, as it requires the least resources and can generate early momentum. Simultaneously begin research for The Practitioner's Handbook to establish your content foundation. Once these are showing results (8-10 weeks), launch The Vertical Dominator focusing on your two highest-opportunity verticals. Implement robust analytics tracking from day one to measure content ROI and optimize resource allocation. Consider partnering with industry experts or freelance specialists to supplement your limited internal resources while maintaining quality and consistency.","next_steps":["Conduct competitive content analysis to identify specific David vs Goliath messaging opportunities","Interview 5-10 existing customers for authentic success stories and testimonials","Set up content performance tracking dashboard with ROI metrics","Identify and recruit subject matter experts for Practitioner's Handbook content","Research and prioritize 2-3 target verticals based on current customer concentration and market opportunity","Establish content calendar with staggered play implementation timeline","Create content templates and brand guidelines for consistency across plays","Set up lead scoring system to measure content-driven lead quality improvement"]}},
 
-# {"user_action":"provide_clarification","clarification_response":"Add Problem Authority Stack + State of SMB Report, optimize for Lead gen"}
+# {"user_action":"provide_clarification","clarification_response":"the_ai_specialist, the_maturity_model_master, the_david_vs_goliath_playbook"}
 
 # {"user_action":"approve_playbook","revision_feedback":null,"generated_playbook":{"playbook_title":"TechVent"}}
 
@@ -2943,7 +2948,7 @@ async def main_test_playbook_workflow():
         workflow_graph_schema=workflow_graph_schema,
         initial_inputs=test_inputs,
         expected_final_status=WorkflowRunStatus.COMPLETED,
-        # hitl_inputs=predefined_hitl_inputs,
+        hitl_inputs=predefined_hitl_inputs,
         setup_docs=setup_docs,
         cleanup_docs=cleanup_docs,
         cleanup_docs_created_by_setup=False,

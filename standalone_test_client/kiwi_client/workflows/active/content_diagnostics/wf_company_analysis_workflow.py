@@ -548,7 +548,25 @@ workflow_graph_schema = {
             }
         },
 
-        # --- 16. Store Final Insights Report ---
+        # --- 16. Aggregate Both Reports ---
+        "aggregate_reports": {
+            "node_id": "aggregate_reports",
+            "node_name": "transform_data",
+            "node_config": {
+                "mappings": [
+                    {
+                        "source_path": "company_analysis_report",
+                        "destination_path": "aggregated_report.company_analysis"
+                    },
+                    {
+                        "source_path": "final_insights",
+                        "destination_path": "aggregated_report.final_insights_with_content_pillars"
+                    }
+                ]
+            }
+        },
+
+        # --- 17. Store Aggregated Report ---
         "store_final_insights_report": {
             "node_id": "store_final_insights_report",
             "node_name": "store_customer_data",
@@ -572,7 +590,7 @@ workflow_graph_schema = {
             }
         },
 
-        # --- 17. Output Node ---
+        # --- 18. Output Node ---
         "output_node": {
             "node_id": "output_node",
             "node_name": "output_node",
@@ -739,9 +757,16 @@ workflow_graph_schema = {
             {"src_field": "structured_output", "dst_field": "final_insights"}
         ]},
 
-        # Flow to store final insights report directly
-        {"src_node_id": "generate_final_insights", "dst_node_id": "store_final_insights_report", "mappings": [
-            {"src_field": "structured_output", "dst_field": "structured_output"}
+        # Flow to aggregate both reports
+        {"src_node_id": "generate_final_insights", "dst_node_id": "aggregate_reports", "mappings": []},
+        {"src_node_id": "$graph_state", "dst_node_id": "aggregate_reports", "mappings": [
+            {"src_field": "company_analysis_report", "dst_field": "company_analysis_report"},
+            {"src_field": "final_insights", "dst_field": "final_insights"}
+        ]},
+
+        # Flow from aggregated reports to store
+        {"src_node_id": "aggregate_reports", "dst_node_id": "store_final_insights_report", "mappings": [
+            {"src_field": "transformed_data", "dst_field": "structured_output"}
         ]},
         {"src_node_id": "$graph_state", "dst_node_id": "store_final_insights_report", "mappings": [
             {"src_field": "company_name", "dst_field": "company_name"}
@@ -749,7 +774,7 @@ workflow_graph_schema = {
 
         # Output
         {"src_node_id": "store_final_insights_report", "dst_node_id": "output_node", "mappings": [
-            {"src_field": "passthrough_data", "dst_field": "final_insights_report"}
+            {"src_field": "passthrough_data", "dst_field": "aggregated_report"}
         ]},
         {"src_node_id": "$graph_state", "dst_node_id": "output_node", "mappings": [
             {"src_field": "company_analysis_report", "dst_field": "company_analysis"},
@@ -805,7 +830,7 @@ async def validate_output(outputs: Optional[Dict[str, Any]]) -> bool:
     assert 'company_name' in outputs, "Validation Failed: 'company_name' missing."
     assert 'company_analysis' in outputs, "Validation Failed: 'company_analysis' missing."
     assert 'final_insights_with_content_pillars' in outputs, "Validation Failed: 'final_insights_with_content_pillars' missing."
-    assert 'final_insights_report' in outputs, "Validation Failed: 'final_insights_report' missing."
+    assert 'aggregated_report' in outputs, "Validation Failed: 'aggregated_report' missing."
     
     # Validate company analysis structure
     company_analysis = outputs.get('company_analysis', {})
@@ -822,9 +847,11 @@ async def validate_output(outputs: Optional[Dict[str, Any]]) -> bool:
     assert 'market_demand_summary' in final_insights, "Validation Failed: Market demand summary missing."
     assert 'implementation_roadmap' in final_insights, "Validation Failed: Implementation roadmap missing."
     
-    # Validate final insights report structure
-    final_insights_report = outputs.get('final_insights_report', {})
-    assert final_insights_report, "Validation Failed: Final insights report is empty."
+    # Validate aggregated report structure
+    aggregated_report = outputs.get('aggregated_report', {})
+    assert aggregated_report, "Validation Failed: Aggregated report is empty."
+    assert 'company_analysis' in aggregated_report, "Validation Failed: Company analysis missing from aggregated report."
+    assert 'final_insights_with_content_pillars' in aggregated_report, "Validation Failed: Final insights missing from aggregated report."
     
     # Check that we have at least 5 content pillars
     content_pillars = final_insights.get('content_pillars', [])
@@ -839,7 +866,8 @@ async def validate_output(outputs: Optional[Dict[str, Any]]) -> bool:
     logger.info(f"   Company name: {outputs.get('company_name')}")
     logger.info(f"   Company analysis sections: {list(company_analysis.keys())}")
     logger.info(f"   Final insights sections: {list(final_insights.keys())}")
-    logger.info(f"   Final insights report available: {bool(final_insights_report)}")
+    logger.info(f"   Aggregated report available: {bool(aggregated_report)}")
+    logger.info(f"   Aggregated report sections: {list(aggregated_report.keys())}")
     logger.info(f"   Content pillars count: {len(content_pillars)}")
     logger.info(f"   Critical user needs count: {len(final_insights.get('critical_user_needs', []))}")
     logger.info(f"   Market opportunities count: {len(final_insights.get('market_opportunities', []))}")

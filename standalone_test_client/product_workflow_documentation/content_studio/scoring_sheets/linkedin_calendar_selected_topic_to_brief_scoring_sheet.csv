@@ -1,0 +1,11 @@
+Node Name,Evaluation Parameters,Score,Model Configuration
+Brief Generation Node (brief_generation_llm),Strategic Alignment,,Provider: Anthropic
+,Information Integration,,Model: claude-sonnet-4-20250514
+,SEO Optimization,,Temperature: 0.7
+,Brand Consistency,,Max Tokens: 4000
+,Content Quality,,
+
+Brief Feedback Analysis Node (analyze_brief_feedback),Feedback Interpretation Accuracy,,Provider: Anthropic
+,Change Specification Clarity,,Model: claude-sonnet-4-20250514
+,Content Preservation,,Temperature: 0.5
+,Revision Scope,,Max Tokens: 3000
