@@ -401,6 +401,14 @@ def configure_database(**overrides: Any) -> None:
         overrides['worker_pool_max_size'] = worker_pool_max_size
         overrides['worker_pool_size'] = worker_pool_size
         overrides['pool_timeout'] = global_settings.WORKER_LARGE_POOL_TIMEOUT
+    elif pool_tier_size == "xlarge":
+        pool_size = global_settings.WORKER_XLARGE_POOL_SIZE
+        max_overflow = global_settings.WORKER_XLARGE_MAX_OVERFLOW
+        worker_pool_max_size = global_settings.WORKER_XLARGE_LANGGRAPH_POOL_MAX_SIZE
+        worker_pool_size = global_settings.WORKER_XLARGE_LANGGRAPH_POOL_SIZE
+        overrides['worker_pool_max_size'] = worker_pool_max_size
+        overrides['worker_pool_size'] = worker_pool_size
+        overrides['pool_timeout'] = global_settings.WORKER_XLARGE_POOL_TIMEOUT
     else:
         raise ValueError(f"Invalid pool tier size: {pool_tier_size}")
     overrides['pool_size'] = pool_size

@@ -74,6 +74,12 @@ class Settings(BaseSettings):
     WORKER_LARGE_LANGGRAPH_POOL_MAX_SIZE: int = 50  # max upper bound
     WORKER_LARGE_POOL_TIMEOUT: int = 60
 
+    WORKER_XLARGE_POOL_SIZE: int = 50
+    WORKER_XLARGE_MAX_OVERFLOW: int = 50  # additive with pool size for max size
+    WORKER_XLARGE_LANGGRAPH_POOL_SIZE: int = 50
+    WORKER_XLARGE_LANGGRAPH_POOL_MAX_SIZE: int = 100  # max upper bound
+    WORKER_XLARGE_POOL_TIMEOUT: int = 90
+
     # # Worker/Prefect settings - MUST support 50 concurrent workflows
     # # Each workflow needs ~3 connections (checkpointer, DB ops, external context)
     # # Recommended: 50 workflows × 3 connections = 150, with some pooling efficiency

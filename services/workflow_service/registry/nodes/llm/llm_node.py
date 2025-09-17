@@ -2056,7 +2056,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
         agent_actions = LLMNode._parse_agent_actions(response)
 
         web_search_tool_calls = None
-        if isinstance(response.content, list):
+        if isinstance(response.content, list) and model_metadata.provider in [LLMModelProvider.ANTHROPIC, LLMModelProvider.OPENAI]:
             web_search_tool_calls = 0
             for _message in response.content:
                 if model_metadata.provider == LLMModelProvider.ANTHROPIC:

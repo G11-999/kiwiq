@@ -1,4 +1,6 @@
 """
+it costs ~15 cents / final filtered enriched lead, $10.39 for 73 leads, pretty expensive honestly; I processed 100 leads in parallel in ~10-11 mins
+
 Lead Scoring and Personalized Talking Points Generation Workflow
 
 This workflow demonstrates:
@@ -43,88 +45,6 @@ TEST_USER_ID=
 ```
 
 NOTE: entries in leads.csv must be in same format as : https://docs.google.com/spreadsheets/d/10fgZhj7vQll-TkYMSKr5ogA0G3MSJ0BteZ8o1ETyGEM/edit?gid=0#gid=0
-
-Also, above file processes 0 - 20 row indexes, i.e. 20 rows at a time by default and works without being rate limited
-
-
-
-
-
-# Sample Results
-
-============================================================
-COMBINING BATCH RESULTS
-============================================================
-INFO:__main__:Combining 6 batch result files into: /path/to/project/standalone_test_client/kiwi_client/workflows/active/sdr/results.csv
-INFO:__main__:Loaded 8 results from batch file 1: /path/to/project/standalone_test_client/kiwi_client/workflows/active/sdr/batch_results/batch_001_rows_165-179.csv
-INFO:__main__:Loaded 9 results from batch file 2: /path/to/project/standalone_test_client/kiwi_client/workflows/active/sdr/batch_results/batch_002_rows_180-194.csv
-INFO:__main__:Loaded 6 results from batch file 3: /path/to/project/standalone_test_client/kiwi_client/workflows/active/sdr/batch_results/batch_003_rows_195-209.csv
-INFO:__main__:Loaded 5 results from batch file 4: /path/to/project/standalone_test_client/kiwi_client/workflows/active/sdr/batch_results/batch_004_rows_210-224.csv
-INFO:__main__:Loaded 9 results from batch file 5: /path/to/project/standalone_test_client/kiwi_client/workflows/active/sdr/batch_results/batch_005_rows_225-239.csv
-INFO:__main__:Loaded 5 results from batch file 6: /path/to/project/standalone_test_client/kiwi_client/workflows/active/sdr/batch_results/batch_006_rows_240-249.csv
-INFO:__main__:Successfully combined 42 total results into: /path/to/project/standalone_test_client/kiwi_client/workflows/active/sdr/results.csv
-INFO:__main__:Final Summary: 42/42 leads qualified, Average ContentQ Score: 76.6
-✓ All batch results combined into: /path/to/project/standalone_test_client/kiwi_client/workflows/active/sdr/results.csv
-✓ Individual batch files preserved in: /path/to/project/standalone_test_client/kiwi_client/workflows/active/sdr/batch_results
-============================================================
-BATCH PROCESSING COMPLETE
-============================================================
-Total batches: 6
-Successful batches: 6
-Failed batches: 0
-Final merged results saved to: /path/to/project/standalone_test_client/kiwi_client/workflows/active/sdr/results.csv
-Individual batch files available in: /path/to/project/standalone_test_client/kiwi_client/workflows/active/sdr/batch_results
-
-============================================================
-COMPREHENSIVE TIMING STATISTICS
-============================================================
-📊 OVERALL PERFORMANCE:
-  Total execution time: 1638.9 seconds (27.3 minutes)
-  Pure workflow time: 1188.8 seconds (19.8 minutes)
-  Artificial delay time: 450.0 seconds (7.5 minutes)
-  Setup/cleanup time: 0.0 seconds
-  Total leads processed: 42
-  Pure workflow time per lead: 28.3 seconds
-  Workflow throughput (excluding delays): 127.2 leads/hour
-  Overall throughput (including delays): 92.3 leads/hour
-
-⏰ TIME BREAKDOWN:
-  Pure workflow processing: 72.5% (1188.8s)
-  Artificial delays: 27.5% (450.0s)
-  Setup/cleanup overhead: 0.0% (0.0s)
-  Processing efficiency: 72.5% (workflow time / total processing time)
-
-⏱️  BATCH PERFORMANCE:
-  Average batch duration: 198.1 seconds
-  Fastest batch: 160.8 seconds
-  Slowest batch: 240.8 seconds
-  Batch duration std dev: 27.4 seconds
-
-🎯 PER-LEAD PERFORMANCE:
-  Average time per lead: 29.2 seconds
-  Fastest lead processing: 24.8 seconds
-  Slowest lead processing: 35.1 seconds
-
-📈 DETAILED BATCH BREAKDOWN:
-  Batch  1: 198.7s total,  8 leads, 24.8s/lead
-  Batch  2: 224.3s total,  9 leads, 24.9s/lead
-  Batch  3: 189.0s total,  6 leads, 31.5s/lead
-  Batch  4: 175.3s total,  5 leads, 35.1s/lead
-  Batch  5: 240.8s total,  9 leads, 26.8s/lead
-  Batch  6: 160.8s total,  5 leads, 32.2s/lead
-
-🔮 PERFORMANCE PROJECTIONS:
-  Pure workflow time estimates (excluding delays):
-    100 leads: 47.2 minutes
-    500 leads: 235.9 minutes
-    1000 leads: 471.8 minutes
-  Total time estimates (including 90s delays):
-    100 leads: 68.2 minutes (15.0 batches)
-    500 leads: 342.4 minutes (72.0 batches)
-    1000 leads: 684.8 minutes (143.0 batches)
-============================================================
-
-
 
 # Some key improvements:
 some companies are not from US, eg from Nigeria, etc; we can include location in column and qualification criterion
@@ -986,7 +906,7 @@ IMPORTANT: while citing sources in the citations field, make sure to cite the so
     "input_node_id": "input_node",
     "output_node_id": "output_node",
     "runtime_config": {
-        "db_concurrent_pool_tier": "large"
+        "db_concurrent_pool_tier": "xlarge"
     },
 
     # State reducers - collect all results
@@ -1970,8 +1890,8 @@ Example CSV formats supported:
     default_output_csv = str(current_file_dir / "results.csv")
     default_batch_folder = str(current_file_dir / "batch_results")
     start_row = 0
-    end_row = 100  # 250
-    batch_size = 100
+    end_row = 200  # 250
+    batch_size = 200
     default_delay_in_between_batches = 90  # 60
     default_stop_on_failure = True
     default_combine_batch_files_only_mode = False

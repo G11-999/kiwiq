@@ -125,7 +125,7 @@ class RuntimeConfig(BaseModel):
     Schema for the runtime configuration of the workflow graph.
     """
     model_config = ConfigDict(extra='forbid')  # Allow additional arguments during model init!
-    db_concurrent_pool_tier: Literal["small", "medium", "large"] = Field(default="small", description="Tier of the worker pool")
+    db_concurrent_pool_tier: Literal["small", "medium", "large", "xlarge"] = Field(default="small", description="Tier of the worker pool")
 
 
 class GraphSchema(BaseModel):
