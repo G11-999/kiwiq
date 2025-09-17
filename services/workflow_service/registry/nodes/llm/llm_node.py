@@ -2086,6 +2086,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                     "citation_count": citation_count,
                     "node_id": self.node_id,
                     "node_name": self.node_name,
+                    "operation_id": run_job.run_id,
                 }
                 if web_search_tool_calls is not None:
                     web_search_billing_metadata["web_search_tool_calls"] = web_search_tool_calls
