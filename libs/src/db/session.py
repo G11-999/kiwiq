@@ -392,6 +392,7 @@ def configure_database(**overrides: Any) -> None:
         worker_pool_size = global_settings.WORKER_MEDIUM_LANGGRAPH_POOL_SIZE
         overrides['worker_pool_max_size'] = worker_pool_max_size
         overrides['worker_pool_size'] = worker_pool_size
+        overrides['pool_timeout'] = global_settings.WORKER_MEDIUM_POOL_TIMEOUT
     elif pool_tier_size == "large":
         pool_size = global_settings.WORKER_LARGE_POOL_SIZE
         max_overflow = global_settings.WORKER_LARGE_MAX_OVERFLOW
@@ -399,6 +400,7 @@ def configure_database(**overrides: Any) -> None:
         worker_pool_size = global_settings.WORKER_LARGE_LANGGRAPH_POOL_SIZE
         overrides['worker_pool_max_size'] = worker_pool_max_size
         overrides['worker_pool_size'] = worker_pool_size
+        overrides['pool_timeout'] = global_settings.WORKER_LARGE_POOL_TIMEOUT
     else:
         raise ValueError(f"Invalid pool tier size: {pool_tier_size}")
     overrides['pool_size'] = pool_size
@@ -487,6 +489,7 @@ async def get_async_pool() -> AsyncGenerator[AsyncConnectionPool, None]:
     # Extract worker pool configuration
     worker_pool_size = config['worker_pool_size']
     worker_pool_max_size = config['worker_pool_max_size']
+    pool_timeout = config['pool_timeout']
     
     # Create pool with configurable parameters
     pool = AsyncConnectionPool(
@@ -494,6 +497,7 @@ async def get_async_pool() -> AsyncGenerator[AsyncConnectionPool, None]:
         min_size=worker_pool_size,
         max_size=max(worker_pool_size, worker_pool_max_size),
         kwargs=pool_connection_kwargs,
+        timeout=pool_timeout,
     )
     try:
         # Open the pool asynchronously

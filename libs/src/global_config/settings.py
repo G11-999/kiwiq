@@ -64,13 +64,15 @@ class Settings(BaseSettings):
 
     WORKER_MEDIUM_POOL_SIZE: int = 10
     WORKER_MEDIUM_MAX_OVERFLOW: int = 15 # additive with pool size for max size
-    WORKER_MEDIUM_LANGGRAPH_POOL_SIZE: int = 7
-    WORKER_MEDIUM_LANGGRAPH_POOL_MAX_SIZE: int = 15  # max upper bound
+    WORKER_MEDIUM_LANGGRAPH_POOL_SIZE: int = 10
+    WORKER_MEDIUM_LANGGRAPH_POOL_MAX_SIZE: int = 25  # max upper bound
+    WORKER_MEDIUM_POOL_TIMEOUT: int = 45
 
     WORKER_LARGE_POOL_SIZE: int = 20
     WORKER_LARGE_MAX_OVERFLOW: int = 30  # additive with pool size for max size
-    WORKER_LARGE_LANGGRAPH_POOL_SIZE: int = 15
-    WORKER_LARGE_LANGGRAPH_POOL_MAX_SIZE: int = 30  # max upper bound
+    WORKER_LARGE_LANGGRAPH_POOL_SIZE: int = 20
+    WORKER_LARGE_LANGGRAPH_POOL_MAX_SIZE: int = 50  # max upper bound
+    WORKER_LARGE_POOL_TIMEOUT: int = 60
 
     # # Worker/Prefect settings - MUST support 50 concurrent workflows
     # # Each workflow needs ~3 connections (checkpointer, DB ops, external context)
