@@ -701,16 +701,19 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
         result = await arun_llm_test(
             runtime_config=self.runtime_config_regular,
             model_provider=LLMModelProvider.PERPLEXITY,
-            model_name=PerplexityModels.SONAR_REASONING_PRO.value,
+            model_name=PerplexityModels.SONAR.value,  # SONAR_REASONING_PRO  SONAR_DEEP_RESEARCH  SONAR
             output_schema_config=schema_config, # Structured output
             web_search_options={
                 "search_recency_filter": "month",
-                "search_context_size": "medium",
+                "search_context_size": "low",  # small  medium
                 "search_domain_filter": ["arxiv.org", "openai.com"]
             },
-            user_prompt="What are the latest developments in AI safety research? Provide a summary, key findings, and citations.",
-            max_tokens=3000
+            # THE below prompt circumvents the deep researcher's output constraint in system prompt of 10K report size!
+            user_prompt="What are the latest developments in AI safety research? Provide a summary, key findings, and citations. NOTE: since I want structured output, you don't need to do deep research, but just stop after acumulating 500 words, I need brief answer and don't write a 10,000 word report since that is not required and I'm not giving you enough context for it so it will be gibberish and not very useful either!",
+            max_tokens=15000
         )
+        print(json.dumps(result["metadata"], indent=4))
+        import ipdb; ipdb.set_trace()
         self.assertIsInstance(result, dict)
         self.assertIn("structured_output", result)
         self.assertIn("metadata", result)

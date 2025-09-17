@@ -9,7 +9,7 @@ import json
 import uuid
 import asyncio # Keep asyncio import
 from datetime import datetime, timezone # Add timezone
-from typing import List, Optional, Dict, Any, Union, Tuple
+from typing import List, Optional, Dict, Any, Union, Tuple, Type
 import copy
 
 from db.session import get_async_pool
@@ -38,6 +38,7 @@ from workflow_service.registry import registry
 from kiwi_app.workflow_app.workflow_config_override import apply_graph_override # Added import
 from kiwi_app.billing import services as billing_services
 from kiwi_app.billing.models import CreditType
+from workflow_service.registry.schemas.base import BaseNodeConfig
 
 # MongoDB Client and Event Schemas
 from mongo_client import AsyncMongoDBClient
@@ -1796,7 +1797,39 @@ class WorkflowService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Override graph schema is required"
             )
-            
+        
+        
+        node_configs = override_in.override_graph_schema.get("node_configs", [])
+        for node_config in node_configs:
+            node_name = node_config.get("node_name")
+            node_version = node_config.get("node_version")
+            try:
+                node_cls = self.db_registry.get_node(node_name=node_name, version=node_version)
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Node {node_name} (version {node_version}) not found: {str(e)}"
+                )
+            config_cls: Optional[Type[BaseNodeConfig]] = node_cls.config_schema_cls
+            if not config_cls:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Node {node_name} (version {node_version}) has no config schema"
+                )
+            if not user.is_superuser:
+                node_config_override = node_config.get("node_config")
+                if not node_config_override:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Node {node_name} (version {node_version}) has no config override!"
+                    )
+                is_valid, _ = config_cls.validate_only_user_editable_fields_provided_in_input(node_config_override)
+                if not is_valid:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Node {node_name} (version {node_version}) has non-user editable fields in config, only superuser can override non-user editable fields!"
+                    )
+                
         # If no user_id specified, use the current user's ID for user-specific overrides
         user_id = override_in.user_id
         if (not override_in.is_system_entity) and (not override_in.org_id) and (not override_in.user_id):
@@ -1845,7 +1878,9 @@ class WorkflowService:
                         base_graph_schema=base_graph_schema_model,
                         override_payload_dict=override_in.override_graph_schema, # This is the new override's schema payload
                         validate_schema=True, # This will trigger full validation including node configs
-                        db_registry=self.db_registry
+                        db_registry=self.db_registry,
+                        is_superuser=user.is_superuser,
+                        create_override_mode=True,
                     )
                     logger.info(f"Validation successful for override against workflow '{base_workflow_to_validate_against.name}'.")
                 except ValueError as e:
@@ -1995,7 +2030,9 @@ class WorkflowService:
                             base_graph_schema=base_graph_schema_model,
                             override_payload_dict=override_update.override_graph_schema, # This is the new override's schema payload from the update
                             validate_schema=True,
-                            db_registry=self.db_registry
+                            db_registry=self.db_registry,
+                            is_superuser=user.is_superuser,
+                            create_override_mode=True,
                         )
                         logger.info(f"Validation successful for updated override schema for override {override_id} against workflow '{base_workflow_to_validate_against.name}'.")
                     except ValueError as e:

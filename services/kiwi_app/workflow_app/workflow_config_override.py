@@ -457,7 +457,10 @@ def _deep_merge_dicts(
 async def _validate_updated_graph_schema(
     graph_config_dict: Dict[str, Any],
     db_registry: DBRegistry,
-    perform_detailed_validation: bool = True
+    perform_detailed_validation: bool = True,
+    is_superuser: bool = False,
+    create_override_mode: bool = False,
+
 ) -> Tuple[bool, bool, bool, Dict[str, List[str]]]:
     """
     Validates the merged graph configuration dictionary.
@@ -471,7 +474,10 @@ async def _validate_updated_graph_schema(
         db_registry (DBRegistry): An instance of DBRegistry for fetching node templates.
         perform_detailed_validation (bool): If True, performs node configuration
                                             and GraphBuilder validation. Defaults to True.
-        
+        is_superuser (bool): If True, the function will allow system entities to be validated.
+            Defaults to False.
+        create_override_mode (bool): If True, the function will operate in create override mode.
+            Defaults to False.
     Returns:
         Tuple[bool, bool, bool, Dict[str, List[str]]]: A tuple containing:
             - overall_is_valid (bool): True if all performed validations pass.
@@ -558,12 +564,17 @@ async def _validate_updated_graph_schema(
 
             try:
                 json_schema_for_node = config_schema_class.model_json_schema()
-                jsonschema.validate(
-                    instance=current_node_config_payload, # Use direct value
-                    schema=json_schema_for_node,
-                    format_checker=Draft202012Validator.FORMAT_CHECKER
-                )
-                workflow_logger.debug(f"Node {node_id} ({node_name}) JSONSchema configuration validated successfully.")
+                try:
+                    jsonschema.validate(
+                        instance=current_node_config_payload, # Use direct value
+                        schema=json_schema_for_node,
+                        format_checker=Draft202012Validator.FORMAT_CHECKER
+                    )
+                    workflow_logger.debug(f"Node {node_id} ({node_name}) JSONSchema configuration validated successfully.")
+                except Exception as e:
+                    workflow_logger.warning(f"Node {node_id} ({node_name}) JSONSchema configuration validation failed: {str(e)}")
+                    if (not is_superuser) and create_override_mode:
+                        raise e
                 
                 config_schema_class.model_validate(current_node_config_payload) # Use direct value
                 workflow_logger.debug(f"Node {node_id} ({node_name}) Pydantic configuration validated successfully.")
@@ -639,7 +650,9 @@ async def apply_graph_override(
     base_graph_schema: GraphSchema,
     override_payload_dict: Dict[str, Any],
     validate_schema: bool = False,
-    db_registry: Optional[DBRegistry] = None
+    db_registry: Optional[DBRegistry] = None,
+    create_override_mode: bool = False,
+    is_superuser: bool = False
 ) -> GraphSchema:
     """
     Applies a partial graph schema override to a base GraphSchema.
@@ -656,7 +669,10 @@ async def apply_graph_override(
             Defaults to False.
         db_registry (Optional[DBRegistry]): An instance of DBRegistry, required if
             `validate_schema` is True.
-
+        create_override_mode (bool): If True, the function will operate in create override mode.
+            Defaults to False.
+        is_superuser (bool): If True, the function will allow system entities to be validated.
+            Defaults to False.
     Returns:
         GraphSchema: The updated GraphSchema object after applying overrides.
 
@@ -761,7 +777,9 @@ async def apply_graph_override(
         is_valid, pydantic_valid, detailed_valid, errors = await _validate_updated_graph_schema(
             updated_graph_dict, 
             db_registry,
-            perform_detailed_validation=True # When applying override, always perform full validation if requested
+            perform_detailed_validation=True, # When applying override, always perform full validation if requested
+            is_superuser=is_superuser,
+            create_override_mode=create_override_mode,
         )
         if not is_valid:
             # Aggregate errors into a readable message

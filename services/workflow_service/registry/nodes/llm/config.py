@@ -92,6 +92,8 @@ class ModelMetadata(BaseModel):
     cached_token_price_per_M: float = 0.
     input_token_price_per_M: float = 0.
     output_token_price_per_M: float = 0.
+    citation_token_price_per_M: float = 0.  # these fields are only for perplexity deep-researcher!
+    reasoning_token_price_per_M: float = 0.  # these fields are only for perplexity deep-researcher!
     # tool call prices
     web_search_tool_call_price_per_K: float = 0.
 
@@ -537,7 +539,9 @@ class PerplexityModels(str, EnumWithAttr):
         "output_token_limit": 16384,
         "reasoning": True,
         "reasoning_effort_class": ["low", "medium", "high"],
-        "rate_limits": {"requests_per_minute": 100, }
+        "rate_limits": {"requests_per_minute": 100, },
+        "citation_token_price_per_M": 2.,
+        "reasoning_token_price_per_M": 3.,
     }))
     SONAR_REASONING_PRO = "sonar-reasoning-pro", ModelMetadata(**(DEFAULT_PERPLEXITY_SEARCH_METADATA.model_dump() | {
         "context_limit": 128000,
