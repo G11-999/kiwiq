@@ -388,11 +388,17 @@ def configure_database(**overrides: Any) -> None:
     elif pool_tier_size == "medium":
         pool_size = global_settings.WORKER_MEDIUM_POOL_SIZE
         max_overflow = global_settings.WORKER_MEDIUM_MAX_OVERFLOW
+        worker_pool_max_size = global_settings.WORKER_MEDIUM_LANGGRAPH_POOL_MAX_SIZE
+        worker_pool_size = global_settings.WORKER_MEDIUM_LANGGRAPH_POOL_SIZE
+        overrides['worker_pool_max_size'] = worker_pool_max_size
+        overrides['worker_pool_size'] = worker_pool_size
     elif pool_tier_size == "large":
         pool_size = global_settings.WORKER_LARGE_POOL_SIZE
         max_overflow = global_settings.WORKER_LARGE_MAX_OVERFLOW
         worker_pool_max_size = global_settings.WORKER_LARGE_LANGGRAPH_POOL_MAX_SIZE
+        worker_pool_size = global_settings.WORKER_LARGE_LANGGRAPH_POOL_SIZE
         overrides['worker_pool_max_size'] = worker_pool_max_size
+        overrides['worker_pool_size'] = worker_pool_size
     else:
         raise ValueError(f"Invalid pool tier size: {pool_tier_size}")
     overrides['pool_size'] = pool_size
