@@ -135,7 +135,16 @@ class WorkflowRunnerInput(DynamicSchema):
     This schema accepts arbitrary inputs that can be mapped to workflow inputs.
     Fields are dynamically accepted and processed based on configuration.
     """
-    pass
+    
+    # HITL functionality
+    hitl_inputs: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="HITL inputs for resuming workflow execution. If provided, the workflow will be resumed from HITL state."
+    )
+    subworkflow_run_id: Optional[str] = Field(
+        default=None,
+        description="Run ID of the subworkflow to resume from HITL state. Required when hitl_inputs is provided."
+    )
 
 
 class WorkflowRunnerOutput(BaseSchema):
@@ -208,6 +217,20 @@ class WorkflowRunnerOutput(BaseSchema):
         default=None,
         description="Parent workflow run ID (only set in subprocess mode)."
     )
+    
+    # HITL information
+    hitl_job_id: Optional[str] = Field(
+        default=None,
+        description="HITL job ID if workflow is waiting for human input."
+    )
+    hitl_request_schema: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="HITL response schema if workflow is waiting for human input."
+    )
+    hitl_request_details: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="HITL request details if workflow is waiting for human input."
+    )
 
 
 class WorkflowRunnerNode(BaseDynamicNode):  # [WorkflowRunnerInput, WorkflowRunnerOutput, WorkflowRunnerConfig]
@@ -244,6 +267,17 @@ class WorkflowRunnerNode(BaseDynamicNode):  # [WorkflowRunnerInput, WorkflowRunn
     - `_override_workflow_id`: Override the configured workflow ID
     - `_override_workflow_version`: Override the configured workflow version
     - `_thread_id`: Thread ID for conversational workflows
+    
+    ## HITL (Human-in-the-Loop) Support
+    
+    The node supports HITL workflows with the following features:
+    - `hitl_inputs`: If provided, the workflow will be resumed from HITL state with these inputs
+    - `subworkflow_run_id`: Required when `hitl_inputs` is provided. The run ID of the subworkflow to resume
+    - When a workflow reaches PENDING_HITL state, the output includes:
+      - `run_id`: ID of the subworkflow run that is waiting for HITL input
+      - `hitl_job_id`: ID of the HITL job requiring attention
+      - `hitl_request_schema`: JSON schema for the expected HITL response
+      - `hitl_request_details`: Details about what input is needed from the human
     
     ## Features
     
@@ -292,6 +326,18 @@ class WorkflowRunnerNode(BaseDynamicNode):  # [WorkflowRunnerInput, WorkflowRunn
             "past_context_posts_limit": "user_data.preferences.post_limit",
             "user_input": "content.prompt"
         }
+    }
+    ```
+    
+    ### Example 3: HITL Resume
+    ```json
+    {
+        "hitl_inputs": {
+            "user_decision": "approve",
+            "feedback": "Looks good, proceed with publishing"
+        },
+        "subworkflow_run_id": "550e8400-e29b-41d4-a716-446655440000",
+        "_thread_id": "conversation-123"
     }
     ```
     
@@ -356,7 +402,7 @@ class WorkflowRunnerNode(BaseDynamicNode):  # [WorkflowRunnerInput, WorkflowRunn
                         name=workflow_name,
                         version_tag=workflow_version,
                         owner_org_id=org_id,
-                        include_public=True,
+                        include_public=False,
                         include_system_entities=False,
                         include_public_system_entities=True,
                         user=user,
@@ -496,6 +542,50 @@ class WorkflowRunnerNode(BaseDynamicNode):  # [WorkflowRunnerInput, WorkflowRunn
         
         return filtered_outputs
 
+    async def _get_hitl_job_details(
+        self,
+        run_id: uuid.UUID,
+        workflow_service: 'WorkflowService',
+        org_id: uuid.UUID
+    ) -> Dict[str, Any]:
+        """
+        Fetch HITL job details for a workflow run in PENDING_HITL state.
+        
+        Args:
+            run_id: The workflow run ID to get HITL details for
+            workflow_service: Workflow service instance
+            org_id: Organization ID
+            
+        Returns:
+            Dict with HITL job details or empty dict if no pending HITL job found
+        """
+        try:
+            async with get_async_db_as_manager() as db:
+                # Get pending HITL jobs for this run
+                pending_hitl_jobs = await workflow_service.hitl_job_dao.get_pending_by_run(
+                    db, requesting_run_id=run_id
+                )
+                
+                if not pending_hitl_jobs:
+                    self.warning(f"No pending HITL jobs found for run {run_id}")
+                    return {}
+                
+                if len(pending_hitl_jobs) > 1:
+                    self.warning(f"Multiple pending HITL jobs found for run {run_id}, using the first one")
+                
+                # Get the first (or only) pending HITL job
+                hitl_job = pending_hitl_jobs[0]
+                
+                return {
+                    "hitl_job_id": str(hitl_job.id),
+                    "hitl_request_schema": hitl_job.response_schema,
+                    "hitl_request_details": hitl_job.request_details
+                }
+                
+        except Exception as e:
+            self.error(f"Error fetching HITL job details for run {run_id}: {e}")
+            return {}
+
     def _compute_input_hash(self, inputs: Dict[str, Any]) -> Optional[str]:
         """
         Compute a deterministic hash of the mapped workflow inputs.
@@ -604,7 +694,7 @@ class WorkflowRunnerNode(BaseDynamicNode):  # [WorkflowRunnerInput, WorkflowRunn
                 
                 # Log status changes
                 if current_status != last_status:
-                    self.info(f"Workflow run {run_id} status changed: {last_status} -> {current_status}")
+                    self.info(f"Sub Workflow run {run_id} status changed: {last_status} -> {current_status}")
                     last_status = current_status
                 
                 # Check for terminal states
@@ -613,7 +703,7 @@ class WorkflowRunnerNode(BaseDynamicNode):  # [WorkflowRunnerInput, WorkflowRunn
                     WorkflowRunStatus.FAILED,
                     WorkflowRunStatus.CANCELLED,
                 ]:
-                    self.info(f"Workflow run {run_id} reached terminal state: {current_status}")
+                    self.info(f"Sub Workflow run {run_id} reached terminal state: {current_status}")
                     
                     # Return results directly from workflow_run - no need for get_run_details
                     return {
@@ -625,10 +715,11 @@ class WorkflowRunnerNode(BaseDynamicNode):  # [WorkflowRunnerInput, WorkflowRunn
                 
                 # Handle HITL state (if needed in future)
                 elif current_status == WorkflowRunStatus.WAITING_HITL:
-                    self.info(f"Workflow run {run_id} is waiting for HITL input")
-                    # For now, we don't handle HITL in the runner node
-                    # This could be extended in the future
-                    pass
+                    self.info(f"Sub Workflow run {run_id} is waiting for HITL input")
+                    return {
+                        "run_id": str(run_id),
+                        "status": current_status.value.lower() if hasattr(current_status, 'value') else str(current_status).lower(),
+                    }
                 
             except Exception as e:
                 self.error(f"Error retrieving status for run {run_id}: {e}. Retrying...")
@@ -647,13 +738,18 @@ class WorkflowRunnerNode(BaseDynamicNode):  # [WorkflowRunnerInput, WorkflowRunn
         org_id: uuid.UUID,
         workflow_run_job,  # The parent workflow_run_job from app_context
         parent_run_id: Optional[uuid.UUID] = None,
-        thread_id: Optional[uuid.UUID] = None
+        thread_id: Optional[uuid.UUID] = None,
+        resume_after_hitl: bool = False,
+        reset_overrides_on_hitl_resume: bool = False,
+        include_active_overrides: bool = True,
+        include_override_tags: Optional[List[str]] = None,
+        subworkflow_run_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Run workflow as a subprocess, creating the run in DB first.
+        Run workflow as a subprocess using the service layer for consistency.
         
-        This follows the same pattern as submit_workflow_run in services.py,
-        creating a proper workflow run record before execution.
+        Uses submit_workflow_run with return_job_object_no_submit=True to create
+        the workflow run and get the job object, then runs it as subprocess.
         
         Args:
             workflow: Workflow to execute
@@ -665,58 +761,49 @@ class WorkflowRunnerNode(BaseDynamicNode):  # [WorkflowRunnerInput, WorkflowRunn
             workflow_run_job: The parent workflow run job from app_context
             parent_run_id: Parent workflow run ID
             thread_id: Thread ID for conversational workflows
+            resume_after_hitl: Whether to resume from HITL state
+            reset_overrides_on_hitl_resume: Whether to reset overrides on HITL resume
+            include_active_overrides: Whether to include active overrides
+            include_override_tags: List of override tags to include
+            subworkflow_run_id: Run ID to use when resuming from HITL state
             
         Returns:
             Workflow execution results
         """
-        # Get workflow configuration overrides if applicable
-        async with get_async_db_as_manager() as db:
-            overrides, effective_graph_schema = await workflow_service.list_workflow_specific_overrides_and_optional_apply(
-                db=db,
-                include_active=True,
-                include_tags=None,
-                active_org_id=org_id,
-                requesting_user=user,
-                base_workflow_to_apply_overrides_to=workflow
+        # Use submit_workflow_run with return_job_object_no_submit=True to get properly constructed workflow run job
+        # This maintains consistency with the service layer's workflow creation logic
+        try:
+            # Create WorkflowRunCreate for submission
+            # Use subworkflow_run_id if provided (for HITL resume)
+            effective_run_id = uuid.UUID(subworkflow_run_id) if subworkflow_run_id else None
+            
+            # For HITL resume, services.py expects workflow_id=None and run_id to be provided
+            # For normal execution, provide workflow_id and no run_id
+            run_submit = schemas.WorkflowRunCreate(
+                run_id=effective_run_id if resume_after_hitl else None,
+                workflow_id=None if resume_after_hitl else workflow.id,
+                inputs=inputs,
+                thread_id=thread_id,
+                parent_run_id=parent_run_id,
+                tag=f"subprocess_of_{parent_run_id}" if parent_run_id else None,
+                resume_after_hitl=resume_after_hitl,
+                reset_overrides_on_hitl_resume=reset_overrides_on_hitl_resume,
+                include_active_overrides=include_active_overrides,
+                include_override_tags=include_override_tags,
             )
             
-            # Create the workflow run record in database (similar to submit_workflow_run)
-            workflow_run = await workflow_service.workflow_run_dao.create(
-                db,
-                workflow_id=workflow.id,
-                workflow_name=workflow.name,
-                owner_org_id=org_id,
-                triggered_by_user_id=user.id if user and hasattr(user, 'id') else workflow_run_job.triggered_by_user_id,
-                inputs=inputs,
-                thread_id=thread_id,
-                status=WorkflowRunStatus.SCHEDULED,
-                tag=f"subprocess_of_{parent_run_id}" if parent_run_id else None,
-                applied_workflow_config_overrides=",".join([str(override.id) for override in overrides]) if overrides else None,
-                parent_run_id=parent_run_id,  # Set parent relationship
-            )
-        
-            # Set thread_id to run_id if not provided (same as in submit_workflow_run)
-            if not workflow_run.thread_id:
-                workflow_run.thread_id = workflow_run.id
-                db.add(workflow_run)
-                await db.commit()
-                await db.refresh(workflow_run)
-        
-        try:
-            # Prepare the workflow run job
-            run_job = schemas.WorkflowRunJobCreate(
-                run_id=workflow_run.id,
-                workflow_id=workflow.id,
-                workflow_name=workflow.name,
-                graph_schema=effective_graph_schema if effective_graph_schema else workflow.graph_config,
-                inputs=inputs,
-                owner_org_id=org_id,
-                triggered_by_user_id=user.id if user and hasattr(user, 'id') else workflow_run_job.triggered_by_user_id,
-                parent_run_id=parent_run_id,
-                thread_id=thread_id,
-                streaming_mode=True,
-                retry_count=workflow_run.retry_count or 0,
-            )
+            # Get the workflow run job object without submitting it
+            async with get_async_db_as_manager() as db:
+                run_job, flow_run_name = await workflow_service.submit_workflow_run(
+                    db=db,
+                    run_submit=run_submit,
+                    owner_org_id=org_id,
+                    user=user,
+                    return_job_object_no_submit=True
+                )
+            
+            # Use the effective_run_id for polling (from run_job.run_id)
+            effective_run_id = run_job.run_id
             
             # Run the workflow as a subprocess
             # Note: run_flow_in_subprocess is NOT async - it just submits the flow
@@ -742,12 +829,13 @@ class WorkflowRunnerNode(BaseDynamicNode):  # [WorkflowRunnerInput, WorkflowRunn
             await asyncio.to_thread(p.join)
             # p.join()
             
-            self.info(f"Subprocess submitted for workflow run {workflow_run.id}")
+            self.info(f"Subprocess submitted for workflow run {effective_run_id}")
             
             # Poll for completion - subprocess doesn't return results directly
             # We need to poll just like with independent runs
+            # Use effective_run_id for polling (subworkflow_run_id for HITL resume)
             result = await self._poll_for_completion(
-                run_id=workflow_run.id,
+                run_id=effective_run_id,
                 workflow_service=workflow_service,
                 user=user,
                 org_id=org_id,
@@ -765,7 +853,7 @@ class WorkflowRunnerNode(BaseDynamicNode):  # [WorkflowRunnerInput, WorkflowRunn
             # The workflow may have been submitted and is running
             try:
                 result = await self._poll_for_completion(
-                    run_id=workflow_run.id,
+                    run_id=effective_run_id,
                     workflow_service=workflow_service,
                     user=user,
                     org_id=org_id,
@@ -780,7 +868,7 @@ class WorkflowRunnerNode(BaseDynamicNode):  # [WorkflowRunnerInput, WorkflowRunn
             
             # If everything failed, return error status
             return {
-                "run_id": str(workflow_run.id),
+                "run_id": str(effective_run_id),
                 "error": str(e),
                 "status": "failed",
                 "outputs": None
@@ -793,9 +881,15 @@ class WorkflowRunnerNode(BaseDynamicNode):  # [WorkflowRunnerInput, WorkflowRunn
         workflow_service: 'WorkflowService',
         user,
         org_id: uuid.UUID,
+        parent_run_id: Optional[uuid.UUID] = None,
         thread_id: Optional[uuid.UUID] = None,
         poll_interval: int = 3,
-        timeout: int = 600
+        timeout: int = 600,
+        resume_after_hitl: bool = False,
+        reset_overrides_on_hitl_resume: bool = False,
+        include_active_overrides: bool = True,
+        include_override_tags: Optional[List[str]] = None,
+        subworkflow_run_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Submit workflow as an independent run and monitor its execution.
@@ -809,18 +903,34 @@ class WorkflowRunnerNode(BaseDynamicNode):  # [WorkflowRunnerInput, WorkflowRunn
             workflow_service: Workflow service instance
             user: User executing the workflow
             org_id: Organization ID
+            parent_run_id: Parent workflow run ID
             thread_id: Thread ID for conversational workflows
             poll_interval: Seconds between status checks
             timeout: Maximum seconds to wait for completion
+            resume_after_hitl: Whether to resume from HITL state
+            reset_overrides_on_hitl_resume: Whether to reset overrides on HITL resume
+            include_active_overrides: Whether to include active overrides
+            include_override_tags: List of override tags to include
+            subworkflow_run_id: Run ID to use when resuming from HITL state
             
         Returns:
             Workflow execution results
         """
         # Submit the workflow run
+        # Use subworkflow_run_id if provided (for HITL resume)
+        effective_run_id = uuid.UUID(subworkflow_run_id) if subworkflow_run_id else None
+        
         run_submit = schemas.WorkflowRunCreate(
-            workflow_id=workflow.id,
+            run_id=effective_run_id,
+            workflow_id=None if resume_after_hitl else workflow.id,
             inputs=inputs,
             thread_id=thread_id,
+            parent_run_id=parent_run_id,
+            tag=f"subprocess_of_{parent_run_id}" if parent_run_id else None,
+            resume_after_hitl=resume_after_hitl,
+            reset_overrides_on_hitl_resume=reset_overrides_on_hitl_resume,
+            include_active_overrides=include_active_overrides,
+            include_override_tags=include_override_tags,
         )
         async with get_async_db_as_manager() as db:
             workflow_run = await workflow_service.submit_workflow_run(
@@ -830,12 +940,13 @@ class WorkflowRunnerNode(BaseDynamicNode):  # [WorkflowRunnerInput, WorkflowRunn
                 user=user,
             )
         
-        run_id = workflow_run.id
-        self.info(f"Submitted workflow run {run_id} for workflow {workflow.id}")
+        # Use subworkflow_run_id for polling if provided (HITL resume), otherwise use workflow_run.id
+        polling_run_id = effective_run_id if effective_run_id else workflow_run.id
+        self.info(f"Submitted workflow run {polling_run_id} for workflow {workflow.id}")
         
         # Poll for completion using the shared polling method
         result = await self._poll_for_completion(
-            run_id=run_id,
+            run_id=polling_run_id,
             workflow_service=workflow_service,
             user=user,
             org_id=org_id,
@@ -914,6 +1025,16 @@ class WorkflowRunnerNode(BaseDynamicNode):  # [WorkflowRunnerInput, WorkflowRunn
         override_workflow_version = input_data.pop('_override_workflow_version', None)
         thread_id_str = input_data.pop('_thread_id', None)
         
+        # Extract HITL inputs if provided
+        hitl_inputs = input_data.pop('hitl_inputs', None)
+        subworkflow_run_id = input_data.pop('subworkflow_run_id', None)
+        
+        # Validate HITL inputs - subworkflow_run_id is required when hitl_inputs is provided
+        if hitl_inputs is not None and subworkflow_run_id is None:
+            raise ValueError("subworkflow_run_id is required when hitl_inputs is provided for HITL resume")
+        
+        is_hitl_resume = hitl_inputs is not None
+        
         # Determine workflow identification (runtime overrides take precedence)
         workflow_name = override_workflow_name or self.config.workflow_name
         workflow_id = override_workflow_id or self.config.workflow_id
@@ -961,7 +1082,7 @@ class WorkflowRunnerNode(BaseDynamicNode):  # [WorkflowRunnerInput, WorkflowRunn
 
             # Attempt cache lookup if enabled
             cached_result = None
-            if self.config.enable_workflow_cache:
+            if self.config.enable_workflow_cache and (not is_hitl_resume):
                 # Compute input hash (same scheme used by DAO when creating runs)
                 input_hash = self._compute_input_hash(mapped_inputs)
                 if input_hash:
@@ -1072,38 +1193,63 @@ class WorkflowRunnerNode(BaseDynamicNode):  # [WorkflowRunnerInput, WorkflowRunn
                     error_message=None,
                     error_details=None,
                     parent_run_id=str(parent_run_id) if self.config.execution_mode == ExecutionMode.SUBPROCESS else None,
+                    hitl_job_id=None,  # Cached results don't have HITL state
+                    hitl_request_schema=None,
+                    hitl_request_details=None
                 )
             
             # Parse thread_id if provided
             thread_id_str = uuid.UUID(thread_id_str) if thread_id_str else None
             
-            # Execute workflow based on mode
-            self.info(f"Executing workflow '{workflow.name}' in {self.config.execution_mode} mode")
+            # Determine if we're resuming from HITL and prepare execution parameters
+            execution_inputs = hitl_inputs if is_hitl_resume else mapped_inputs
             
+            # Get parent run's override settings for consistency
+            reset_overrides_on_hitl_resume = workflow_run_job.reset_overrides_on_hitl_resume  # Default behavior
+            include_active_overrides = workflow_run_job.include_active_overrides  # Default behavior  
+            include_override_tags = workflow_run_job.include_override_tags  # Default behavior
+            
+            if is_hitl_resume:
+                self.info(f"Resuming workflow '{workflow.name}' from HITL with provided inputs")
+            else:
+                self.info(f"Executing workflow '{workflow.name}' in {self.config.execution_mode} mode")
+            
+            # Execute workflow based on mode with HITL parameters
             if self.config.execution_mode == ExecutionMode.SUBPROCESS:
                 # Run as subprocess with parent-child relationship
                 result = await self._run_as_subprocess(
                     workflow=workflow,
-                    inputs=mapped_inputs,
+                    inputs=execution_inputs,
                     external_context=external_context,
                     workflow_service=workflow_service,
                     user=user,
                     org_id=org_id,
                     workflow_run_job=workflow_run_job,
                     parent_run_id=parent_run_id,
-                    thread_id=thread_id_str
+                    thread_id=thread_id_str,
+                    resume_after_hitl=is_hitl_resume,
+                    reset_overrides_on_hitl_resume=reset_overrides_on_hitl_resume,
+                    include_active_overrides=include_active_overrides,
+                    include_override_tags=include_override_tags,
+                    subworkflow_run_id=subworkflow_run_id
                 )
             else:
                 # Run as independent workflow
                 result = await self._run_as_independent(
                     workflow=workflow,
-                    inputs=mapped_inputs,
+                    inputs=execution_inputs,
                     workflow_service=workflow_service,
                     user=user,
                     org_id=org_id,
+                    parent_run_id=parent_run_id,
                     thread_id=thread_id_str,
                     poll_interval=self.config.poll_interval_seconds,
-                    timeout=self.config.timeout_seconds
+                    timeout=self.config.timeout_seconds,
+                    resume_after_hitl=is_hitl_resume,
+                    reset_overrides_on_hitl_resume=reset_overrides_on_hitl_resume,
+                    include_active_overrides=include_active_overrides,
+                    include_override_tags=include_override_tags,
+                    subworkflow_run_id=subworkflow_run_id
                 )
             
             # Calculate execution duration
@@ -1129,6 +1275,25 @@ class WorkflowRunnerNode(BaseDynamicNode):  # [WorkflowRunnerInput, WorkflowRunn
                     f"Workflow execution failed: {error_message or 'Unknown error'}"
                 )
             
+            # Get HITL job details if workflow is in PENDING_HITL state
+            hitl_details = {}
+            if status == WorkflowRunStatus.WAITING_HITL.value:
+                run_id = result.get("run_id")
+                if run_id:
+                    try:
+                        run_uuid = uuid.UUID(run_id)
+                        hitl_details = await self._get_hitl_job_details(
+                            run_id=run_uuid,
+                            workflow_service=workflow_service,
+                            org_id=org_id
+                        )
+                        if not hitl_details:
+                            raise ValueError(f"Error retrieving HITL job details for run {run_id}")
+                        self.info(f"Retrieved HITL job details for run {run_id}")
+                    except (ValueError, TypeError) as e:
+                        self.error(f"Invalid run_id format for HITL details: {run_id}, error: {e}")
+                        raise e
+            
             # Prepare output
             return WorkflowRunnerOutput(
                 workflow_id=str(workflow.id),
@@ -1143,7 +1308,10 @@ class WorkflowRunnerNode(BaseDynamicNode):  # [WorkflowRunnerInput, WorkflowRunn
                 duration_seconds=duration,
                 error_message=error_message,
                 error_details={"error": error_message} if error_message else None,
-                parent_run_id=str(parent_run_id) if self.config.execution_mode == ExecutionMode.SUBPROCESS else None
+                parent_run_id=str(parent_run_id),
+                hitl_job_id=hitl_details.get("hitl_job_id"),
+                hitl_request_schema=hitl_details.get("hitl_request_schema"),
+                hitl_request_details=hitl_details.get("hitl_request_details")
             )
             
         except ValueError:
@@ -1173,5 +1341,8 @@ class WorkflowRunnerNode(BaseDynamicNode):  # [WorkflowRunnerInput, WorkflowRunn
                 completed_at=end_time.isoformat(),
                 duration_seconds=duration,
                 error_message=str(e),
-                error_details={"exception": str(e), "type": type(e).__name__}
+                error_details={"exception": str(e), "type": type(e).__name__},
+                hitl_job_id=None,  # Error cases don't have HITL state
+                hitl_request_schema=None,
+                hitl_request_details=None
             )

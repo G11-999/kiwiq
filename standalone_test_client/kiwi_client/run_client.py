@@ -82,6 +82,9 @@ class WorkflowRunTestClient:
                          thread_id: Optional[Union[str, uuid.UUID]] = None,
                          streaming_mode: Optional[bool] = True,
                          tag: Optional[str] = None,
+                         include_active_overrides: Optional[bool] = None,
+                         include_override_tags: Optional[List[str]] = None,
+                         reset_overrides_on_hitl_resume: Optional[bool] = None,
                          ) -> Optional[wf_schemas.WorkflowRunRead]:
         """
         Tests submitting a new workflow run via POST /runs/.
@@ -101,6 +104,9 @@ class WorkflowRunTestClient:
             thread_id (Optional[Union[str, uuid.UUID]]): Thread ID to resume from existing thread to retain message history.
             streaming_mode (Optional[bool]): Whether to stream the LLM tokens.
             tag (Optional[str]): Optional tag to associate with the workflow run.
+            include_active_overrides (Optional[bool]): Whether to include active overrides. Defaults to True if not specified.
+            include_override_tags (Optional[List[str]]): List of override tags to include. If None, no specific tag filtering is applied.
+            reset_overrides_on_hitl_resume (Optional[bool]): Whether to reset overrides on HITL resume. If False, same overrides from previous session will be reapplied.
 
         Returns:
             Optional[wf_schemas.WorkflowRunRead]: The parsed and validated response body of the submitted run
@@ -143,6 +149,19 @@ class WorkflowRunTestClient:
         if tag:
             payload["tag"] = tag
             logger.info(f"Run will be submitted with tag: {tag}")
+
+        # Add override configuration to payload if provided
+        if include_active_overrides is not None:
+            payload["include_active_overrides"] = include_active_overrides
+            logger.info(f"Run will be submitted with include_active_overrides: {include_active_overrides}")
+        
+        if include_override_tags is not None:
+            payload["include_override_tags"] = include_override_tags
+            logger.info(f"Run will be submitted with include_override_tags: {include_override_tags}")
+        
+        if reset_overrides_on_hitl_resume is not None:
+            payload["reset_overrides_on_hitl_resume"] = reset_overrides_on_hitl_resume
+            logger.info(f"Run will be submitted with reset_overrides_on_hitl_resume: {reset_overrides_on_hitl_resume}")
 
         try:
             # Endpoint returns 202 Accepted, body contains WorkflowRunRead schema

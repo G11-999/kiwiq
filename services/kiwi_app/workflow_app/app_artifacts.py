@@ -1011,10 +1011,24 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
         },
       "user_documents_config_variables": {},
       "template_specific": false
+    },
+    "external_research_workflow": {
+      "name": "external_research_workflow",
+      "version": null,
+      "inputs": {
+        "research_context": null,
+        "asset_name": null,
+        "is_shared": false
+        },
+      "user_documents_config_variables": {},
+      "template_specific": false
     }
   }
 }
 """
+# external_research_workflow
+# // "namespace": null,
+# // "docname": null,
 
 # --- Helper Classes ---
 

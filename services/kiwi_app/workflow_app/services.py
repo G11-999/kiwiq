@@ -233,7 +233,8 @@ class WorkflowService:
         run_submit: schemas.WorkflowRunCreate, # New schema for submission
         owner_org_id: uuid.UUID, 
         user: User,
-    ) -> models.WorkflowRun:
+        return_job_object_no_submit: bool = False,
+    ) -> Union[models.WorkflowRun, Tuple[schemas.WorkflowRunJobCreate, str]]:
         """
         Submits a new workflow run, creating a workflow first if graph_schema is provided.
         Triggers the actual execution via the worker.
@@ -243,9 +244,10 @@ class WorkflowService:
             run_submit: Schema containing workflow_id OR graph_schema, plus inputs/thread_id.
             owner_org_id: ID of the organization context for the run.
             user: The user initiating the run.
+            return_job_object_no_submit: Whether to return the job object without submitting it.
 
         Returns:
-            The created WorkflowRun object (in SCHEDULED state).
+            The created WorkflowRun object (in SCHEDULED state) or the job object with the flow run name if return_job_object_no_submit is True.
             
         Raises:
             HTTPException: If workflow not found (when using workflow_id) or other errors occur.
@@ -330,6 +332,9 @@ class WorkflowService:
 
             effective_graph_schema = workflow.graph_config
 
+            if (not run_submit.reset_overrides_on_hitl_resume) and run_submit.include_override_tags:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="reset_overrides_on_hitl_resume must be True when include_override_tags is provided when resuming after HITL")
+
             if run_submit.reset_overrides_on_hitl_resume:
 
                 overrides, effective_graph_schema = await self.list_workflow_specific_overrides_and_optional_apply(
@@ -342,6 +347,7 @@ class WorkflowService:
                 )
 
                 workflow_run.applied_workflow_config_overrides = ",".join([str(override.id) for override in overrides]) if overrides else None
+                workflow_run.applied_workflow_config_override_tags = ",".join([str(tag) for tag in run_submit.include_override_tags]) if run_submit.include_override_tags else None
 
                 db.add(workflow_run)
                 await db.commit()
@@ -433,6 +439,7 @@ class WorkflowService:
                 status=WorkflowRunStatus.SCHEDULED, # Explicitly set status
                 tag=run_submit.tag,
                 applied_workflow_config_overrides=",".join([str(override.id) for override in overrides]) if overrides else None,
+                applied_workflow_config_override_tags=",".join([str(tag) for tag in run_submit.include_override_tags]) if run_submit.include_override_tags else None,
                 parent_run_id=run_submit.parent_run_id,
                 retry_count=run_submit.retry_count or 0,
             )
@@ -458,7 +465,7 @@ class WorkflowService:
             graph_schema_dict = effective_graph_schema
 
             # Trigger the workflow run via the helper function
-            flow_run: FlowRun = await trigger_workflow_run(
+            flow_run_or_run_job_with_name: Union[FlowRun, Tuple[schemas.WorkflowRunJobCreate, str]] = await trigger_workflow_run(
                 workflow_id=workflow_run.workflow_id,
                 workflow_name=workflow_run.workflow_name,
                 owner_org_id=owner_org_id,
@@ -473,12 +480,20 @@ class WorkflowService:
                 # is_subflow=run_submit.parent_run_id is not None,
                 parent_run_id=run_submit.parent_run_id,
                 retry_count=workflow_run.retry_count or 0,
+                reset_overrides_on_hitl_resume=run_submit.reset_overrides_on_hitl_resume,
+                include_active_overrides=run_submit.include_active_overrides,
+                include_override_tags=workflow_run.applied_workflow_config_override_tags.split(",") if workflow_run.applied_workflow_config_override_tags else None,
+                return_job_object_no_submit=return_job_object_no_submit,
             )
+            
+            if return_job_object_no_submit:
+                return flow_run_or_run_job_with_name
+
             workflow_run = await self.workflow_run_dao.update(
                 db,
                 db_obj=workflow_run,
                 obj_in={
-                    "prefect_run_ids": ",".join([workflow_run.prefect_run_ids, str(flow_run.id)]) if workflow_run.prefect_run_ids else str(flow_run.id)
+                    "prefect_run_ids": ",".join([workflow_run.prefect_run_ids, str(flow_run_or_run_job_with_name.id)]) if workflow_run.prefect_run_ids else str(flow_run_or_run_job_with_name.id)
                 }
             )
         except Exception as e:
@@ -1205,7 +1220,7 @@ class WorkflowService:
         name: str,
         version_tag: Optional[str] = None,
         owner_org_id: uuid.UUID,
-        include_public: bool = True,
+        include_public: bool = False,
         include_system_entities: bool = False,
         include_public_system_entities: bool = False,
         user: User,
@@ -1549,125 +1564,126 @@ class WorkflowService:
 
         return hitl_job
 
-    async def respond_to_hitl_job(
-        self,
-        db: AsyncSession,
-        *,
-        job: models.HITLJob, # Fetched job object from dependency (checks org, accessibility)
-        active_org_id: uuid.UUID,
-        response_data: Dict[str, Any],
-        user: User # User performing the action
-    ) -> models.HITLJob:
-        """
-        Submits a response to a pending HITL job, validates response,
-        and triggers workflow resumption.
-        """
-        # Dependency get_hitl_job_for_user has already checked org and accessibility
+    # DEPRECATED!
+    # async def respond_to_hitl_job(
+    #     self,
+    #     db: AsyncSession,
+    #     *,
+    #     job: models.HITLJob, # Fetched job object from dependency (checks org, accessibility)
+    #     active_org_id: uuid.UUID,
+    #     response_data: Dict[str, Any],
+    #     user: User # User performing the action
+    # ) -> models.HITLJob:
+    #     """
+    #     Submits a response to a pending HITL job, validates response,
+    #     and triggers workflow resumption.
+    #     """
+    #     # Dependency get_hitl_job_for_user has already checked org and accessibility
 
-        if job.status != HITLJobStatus.PENDING:
-             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="HITL job is not pending response.")
+    #     if job.status != HITLJobStatus.PENDING:
+    #          raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="HITL job is not pending response.")
 
-        # 1. Validate response_data against job.response_schema if it exists
-        if job.response_schema:
-             try:
-                # Placeholder for actual schema validation (e.g., using jsonschema)
-                # jsonschema.validate(instance=response_data, schema=job.response_schema)
-                logger.info(f"INFO: Skipping HITL response schema validation for job {job.id}")
-             except Exception as schema_error: # Catch specific validation error type
-                 # Log properly
-                 logger.error(f"ERROR: HITL response schema validation failed for job {job.id}: {schema_error}")
-                 raise HTTPException(
-                     status_code=status.HTTP_400_BAD_REQUEST,
-                     detail=f"Response data validation failed: {schema_error}"
-                 )
+    #     # 1. Validate response_data against job.response_schema if it exists
+    #     if job.response_schema:
+    #          try:
+    #             # Placeholder for actual schema validation (e.g., using jsonschema)
+    #             # jsonschema.validate(instance=response_data, schema=job.response_schema)
+    #             logger.info(f"INFO: Skipping HITL response schema validation for job {job.id}")
+    #          except Exception as schema_error: # Catch specific validation error type
+    #              # Log properly
+    #              logger.error(f"ERROR: HITL response schema validation failed for job {job.id}: {schema_error}")
+    #              raise HTTPException(
+    #                  status_code=status.HTTP_400_BAD_REQUEST,
+    #                  detail=f"Response data validation failed: {schema_error}"
+    #              )
 
-        # 2. Update the job response in the database using DAO
-        # DAO handles setting status to RESPONDED and responded_at
-        updated_job = await self.hitl_job_dao.update_response(
-            db, 
-            id=job.id,
-            response_data=response_data, 
-            user_id=user.id # Record who responded
-        )
+    #     # 2. Update the job response in the database using DAO
+    #     # DAO handles setting status to RESPONDED and responded_at
+    #     updated_job = await self.hitl_job_dao.update_response(
+    #         db, 
+    #         id=job.id,
+    #         response_data=response_data, 
+    #         user_id=user.id # Record who responded
+    #     )
         
-        if not updated_job:
-            # Should not happen if checks above pass, but handle defensively
-            # Log error
-            logger.error(f"ERROR: Failed to update HITL job response in DAO for job {job.id}")
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update HITL job response")
+    #     if not updated_job:
+    #         # Should not happen if checks above pass, but handle defensively
+    #         # Log error
+    #         logger.error(f"ERROR: Failed to update HITL job response in DAO for job {job.id}")
+    #         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update HITL job response")
 
-        # 3. Trigger workflow resumption via the worker
-        try:
-            # Fetch the run to get necessary details
-            run = await self.workflow_run_dao.get(db, id=job.requesting_run_id)
-            if not run:
-                 # Log error
-                 logger.error(f"ERROR: Associated workflow run {job.requesting_run_id} not found for HITL job {job.id}")
-                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Associated workflow run not found.")
-            # Fetch the workflow to get the schema
-            workflow = await self.workflow_dao.get(db, id=run.workflow_id)
-            if not workflow:
-                # Log error
-                logger.error(f"ERROR: Associated workflow {run.workflow_id} not found for run {run.id}")
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Associated workflow definition not found.")
+    #     # 3. Trigger workflow resumption via the worker
+    #     try:
+    #         # Fetch the run to get necessary details
+    #         run = await self.workflow_run_dao.get(db, id=job.requesting_run_id)
+    #         if not run:
+    #              # Log error
+    #              logger.error(f"ERROR: Associated workflow run {job.requesting_run_id} not found for HITL job {job.id}")
+    #              raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Associated workflow run not found.")
+    #         # Fetch the workflow to get the schema
+    #         workflow = await self.workflow_dao.get(db, id=run.workflow_id)
+    #         if not workflow:
+    #             # Log error
+    #             logger.error(f"ERROR: Associated workflow {run.workflow_id} not found for run {run.id}")
+    #             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Associated workflow definition not found.")
 
             
-            effective_graph_schema = workflow.graph_config
+    #         effective_graph_schema = workflow.graph_config
 
-            if run.applied_workflow_config_overrides:
-                override_ids = run.applied_workflow_config_overrides.split(",")
-                if override_ids:
-                    overrides = None
-                    try:
-                        overrides = await self.workflow_config_override_dao.get_overrides_by_ids(
-                            db=db,
-                            override_ids=override_ids
-                        )
-                    except Exception as e:
-                        logger.error(f"ERROR: Failed to get overrides for run {run.id}: {e}")
-                        # raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get overrides for run")
-                    if overrides:
-                        try:
-                            effective_graph_schema = await self.apply_list_of_overrides(
-                                overrides=overrides,
-                                base_graph_schema=workflow.graph_config,
-                                workflow_id=workflow.id
-                            )
-                        except Exception as e:
-                            logger.error(f"ERROR: Failed to apply overrides for run {run.id}: {e}")
-                            # raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to apply overrides for run")
+    #         if run.applied_workflow_config_overrides:
+    #             override_ids = run.applied_workflow_config_overrides.split(",")
+    #             if override_ids:
+    #                 overrides = None
+    #                 try:
+    #                     overrides = await self.workflow_config_override_dao.get_overrides_by_ids(
+    #                         db=db,
+    #                         override_ids=override_ids
+    #                     )
+    #                 except Exception as e:
+    #                     logger.error(f"ERROR: Failed to get overrides for run {run.id}: {e}")
+    #                     # raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get overrides for run")
+    #                 if overrides:
+    #                     try:
+    #                         effective_graph_schema = await self.apply_list_of_overrides(
+    #                             overrides=overrides,
+    #                             base_graph_schema=workflow.graph_config,
+    #                             workflow_id=workflow.id
+    #                         )
+    #                     except Exception as e:
+    #                         logger.error(f"ERROR: Failed to apply overrides for run {run.id}: {e}")
+    #                         # raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to apply overrides for run")
             
-            # Call the worker trigger function
-            flow_run: FlowRun = await trigger_workflow_run(
-                workflow_id=run.workflow_id,
-                workflow_name=run.workflow_name,
-                owner_org_id=run.owner_org_id,
-                triggered_by_user_id=run.triggered_by_user_id, # Original triggerer
-                inputs=response_data, # Pass HITL response as input for resumption node
-                run_id=run.id,
-                thread_id=run.thread_id, # Use existing thread_id for checkpointing
-                graph_schema=effective_graph_schema, # Pass the workflow schema
-                resume_after_hitl=True, # Indicate this is a resumption
-                prefect_run_ids=run.prefect_run_ids, # Pass the prefect run_id if provided
-                # is_subflow=run.parent_run_id is not None,
-                parent_run_id=run.parent_run_id,
-                retry_count=run.retry_count or 0,
-            )
-            run = await self.workflow_run_dao.update(
-                db,
-                db_obj=run,
-                obj_in={
-                    "prefect_run_ids": ",".join([run.prefect_run_ids, str(flow_run.id)]) if run.prefect_run_ids else str(flow_run.id)
-                }
-            )
-            logger.info(f"INFO: Triggered workflow resumption for run {run.id} after HITL response for job {job.id}.")
-        except Exception as e:
-            # Log error, but don't necessarily fail the HITL response itself
-            # Log properly with traceback
-            logger.error(f"ERROR: Failed to trigger workflow resumption for run {job.requesting_run_id} after HITL job {job.id} response: {e}")
-            # Consider creating a system notification/alert about the resumption failure
+    #         # Call the worker trigger function
+    #         flow_run: FlowRun = await trigger_workflow_run(
+    #             workflow_id=run.workflow_id,
+    #             workflow_name=run.workflow_name,
+    #             owner_org_id=run.owner_org_id,
+    #             triggered_by_user_id=run.triggered_by_user_id, # Original triggerer
+    #             inputs=response_data, # Pass HITL response as input for resumption node
+    #             run_id=run.id,
+    #             thread_id=run.thread_id, # Use existing thread_id for checkpointing
+    #             graph_schema=effective_graph_schema, # Pass the workflow schema
+    #             resume_after_hitl=True, # Indicate this is a resumption
+    #             prefect_run_ids=run.prefect_run_ids, # Pass the prefect run_id if provided
+    #             # is_subflow=run.parent_run_id is not None,
+    #             parent_run_id=run.parent_run_id,
+    #             retry_count=run.retry_count or 0,
+    #         )
+    #         run = await self.workflow_run_dao.update(
+    #             db,
+    #             db_obj=run,
+    #             obj_in={
+    #                 "prefect_run_ids": ",".join([run.prefect_run_ids, str(flow_run.id)]) if run.prefect_run_ids else str(flow_run.id)
+    #             }
+    #         )
+    #         logger.info(f"INFO: Triggered workflow resumption for run {run.id} after HITL response for job {job.id}.")
+    #     except Exception as e:
+    #         # Log error, but don't necessarily fail the HITL response itself
+    #         # Log properly with traceback
+    #         logger.error(f"ERROR: Failed to trigger workflow resumption for run {job.requesting_run_id} after HITL job {job.id} response: {e}")
+    #         # Consider creating a system notification/alert about the resumption failure
 
-        return updated_job # Return the updated job object
+    #     return updated_job # Return the updated job object
 
     async def list_hitl_jobs(
         self,

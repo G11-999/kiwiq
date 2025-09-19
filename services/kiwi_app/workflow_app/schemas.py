@@ -124,6 +124,7 @@ class WorkflowRunCreate(BaseModel):
     on_behalf_of_user_id: Optional[uuid.UUID] = Field(None, description="User ID to act on behalf of (requires superuser privileges)")
     tag: Optional[str] = Field(None, description="Optional tag to mark this run for experimentation tracking")
     applied_workflow_config_overrides: Optional[str] = Field(None, description="Comma-separated list of override IDs that were applied to this run")
+    applied_workflow_config_override_tags: Optional[str] = Field(None, description="Comma-separated list of override tags that were applied to this run")
     retry_count: Optional[int] = Field(default=0, ge=0, description="Number of times this workflow run has been retried. Defaults to 0.")
     # Override configs
     include_active_overrides: Optional[bool] = Field(default=True, description="Whether to include active overrides")
@@ -185,6 +186,7 @@ class WorkflowRunRead(WorkflowRunBase):
     run_ids: Optional[str] = Field(None, description="Comma-separated list of P run IDs that are part of this run")
     tag: Optional[str] = Field(None, description="Optional tag marking this run for experimentation tracking")
     applied_workflow_config_overrides: Optional[str] = Field(None, description="Comma-separated list of override IDs that were applied to this run")
+    applied_workflow_config_override_tags: Optional[str] = Field(None, description="Comma-separated list of override tags that were applied to this run")
     parent_run_id: Optional[uuid.UUID] = Field(None, description="Optional parent run ID to reuse")
     model_config = ConfigDict(from_attributes=True)
 
@@ -421,7 +423,7 @@ class SortOrder(str, Enum):
 class BaseSearchQuery(BaseModel):
     """Base query parameters for searching workflows, prompt templates, and schema templates."""
     name: str = Field(..., description="Name of the Entity to search for")
-    include_public: bool = Field(True, description="Include public entities in the results")
+    include_public: bool = Field(False, description="Include public entities in the results")
     include_system_entities: bool = Field(False, description="Include system entities (superuser only)")
     include_public_system_entities: bool = Field(True, description="Include public system entities")
     sort_by: SearchSortBy = Field(SearchSortBy.CREATED_AT, description="Field to sort by")

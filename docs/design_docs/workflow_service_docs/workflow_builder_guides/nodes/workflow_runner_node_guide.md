@@ -12,6 +12,7 @@ The `WorkflowRunnerNode` allows your workflow to:
 - **Create modular workflows** by breaking complex processes into reusable components
 - **Maintain conversation context** across multiple workflow executions (for conversational AI)
 - **Handle errors gracefully** with configurable failure behavior
+- **Support HITL workflows** by detecting when subworkflows need human input and enabling resumption
 
 ## How Workflow Execution Works
 
@@ -20,8 +21,9 @@ When this node runs, it performs the following steps:
 1. **Identifies the target workflow** using the name or ID you provide
 2. **Maps your input data** to the target workflow's expected inputs
 3. **Executes the workflow** either as a subprocess (connected to parent) or independently
-4. **Monitors the execution** until completion or timeout
-5. **Returns the results** from the executed workflow to continue your main workflow
+4. **Monitors the execution** until completion, timeout, or HITL pause
+5. **Handles HITL states** by exposing required human input details for resumption
+6. **Returns the results** from the executed workflow to continue your main workflow
 
 ## Important: Execution Modes
 
@@ -40,6 +42,70 @@ The node supports two execution modes that determine how the triggered workflow 
 - **Example**: Triggering a notification workflow that doesn't need to be tied to the main process
 
 **Recommendation**: Use the default subprocess mode unless you specifically need independent execution.
+
+## HITL (Human-in-the-Loop) Support
+
+The WorkflowRunnerNode fully supports workflows that require human interaction. When a subworkflow reaches a state where it needs human input, the node will detect this and provide all necessary information for resumption.
+
+### How HITL Works
+
+1. **Detection**: When a subworkflow reaches `WAITING_HITL` state, the node detects this condition
+2. **Information Exposure**: The node outputs HITL job details including:
+   - **`run_id`**: The subworkflow run ID that needs attention
+   - **`hitl_job_id`**: Unique ID of the HITL job
+   - **`hitl_request_schema`**: JSON schema defining expected human response format
+   - **`hitl_request_details`**: Human-readable description of what input is needed
+3. **Resume Capability**: The parent workflow can later resume the subworkflow by providing HITL inputs
+
+### HITL Input Fields
+
+When resuming a workflow from HITL state, use these special input fields:
+
+```json
+{
+  "hitl_inputs": {
+    "user_decision": "approve",
+    "feedback": "Looks good, proceed with publishing",
+    "additional_notes": "Make sure to check spelling"
+  },
+  "subworkflow_run_id": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+- **`hitl_inputs`** (object): The human responses matching the required schema
+- **`subworkflow_run_id`** (string): The exact run ID of the subworkflow to resume (from previous HITL output)
+
+### HITL Output Fields
+
+When a subworkflow enters HITL state, the output includes:
+
+```json
+{
+  "run_id": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "waiting_hitl",
+  "hitl_job_id": "123e4567-e89b-12d3-a456-426614174001",
+  "hitl_request_schema": {
+    "type": "object",
+    "properties": {
+      "user_decision": {"type": "string", "enum": ["approve", "reject"]},
+      "feedback": {"type": "string"}
+    },
+    "required": ["user_decision"]
+  },
+  "hitl_request_details": {
+    "prompt": "Please review the generated content and provide approval",
+    "context": "Content generation completed, awaiting final review"
+  }
+}
+```
+
+### HITL Best Practices
+
+1. **Save Run IDs**: Always save the `run_id` from HITL outputs for later resumption
+2. **Validate HITL Inputs**: Ensure your HITL inputs match the provided schema exactly
+3. **Handle HITL States**: Check output status for `waiting_hitl` to detect HITL requirements
+4. **Thread Consistency**: Use the same `_thread_id` when resuming HITL workflows
+5. **Timeout Considerations**: HITL workflows may pause for extended periods - plan accordingly
 
 ## Configuration (`WorkflowRunnerConfig`)
 
@@ -180,14 +246,19 @@ This node accepts **any input fields** you provide. The fields are either:
 
 ### Special Control Fields (Optional)
 
-These special fields (prefixed with underscore) can override configuration:
+These special fields (prefixed with underscore or specific to HITL) can override configuration or provide HITL functionality:
 
 ```json
 {
   "_override_workflow_name": "alternate_workflow",
   "_override_workflow_id": "550e8400-e29b-41d4-a716-446655440000",
   "_override_workflow_version": "v2.0",
-  "_thread_id": "conversation-123"
+  "_thread_id": "conversation-123",
+  "hitl_inputs": {
+    "user_decision": "approve",
+    "feedback": "Looks good!"
+  },
+  "subworkflow_run_id": "550e8400-e29b-41d4-a716-446655440000"
 }
 ```
 
@@ -195,6 +266,8 @@ These special fields (prefixed with underscore) can override configuration:
 - **`_override_workflow_id`**: Override the configured workflow ID
 - **`_override_workflow_version`**: Override the configured version
 - **`_thread_id`**: Maintain conversation context across workflow executions
+- **`hitl_inputs`**: Human responses for resuming a workflow from HITL state
+- **`subworkflow_run_id`**: Required with `hitl_inputs` - the run ID to resume
 
 ### Example Input Patterns
 
@@ -232,6 +305,21 @@ With configuration:
 }
 ```
 
+#### HITL Resume Pattern
+When resuming a workflow that was paused for human input:
+```json
+{
+  "hitl_inputs": {
+    "user_decision": "approve",
+    "feedback": "Content looks great, please proceed with publishing",
+    "priority": "high"
+  },
+  "subworkflow_run_id": "550e8400-e29b-41d4-a716-446655440000",
+  "_thread_id": "conversation-123"
+}
+```
+This pattern resumes the specific workflow run with human-provided responses.
+
 ## Output (`WorkflowRunnerOutput`)
 
 The node provides comprehensive information about the executed workflow.
@@ -248,10 +336,12 @@ The node provides comprehensive information about the executed workflow.
   - `"failed"`: Workflow encountered an error
   - `"cancelled"`: Workflow was cancelled
   - `"timeout"`: Execution exceeded timeout limit
+  - `"waiting_hitl"`: Workflow paused and waiting for human input
   
 - **`workflow_outputs`**: Results from the executed workflow
   - Contains either all outputs or filtered based on `output_fields`
   - Structure depends on the specific workflow being executed
+  - May be null for workflows in `waiting_hitl` state
 
 ### Execution Metadata
 - **`execution_mode`**: Mode used ("subprocess" or "independent")
@@ -263,6 +353,12 @@ The node provides comprehensive information about the executed workflow.
 ### Error Information (if applicable)
 - **`error_message`**: Human-readable error description
 - **`error_details`**: Detailed error information for debugging
+
+### HITL Information (when status is "waiting_hitl")
+- **`hitl_job_id`**: Unique identifier for the HITL job requiring attention
+- **`hitl_request_schema`**: JSON schema defining the expected format for human responses
+- **`hitl_request_details`**: Human-readable information about what input is needed
+  - Contains details like prompt, context, and instructions for human reviewers
 
 ## Example Configurations
 
@@ -347,6 +443,61 @@ The node provides comprehensive information about the executed workflow.
 }
 ```
 
+### HITL Workflow with Resume Capability
+```json
+{
+  "node_config": {
+    "workflow_name": "content_approval_workflow",
+    "timeout_seconds": 1800
+  },
+  "input": {
+    "content_draft": "Generated article content...",
+    "approval_required": true
+  }
+}
+```
+
+**Initial execution output (when workflow reaches HITL):**
+```json
+{
+  "workflow_id": "550e8400-e29b-41d4-a716-446655440001",
+  "run_id": "550e8400-e29b-41d4-a716-446655440002",
+  "status": "waiting_hitl",
+  "workflow_outputs": null,
+  "hitl_job_id": "123e4567-e89b-12d3-a456-426614174001",
+  "hitl_request_schema": {
+    "type": "object",
+    "properties": {
+      "approval_decision": {"type": "string", "enum": ["approve", "reject", "revise"]},
+      "feedback": {"type": "string"},
+      "revision_notes": {"type": "string"}
+    },
+    "required": ["approval_decision"]
+  },
+  "hitl_request_details": {
+    "prompt": "Please review the generated content and make your approval decision",
+    "context": "Content generation workflow completed, awaiting editorial review"
+  }
+}
+```
+
+**Resume execution with HITL inputs:**
+```json
+{
+  "node_config": {
+    "workflow_name": "content_approval_workflow"
+  },
+  "input": {
+    "hitl_inputs": {
+      "approval_decision": "approve",
+      "feedback": "Content looks great, ready for publication",
+      "revision_notes": "No revisions needed"
+    },
+    "subworkflow_run_id": "550e8400-e29b-41d4-a716-446655440002"
+  }
+}
+```
+
 ## Common Use Cases
 
 ### 1. Modular Workflow Design
@@ -384,6 +535,13 @@ Execute multiple workflows for different aspects:
 - Each handles a different aspect of processing
 - Combine results in a subsequent node
 
+### 5. Human-in-the-Loop Workflows
+Create workflows that require human review or approval:
+- **Content Review**: Generate content and pause for editorial approval
+- **Decision Making**: Present options and wait for human selection
+- **Quality Control**: Pause processing for manual inspection
+- **Exception Handling**: Escalate to human when automated processing fails
+
 ## Best Practices
 
 ### Workflow Design
@@ -411,6 +569,15 @@ Execute multiple workflows for different aspects:
 2. **Filter outputs**: Use output_fields to reduce data transfer
 3. **Validate data types**: Ensure input data matches target workflow expectations
 4. **Preserve context**: Use thread_id for conversational workflows
+
+### HITL (Human-in-the-Loop) Management
+1. **Monitor status**: Always check output status for `waiting_hitl` state
+2. **Store run IDs**: Save `run_id` from HITL outputs for later resumption
+3. **Validate HITL inputs**: Ensure human responses match the provided schema exactly
+4. **Handle timeouts**: HITL workflows may pause indefinitely - plan for extended wait times
+5. **Maintain context**: Use consistent `_thread_id` when resuming HITL workflows
+6. **Cache consideration**: HITL resume operations skip cache lookup by design
+7. **Error handling**: Implement proper error handling for invalid HITL resume attempts
 
 ## Notes for Non-Coders
 
@@ -451,6 +618,18 @@ Execute multiple workflows for different aspects:
 - **Use** same thread_id format (UUID string)
 - **Verify** target workflow supports thread context
 
+### HITL Resume Issues
+- **Missing subworkflow_run_id**: Always provide the exact run_id from the HITL output
+- **Invalid HITL inputs**: Ensure your inputs match the hitl_request_schema exactly
+- **Schema validation errors**: Check that all required fields are provided in hitl_inputs
+- **Run not found**: Verify the subworkflow_run_id exists and is in HITL state
+- **Workflow not resumable**: Some workflows may not support HITL resumption
+
+### HITL Detection Problems
+- **Status not detected**: Ensure you're checking the `status` field in outputs
+- **Missing HITL details**: Check for network issues when fetching HITL job details
+- **Timeout during HITL**: HITL workflows may pause indefinitely - this is expected behavior
+
 ## Integration Example in Workflow
 
 ```json
@@ -490,4 +669,13 @@ Execute multiple workflows for different aspects:
 
 ## Summary
 
-The WorkflowRunnerNode is your tool for creating sophisticated, modular workflow systems. It allows workflows to leverage other workflows as building blocks, enabling complex orchestration while maintaining clean, reusable components. Focus on identifying the right workflow to run and mapping your data correctly - the node handles all the execution complexity for you.
+The WorkflowRunnerNode is your tool for creating sophisticated, modular workflow systems. It allows workflows to leverage other workflows as building blocks, enabling complex orchestration while maintaining clean, reusable components. With full HITL (Human-in-the-Loop) support, it can also manage workflows that require human interaction, automatically detecting when human input is needed and providing seamless resumption capabilities.
+
+Key capabilities:
+- **Workflow orchestration**: Execute subworkflows with proper parent-child relationships
+- **Dynamic input mapping**: Flexible data passing between workflows
+- **HITL support**: Full detection, schema exposure, and resumption for human-interactive workflows
+- **Thread context**: Maintain conversation state across workflow executions
+- **Error handling**: Configurable failure behavior and comprehensive status reporting
+
+Focus on identifying the right workflow to run and mapping your data correctly - the node handles all the execution complexity, including HITL states, for you.

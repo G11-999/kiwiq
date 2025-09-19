@@ -168,7 +168,10 @@ class InteractiveWorkflowRunClient:
         run_id: uuid.UUID,
         hitl_input_iterator: int,
         provided_hitl_inputs: Optional[List[Dict[str, Any]]],
-        on_behalf_of_user_id: Optional[uuid.UUID] = None
+        on_behalf_of_user_id: Optional[uuid.UUID] = None,
+        reset_overrides_on_hitl_resume: Optional[bool] = None,
+        hitl_include_active_overrides: Optional[bool] = None,
+        hitl_include_override_tags: Optional[List[str]] = None
     ) -> Tuple[bool, int]:
         """Internal helper to fetch HITL job details and submit response."""
         logger.info(f"Run {run_id} is WAITING_HITL. Fetching job details for step {hitl_input_iterator + 1}...")
@@ -205,10 +208,24 @@ class InteractiveWorkflowRunClient:
                  logger.error(f"Failed to serialize HITL response inputs for display: {e}")
                  print(f"(Could not display inputs being sent due to serialization error: {e})")
 
+            # Determine override parameters for HITL resume
+            # When reset_overrides_on_hitl_resume is set, use HITL-specific override settings if provided
+            hitl_resume_active_overrides = hitl_include_active_overrides if reset_overrides_on_hitl_resume else None
+            hitl_resume_override_tags = hitl_include_override_tags if reset_overrides_on_hitl_resume else None
+            
+            if reset_overrides_on_hitl_resume:
+                if hitl_include_active_overrides is not None:
+                    logger.info(f"Using HITL-specific include_active_overrides: {hitl_include_active_overrides}")
+                if hitl_include_override_tags is not None:
+                    logger.info(f"Using HITL-specific include_override_tags: {hitl_include_override_tags}")
+
             resumed_run_status = await self._run_client.submit_run(
                 resume_run_id=run_id,
                 inputs=hitl_response_inputs,
-                on_behalf_of_user_id=on_behalf_of_user_id
+                on_behalf_of_user_id=on_behalf_of_user_id,
+                reset_overrides_on_hitl_resume=reset_overrides_on_hitl_resume,
+                include_active_overrides=hitl_resume_active_overrides,
+                include_override_tags=hitl_resume_override_tags
             )
 
             if resumed_run_status:
@@ -366,7 +383,12 @@ class InteractiveWorkflowRunClient:
         stream_intermediate_results: bool = False,
         on_behalf_of_user_id: Optional[uuid.UUID] = None,
         thread_id: Optional[uuid.UUID] = None,
-        tag: Optional[str] = None
+        tag: Optional[str] = None,
+        include_active_overrides: Optional[bool] = None,
+        include_override_tags: Optional[List[str]] = None,
+        reset_overrides_on_hitl_resume: Optional[bool] = None,
+        hitl_include_active_overrides: Optional[bool] = None,
+        hitl_include_override_tags: Optional[List[str]] = None
     ) -> Tuple[Optional[wf_schemas.WorkflowRunRead], Optional[Dict[str, Any]]]:
         """
         Submits a workflow run and monitors its execution until completion,
@@ -401,6 +423,11 @@ class InteractiveWorkflowRunClient:
                                  were another user.
             thread_id: Optional thread ID to resume from existing thread to retain message history.
             tag: Optional tag to associate with the workflow run.
+            include_active_overrides: Whether to include active overrides. Defaults to True if not specified.
+            include_override_tags: List of override tags to include. If None, no specific tag filtering is applied.
+            reset_overrides_on_hitl_resume: Whether to reset overrides on HITL resume. If False, same overrides from previous session will be reapplied.
+            hitl_include_active_overrides: Override setting for include_active_overrides specifically for HITL resume calls. If None, uses include_active_overrides value. Only used when reset_overrides_on_hitl_resume is set.
+            hitl_include_override_tags: Override setting for include_override_tags specifically for HITL resume calls. If None, uses include_override_tags value. Only used when reset_overrides_on_hitl_resume is set.
 
         Returns:
             A tuple containing:
@@ -480,6 +507,9 @@ class InteractiveWorkflowRunClient:
                 thread_id=thread_id,
                 tag=tag,
                 streaming_mode=stream_intermediate_results,
+                include_active_overrides=include_active_overrides,
+                include_override_tags=include_override_tags,
+                reset_overrides_on_hitl_resume=reset_overrides_on_hitl_resume,
             )
             if not submitted_run:
                 logger.error(f"Failed to submit initial workflow run for workflow {workflow_id_to_run}.")
@@ -562,7 +592,7 @@ class InteractiveWorkflowRunClient:
                     # Signal streaming task to pause/stop printing potentially confusing intermediate states during HITL prompt
                     # (Optional enhancement: could pause the task instead of just letting it run) 
                     handled, next_iterator_index = await self._handle_hitl_step(
-                        created_run_id, hitl_input_iterator, hitl_inputs, on_behalf_of_user_id
+                        created_run_id, hitl_input_iterator, hitl_inputs, on_behalf_of_user_id, reset_overrides_on_hitl_resume, hitl_include_active_overrides, hitl_include_override_tags
                     )
                     hitl_input_iterator = next_iterator_index
 
@@ -683,6 +713,11 @@ async def run_workflow_test(
     on_behalf_of_user_id: Optional[uuid.UUID] = None,
     thread_id: Optional[uuid.UUID] = None,
     tag: Optional[str] = None,
+    include_active_overrides: Optional[bool] = None,
+    include_override_tags: Optional[List[str]] = None,
+    reset_overrides_on_hitl_resume: Optional[bool] = None,
+    hitl_include_active_overrides: Optional[bool] = None,
+    hitl_include_override_tags: Optional[List[str]] = None,
     let_workflow_recover_from_failure: bool = True
 ) -> Tuple[Optional[wf_schemas.WorkflowRunRead], Optional[Dict[str, Any]]]:
     """
@@ -742,6 +777,11 @@ async def run_workflow_test(
                              were another user.
         thread_id: Optional thread ID to resume from existing thread to retain message history.
         tag: Optional tag to associate with the workflow run.
+        include_active_overrides: Whether to include active overrides. Defaults to True if not specified.
+        include_override_tags: List of override tags to include. If None, no specific tag filtering is applied.
+        reset_overrides_on_hitl_resume: Whether to reset overrides on HITL resume. If False, same overrides from previous session will be reapplied.
+        hitl_include_active_overrides: Override setting for include_active_overrides specifically for HITL resume calls. If None, uses include_active_overrides value. Only used when reset_overrides_on_hitl_resume is set.
+        hitl_include_override_tags: Override setting for include_override_tags specifically for HITL resume calls. If None, uses include_override_tags value. Only used when reset_overrides_on_hitl_resume is set.
         let_workflow_recover_from_failure: If True, the workflow will recover from failure.
 
     Returns:
@@ -1160,7 +1200,12 @@ async def run_workflow_test(
                 stream_intermediate_results=stream_intermediate_results,
                 on_behalf_of_user_id=on_behalf_of_user_id,
                 thread_id=thread_id,
-                tag=tag
+                tag=tag,
+                include_active_overrides=include_active_overrides,
+                include_override_tags=include_override_tags,
+                reset_overrides_on_hitl_resume=reset_overrides_on_hitl_resume,
+                hitl_include_active_overrides=hitl_include_active_overrides,
+                hitl_include_override_tags=hitl_include_override_tags
             )
 
             # --- 3. Validation Phase --- #

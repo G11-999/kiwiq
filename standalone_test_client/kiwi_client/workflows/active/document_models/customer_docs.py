@@ -327,6 +327,13 @@ BLOG_PLAYBOOK_SYSTEM_DOCUMENT_IS_SYSTEM_ENTITY = True
 
 
 # ============================================
+# EXTERNAL RESEARCH DOCUMENTS
+# ============================================
+
+# External Research Report
+EXTERNAL_RESEARCH_REPORT_NAMESPACE_TEMPLATE = "external_research_reports_{item}"
+
+# ============================================
 # LITE VERSIONS FOR CONTENT DIAGNOSTICS
 # ============================================
 

@@ -693,15 +693,15 @@ async def main():
         #     "module_path": "kiwi_client.workflows.active.content_studio.wf_blog_calendar_selected_topic_to_brief",
         # },
 
-        {
-            "workflow_key": "blog_content_playbook_workflow",
-            "module_path": "kiwi_client.workflows.active.playbook.wf_blog_content_playbook_generation",
-        },
+        # {
+        #     "workflow_key": "blog_content_playbook_workflow",
+        #     "module_path": "kiwi_client.workflows.active.playbook.wf_blog_content_playbook_generation",
+        # },
 
-        {
-            "workflow_key": "linkedin_content_playbook_workflow",
-            "module_path": "kiwi_client.workflows.active.playbook.wf_linkedin_content_playbook_generation",
-        },
+        # {
+        #     "workflow_key": "linkedin_content_playbook_workflow",
+        #     "module_path": "kiwi_client.workflows.active.playbook.wf_linkedin_content_playbook_generation",
+        # },
 
 
         # {
@@ -732,6 +732,16 @@ async def main():
         #     "module_path": "kiwi_client.workflows.wf_user_dna",
         #     "run_test": False,
         # }
+
+        # {
+        #     "workflow_key": "linkedin_content_strategy_workflow",
+        #     "module_path": "kiwi_client.workflows.deprecated.wf_content_strategy_workflow",
+        # },
+
+        # {
+        #     "workflow_key": "external_research_workflow",
+        #     "module_path": "kiwi_client.workflows.active.labs.wf_on_demand_external_research",
+        # },
     ]
     
     try:

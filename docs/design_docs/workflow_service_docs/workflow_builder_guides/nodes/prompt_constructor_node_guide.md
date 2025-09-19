@@ -139,11 +139,9 @@ The main configuration happens within the `node_config` field, specifically usin
         },
         // --- NEW: Image Output Control ---
         "separate_images_by_template": true // Default: true. Set to false to only output combined "all_images" field
-      },
-      // Input/Output schemas are DYNAMIC. They MUST be defined in the graph schema
-      // to declare expected inputs and outputs.
-      "dynamic_input_schema": { /* See Section 3 & 5 */ },
-      "dynamic_output_schema": { /* See Section 4 & 5 */ }
+      }
+      // Note: The node automatically receives all inputs piped to it via edges
+      // Output fields are automatically created based on template IDs
     }
     // ... other nodes
   }
@@ -192,15 +190,15 @@ Runtime prerequisites for dynamic loading:
 - The application context must include `user` and `workflow_run_job` objects (used to scope org and permissions).
 - If any of these are missing, the node records load errors and skips those templates.
 
-## 3. Input (Dynamic Schema)
+## 3. Input (Automatic Input Handling)
 
-The `PromptConstructorNode` requires specific fields in its input data to function correctly. These fields must be declared in the node's `dynamic_input_schema` within the `GraphSchema` and provided via incoming `EdgeSchema` mappings.
+The `PromptConstructorNode` automatically receives all input data piped to it via incoming edges. You don't need to declare input schemas - the node will have access to any data mapped to it through edge configurations.
 
-**Required Inputs:**
+**Available Input Data:**
 
-1.  **Fields for `construct_options`:** Any top-level keys that are the start of a path used in `construct_options` or `global_construct_options` (e.g., if you have path `"user_profile.address.city"`, the input schema needs a field named `"user_profile"` of type `any` or `object`).
-2.  **Fields for Dynamic Template Loading:** Any fields referenced by `input_name_field_path` or `input_version_field_path` if using `template_load_config`.
-3.  **Fields for Direct Input Mappings (P3/P4):** Any fields mapped directly via edges with `dst_field` matching `TEMPLATE_ID.VARIABLE_NAME` (P3) or `variable_name` (P4).
+The node can access any data mapped to it via edges using dot-notation paths in `construct_options` and `global_construct_options`. For example:
+- If an edge maps `src_field: "user_data"` to `dst_field: "user_info"`, you can access nested data using paths like `"user_info.profile.name"`
+- All mapped fields become immediately available for variable resolution
 
 **Variable Resolution Priority:**
 
@@ -226,35 +224,35 @@ The node resolves the final value for each placeholder (`{variable}`) in each te
     *   If not found via P1-P4, the node uses the defaults prepared for the template. For dynamically loaded templates, loaded defaults are combined with and overridden by any `variables` defined in the node config. For static templates, only the `variables` from the node config are used.
 
 6.  **Required Input (Error):**
-    *   If a variable placeholder exists in the final template string, and its value hasn't been determined by steps 1-5, the node will fail during output validation if that output field (`id`) is marked as required in the `dynamic_output_schema`. The error will be reported in `prompt_template_errors`.
+    *   If a variable placeholder exists in the final template string, and its value hasn't been determined by steps 1-5, the node will report the error in `prompt_template_errors` and omit that output field from the results.
 
-## 4. Output (Dynamic Schema - `PromptConstructorOutput`)
+## 4. Output (Automatic Output Generation)
 
-The `PromptConstructorNode` produces a dynamic output object. Its structure **must** be defined in the node's `dynamic_output_schema` within the `GraphSchema`. This schema dictates which fields the node will attempt to include in its final, validated output.
+The `PromptConstructorNode` automatically generates output fields based on the `id` values of your prompt templates. You don't need to define output schemas - the node creates the appropriate output structure automatically.
 
--   **Constructed Prompts:** For each `PromptTemplateDefinition` defined in `node_config.prompt_templates`, the `dynamic_output_schema` should include a field definition matching the template's **`id`**.
+**Generated Output Fields:**
+
+-   **Constructed Prompts:** For each `PromptTemplateDefinition` defined in `node_config.prompt_templates`, the node automatically creates an output field with the name matching the template's **`id`**.
     *   The **name** of the output field matches the `id` (e.g., `greeting_prompt`, `summary_prompt_for_llm`).
-    *   The **value** will be the fully constructed prompt string *if* construction was successful.
-    *   Mark the field as `required: true` in the schema if the workflow depends on this prompt being successfully generated. If construction fails for a required field, the node execution will fail with a `ValidationError`. If marked `required: false`, the field will simply be absent from the output model if construction fails.
--   **`prompt_template_errors`** (Optional[List[Dict]]): To receive errors, you **must** define a field named `prompt_template_errors` (typically `type: "list", required: false`) in the `dynamic_output_schema`.
-    *   If defined and errors occur during template loading or construction, this field will contain a list of dictionaries detailing those errors (including `template_id` and `error`).
-    *   If defined and no errors occur, this field will contain an empty list (`[]`).
-    *   If this field is *not* defined in the `dynamic_output_schema`, any internal errors will still be logged, but they will not be included in the node's output object passed to downstream nodes.
+    *   The **value** will be the fully constructed prompt string if construction was successful.
+    *   If construction fails, the field will be absent from the output.
+-   **`prompt_template_errors`** (Optional[List[Dict]]): Automatically included when errors occur.
+    *   Contains a list of dictionaries detailing template loading or construction errors (including `template_id` and `error`).
+    *   Contains an empty list (`[]`) when no errors occur.
+    *   Always available for downstream nodes to access error information.
 
--   **Image Outputs:** The node can output collected images in the following formats:
+-   **Image Outputs:** The node automatically creates image output fields when templates include images:
     *   **Template-Specific Images** (`{template_id}_images`): When `separate_images_by_template: true` (default), each template that has images gets its own output field named `{template_id}_images` (e.g., `greeting_prompt_images`, `summary_prompt_images`).
         *   The **value** will be a list of valid image URLs/base64 strings collected for that specific template.
-        *   Mark as `required: false` in the schema since not all templates may have images.
+        *   Only created when the template actually has images.
     *   **Combined Images** (`all_images`): A field containing all unique images collected from all templates.
         *   The **value** will be a list of unique image URLs/base64 strings (duplicates automatically removed, order preserved).
-        *   Mark as `required: false` in the schema since templates may not have any images.
+        *   Only created when any template has images.
         *   This field is always created when any images are collected, regardless of the `separate_images_by_template` setting.
     *   **Image Validation and Order**:
         *   Valid inputs include: `http(s)://`, `ftp(s)://`, `data:image/...;base64,...`, or sufficiently long raw base64 that decodes successfully.
         *   Static images are added first, then dynamically collected images from paths; duplicates are removed while preserving first-seen order.
         *   When `separate_images_by_template` is `false`, per-template image fields are omitted and only `all_images` is output.
-
-Note on undeclared outputs: The node's underlying output model ignores additional fields. If you omit image fields from the `dynamic_output_schema`, they will be ignored during validation. However, to route them via graph edges, declare them explicitly in the schema and edges.
 
 ## 4.1 Special Variables and Template Formatting
 
@@ -305,22 +303,8 @@ Here's an example showing how to use the image collection features with an LLM n
           "analysis_type": "analysis_type"
         },
         "separate_images_by_template": true
-      },
-      "dynamic_input_schema": {
-        "fields": {
-          "user_profile": { "type": "any", "required": true, "description": "User profile data" },
-          "uploaded_files": { "type": "list", "required": false, "description": "User uploaded images" },
-          "analysis_type": { "type": "str", "required": false, "description": "Type of analysis to perform" }
-        }
-      },
-      "dynamic_output_schema": {
-        "fields": {
-          "vision_prompt": { "type": "str", "required": true },
-          "vision_prompt_images": { "type": "list", "required": false },
-          "all_images": { "type": "list", "required": false },
-          "prompt_template_errors": { "type": "list", "required": false }
-        }
       }
+      // Output will automatically include: vision_prompt, vision_prompt_images, all_images, prompt_template_errors
     },
     "vision_llm": {
       "node_id": "vision_llm",
@@ -387,24 +371,8 @@ Here's an example showing how to use the image collection features with an LLM n
         "global_construct_options": { // P2 Sources
           "city": "user_profile.address.city"
         }
-      },
-      // Define expected inputs for lookups
-      "dynamic_input_schema": {
-        "fields": {
-          "user_profile": { "type": "any", "required": true, "description": "Needed for construct options" }
-        }
-      },
-      // Define expected outputs (MUST be defined)
-      "dynamic_output_schema": {
-        "fields": {
-          "email_subject": { "type": "str", "required": true }, // This prompt MUST succeed
-          "email_body": { "type": "str", "required": true }, // This prompt MUST succeed
-          "prompt_template_errors": { "type": "list", "required": false }, // Include errors if they occur
-          "greeting_prompt_images": { "type": "list", "required": false }, // Template-specific images
-          "summary_prompt_images": { "type": "list", "required": false }, // Template-specific images
-          "all_images": { "type": "list", "required": false } // Combined images
-        }
       }
+      // Output will automatically include: email_subject, email_body, prompt_template_errors
     },
     "send_email": { /* ... uses email_subject, email_body ... */ },
     "log_errors": { /* ... uses prompt_template_errors ... */ }
@@ -417,7 +385,7 @@ Here's an example showing how to use the image collection features with an LLM n
       "mappings": [
         // Map the container object needed for path lookups
         { "src_field": "user_profile", "dst_field": "user_profile" }
-        // No need to map individual variables if solely using construct_options
+        // The node will automatically have access to this data for construct_options paths
       ]
     },
     // Use constructed prompts
@@ -429,7 +397,7 @@ Here's an example showing how to use the image collection features with an LLM n
         { "src_field": "email_body", "dst_field": "body" }
       ]
     },
-    // Handle errors (only works if errors field defined in output schema)
+    // Handle errors (automatically available)
     {
       "src_node_id": "build_email_prompts",
       "dst_node_id": "log_errors",
@@ -457,8 +425,8 @@ Here's an example showing how to use the image collection features with an LLM n
     *   Map to `VARIABLE_NAME` (e.g., `user_name`) to set it for all templates (Priority 4).
     *   **Important:** These direct mappings are *lower* priority than `construct_options`.
 -   **Defaults (Lowest Priority):** If no input is found via the methods above, the node uses the prepared defaults for the template (P5). For dynamically loaded templates, loaded defaults are combined with and can be overridden by `variables` in the node config.
--   **Connect Inputs:** Use edges to feed the *data structures* needed for `construct_options` lookups (e.g., map the whole `user_profile` object) and any direct inputs (P3/P4). Define the expected inputs in `dynamic_input_schema`.
--   **Connect Outputs:** Use edges to take the finished prompts (using the template `id` as the `src_field`) and `prompt_template_errors` to the next nodes. Define the expected outputs (including the template `id`s and optionally `prompt_template_errors`) in `dynamic_output_schema`. If you need image outputs, declare `{template_id}_images` and/or `all_images` and wire them via edges.
+-   **Connect Inputs:** Use edges to feed the *data structures* needed for `construct_options` lookups (e.g., map the whole `user_profile` object) and any direct inputs (P3/P4). The node automatically receives all mapped data.
+-   **Connect Outputs:** Use edges to take the finished prompts (using the template `id` as the `src_field`) and `prompt_template_errors` to the next nodes. All template IDs automatically become available output fields. Image outputs (`{template_id}_images` and `all_images`) are also automatically available when templates include images.
 
 ### Dynamic Loading Tips for Non-Coders
 
@@ -477,9 +445,9 @@ Here's an example showing how to use the image collection features with an LLM n
     *   Removes duplicate images 
     *   Filters out invalid/broken image URLs
     *   Creates organized output fields for downstream nodes
--   **Image Output Fields:** The node creates:
+-   **Image Output Fields:** The node automatically creates:
     *   `{template_id}_images`: Images specific to each template (when `separate_images_by_template: true`)
-    *   `all_images`: All images from all templates combined (always created)
+    *   `all_images`: All images from all templates combined (always created when images are present)
 -   **Connect Images to Vision LLMs:** Use edges to map image outputs to LLM nodes that support vision:
     *   Map `all_images` → `image_input_url_or_base64` for the LLM node
     *   The LLM will receive both your constructed prompt and all collected images

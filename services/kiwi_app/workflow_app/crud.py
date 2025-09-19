@@ -459,6 +459,7 @@ class WorkflowRunDAO(BaseDAO[models.WorkflowRun, schemas.WorkflowRunCreate, sche
         status: WorkflowRunStatus = WorkflowRunStatus.SCHEDULED,
         tag: Optional[str] = None,
         applied_workflow_config_overrides: Optional[str] = None,
+        applied_workflow_config_override_tags: Optional[str] = None,
         parent_run_id: Optional[uuid.UUID] = None,
         retry_count: int = 0
     ) -> models.WorkflowRun:
@@ -484,6 +485,7 @@ class WorkflowRunDAO(BaseDAO[models.WorkflowRun, schemas.WorkflowRunCreate, sche
             tag=tag,
             applied_workflow_config_overrides=applied_workflow_config_overrides,
             parent_run_id=parent_run_id,
+            applied_workflow_config_override_tags=applied_workflow_config_override_tags,
             input_hash=input_hash,
             retry_count=retry_count,
         )
@@ -625,6 +627,17 @@ class WorkflowRunDAO(BaseDAO[models.WorkflowRun, schemas.WorkflowRunCreate, sche
                 for override_id in applied_overrides:
                     like_pattern = f"%{override_id}%"
                     override_conditions.append(self.model.applied_workflow_config_overrides.like(like_pattern))
+                if override_conditions:
+                    conditions.append(or_(*override_conditions))
+        if filters.get("applied_workflow_config_override_tags"):
+            applied_override_tags = filters["applied_workflow_config_override_tags"]
+            if isinstance(applied_override_tags, str):
+                conditions.append(self.model.applied_workflow_config_override_tags == applied_override_tags)
+            elif isinstance(applied_override_tags, list):
+                override_conditions = []
+                for override_tag in applied_override_tags:
+                    like_pattern = f"%{override_tag}%"
+                    override_conditions.append(self.model.applied_workflow_config_override_tags.like(like_pattern))
                 if override_conditions:
                     conditions.append(or_(*override_conditions))
 

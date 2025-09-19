@@ -297,7 +297,7 @@ async def run_graph(
         if is_sub_workflow:
             # Rename the flow run to include the subworkflow name for better identification
             try:
-                new_flow_run_name = f"[SUBFLOW] {workflow_run.workflow_name}:--{run_id} (Parent: {workflow_run.parent_run_id})"
+                new_flow_run_name = f"[SUBFLOW] {workflow_run.workflow_name}:--{run_id} (Parent: {workflow_run.parent_run_id})" + "--(HITL-RESUMED)" if workflow_run_job.resume_after_hitl else ""
                 
                 async with get_client() as prefect_client:
                     await prefect_client.update_flow_run(
@@ -922,7 +922,11 @@ async def trigger_workflow_run(
     streaming_mode: Optional[bool] = True,
     parent_run_id: Optional[uuid.UUID] = None,
     retry_count: Optional[int] = 0,
-) -> FlowRun:
+    reset_overrides_on_hitl_resume: Optional[bool] = False,
+    include_active_overrides: Optional[bool] = True,
+    include_override_tags: Optional[List[str]] = None,
+    return_job_object_no_submit: bool = False,
+) -> Union[FlowRun, Tuple[wf_schemas.WorkflowRunJobCreate, str]]:
     """
     Helper function to trigger a workflow run via the Prefect deployment.
     
@@ -940,9 +944,10 @@ async def trigger_workflow_run(
         streaming_mode: Optional flag to enable/disable streaming mode
         parent_run_id: Optional parent run ID for subflows
         retry_count: Optional retry count for the workflow run
+        return_job_object_no_submit: Optional flag to return the job object without submitting it
 
     Returns:
-        uuid.UUID: The run ID of the triggered flow
+        Union[FlowRun, wf_schemas.WorkflowRunJobCreate]: The run ID of the triggered flow or the job object if return_job_object_no_submit is True
     """
     # if run_id is None:
     #     run_id = uuid.uuid4()
@@ -967,6 +972,9 @@ async def trigger_workflow_run(
         streaming_mode=streaming_mode,
         parent_run_id=parent_run_id,
         retry_count=retry_count,
+        reset_overrides_on_hitl_resume=reset_overrides_on_hitl_resume,
+        include_active_overrides=include_active_overrides,
+        include_override_tags=include_override_tags,
     )
     
     # # Trigger the workflow as a deployment
@@ -977,11 +985,16 @@ async def trigger_workflow_run(
     #     )
     # else:
     hitl_suffix = "--(HITL-RESUMED)" if resume_after_hitl else ""
+    flow_run_name = f"{workflow_name}:--{run_id}" + hitl_suffix
+    
+    if return_job_object_no_submit:
+        return run_job, flow_run_name
+    
     flow_run = await run_deployment(
         name="workflow-execution/prod",  # References the deployment name below
         parameters={"run_job": run_job},   # .model_dump(mode='json')}, # Ensure proper serialization
         timeout=0,  # Don't wait for completion
-        flow_run_name=f"{workflow_name}:--{run_id}" + hitl_suffix,
+        flow_run_name=flow_run_name,
         tags=["subflow", f"parent:{parent_run_id}"] if parent_run_id is not None else None,
     )
     from global_config.logger import get_logger

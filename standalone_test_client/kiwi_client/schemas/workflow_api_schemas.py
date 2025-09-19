@@ -111,15 +111,25 @@ class WorkflowRunBase(BaseModel):
 class WorkflowRunCreate(BaseModel):
     """Schema used internally or by other services to create a run record."""
     run_id: Optional[uuid.UUID] = None
-    parent_run_id: Optional[uuid.UUID] = Field(None, description="Optional parent run ID to reuse")
     workflow_id: Optional[uuid.UUID] = None
+    workflow_name: Optional[str] = Field(None, description="Name of the workflow to run, this is optional and is only used for debugging/logging purposes; workflow ID is used to fetch the workflow instance")
     inputs: Optional[Dict[str, Any]] = Field(None, description="Inputs to provide to the workflow run")
     # TODO: add checkpoint ID as well for resume!
     thread_id: Optional[uuid.UUID] = Field(None, description="Optional existing thread ID to reuse")
+    parent_run_id: Optional[uuid.UUID] = Field(None, description="Optional parent run ID to reuse")
     graph_schema: Optional[GraphSchema] = None
     resume_after_hitl: Optional[bool] = False
     force_resume_experimental_option: Optional[bool] = Field(default=False, description="Experimental option to force resume after HITL even if not in WAITING_HITL state or without pending HITL jobs! (Use with caution!)")
     on_behalf_of_user_id: Optional[uuid.UUID] = Field(None, description="User ID to act on behalf of (requires superuser privileges)")
+    tag: Optional[str] = Field(None, description="Optional tag to mark this run for experimentation tracking")
+    applied_workflow_config_overrides: Optional[str] = Field(None, description="Comma-separated list of override IDs that were applied to this run")
+    applied_workflow_config_override_tags: Optional[str] = Field(None, description="Comma-separated list of override tags that were applied to this run")
+    retry_count: Optional[int] = Field(default=0, ge=0, description="Number of times this workflow run has been retried. Defaults to 0.")
+    # Override configs
+    include_active_overrides: Optional[bool] = Field(default=True, description="Whether to include active overrides")
+    include_override_tags: Optional[List[str]] = Field(default=None, description="List of override tags to include")
+    reset_overrides_on_hitl_resume: Optional[bool] = Field(default=False, description="Whether to reset overrides on HITL resume. If this is False, on resume, the same overrides applied in previous session of this run will be reapplied.")
+    streaming_mode: Optional[bool] = Field(default=True, description="Whether to stream the LLM tokens")
 
 
 class WorkflowRunJobCreate(WorkflowRunCreate):
@@ -170,6 +180,8 @@ class WorkflowRunRead(WorkflowRunBase):
     triggered_by_user_id: Optional[uuid.UUID] = None
     started_at: Optional[datetime] = None
     ended_at: Optional[datetime] = None
+    applied_workflow_config_overrides: Optional[str] = Field(None, description="Comma-separated list of override IDs that were applied to this run")
+    applied_workflow_config_override_tags: Optional[str] = Field(None, description="Comma-separated list of override tags that were applied to this run")
     created_at: datetime
     updated_at: datetime
     # prefect_run_ids: Optional[str] = None

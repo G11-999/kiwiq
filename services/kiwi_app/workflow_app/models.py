@@ -377,6 +377,11 @@ class WorkflowRun(SQLModel, table=True):
         nullable=True,
         description="Comma-separated list of workflow config override IDs that were applied to this run, in order of application (later ones override previous ones)"
     )
+    applied_workflow_config_override_tags: Optional[str] = Field(
+        default=None,
+        nullable=True,
+        description="Comma-separated list of workflow config override tags that were applied to this run, in order of application (later ones override previous ones)"
+    )
     retry_count: Optional[int] = Field(
         default=0,
         nullable=True,
