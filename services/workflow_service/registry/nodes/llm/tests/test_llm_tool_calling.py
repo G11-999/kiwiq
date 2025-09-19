@@ -720,68 +720,68 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
 
 ##########    ##########    ##########    ##########    ##########    ##########    ##########
 ##########    ##########    ##########    ##########    ##########    ##########    ##########
-    async def test_anthropic_claude3_7_tool_use_text_output_reasoning(self):
-        """Test Anthropic Claude 3.7 Sonnet with tool use (web_search), text output, and reasoning."""
-        if not hasattr(AnthropicModels, 'CLAUDE_3_7_SONNET'):
-            self.skipTest("AnthropicModels.CLAUDE_3_7_SONNET not defined in enum.")
+    # async def test_anthropic_claude3_7_tool_use_text_output_reasoning(self):
+    #     """Test Anthropic Claude 3.7 Sonnet with tool use (web_search), text output, and reasoning."""
+    #     if not hasattr(AnthropicModels, 'CLAUDE_3_7_SONNET'):
+    #         self.skipTest("AnthropicModels.CLAUDE_3_7_SONNET not defined in enum.")
 
-        topic = "ethical implications of gene editing"
-        reasoning_config = {"reasoning_tokens_budget": 1024}
-        system_prompt_turn1 = "Think step by step before answering. " + WEB_SEARCH_SYSTEM_PROMPT
+    #     topic = "ethical implications of gene editing"
+    #     reasoning_config = {"reasoning_tokens_budget": 1024}
+    #     system_prompt_turn1 = "Think step by step before answering. " + WEB_SEARCH_SYSTEM_PROMPT
 
-        anthropic_search_config = AnthropicSearchToolConfig().model_dump(exclude_none=True)
-        tool_config = ToolConfig(
-            tool_name="web_search",
-            is_provider_inbuilt_tool=True,
-            provider_inbuilt_user_config=anthropic_search_config
-        )
+    #     anthropic_search_config = AnthropicSearchToolConfig().model_dump(exclude_none=True)
+    #     tool_config = ToolConfig(
+    #         tool_name="web_search",
+    #         is_provider_inbuilt_tool=True,
+    #         provider_inbuilt_user_config=anthropic_search_config
+    #     )
 
-        # --- Turn 1: LLM makes a tool call ---
-        result_turn1 = await arun_llm_test(
-            runtime_config=self.runtime_config_regular,
-            model_provider=LLMModelProvider.ANTHROPIC,
-            model_name=AnthropicModels.CLAUDE_3_7_SONNET.value, 
-            max_tokens=1000,
-            reasoning_config=reasoning_config,
-            user_prompt=WEB_SEARCH_USER_PROMPT_TURN1_TEMPLATE.format(topic=topic),
-            input_system_prompt=system_prompt_turn1,
-            tool_calling_config=ToolCallingConfig(enable_tool_calling=True),
-            tools=[tool_config]
-        )
+    #     # --- Turn 1: LLM makes a tool call ---
+    #     result_turn1 = await arun_llm_test(
+    #         runtime_config=self.runtime_config_regular,
+    #         model_provider=LLMModelProvider.ANTHROPIC,
+    #         model_name=AnthropicModels.CLAUDE_3_7_SONNET.value, 
+    #         max_tokens=1000,
+    #         reasoning_config=reasoning_config,
+    #         user_prompt=WEB_SEARCH_USER_PROMPT_TURN1_TEMPLATE.format(topic=topic),
+    #         input_system_prompt=system_prompt_turn1,
+    #         tool_calling_config=ToolCallingConfig(enable_tool_calling=True),
+    #         tools=[tool_config]
+    #     )
 
-        self.assertIn("metadata", result_turn1)
+    #     self.assertIn("metadata", result_turn1)
 
-        messages_history_turn1 = result_turn1.get("current_messages", [])
+    #     messages_history_turn1 = result_turn1.get("current_messages", [])
 
-        # import ipdb; ipdb.set_trace()
+    #     # import ipdb; ipdb.set_trace()
 
-        # --- Turn 2: Provide tool output and get text summary with reasoning ---
-        user_prompt_turn2 = WEB_SEARCH_USER_PROMPT_TURN2_TEXT_TEMPLATE.format(
-            topic=topic, 
-        )
-        messages_history_turn2 = messages_history_turn1
+    #     # --- Turn 2: Provide tool output and get text summary with reasoning ---
+    #     user_prompt_turn2 = WEB_SEARCH_USER_PROMPT_TURN2_TEXT_TEMPLATE.format(
+    #         topic=topic, 
+    #     )
+    #     messages_history_turn2 = messages_history_turn1
 
-        result_turn2 = await arun_llm_test(
-            runtime_config=self.runtime_config_regular,
-            model_provider=LLMModelProvider.ANTHROPIC,
-            model_name=AnthropicModels.CLAUDE_3_7_SONNET.value,
-            max_tokens=1000,
-            reasoning_config=reasoning_config,
-            user_prompt=user_prompt_turn2,
-            messages_history=messages_history_turn2,
-            # tool_outputs=tool_outputs_for_turn2,
-            tool_calling_config=ToolCallingConfig(enable_tool_calling=False),
-            tools=[tool_config]
-        )
+    #     result_turn2 = await arun_llm_test(
+    #         runtime_config=self.runtime_config_regular,
+    #         model_provider=LLMModelProvider.ANTHROPIC,
+    #         model_name=AnthropicModels.CLAUDE_3_7_SONNET.value,
+    #         max_tokens=1000,
+    #         reasoning_config=reasoning_config,
+    #         user_prompt=user_prompt_turn2,
+    #         messages_history=messages_history_turn2,
+    #         # tool_outputs=tool_outputs_for_turn2,
+    #         tool_calling_config=ToolCallingConfig(enable_tool_calling=False),
+    #         tools=[tool_config]
+    #     )
 
-        self.assertIn("text_content", result_turn2)
-        text_output = result_turn2["text_content"]
-        self.assertIsInstance(text_output, str)
-        self.assertGreater(len(text_output), 0, "Text output should not be empty")
+    #     self.assertIn("text_content", result_turn2)
+    #     text_output = result_turn2["text_content"]
+    #     self.assertIsInstance(text_output, str)
+    #     self.assertGreater(len(text_output), 0, "Text output should not be empty")
 
-        self.assertIn("current_messages", result_turn2)
-        print(f"Anthropic Claude 3.7 Sonnet Text Reasoning - Turn 1 metadata: {result_turn1.get('metadata')}")
-        print(f"Anthropic Claude 3.7 Sonnet Text Reasoning - Turn 2 metadata: {result_turn2.get('metadata')}")
+    #     self.assertIn("current_messages", result_turn2)
+    #     print(f"Anthropic Claude 3.7 Sonnet Text Reasoning - Turn 1 metadata: {result_turn1.get('metadata')}")
+    #     print(f"Anthropic Claude 3.7 Sonnet Text Reasoning - Turn 2 metadata: {result_turn2.get('metadata')}")
 ##########    ##########    ##########    ##########    ##########    ##########    ##########
 ##########    ##########    ##########    ##########    ##########    ##########    ##########
 
@@ -1266,76 +1266,76 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
 
 ##########    ##########    ##########    ##########    ##########    ##########    ##########
 ##########    ##########    ##########    ##########    ##########    ##########    ##########
-    # async def test_openai_gpt4o_text_output_with_web_search(self):
-    #     """
-    #     Test OpenAI GPT-4o for a multi-turn conversation involving feedback for content generation.
-    #     Uses independent schemas and prompts and web search tool.
-    #     """
+    async def test_openai_gpt4o_text_output_with_web_search(self):
+        """
+        Test OpenAI GPT-4o for a multi-turn conversation involving feedback for content generation.
+        Uses independent schemas and prompts and web search tool.
+        """
 
-    #     # Set up web search tool
-    #     openai_search_config = OpenAIWebSearchToolConfig().model_dump(exclude_none=True)
-    #     tool_config = ToolConfig(
-    #         tool_name="web_search",
-    #         is_provider_inbuilt_tool=True,
-    #         provider_inbuilt_user_config=openai_search_config
-    #     )
-    #     tool_calling_config = ToolCallingConfig(
-    #         enable_tool_calling=True
-    #     )
+        # Set up web search tool
+        openai_search_config = OpenAIWebSearchToolConfig().model_dump(exclude_none=True)
+        tool_config = ToolConfig(
+            tool_name="web_search",
+            is_provider_inbuilt_tool=True,
+            provider_inbuilt_user_config=openai_search_config
+        )
+        tool_calling_config = ToolCallingConfig(
+            enable_tool_calling=True
+        )
 
-    #     topic = "AI in creative writing"
-    #     user_dna_example = "The user is a novelist, prefers an inspiring tone, and likes to explore philosophical aspects of technology."
+        topic = "AI in creative writing"
+        user_dna_example = "The user is a novelist, prefers an inspiring tone, and likes to explore philosophical aspects of technology."
 
-    #     # First turn: Initial post creation
-    #     initial_user_prompt = "Please search for the latest information from 2025 about " + topic + " and then " + INITIAL_POST_USER_PROMPT_TEMPLATE.format(topic=topic)
+        # First turn: Initial post creation
+        initial_user_prompt = "Please search for the latest information from 2025 about " + topic + " and then " + INITIAL_POST_USER_PROMPT_TEMPLATE.format(topic=topic)
 
-    #     result_turn1 = await arun_llm_test(
-    #         runtime_config=self.runtime_config_regular,
-    #         model_provider=LLMModelProvider.OPENAI,
-    #         model_name=OpenAIModels.GPT_4o.value,
-    #         user_prompt=initial_user_prompt,
-    #         input_system_prompt=SIMPLE_POST_SYSTEM_PROMPT,
-    #         max_tokens=500,
-    #         tools=[tool_config],
-    #         tool_calling_config=tool_calling_config
-    #     )
+        result_turn1 = await arun_llm_test(
+            runtime_config=self.runtime_config_regular,
+            model_provider=LLMModelProvider.OPENAI,
+            model_name=OpenAIModels.GPT_4o.value,
+            user_prompt=initial_user_prompt,
+            input_system_prompt=SIMPLE_POST_SYSTEM_PROMPT,
+            max_tokens=500,
+            tools=[tool_config],
+            tool_calling_config=tool_calling_config
+        )
 
-    #     self.assertIsInstance(result_turn1, dict, "Turn 1 result should be a dictionary.")
+        self.assertIsInstance(result_turn1, dict, "Turn 1 result should be a dictionary.")
         
-    #     self.assertIn("current_messages", result_turn1, "current_messages missing in turn 1 result.")
-    #     self.assertIsInstance(result_turn1["current_messages"], list, "current_messages should be a list.")
-    #     self.assertTrue(len(result_turn1["current_messages"]) >= 2, "Should have at least system, user, assistant messages in history.")
+        self.assertIn("current_messages", result_turn1, "current_messages missing in turn 1 result.")
+        self.assertIsInstance(result_turn1["current_messages"], list, "current_messages should be a list.")
+        self.assertTrue(len(result_turn1["current_messages"]) >= 2, "Should have at least system, user, assistant messages in history.")
 
-    #     # Second turn: Provide feedback and ask for revision
-    #     feedback_text = "Could you make the tone more philosophical and add a specific example?"
+        # Second turn: Provide feedback and ask for revision
+        feedback_text = "Could you make the tone more philosophical and add a specific example?"
         
-    #     feedback_user_prompt = FEEDBACK_POST_USER_PROMPT_TEMPLATE.format(
-    #         topic=topic,
-    #         previous_post_text=result_turn1.get("text_content", ""),
-    #         feedback=feedback_text
-    #     )
+        feedback_user_prompt = FEEDBACK_POST_USER_PROMPT_TEMPLATE.format(
+            topic=topic,
+            previous_post_text=result_turn1.get("text_content", ""),
+            feedback=feedback_text
+        )
         
-    #     messages_history_turn2 = result_turn1.get("current_messages", [])
-    #     self.assertTrue(len(messages_history_turn2) > 0, "Message history for turn 2 is empty.")
+        messages_history_turn2 = result_turn1.get("current_messages", [])
+        self.assertTrue(len(messages_history_turn2) > 0, "Message history for turn 2 is empty.")
 
-    #     result_turn2 = await arun_llm_test(
-    #         runtime_config=self.runtime_config_regular,
-    #         model_provider=LLMModelProvider.OPENAI,
-    #         model_name=OpenAIModels.GPT_4o.value,
-    #         user_prompt=feedback_user_prompt,
-    #         messages_history=messages_history_turn2,
-    #         input_system_prompt=SIMPLE_POST_SYSTEM_PROMPT,
-    #         max_tokens=500,
-    #         tools=[tool_config],
-    #         tool_calling_config=tool_calling_config
-    #     )
+        result_turn2 = await arun_llm_test(
+            runtime_config=self.runtime_config_regular,
+            model_provider=LLMModelProvider.OPENAI,
+            model_name=OpenAIModels.GPT_4o.value,
+            user_prompt=feedback_user_prompt,
+            messages_history=messages_history_turn2,
+            input_system_prompt=SIMPLE_POST_SYSTEM_PROMPT,
+            max_tokens=500,
+            tools=[tool_config],
+            tool_calling_config=tool_calling_config
+        )
 
-    #     self.assertIsInstance(result_turn2, dict, "Turn 2 result should be a dictionary.")
+        self.assertIsInstance(result_turn2, dict, "Turn 2 result should be a dictionary.")
 
-    #     self.assertNotEqual(result_turn1.get("text_content", ""), result_turn2.get("text_content", ""), "Revised post should differ from the original.")
+        self.assertNotEqual(result_turn1.get("text_content", ""), result_turn2.get("text_content", ""), "Revised post should differ from the original.")
 
-    #     self.assertIn("current_messages", result_turn2, "current_messages missing in turn 2 result.")
-    #     self.assertIsInstance(result_turn2["current_messages"], list, "current_messages should be a list in turn 2.")
+        self.assertIn("current_messages", result_turn2, "current_messages missing in turn 2 result.")
+        self.assertIsInstance(result_turn2["current_messages"], list, "current_messages should be a list in turn 2.")
 ##########    ##########    ##########    ##########    ##########    ##########    ##########
 ##########    ##########    ##########    ##########    ##########    ##########    ##########
 
