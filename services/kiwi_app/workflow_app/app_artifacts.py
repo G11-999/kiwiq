@@ -665,7 +665,7 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
         "user_input": null,
         "brief_uuid": null,
         "initial_status": "draft"
-        },
+       },
       "user_documents_config_variables": {},
       "template_specific": false
     },
@@ -715,7 +715,7 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
         "user_input": null,
         "initial_status": "draft",
         "brief_uuid": null
-        },
+       },
       "user_documents_config_variables": {},
       "template_specific": false
     },
@@ -971,9 +971,9 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
       "version": null,
       "inputs": {
         "entity_username": null,
-        "selected_topic": null,
-        "brief_uuid": null,
-        "initial_status": "draft"
+				"selected_topic": null,
+				"brief_uuid": null,
+				"initial_status": "draft"
         },
       "user_documents_config_variables": {},
       "template_specific": false
@@ -983,9 +983,9 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
       "version": null,
       "inputs": {
         "company_name": null,
-        "selected_topic": null,
-        "brief_uuid": null,
-        "initial_status": "draft"
+				"selected_topic": null,
+				"brief_uuid": null,
+				"initial_status": "draft"
         },
       "user_documents_config_variables": {},
       "template_specific": false
@@ -995,8 +995,8 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
       "version": null,
       "inputs": {
         "company_name": null,
-        "scraped_data": null,
-        "has_insufficient_blog_and_page_count": null
+				"scraped_data": null,
+				"has_insufficient_blog_and_page_count": null
         },
       "user_documents_config_variables": {},
       "template_specific": false
@@ -1017,6 +1017,17 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
       "version": null,
       "inputs": {
         "research_context": null,
+        "asset_name": null,
+        "is_shared": false
+        },
+      "user_documents_config_variables": {},
+      "template_specific": false
+    },
+    "file_summarisation_workflow": {
+      "name": "file_summarisation_workflow",
+      "version": null,
+      "inputs": {
+        "summary_context": null,
         "asset_name": null,
         "is_shared": false
         },
