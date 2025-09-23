@@ -102,6 +102,9 @@ DEFAULT_INGESTION_DOCUMENT_PATTERNS = [
     ("blog_ideas_namespace_*", "*"),
     ("blog_brief_namespace_*", "*"),
     ("blog_posts_draft_namespace_*", "blog_post_draft_*"),
+
+    # External research and document summary reports
+    ("external_research_reports_*", "*"),
     
     # System strategy documents (important for RAG context)
     ("blog_playbook_sys", "*"),

@@ -57,6 +57,7 @@ class ModelMetadata(BaseModel):
     reasoning_effort_class: Optional[List[str]] = None
     reasoning_effort_number_range: Optional[Tuple[int, int]] = None
     reasoning_tokens_budget: bool = False
+    anthropic_interleaved_thinking_supported: Optional[bool] = None
     reasoning_tokens_budget_min: Optional[int] = None
     # reasoning_tokens_budget_max: Optional[int] = None
     
@@ -333,6 +334,10 @@ class OpenAIModels(str, EnumWithAttr):
     }))
 
 
+ANTHROPIC_CODE_EXECUTION_BETA_HEADER = "code-execution-2025-08-25"
+ANTHROPIC_INTERLEAVED_THINKING_BETA_HEADER = "interleaved-thinking-2025-05-14"
+
+
 ANTHROPIC_METADATA = ModelMetadata(
     provider=LLMModelProvider.ANTHROPIC,
     context_limit=200000,
@@ -348,6 +353,7 @@ ANTHROPIC_METADATA = ModelMetadata(
     tool_choice=["auto", "any", "none"],
     parallel_tool_calling_configurable=True,
     web_search_tool_call_price_per_K=10.0,
+    anthropic_interleaved_thinking_supported=True,
 )
 # https://docs.anthropic.com/en/docs/agents-and-tools/computer-use#understand-anthropic-defined-tools
 # https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/token-efficient-tool-use
@@ -382,14 +388,11 @@ class AnthropicModels(str, EnumWithAttr):
         # it also has non-reasoning mode!
         "reasoning_tokens_budget": True,
         "reasoning_tokens_budget_min": 1024,
-    }))
-    CLAUDE_3_5_SONNET_LATEST = "claude-3-5-sonnet-latest", ModelMetadata(**(ANTHROPIC_METADATA.model_dump() | {
-        "rate_limits": {"requests_per_minute": 4000, "input_tokens_per_minute": 2000000, "output_tokens_per_minute": 400000},
-        # Only web search available, no code execution
-        "inbuilt_tools": {k: v for k, v in ANTHROPIC_TOOLS_REGISTRY.items() if k.startswith("web_search")},
+        "anthropic_interleaved_thinking_supported": False,
     }))
     CLAUDE_3_5_HAIKU = "claude-3-5-haiku-latest", ModelMetadata(**(ANTHROPIC_METADATA.model_dump() | {
         # Both code execution and web search available
+        "anthropic_interleaved_thinking_supported": False,
     }))
 
 

@@ -571,6 +571,42 @@ USER_DOCUMENTS_CONFIG_JSON_STR = """
       "schema_template_name": null,
       "schema_template_version": null,
       "is_system_entity": true
+    },
+    "external_research_report_doc": {
+      "docname_template": "",
+      "namespace_template": "external_research_reports_{company_name}",
+      "docname_template_vars": {},
+      "namespace_template_vars": {"company_name": null},
+      "is_shared": false,
+      "is_versioned": false,
+      "initial_version": null,
+      "schema_template_name": null,
+      "schema_template_version": null,
+      "is_system_entity": false
+    },
+    "document_summary_report_doc": {
+      "docname_template": "",
+      "namespace_template": "document_summary_reports_{company_name}",
+      "docname_template_vars": {},
+      "namespace_template_vars": {"company_name": null},
+      "is_shared": false,
+      "is_versioned": false,
+      "initial_version": null,
+      "schema_template_name": null,
+      "schema_template_version": null,
+      "is_system_entity": false
+    },
+    "blog_ai_visibility_raw_data_doc": {
+      "docname_template": "blog_ai_visibility_raw_data_{_uuid_}",
+      "namespace_template": "blog_ai_visibility_result_{company_name}",
+      "docname_template_vars": {"_uuid_": null},
+      "namespace_template_vars": {"company_name": null},
+      "is_shared": false,
+      "is_versioned": false,
+      "initial_version": null,
+      "schema_template_name": null,
+      "schema_template_version": null,
+      "is_system_entity": false
     }
   }
 }

@@ -240,7 +240,12 @@ from workflow_service.registry.registry import DBRegistry
 from workflow_service.registry.nodes.core.base import BaseNode
 from workflow_service.registry.schemas.base import BaseSchema, BaseNodeConfig
 from workflow_service.registry.nodes.core.dynamic_nodes import ConstructDynamicSchema, DynamicSchema
-from workflow_service.registry.nodes.llm.config import LLMModelProvider, PROVIDER_MODEL_MAP, AnthropicModels, AWS_REGION, ModelMetadata, THINKING_MESSAGE_TYPES, REDACED_THINKING_MESSAGE_TYPES, GEMINI_PARAM_KEY_OVERRIDES, PARAM_KEY_OVERRIDES, AI_MESSAGE_TYPES
+from workflow_service.registry.nodes.llm.config import (
+    LLMModelProvider, PROVIDER_MODEL_MAP, AnthropicModels, AWS_REGION, ModelMetadata, 
+    THINKING_MESSAGE_TYPES, REDACED_THINKING_MESSAGE_TYPES, GEMINI_PARAM_KEY_OVERRIDES, 
+    PARAM_KEY_OVERRIDES, AI_MESSAGE_TYPES, ANTHROPIC_CODE_EXECUTION_BETA_HEADER,
+    ANTHROPIC_INTERLEAVED_THINKING_BETA_HEADER,
+)
 from workflow_service.registry.schemas.base import create_dynamic_schema_with_fields
 # from workflow_service.services.external_context_manager import ExternalContextManager
 
@@ -1295,6 +1300,8 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
             **kwargs
         }
 
+        anthropic_betas = []
+
         provider = self.config.llm_config.model_spec.provider
         provider_param_key_overrides = PARAM_KEY_OVERRIDES[provider] if provider in PARAM_KEY_OVERRIDES else {}
         model_name = self.config.llm_config.model_spec.model
@@ -1370,8 +1377,15 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
         # This was introduced since Gemini's max token param key was different than provided by langchain!
         model_kwargs = {provider_param_key_overrides.get(k, k): v for k, v in model_kwargs.items()}
         # import ipdb; ipdb.set_trace()
-        if provider == LLMModelProvider.ANTHROPIC and self.config.tools and any(tool.tool_name.startswith("code_execution") for tool in self.config.tools):
-            model_kwargs["betas"] = ["code-execution-2025-05-22"]
+        if provider == LLMModelProvider.ANTHROPIC:
+            if self.config.tools and any(tool.tool_name.startswith("code_execution") for tool in self.config.tools):
+                anthropic_betas.append(ANTHROPIC_CODE_EXECUTION_BETA_HEADER)
+            if model_metadata.anthropic_interleaved_thinking_supported and self.config.llm_config.reasoning_tokens_budget:
+                anthropic_betas.append(ANTHROPIC_INTERLEAVED_THINKING_BETA_HEADER)
+        
+
+        if anthropic_betas:
+            model_kwargs["betas"] = anthropic_betas
 
         if provider == LLMModelProvider.PERPLEXITY:
             model = ChatPerplexity(model=model_name, **model_kwargs)
