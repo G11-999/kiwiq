@@ -2,9 +2,10 @@ from kiwi_client.workflows.active.sandbox_identifiers import (
     test_sandbox_company_name,
 )
 
-test_brief_uuid = "test_brief_001"
-test_brief_docname = f"blog_content_brief_{test_brief_uuid}"
-
+from kiwi_client.workflows.active.content_studio.blog_brief_to_blog_sandbox.wf_testing.sandbox_setup_docs import (
+    test_brief_uuid,
+    test_brief_docname,
+)
 
 
 test_name = "Brief to Blog Generation Workflow Test"

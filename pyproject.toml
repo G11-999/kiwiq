@@ -94,8 +94,8 @@ ipdb = "^0.13.13"
 pytest = "^8.3.5"
 kiwi_client = { path = "./standalone_test_client", develop = true }
 streamlit = "^1.50.0"
-streamlit-code-editor = "^0.1.22"
 libcst = "^1.8.5"
+streamlit-code-editor = "^0.1.22"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

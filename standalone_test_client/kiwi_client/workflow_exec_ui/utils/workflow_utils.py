@@ -28,6 +28,15 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+custom_btns = [{
+    "name": "Copy",
+    "feather": "Copy",
+    "alwaysOn": True,
+    "commands": ["copyAll"],
+    "style": {"top": "0.46rem", "right": "0.4rem"}
+}]
+
+
 class _UpdateAssign(cst.CSTTransformer):
     """
     CST Transformer for updating variable assignments in Python files.
@@ -113,20 +122,26 @@ def format_value_with_quotes(value: Any, quote_style: str) -> str:
     
     triple_double = '"""'
     triple_single = "'''"
-    
+
+    # If value is a string, prefer triple quotes when contains newlines or conflicts with the quote style
+    if quote_style in ['"', "'"]:
+        if isinstance(value, str) and ("\n" in value or quote_style in value):
+            quote_style = triple_double
+
     if quote_style in [triple_double, triple_single]:
-        # Use triple quotes for multi-line or when preserving triple quote style
-        return f'{quote_style}{value}{quote_style}'
+        # Escape backslashes and internal triple-quote sequences to avoid premature termination
+        if quote_style == triple_double:
+            escaped_value = value.replace('\\', '\\\\').replace('"""', '\\"\\"\\"')
+        else:
+            escaped_value = value.replace('\\', '\\\\').replace("'''", "\\'\\'\\'")
+        return f'{quote_style}{escaped_value}{quote_style}'
     elif quote_style == '"':
-        # Use double quotes, escape internal double quotes
         escaped_value = value.replace('\\', '\\\\').replace('"', '\\"')
         return f'"{escaped_value}"'
     elif quote_style == "'":
-        # Use single quotes, escape internal single quotes  
         escaped_value = value.replace('\\', '\\\\').replace("'", "\\'")
         return f"'{escaped_value}'"
     else:
-        # Fallback to repr
         return repr(value)
 
 
@@ -450,17 +465,17 @@ def refresh_workflow_data(workflow_info: Dict[str, Any]) -> bool:
         
         # Reload LLM inputs
         if workflow_info['has_llm_inputs']:
-            workflow_info['llm_inputs'] = get_workflow_llm_inputs(workflow_info)
+            workflow_info['llm_inputs'] = get_workflow_llm_inputs(workflow_info['metadata'])
             print(f"   ✓ Refreshed LLM inputs")
         
         # Reload testing files
         if workflow_info['has_testing_files']:
-            workflow_info['testing_files'] = get_workflow_testing_files(workflow_info)
+            workflow_info['testing_files'] = get_workflow_testing_files(workflow_info['metadata'])
             print(f"   ✓ Refreshed testing files")
         
         # Reload JSON schema
         if workflow_info['has_json_schema']:
-            workflow_info['json_schema'] = get_workflow_json_content(workflow_info)
+            workflow_info['json_schema'] = get_workflow_json_content(workflow_info['metadata'])
             print(f"   ✓ Refreshed JSON schema")
         
         print(f"🔄 FULL REFRESH COMPLETE for {category}/{workflow_name}")
@@ -482,10 +497,10 @@ def get_workflows_root_path() -> Path:
     Returns:
         Path: The absolute path to the workflows/active directory
     """
-    # Get current file directory
+    # Get current file directory (..../workflow_exec_ui/utils)
     current_dir = Path(__file__).parent
-    # Navigate back to workflows/active
-    workflows_root = current_dir.parent / "workflows" / "active"
+    # Navigate back to kiwi_client/workflows/active (go up two levels from utils)
+    workflows_root = current_dir.parent.parent / "workflows" / "active"
     
     if not workflows_root.exists():
         raise FileNotFoundError(f"Workflows directory not found: {workflows_root}")
@@ -657,7 +672,15 @@ def get_workflow_json_content(workflow_info: Dict[str, Any]) -> Optional[Dict[st
         Dictionary containing the workflow schema or None if extraction fails
     """
     try:
-        file_path = workflow_info['file_path']
+        # Handle both direct file_path and metadata structure
+        if 'file_path' in workflow_info:
+            file_path = workflow_info['file_path']
+        elif 'metadata' in workflow_info and 'file_path' in workflow_info['metadata']:
+            file_path = workflow_info['metadata']['file_path']
+        else:
+            logger.error(f"No file_path found in workflow_info: {workflow_info.keys()}")
+            return None
+            
         module = load_python_module_content(file_path)
         
         if module is None:
@@ -708,7 +731,14 @@ def get_workflow_llm_inputs(workflow_info: Dict[str, Any]) -> Optional[Any]:
     """
     try:
         workflows_root = get_workflows_root_path()
-        llm_inputs_path = workflows_root / workflow_info['category'] / workflow_info['workflow_name'] / 'wf_llm_inputs.py'
+        # Handle both direct access and metadata structure
+        if 'metadata' in workflow_info:
+            category = workflow_info['metadata']['category']
+            workflow_name = workflow_info['metadata']['workflow_name']
+        else:
+            category = workflow_info['category']
+            workflow_name = workflow_info['workflow_name']
+        llm_inputs_path = workflows_root / category / workflow_name / 'wf_llm_inputs.py'
         
         # Try normal loading first, then variable extraction fallback
         module = load_python_module_content(llm_inputs_path, extract_vars_only=False)
@@ -748,7 +778,14 @@ def get_workflow_testing_files(workflow_info: Dict[str, Any]) -> Dict[str, Any]:
     
     try:
         workflows_root = get_workflows_root_path()
-        testing_dir = workflows_root / workflow_info['category'] / workflow_info['workflow_name'] / 'wf_testing'
+        # Handle both direct access and metadata structure
+        if 'metadata' in workflow_info:
+            category = workflow_info['metadata']['category']
+            workflow_name = workflow_info['metadata']['workflow_name']
+        else:
+            category = workflow_info['category']
+            workflow_name = workflow_info['workflow_name']
+        testing_dir = workflows_root / category / workflow_name / 'wf_testing'
         
         if not testing_dir.exists():
             logger.warning(f"Testing directory not found: {testing_dir}")
@@ -780,6 +817,44 @@ def get_workflow_testing_files(workflow_info: Dict[str, Any]) -> Dict[str, Any]:
         logger.error(f"Error loading testing files for {workflow_id}: {e}")
     
     return testing_files
+
+
+def get_workflow_setup_docs(workflow_info: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Return setup docs list from sandbox_setup_docs module if available."""
+    try:
+        testing_files = workflow_info.get('testing_files') or get_workflow_testing_files(workflow_info.get('metadata', workflow_info))
+        module = testing_files.get('sandbox_setup_docs') if testing_files else None
+        if not module:
+            return []
+        # Prefer callable getter
+        if hasattr(module, 'get_setup_docs') and callable(module.get_setup_docs):
+            docs = module.get_setup_docs()
+            return list(docs) if isinstance(docs, (list, tuple)) else []
+        # Or exported variable
+        if hasattr(module, 'setup_docs'):
+            docs = getattr(module, 'setup_docs')
+            return list(docs) if isinstance(docs, (list, tuple)) else []
+        return []
+    except Exception:
+        return []
+
+
+def get_workflow_cleanup_docs(workflow_info: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Return cleanup docs list from sandbox_setup_docs module if available."""
+    try:
+        testing_files = workflow_info.get('testing_files') or get_workflow_testing_files(workflow_info.get('metadata', workflow_info))
+        module = testing_files.get('sandbox_setup_docs') if testing_files else None
+        if not module:
+            return []
+        if hasattr(module, 'get_cleanup_docs') and callable(module.get_cleanup_docs):
+            docs = module.get_cleanup_docs()
+            return list(docs) if isinstance(docs, (list, tuple)) else []
+        if hasattr(module, 'cleanup_docs'):
+            docs = getattr(module, 'cleanup_docs')
+            return list(docs) if isinstance(docs, (list, tuple)) else []
+        return []
+    except Exception:
+        return []
 
 
 def get_workflow_testing_name(workflow_info: Dict[str, Any]) -> Optional[str]:
@@ -985,19 +1060,63 @@ def list_workflow_variables(workflow_info: Dict[str, Any], file_type: str) -> Di
         
         if module is None:
             return {}
-        
-        # Get all non-private attributes (those not starting with _)
+
+        # Determine source file path and parse top-level assignments to filter out imported names
+        src_path = None
+        try:
+            workflows_root = get_workflows_root_path()
+            category = workflow_info['metadata']['category'] if 'metadata' in workflow_info else workflow_info.get('category')
+            workflow_name = workflow_info['metadata']['workflow_name'] if 'metadata' in workflow_info else workflow_info.get('workflow_name')
+            if file_type == 'llm_inputs':
+                src_path = workflows_root / category / workflow_name / 'wf_llm_inputs.py'
+            elif file_type == 'testing_inputs':
+                src_path = workflows_root / category / workflow_name / 'wf_testing' / 'wf_inputs.py'
+            elif file_type == 'sandbox_setup':
+                src_path = workflows_root / category / workflow_name / 'wf_testing' / 'sandbox_setup_docs.py'
+            elif file_type == 'state_filter':
+                src_path = workflows_root / category / workflow_name / 'wf_testing' / 'wf_state_filter_mapping.py'
+            elif file_type == 'wf_runner':
+                src_path = workflows_root / category / workflow_name / 'wf_testing' / 'wf_runner.py'
+        except Exception:
+            src_path = None
+
+        allowed_names = None
+        if src_path is not None and src_path.exists():
+            try:
+                import ast
+                with open(src_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                tree = ast.parse(content)
+                names = set()
+                for node in tree.body:
+                    if isinstance(node, ast.Assign):
+                        for tgt in node.targets:
+                            if isinstance(tgt, ast.Name):
+                                names.add(tgt.id)
+                            elif isinstance(tgt, ast.Tuple):
+                                for elt in tgt.elts:
+                                    if isinstance(elt, ast.Name):
+                                        names.add(elt.id)
+                    elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                        names.add(node.target.id)
+                allowed_names = names
+            except Exception:
+                allowed_names = None
+
+        # Collect variables from module, filtered by allowed_names if available
         variables = {}
         for name in dir(module):
-            if not name.startswith('_'):
-                try:
-                    value = getattr(module, name)
-                    # Only include basic types and avoid functions/classes
-                    if not callable(value):
-                        variables[name] = value
-                except:
-                    pass
-        
+            if name.startswith('_'):
+                continue
+            if allowed_names is not None and name not in allowed_names:
+                continue
+            try:
+                value = getattr(module, name)
+                if not callable(value):
+                    variables[name] = value
+            except Exception:
+                continue
+
         return variables
         
     except Exception as e:
