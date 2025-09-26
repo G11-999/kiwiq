@@ -1069,18 +1069,31 @@ ALL_WORKFLOWS_CONFIG_JSON_STR = """
         },
       "user_documents_config_variables": {},
       "template_specific": false
-    },
-    "blog_aeo_seo_scoring_workflow": {
-      "name": "blog_aeo_seo_scoring_workflow",
-      "version": null,
-      "inputs": {
-        "namespace": null,
-        "docname": null,
-        "is_shared": false
-        },
-      "user_documents_config_variables": {},
-      "template_specific": false
     }
+  },    
+  "dummy_user_input_to_brief_workflow": {
+    "name": "dummy_user_input_to_brief_workflow",
+    "version": null,
+    "inputs": {
+      "company_name": null,
+      "user_input": null,
+      "brief_uuid": null,
+      "initial_status": "draft"
+     },
+    "user_documents_config_variables": {},
+    "template_specific": false
+  },
+  "dummy_brief_to_blog_draft_workflow": {
+    "name": "dummy_brief_to_blog_draft_workflow",
+    "version": null,
+    "inputs": {
+      "post_uuid": null,
+      "company_name": null,
+      "brief_docname": null,
+      "initial_status": "draft"
+    },
+    "user_documents_config_variables": {},
+    "template_specific": false
   }
 }
 """
