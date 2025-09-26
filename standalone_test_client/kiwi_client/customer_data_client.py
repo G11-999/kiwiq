@@ -51,6 +51,8 @@ from kiwi_client.test_config import (
     VERSIONED_DOC_UPSERT_URL,
     SEARCH_DOCUMENTS_URL,
     DELETE_BY_PATTERN_URL,
+    FILE_UPLOAD_URL,
+    FILE_UPLOAD_VALIDATION_URL,
 )
 # Import schemas and constants from the workflow app
 from kiwi_client.schemas import workflow_api_schemas as wf_schemas
@@ -984,6 +986,155 @@ class CustomerDataTestClient:
         except Exception as e:
             logger.exception("Unexpected error during document search.")
         return None
+
+    # --- File Upload Methods ---
+
+    async def upload_files(
+        self,
+        files: List[Tuple[str, bytes, str]],  # (filename, content, content_type)
+        config_payload: Optional[Union[wf_schemas.FileUploadRequestPayload, str]] = None,
+    ) -> Optional[List[Dict[str, Any]]]:
+        """
+        Upload multiple files to the customer data service.
+        
+        Args:
+            files: List of tuples containing (filename, file_content_bytes, content_type)
+            config_payload: FileUploadRequestPayload or JSON string containing upload configuration
+            
+        Returns:
+            List of upload results if successful, None otherwise
+        """
+        logger.info(f"Attempting to upload {len(files)} files")
+        
+        # Prepare config payload
+        if config_payload:
+            if isinstance(config_payload, wf_schemas.FileUploadRequestPayload):
+                config_json = config_payload.model_dump_json()
+            else:
+                config_json = config_payload
+        else:
+            config_json = "{}"
+        
+        try:
+            # Manual multipart encoding - the only approach that works with FastAPI List[UploadFile]
+            # httpx's built-in multipart handling doesn't work correctly with FastAPI
+            import time
+            boundary = f"----formdata-httpx-{int(time.time() * 1000000)}"
+            
+            # Build multipart body manually
+            multipart_body = b''
+            
+            # Add config_payload field
+            config_part = f'--{boundary}\r\nContent-Disposition: form-data; name="config_payload"\r\n\r\n{config_json}\r\n'
+            multipart_body += config_part.encode('utf-8')
+            
+            # Add each file with the same field name "files"
+            for filename, content, content_type in files:
+                file_part_header = f'--{boundary}\r\nContent-Disposition: form-data; name="files"; filename="{filename}"\r\nContent-Type: {content_type}\r\n\r\n'
+                multipart_body += file_part_header.encode('utf-8')
+                multipart_body += content
+                multipart_body += b'\r\n'
+            
+            # Add final boundary
+            multipart_body += f'--{boundary}--\r\n'.encode('utf-8')
+            
+            response = await self._client.post(
+                FILE_UPLOAD_URL,
+                content=multipart_body,
+                headers={'Content-Type': f'multipart/form-data; boundary={boundary}'}
+            )
+            response.raise_for_status()
+            
+            response_json = response.json()
+            logger.info(f"Successfully uploaded {len(files)} files")
+            return response_json
+            
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP Status Error uploading files: {e.response.status_code} - {e.response.text}")
+        except httpx.RequestError as e:
+            logger.error(f"Request error uploading files: {e}")
+        except Exception as e:
+            logger.exception("Unexpected error during file upload")
+        return None
+
+    async def validate_upload_config(
+        self,
+        config_payload: wf_schemas.FileUploadValidationRequest,
+    ) -> Optional[wf_schemas.FileUploadValidationResult]:
+        """
+        Validate file upload configuration without actually uploading files.
+        
+        Args:
+            config_payload: FileUploadValidationRequest containing config and file list
+            
+        Returns:
+            FileUploadValidationResult if successful, None otherwise
+        """
+        logger.info(f"Validating upload config for {len(config_payload.files)} files")
+        
+        try:
+            response = await self._client.post(
+                FILE_UPLOAD_VALIDATION_URL,
+                json=config_payload.model_dump()
+            )
+            response.raise_for_status()
+            
+            response_json = response.json()
+            validated_response = wf_schemas.FileUploadValidationResult.model_validate(response_json)
+            logger.info(f"Upload config validation completed. Valid: {validated_response.is_valid}")
+            return validated_response
+            
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP Status Error validating upload config: {e.response.status_code} - {e.response.text}")
+        except httpx.RequestError as e:
+            logger.error(f"Request error validating upload config: {e}")
+        except ValidationError as e:
+            logger.error(f"Response validation error: {e}")
+        except Exception as e:
+            logger.exception("Unexpected error during upload config validation")
+        return None
+
+    async def upload_file_from_path(
+        self,
+        file_path: str,
+        config_payload: Optional[Union[wf_schemas.FileUploadRequestPayload, str]] = None,
+    ) -> Optional[List[Dict[str, Any]]]:
+        """
+        Upload a single file from a file path.
+        
+        Args:
+            file_path: Path to the file to upload
+            config_payload: FileUploadRequestPayload or JSON string containing upload configuration
+            
+        Returns:
+            List containing single upload result if successful, None otherwise
+        """
+        import mimetypes
+        from pathlib import Path
+        
+        file_path_obj = Path(file_path)
+        if not file_path_obj.exists():
+            logger.error(f"File not found: {file_path}")
+            return None
+        
+        # Read file content
+        try:
+            with open(file_path_obj, "rb") as f:
+                content = f.read()
+        except Exception as e:
+            logger.error(f"Error reading file {file_path}: {e}")
+            return None
+        
+        # Determine content type
+        content_type, _ = mimetypes.guess_type(file_path)
+        if not content_type:
+            content_type = "application/octet-stream"
+        
+        # Upload the file
+        return await self.upload_files(
+            files=[(file_path_obj.name, content, content_type)],
+            config_payload=config_payload
+        )
 
 
 # --- Example Usage ---

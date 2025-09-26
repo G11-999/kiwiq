@@ -445,13 +445,43 @@ def get_customer_data_client_sync() -> CustomerDataTestClient:
     Returns:
         CustomerDataTestClient: Ready-to-use client for document operations
     """
+    import asyncio
+    import threading
+    
     async def _get_client():
         auth_client = AuthenticatedClient()
         await auth_client.login()
         return CustomerDataTestClient(auth_client)
     
-    loop = _ensure_event_loop()
-    return loop.run_until_complete(_get_client())
+    # Check if we're already in an async context (like Streamlit)
+    try:
+        # Try to get the current running loop
+        asyncio.get_running_loop()
+        # If we get here, we're in an async context, so run in a separate thread
+        result = [None]
+        exception = [None]
+        
+        def run_in_thread():
+            try:
+                new_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(new_loop)
+                result[0] = new_loop.run_until_complete(_get_client())
+                new_loop.close()
+            except Exception as e:
+                exception[0] = e
+        
+        thread = threading.Thread(target=run_in_thread)
+        thread.start()
+        thread.join()
+        
+        if exception[0]:
+            raise exception[0]
+        return result[0]
+        
+    except RuntimeError:
+        # No loop is running, so we can create our own
+        loop = _ensure_event_loop()
+        return loop.run_until_complete(_get_client())
 
 
 def run_async_operation_sync(async_operation):
@@ -466,4 +496,105 @@ def run_async_operation_sync(async_operation):
     """
     loop = _ensure_event_loop()
     return loop.run_until_complete(async_operation)
+
+
+def upload_files_sync(files, config_payload=None):
+    """
+    Upload files synchronously for Streamlit.
+    
+    Args:
+        files: List of tuples containing (filename, file_content_bytes, content_type)
+        config_payload: FileUploadRequestPayload or JSON string containing upload configuration
+        
+    Returns:
+        List of upload results if successful, None otherwise
+    """
+    import asyncio
+    import threading
+    
+    async def _upload():
+        auth_client = AuthenticatedClient()
+        await auth_client.login()
+        client = CustomerDataTestClient(auth_client)
+        return await client.upload_files(files, config_payload)
+    
+    # Check if we're already in an async context (like Streamlit)
+    try:
+        # Try to get the current running loop
+        current_loop = asyncio.get_running_loop()
+        # If we get here, we're in an async context, so run in a separate thread
+        result = [None]
+        exception = [None]
+        
+        def run_in_thread():
+            try:
+                new_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(new_loop)
+                result[0] = new_loop.run_until_complete(_upload())
+                new_loop.close()
+            except Exception as e:
+                exception[0] = e
+        
+        thread = threading.Thread(target=run_in_thread)
+        thread.start()
+        thread.join()
+        
+        if exception[0]:
+            raise exception[0]
+        return result[0]
+        
+    except RuntimeError:
+        # No loop is running, so we can create our own
+        loop = _ensure_event_loop()
+        return loop.run_until_complete(_upload())
+
+
+def validate_upload_config_sync(config_payload):
+    """
+    Validate file upload configuration synchronously for Streamlit.
+    
+    Args:
+        config_payload: FileUploadValidationRequest containing config and file list
+        
+    Returns:
+        FileUploadValidationResult if successful, None otherwise
+    """
+    import asyncio
+    import threading
+    
+    async def _validate():
+        auth_client = AuthenticatedClient()
+        await auth_client.login()
+        client = CustomerDataTestClient(auth_client)
+        return await client.validate_upload_config(config_payload)
+    
+    # Check if we're already in an async context (like Streamlit)
+    try:
+        # Try to get the current running loop
+        current_loop = asyncio.get_running_loop()
+        # If we get here, we're in an async context, so run in a separate thread
+        result = [None]
+        exception = [None]
+        
+        def run_in_thread():
+            try:
+                new_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(new_loop)
+                result[0] = new_loop.run_until_complete(_validate())
+                new_loop.close()
+            except Exception as e:
+                exception[0] = e
+        
+        thread = threading.Thread(target=run_in_thread)
+        thread.start()
+        thread.join()
+        
+        if exception[0]:
+            raise exception[0]
+        return result[0]
+        
+    except RuntimeError:
+        # No loop is running, so we can create our own
+        loop = _ensure_event_loop()
+        return loop.run_until_complete(_validate())
 

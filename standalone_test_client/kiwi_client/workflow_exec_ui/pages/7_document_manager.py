@@ -16,7 +16,9 @@ st.set_page_config(page_title="Document Manager", page_icon="📄", layout="wide
 from kiwi_client.workflow_exec_ui.utils.workflow_utils import custom_btns
 from kiwi_client.workflow_exec_ui.utils.streamlit_runner import (
     get_customer_data_client_sync,
-    run_async_operation_sync
+    run_async_operation_sync,
+    upload_files_sync,
+    validate_upload_config_sync
 )
 import kiwi_client.schemas.workflow_api_schemas as wf_schemas
 
@@ -489,12 +491,229 @@ def _handle_document_list(namespace_filter: Optional[str], include_shared: bool,
             st.error(f"❌ Error listing documents: {e}")
 
 
+def _render_file_upload_section() -> None:
+    """Render the file upload section."""
+    st.subheader("📁 Upload Files")
+    
+    # File upload widget
+    uploaded_files = st.file_uploader(
+        "Choose files to upload",
+        accept_multiple_files=True,
+        help="Select one or more files to upload as documents. Supports various formats (PDF, DOCX, TXT, etc.)"
+    )
+    
+    if uploaded_files:
+        st.success(f"✅ {len(uploaded_files)} file(s) selected")
+        
+        # Display selected files
+        with st.expander("📄 Selected Files", expanded=True):
+            for file in uploaded_files:
+                st.write(f"• **{file.name}** ({file.size:,} bytes)")
+        
+        # Configuration section
+        st.subheader("⚙️ Upload Configuration")
+        
+        # Global configuration
+        with st.expander("🌐 Global Configuration", expanded=True):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                global_namespace = st.text_input("Namespace", value="uploaded_files", key="global_namespace", help="Category/folder for uploaded files")
+                global_save_as_raw = st.checkbox("Save as Raw Binary", key="global_save_as_raw", help="Save files as binary data instead of converting to markdown")
+                global_is_shared = st.checkbox("Shared Documents", key="global_is_shared", help="Make documents accessible to all users in organization")
+            
+            with col2:
+                global_is_versioned = st.checkbox("Versioned Documents", key="global_is_versioned", help="Create versioned documents with history tracking")
+                global_is_system = st.checkbox("System Entity", key="global_is_system", help="Create system-level documents (superuser only)")
+                global_mode = st.selectbox("Upload Mode", ["upsert", "create"], key="global_mode", help="upsert: create or update, create: fail if exists")
+        
+        # Versioned configuration (only if versioned is enabled)
+        versioned_config = None
+        if st.session_state.get("global_is_versioned", False):
+            with st.expander("📚 Versioned Configuration", expanded=True):
+                version_name = st.text_input("Version Name", key="version_name", help="Leave empty for default version")
+                is_complete = st.checkbox("Mark as Complete", key="is_complete", help="Mark uploaded documents as complete")
+                
+                versioned_config = wf_schemas.FileUploadVersionedConfig(
+                    version=version_name if version_name else None,
+                    is_complete=is_complete
+                )
+        
+        # Per-file configuration (optional)
+        file_specific_configs = {}
+        if st.checkbox("🔧 Enable Per-File Configuration", help="Configure individual files differently"):
+            with st.expander("📝 Per-File Settings", expanded=True):
+                selected_file = st.selectbox("Select File to Configure", [f.name for f in uploaded_files])
+                
+                if selected_file:
+                    st.subheader(f"Configuration for: {selected_file}")
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        file_namespace = st.text_input("Namespace Override", key=f"file_namespace_{selected_file}")
+                        file_docname = st.text_input("Document Name Override", key=f"file_docname_{selected_file}")
+                        file_description = st.text_area("Description", key=f"file_description_{selected_file}")
+                    
+                    with col2:
+                        file_save_raw = st.checkbox("Save as Raw", key=f"file_save_raw_{selected_file}")
+                        file_is_shared = st.checkbox("Shared", key=f"file_shared_{selected_file}")
+                        file_is_versioned = st.checkbox("Versioned", key=f"file_versioned_{selected_file}")
+                    
+                    if st.button(f"Save Config for {selected_file}"):
+                        # Build file-specific config
+                        file_config = wf_schemas.FileUploadConfig(
+                            namespace=file_namespace if file_namespace else global_namespace,
+                            docname=file_docname if file_docname else None,
+                            description=file_description if file_description else None,
+                            is_shared=file_is_shared,
+                            is_versioned=file_is_versioned,
+                            save_as_raw=file_save_raw,
+                            mode=wf_schemas.FileUploadModeEnum(global_mode),
+                            versioned_config=versioned_config if file_is_versioned else None
+                        )
+                        file_specific_configs[selected_file] = file_config
+                        st.success(f"✅ Configuration saved for {selected_file}")
+        
+        # Upload buttons
+        col1, col2, col3 = st.columns([1, 1, 1])
+        
+        with col1:
+            if st.button("🔍 Validate Configuration", type="secondary"):
+                _handle_upload_validation(uploaded_files, global_namespace, global_save_as_raw, global_is_shared, 
+                                        global_is_versioned, global_is_system, global_mode, versioned_config, file_specific_configs)
+        
+        with col2:
+            if st.button("📤 Upload Files", type="primary"):
+                _handle_file_upload(uploaded_files, global_namespace, global_save_as_raw, global_is_shared,
+                                  global_is_versioned, global_is_system, global_mode, versioned_config, file_specific_configs)
+        
+        with col3:
+            if st.button("🗑️ Clear Selection"):
+                st.rerun()
+
+
+def _handle_upload_validation(uploaded_files, namespace, save_as_raw, is_shared, is_versioned, is_system, mode, versioned_config, file_specific_configs):
+    """Handle upload configuration validation."""
+    try:
+        # Build global config
+        global_config = wf_schemas.FileUploadConfig(
+            namespace=namespace,
+            is_shared=is_shared,
+            is_versioned=is_versioned,
+            is_system_entity=is_system,
+            save_as_raw=save_as_raw,
+            mode=wf_schemas.FileUploadModeEnum(mode),
+            versioned_config=versioned_config if is_versioned else None
+        )
+        
+        # Build payload
+        payload = wf_schemas.FileUploadRequestPayload(
+            global_defaults=global_config,
+            file_configs=file_specific_configs
+        )
+        
+        # Create validation request
+        validation_request = wf_schemas.FileUploadValidationRequest(
+            payload=payload,
+            files=[f.name for f in uploaded_files]
+        )
+        
+        # Validate
+        with st.spinner("Validating configuration..."):
+            result = validate_upload_config_sync(validation_request)
+            
+            if result:
+                if result.is_valid:
+                    st.success("✅ Configuration is valid!")
+                else:
+                    st.error("❌ Configuration validation failed")
+                    
+                    if result.global_errors:
+                        st.subheader("Global Errors:")
+                        for error in result.global_errors:
+                            st.error(f"• {error}")
+                    
+                    if result.file_errors:
+                        st.subheader("File-Specific Errors:")
+                        for filename, errors in result.file_errors.items():
+                            st.error(f"**{filename}:**")
+                            for error in errors:
+                                st.error(f"  • {error}")
+            else:
+                st.error("❌ Validation request failed")
+                
+    except Exception as e:
+        st.error(f"❌ Error during validation: {e}")
+
+
+def _handle_file_upload(uploaded_files, namespace, save_as_raw, is_shared, is_versioned, is_system, mode, versioned_config, file_specific_configs):
+    """Handle file upload operation."""
+    try:
+        # Prepare files for upload
+        files_to_upload = []
+        for uploaded_file in uploaded_files:
+            # Read file content
+            file_content = uploaded_file.read()
+            content_type = uploaded_file.type or "application/octet-stream"
+            
+            files_to_upload.append((uploaded_file.name, file_content, content_type))
+            
+            # Reset file pointer for potential re-use
+            uploaded_file.seek(0)
+        
+        # Build global config
+        global_config = wf_schemas.FileUploadConfig(
+            namespace=namespace,
+            is_shared=is_shared,
+            is_versioned=is_versioned,
+            is_system_entity=is_system,
+            save_as_raw=save_as_raw,
+            mode=wf_schemas.FileUploadModeEnum(mode),
+            versioned_config=versioned_config if is_versioned else None
+        )
+        
+        # Build payload
+        payload = wf_schemas.FileUploadRequestPayload(
+            global_defaults=global_config,
+            file_configs=file_specific_configs
+        )
+        
+        # Upload files
+        with st.spinner("Uploading files..."):
+            results = upload_files_sync(files_to_upload, payload)
+            
+            if results:
+                st.success(f"✅ Upload completed! Processed {len(results)} files.")
+                
+                # Display results
+                for result in results:
+                    filename = result.get("filename", "Unknown")
+                    status = result.get("status", "unknown")
+                    message = result.get("message", "No message")
+                    
+                    if status == "success":
+                        st.success(f"**{filename}:** {message}")
+                        
+                        # Show document identifier if available
+                        doc_id = result.get("document_identifier")
+                        if doc_id:
+                            with st.expander(f"📄 Document Details: {filename}"):
+                                st.json(doc_id)
+                    else:
+                        st.error(f"**{filename}:** {message}")
+            else:
+                st.error("❌ Upload failed")
+                
+    except Exception as e:
+        st.error(f"❌ Error during upload: {e}")
+
+
 def main() -> None:
     """Main function to render the document manager page."""
     _render_header()
     
     # Create tabs for different operations
-    tab1, tab2, tab3, tab4 = st.tabs(["🔍 Query", "✏️ Create/Update", "🗑️ Delete", "📋 List"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["🔍 Query", "✏️ Create/Update", "🗑️ Delete", "📋 List", "📁 Upload"])
     
     with tab1:
         _render_document_query_section()
@@ -507,6 +726,9 @@ def main() -> None:
     
     with tab4:
         _render_document_list_section()
+    
+    with tab5:
+        _render_file_upload_section()
 
 
 if __name__ == "__main__":

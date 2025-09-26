@@ -144,6 +144,10 @@ DOCUMENT_METADATA_URL = lambda namespace, docname: f"{CUSTOMER_DATA_BASE_URL}/me
 VERSIONED_DOC_UPSERT_URL = lambda namespace, docname: f"{CUSTOMER_DATA_BASE_URL}/versioned/{namespace}/{docname}/upsert"
 DELETE_BY_PATTERN_URL = f"{CUSTOMER_DATA_BASE_URL}/delete-by-pattern"
 
+# File Upload
+FILE_UPLOAD_URL = f"{CUSTOMER_DATA_BASE_URL}/upload"
+FILE_UPLOAD_VALIDATION_URL = f"{CUSTOMER_DATA_BASE_URL}/validate-upload-config"
+
 # WebSockets (Base URLs - specific paths depend on run_id etc.)
 # Note: httpx doesn't handle cookies automatically for websockets in the same way
 #       as HTTP requests. Token needs to be passed manually if required by endpoint.

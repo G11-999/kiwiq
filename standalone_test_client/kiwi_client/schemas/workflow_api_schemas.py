@@ -736,15 +736,19 @@ class FileUploadVersionedConfig(BaseModel):
 class FileUploadConfig(BaseModel):
     """
     Configuration for processing a single uploaded file and storing it as customer data.
+    
+    Note: Individual files cannot exceed 16MB due to MongoDB document size limitations.
     """
     namespace: str = Field("uploaded_files", description="Namespace where the document should be stored. Default is 'uploaded_files'.")
     docname: Optional[str] = Field(None, description="Document name. If None, it will be inferred from the uploaded filename.")
+    description: Optional[str] = Field(None, description="Optional description for the uploaded file.")
     is_shared: bool = Field(False, description="Set to true to store as a document shared within the organization, false for a user-specific document.")
     is_system_entity: bool = Field(False, description="Whether this is a system entity (superusers only).")
     on_behalf_of_user_id: Optional[uuid.UUID] = Field(None, description="Act on behalf of another user (superusers only, requires is_shared=False).")
 
     mode: FileUploadModeEnum = Field(FileUploadModeEnum.upsert, description="Upload mode: 'create' (fail if exists) or 'upsert' (create or update).")
     is_versioned: bool = Field(False, description="Whether to store the file content as a versioned document.")
+    save_as_raw: bool = Field(False, description="Whether to save the file as raw bytes instead of converting to markdown. Uses BSON Binary format for MongoDB storage.")
 
     versioned_config: Optional[FileUploadVersionedConfig] = Field(None, description="Configuration for versioned uploads. Required if is_versioned is True.")
 
@@ -768,6 +772,39 @@ class FileUploadRequestPayload(BaseModel):
     Optional schema to allow specifying global defaults and per-file overrides
     in a single API request payload, potentially alongside the file uploads
     using multipart/form-data encoding (requires careful handling in the endpoint).
+
+    Eg Request Upload Payload:
+    {
+        "config_payload": {
+            "global_defaults": {
+            "namespace": "blog_uploaded_xyz"
+            }
+        }
+    }
+
+     (In admin portal): 
+    {
+        "global_defaults": {
+            "namespace": "blog_uploaded_xyz"
+        }
+    }
+
+    {
+        "config_payload": {
+            "global_defaults": {
+                "description": "This is a description for the uploaded file",
+                "save_as_raw": true
+            }
+        }
+    }
+
+    (In admin portal): 
+    {
+        "global_defaults": {
+            "description": "Eg CSV",
+            "save_as_raw": true
+        }
+    }
     """
     global_defaults: Optional[FileUploadConfig] = Field(default_factory=FileUploadConfig, description="Global default configuration to apply to all files unless overridden.")
     file_configs: Optional[Dict[str, FileUploadConfig]] = Field(None, description="Dictionary mapping original filenames to their specific configurations, overriding global defaults.")
