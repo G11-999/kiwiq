@@ -315,7 +315,7 @@ workflow_graph_schema = {
                             "topic_hitl_additional_user_files": "",
                         },
                         "construct_options": {
-                            "current_topics": "generated_topics",
+                            "current_topics": "current_topic_suggestions",
                             "user_feedback": "regeneration_feedback",
                             "executive_profile": "executive_profile_doc",
                             "content_strategy": "content_strategy_doc",
@@ -408,11 +408,11 @@ workflow_graph_schema = {
             "node_id": "route_on_topic_limit_check",
             "node_name": "router_node",
             "node_config": {
-                "choices": ["construct_topic_regeneration_prompt", "output_node"],
+                "choices": ["construct_topic_feedback_prompt", "output_node"],
                 "allow_multiple": False,
                 "choices_with_conditions": [
                     {
-                        "choice_id": "construct_topic_regeneration_prompt",
+                        "choice_id": "construct_topic_feedback_prompt",
                         "input_path": "if_else_condition_tag_results.topic_iteration_limit_check",
                         "target_value": True
                     },
@@ -1186,7 +1186,7 @@ workflow_graph_schema = {
             "mappings": [
                 {"src_field": "executive_profile_doc", "dst_field": "executive_profile_doc"},
                 {"src_field": "content_strategy_doc", "dst_field": "content_strategy_doc"},
-                {"src_field": "generated_topics", "dst_field": "generated_topics"},
+                {"src_field": "current_topic_suggestions", "dst_field": "current_topic_suggestions"},
                 {"src_field": "regeneration_feedback", "dst_field": "regeneration_feedback"},
                 {"src_field": "user_input", "dst_field": "user_input"}
             ]
@@ -1264,8 +1264,8 @@ workflow_graph_schema = {
         },
         {
             "src_node_id": "route_on_topic_limit_check",
-            "dst_node_id": "construct_topic_regeneration_prompt",
-            "description": "Trigger topic regeneration if iterations remain"
+            "dst_node_id": "construct_topic_feedback_prompt",
+            "description": "Trigger topic feedback analysis if iterations remain"
         },
         {
             "src_node_id": "route_on_topic_limit_check",
@@ -1368,8 +1368,7 @@ workflow_graph_schema = {
             "dst_node_id": "construct_knowledge_base_query_prompt",
             "mappings": [
                 {"src_field": "user_input", "dst_field": "user_input"},
-                {"src_field": "content_strategy_doc", "dst_field": "content_strategy_doc"},
-                {"src_field": "selected_topics", "dst_field": "selected_topic"}
+                {"src_field": "content_strategy_doc", "dst_field": "content_strategy_doc"}
             ]
         },
 

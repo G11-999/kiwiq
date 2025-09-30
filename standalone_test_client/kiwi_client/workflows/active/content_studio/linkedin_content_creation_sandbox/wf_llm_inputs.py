@@ -310,6 +310,9 @@ Analyze user feedback and provide structured revision guidance for the LinkedIn 
 ### User Profile (USE SPARINGLY - ONLY FOR FACTS):
 {user_profile}
 
+### Additional Context Documents (If provided):
+{hitl_additional_user_files}
+
 ## ANALYSIS FRAMEWORK
 
 ### 1. FEEDBACK INTERPRETATION
@@ -408,6 +411,9 @@ Analyze additional user feedback on the revised draft and provide fresh revision
 
 ### New User Feedback:
 {current_feedback_text}
+
+### Additional Context Documents (If provided):
+{hitl_additional_user_files}
 
 ## PROGRESSIVE REVISION FRAMEWORK
 

@@ -30,9 +30,9 @@ from kiwi_client.workflows.active.content_studio.linkedin_content_calendar_entry
     cleanup_docs,
 )
 
-from kiwi_client.workflows.active.content_studio.linkedin_content_calendar_entry_sandbox.wf_testing.wf_run_hitl_inputs import (
-    hitl_inputs,
-)
+# from kiwi_client.workflows.active.content_studio.linkedin_content_calendar_entry_sandbox.wf_testing.wf_run_hitl_inputs import (
+#     hitl_inputs,
+# )
 
 WORKFLOW_NAME_TO_INGEST_AS_FOR_TESTING = "test_linkedin_content_calendar_entry_workflow"
 
@@ -178,7 +178,7 @@ async def main_test_brief_to_blog():
     state_filter_mapping = load_state_filter_mapping(default_state_filter_mapping_path)
     
     print(f"\n--- Running Scenario: {test_scenario['name']} ---")
-    print(f"HITL Inputs: Using predefined inputs ({len(hitl_inputs)} inputs)")
+    # print(f"HITL Inputs: Using predefined inputs ({len(hitl_inputs)} inputs)")
     print(f"HITL Inputs File (fallback): {default_hitl_inputs_path}")
     print(f"Runs Folder: {default_runs_folder_path}")
     print(f"State Mapping File: {default_state_filter_mapping_path}")
@@ -196,7 +196,7 @@ async def main_test_brief_to_blog():
             workflow_name_to_ingest_as_for_testing=WORKFLOW_NAME_TO_INGEST_AS_FOR_TESTING,
             initial_inputs=test_scenario['initial_inputs'],
             expected_final_status=WorkflowRunStatus.COMPLETED,
-            hitl_inputs=hitl_inputs,
+            # hitl_inputs=hitl_inputs,
             runs_folder_path=default_runs_folder_path,
             state_filter_mapping=state_filter_mapping,
             setup_docs=setup_docs,

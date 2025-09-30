@@ -37,16 +37,6 @@ from kiwi_client.workflows.active.content_studio.linkedin_content_creation_sandb
     POST_LLM_OUTPUT_SCHEMA
 )
 
-# Use imported constants
-llm_provider = DEFAULT_LLM_PROVIDER
-generation_model_name = DEFAULT_LLM_MODEL
-temperature = TEMPERATURE
-max_tokens = MAX_TOKENS
-max_iterations = MAX_ITERATIONS
-feedback_llm_provider = DEFAULT_LLM_PROVIDER
-feedback_analysis_model = DEFAULT_LLM_MODEL
-
-
 # Full GraphSchema Structure
 workflow_graph_schema = {
   "nodes": {
@@ -162,8 +152,8 @@ workflow_graph_schema = {
           "system_prompt": {  # NOTE: this can directly be set in the LLM node too! But putting it here for using template variables!
             "id": "system_prompt",
             "template": POST_CREATION_SYSTEM_PROMPT,
-            "variables": {
-            }
+            "variables": {},
+            "construct_options": {}
           }
         }
       }
@@ -180,13 +170,12 @@ workflow_graph_schema = {
       "node_config": {
         "llm_config": {
           "model_spec": {
-            "provider": f"{llm_provider}", # e.g., "openai"
-            "model": f"{generation_model_name}" # e.g., "gpt-4-turbo"
+            "provider": DEFAULT_LLM_PROVIDER,
+            "model": DEFAULT_LLM_MODEL
           },
-          "temperature": temperature, # Low temperature for deterministic interpretation
-          "max_tokens": max_tokens,
+          "temperature": TEMPERATURE,
+          "max_tokens": MAX_TOKENS
         },
-        # Define the structured output for the post
         "output_schema": {
           "schema_definition": POST_LLM_OUTPUT_SCHEMA,
           "convert_loaded_schema_to_pydantic": False
@@ -485,15 +474,21 @@ workflow_graph_schema = {
                     "current_feedback_text": None,
                     "current_post_draft": None,
                     "user_profile": None,
-                    "hitl_additional_user_files": "", # Additional context files from HITL
+                    "hitl_additional_user_files": ""
                 },
                 "construct_options": {
                     "current_feedback_text": "current_feedback_text",
                     "current_post_draft": "current_post_draft",
                     "user_profile": "linkedin_user_profile",
-                    "hitl_additional_user_files": "hitl_additional_user_files", # Additional context files from HITL
+                    "hitl_additional_user_files": "hitl_additional_user_files"
                 }
             },
+            "system_prompt": {
+                "id": "system_prompt",
+                "template": USER_FEEDBACK_SYSTEM_PROMPT,
+                "variables": {},
+                "construct_options": {}
+            }
             }
         }
         # Reads: updated_brief from state
@@ -512,12 +507,12 @@ workflow_graph_schema = {
                 "variables": {
                     "current_feedback_text": None,
                     "current_post_draft": None,
-                    "hitl_additional_user_files": "", # Additional context files from HITL
+                    "hitl_additional_user_files": ""
                 },
                 "construct_options": {
                     "current_feedback_text": "current_feedback_text",
                     "current_post_draft": "current_post_draft",
-                    "hitl_additional_user_files": "hitl_additional_user_files", # Additional context files from HITL
+                    "hitl_additional_user_files": "hitl_additional_user_files"
                 }
             },
             }
@@ -533,13 +528,12 @@ workflow_graph_schema = {
         "node_config": {
             "llm_config": {
               "model_spec": {
-                "provider": feedback_llm_provider, # e.g., "openai"
-                "model": feedback_analysis_model # e.g., "gpt-3.5-turbo"
+                "provider": DEFAULT_LLM_PROVIDER,
+                "model": DEFAULT_LLM_MODEL
               },
-              "temperature": temperature, # Low temperature for deterministic interpretation
-              "max_tokens": max_tokens,
+              "temperature": TEMPERATURE,
+              "max_tokens": MAX_TOKENS
             },
-            "default_system_prompt": USER_FEEDBACK_SYSTEM_PROMPT, # Optional default if no system message in input
             "output_schema": { # Define structured output for both rewrite instructions and change summary
                 "dynamic_schema_spec": {
                     "schema_name": "FeedbackAnalysis",
@@ -616,13 +610,12 @@ workflow_graph_schema = {
       ]
     },
     # Input -> Load All Context Docs: Explicit mappings
-    { "src_node_id": "input_node", "dst_node_id": "load_all_context_docs", "description": "Trigger loading user data after input." ,
+    { "src_node_id": "input_node", "dst_node_id": "load_all_context_docs", "description": "Trigger loading user data after input.",
      "mappings": [
         { "src_field": "post_uuid", "dst_field": "post_uuid"},
         { "src_field": "brief_docname", "dst_field": "brief_docname"},
         { "src_field": "entity_username", "dst_field": "entity_username"},
       ]
-     
      },
 
     # Load LinkedIn User Profile -> State: Store loaded user data
@@ -707,6 +700,13 @@ workflow_graph_schema = {
         { "src_field": "transformed_data", "dst_field": "transformed_data"}
       ]
     },
+    # Load HITL Additional Files -> Route on Approval: Provide additional context
+    { "src_node_id": "load_hitl_additional_user_files_node", "dst_node_id": "route_on_approval",
+      "data_only_edge": True,
+      "mappings": [
+        { "src_field": "hitl_additional_user_files", "dst_field": "hitl_additional_user_files"}
+      ]
+    },
     # Route on Approval -> Check Iteration Limit: Control flow if 'provide_feedback'
     { "src_node_id": "route_on_approval", "dst_node_id": "check_iteration_limit", "description": "Trigger iteration check if feedback provided (Control Flow: 'provide_feedback')." },
     # Route on Approval -> Delete Draft on Cancel: Control flow if 'cancel_workflow'
@@ -750,7 +750,7 @@ workflow_graph_schema = {
  
     # Save Final Draft -> Output: finalize after save
     { "src_node_id": "save_final_draft", "dst_node_id": "output_node", "description": "Finalize workflow after saving final draft.", "mappings": [
-        { "src_field": "paths_processed", "dst_field": "final_post_paths"}
+        { "src_field": "paths_processed", "dst_field": "final_post_paths", "description": "Pass the paths where the post was saved."}
       ]
     },
 
@@ -771,6 +771,11 @@ workflow_graph_schema = {
     { "src_node_id": "route_on_limit_check", "dst_node_id": "route_to_initial_or_additional_prompt", "description": "Trigger feedback interpretation if iterations remain (Control Flow: 'true_branch')." },
     # Route on Limit Check -> Finalize Post: Control flow if iteration limit REACHED
     { "src_node_id": "route_on_limit_check", "dst_node_id": "output_node", "description": "Trigger finalization if iteration limit reached (Control Flow: 'false_branch')." },
+    # State -> Output (via iteration limit): Include current draft in final outputs when limit is reached
+    { "src_node_id": "$graph_state", "dst_node_id": "output_node", "mappings": [
+        { "src_field": "current_post_draft", "dst_field": "final_post_content", "description": "Include the latest post draft in final outputs when iteration limit is reached."}
+      ]
+    },
 
 
     # --- Edges for router to appropriate prompt constructor ---
@@ -810,7 +815,9 @@ workflow_graph_schema = {
     # Initial Prompt Constructor -> Interpret Feedback: Send constructed prompt
     { "src_node_id": "construct_user_feedback_initial_prompt", "dst_node_id": "interpret_feedback", "mappings": [
         { "src_field": "interpret_feedback_prompt", "dst_field": "user_prompt", 
-          "description": "Pass the constructed initial prompt for feedback interpretation."}
+          "description": "Pass the constructed initial prompt for feedback interpretation."},
+        { "src_field": "system_prompt", "dst_field": "system_prompt", 
+          "description": "Pass the system prompt for feedback analysis."}
       ]
     },
 

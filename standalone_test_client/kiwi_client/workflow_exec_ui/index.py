@@ -1,13 +1,11 @@
 """
-poetry run streamlit run standalone_test_client/kiwi_client/workflow_exec_ui/index.py
+poetry run streamlit run kiwi_client/workflow_exec_ui/index.py
 
 Streamlit multipage app entry for Workflow Executor UI.
 
 This file initializes global session state and provides a simple landing
 message guiding users to the pages sidebar.
 
-Run from project root:
-PYTHONPATH=$(pwd):$(pwd)/services poetry run streamlit run standalone_test_client/kiwi_client/workflow_exec_ui/index.py
 """
 
 from typing import Any, Dict, Optional
@@ -55,5 +53,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-    # poetry run streamlit run standalone_test_clientkiwi_client/workflow_exec_ui/index.py
+    # poetry run streamlit run kiwi_client/workflow_exec_ui/index.py
 
