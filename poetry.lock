@@ -257,19 +257,20 @@ files = [
 
 [[package]]
 name = "anthropic"
-version = "0.64.0"
+version = "0.69.0"
 description = "The official Python library for the anthropic API"
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
 files = [
-    {file = "anthropic-0.64.0-py3-none-any.whl", hash = "sha256:6f5f7d913a6a95eb7f8e1bda4e75f76670e8acd8d4cd965e02e2a256b0429dd1"},
-    {file = "anthropic-0.64.0.tar.gz", hash = "sha256:3d496c91a63dff64f451b3e8e4b238a9640bf87b0c11d0b74ddc372ba5a3fe58"},
+    {file = "anthropic-0.69.0-py3-none-any.whl", hash = "sha256:1f73193040f33f11e27c2cd6ec25f24fe7c3f193dc1c5cde6b7a08b18a16bcc5"},
+    {file = "anthropic-0.69.0.tar.gz", hash = "sha256:c604d287f4d73640f40bd2c0f3265a2eb6ce034217ead0608f6b07a8bc5ae5f2"},
 ]
 
 [package.dependencies]
 anyio = ">=3.5.0,<5"
 distro = ">=1.7.0,<2"
+docstring-parser = ">=0.15,<1"
 httpx = ">=0.25.0,<1"
 jiter = ">=0.4.0,<1"
 pydantic = ">=1.9.0,<3"
@@ -9552,4 +9553,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.14"
-content-hash = "63eb72f6f272281c60a365a626251b097408e2c85757adec8288ff0d0ae276bf"
+content-hash = "cfdac13e4b9682573bf606a457cd1a3a6ba13fb1ab14cd1df26029a0e23ec242"

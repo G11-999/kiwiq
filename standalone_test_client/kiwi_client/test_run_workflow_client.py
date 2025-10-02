@@ -1088,6 +1088,129 @@ class CleanupSchemaInfo(TypedDict):
     name: str # Store name for logging clarity
 
 
+async def poll_workflow_run_until_completion(
+    run_id: uuid.UUID,
+    poll_interval_sec: int = 10,
+    timeout_sec: int = 3600,
+    on_behalf_of_user_id: Optional[uuid.UUID] = None
+) -> Tuple[Optional[wf_schemas.WorkflowRunRead], Optional[Dict[str, Any]]]:
+    """
+    Poll an existing workflow run until it reaches a terminal state.
+    
+    This function is useful for retrieving results from workflows that were
+    already submitted and are currently running or completed.
+    
+    Args:
+        run_id: UUID of the existing workflow run to poll
+        poll_interval_sec: Interval in seconds between status checks (default: 10)
+        timeout_sec: Maximum time in seconds to wait for completion (default: 3600 = 1 hour)
+        on_behalf_of_user_id: Optional user ID to act on behalf of
+        
+    Returns:
+        Tuple containing:
+        - Optional[wf_schemas.WorkflowRunRead]: Final status object of the run
+        - Optional[Dict[str, Any]]: Final outputs of the workflow if completed
+        Returns (None, None) if polling times out or fails
+        
+    Raises:
+        AuthenticationError: If authentication fails
+        Exception: For other unexpected errors during polling
+        
+    Example:
+        ```python
+        run_id = uuid.UUID("abc-123-def-456")
+        status, outputs = await poll_workflow_run_until_completion(
+            run_id=run_id,
+            poll_interval_sec=10,
+            timeout_sec=1800
+        )
+        
+        if status and status.status == WorkflowRunStatus.COMPLETED:
+            print(f"Workflow completed successfully")
+            print(f"Outputs: {outputs}")
+        ```
+    """
+    logger.info(f"Starting to poll workflow run: {run_id}")
+    
+    start_time = time.monotonic()
+    final_status_obj: Optional[wf_schemas.WorkflowRunRead] = None
+    final_outputs: Optional[Dict[str, Any]] = None
+    
+    try:
+        # Create authenticated client for polling
+        async with AuthenticatedClient() as auth_client:
+            logger.info(f"Authentication successful for polling run {run_id}")
+            run_client = BaseWorkflowRunTestClient(auth_client)
+            
+            # Main polling loop
+            while True:
+                # Check timeout
+                elapsed_time = time.monotonic() - start_time
+                if elapsed_time > timeout_sec:
+                    logger.warning(f"Polling timed out for run {run_id} after {elapsed_time:.1f} seconds")
+                    # Try to get final status before returning
+                    try:
+                        final_status_obj = await run_client.get_run_status(run_id)
+                        final_outputs = final_status_obj.outputs if final_status_obj else None
+                    except Exception as final_err:
+                        logger.error(f"Failed to get final status after timeout for run {run_id}: {final_err}")
+                    break
+                
+                # Fetch current status
+                try:
+                    current_status_obj = await run_client.get_run_status(run_id)
+                    
+                    if not current_status_obj:
+                        logger.warning(f"Failed to retrieve status for run {run_id}. Retrying...")
+                        await asyncio.sleep(poll_interval_sec)
+                        continue
+                    
+                    current_status = current_status_obj.status
+                    logger.debug(f"Run {run_id} current status: {current_status}")
+                    
+                    # Check for terminal states
+                    if current_status in (WorkflowRunStatus.COMPLETED, WorkflowRunStatus.FAILED, WorkflowRunStatus.CANCELLED):
+                        final_status_obj = current_status_obj
+                        final_outputs = current_status_obj.outputs
+                        
+                        logger.info(f"Run {run_id} reached terminal state: {current_status}")
+                        
+                        if current_status == WorkflowRunStatus.COMPLETED:
+                            logger.info(f"Run {run_id} completed successfully")
+                        elif current_status == WorkflowRunStatus.FAILED:
+                            error_msg = current_status_obj.error_message or "No error message provided"
+                            logger.error(f"Run {run_id} failed. Error: {error_msg}")
+                        else:  # CANCELLED
+                            logger.warning(f"Run {run_id} was cancelled")
+                        
+                        break  # Exit polling loop
+                    
+                    # Handle WAITING_HITL state
+                    elif current_status == WorkflowRunStatus.WAITING_HITL:
+                        # For polling existing runs, we can't automatically handle HITL
+                        # Log and continue polling in case user provides input elsewhere
+                        logger.info(f"Run {run_id} is waiting for HITL input. Continuing to poll...")
+                        await asyncio.sleep(poll_interval_sec)
+                    
+                    # Non-terminal, non-HITL states - continue polling
+                    else:
+                        await asyncio.sleep(poll_interval_sec)
+                
+                except Exception as status_err:
+                    logger.error(f"Error retrieving status for run {run_id}: {status_err}. Retrying...")
+                    await asyncio.sleep(poll_interval_sec)
+                    continue
+    
+    except AuthenticationError as auth_err:
+        logger.exception(f"Authentication error while polling run {run_id}: {auth_err}")
+        raise
+    except Exception as e:
+        logger.exception(f"Unexpected error while polling run {run_id}: {e}")
+        raise
+    
+    return final_status_obj, final_outputs
+
+
 async def run_workflow_test(
     test_name: str,
     workflow_graph_schema: Optional[Dict[str, Any]] = None,

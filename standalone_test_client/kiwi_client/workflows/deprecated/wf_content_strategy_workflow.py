@@ -61,8 +61,8 @@ from kiwi_client.workflows.deprecated.llm_inputs.content_strategy import (
 # --- Workflow Configuration Constants ---
 
 # LLM Configuration
-LLM_PROVIDER = "openai"
-GENERATION_MODEL = "gpt-4.1"
+LLM_PROVIDER = "anthropic"  # 
+GENERATION_MODEL = "claude-sonnet-4-5-20250929"
 LLM_TEMPERATURE = 1
 LLM_MAX_TOKENS = 4000
 

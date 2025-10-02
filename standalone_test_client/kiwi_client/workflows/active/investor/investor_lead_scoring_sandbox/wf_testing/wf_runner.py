@@ -5,7 +5,8 @@ This module provides batch execution capabilities for the investor lead scoring 
 It handles:
 - CSV input with flexible column mapping
 - Batch processing with parallel or sequential execution
-- Result aggregation and CSV output
+- Run ID polling mode (retrieve results from already-running workflows)
+- Result aggregation and CSV output (supports both regular and run-ID batch files)
 - Comprehensive timing statistics
 - Failure handling and partial results
 
@@ -25,7 +26,13 @@ Usage Examples:
     # Parallel execution with staggered starts (60 seconds between batch starts)
     python wf_runner.py --input investors.csv --output results.csv --batch-parallelism-limit 4 --intra-parallel-batch-delay 60
     
-    # Combine existing batch files without running workflows
+    # Poll existing workflow run IDs (no job submission)
+    python wf_runner.py --output results.csv --run-ids abc123 def456 ghi789
+    
+    # Poll run IDs with limit (only first 5)
+    python wf_runner.py --output results.csv --run-ids abc123 def456 ghi789 jkl012 mno345 pqr678 --poll-limit 5
+    
+    # Combine existing batch files without running workflows (handles both regular and run-ID batches)
     python wf_runner.py --output results.csv --combine-only
 """
 
@@ -604,6 +611,7 @@ async def run_batch_workflow(input_csv: str,
 def combine_existing_batch_files(batch_folder: str, output_csv: str) -> None:
     """
     Combine all existing batch CSV files in the batch folder into a single output file.
+    Handles both regular batch files (batch_001_rows_0-10.csv) and run ID files (batch_runid_abc123.csv).
     
     Args:
         batch_folder: Path to folder containing batch result files
@@ -615,25 +623,48 @@ def combine_existing_batch_files(batch_folder: str, output_csv: str) -> None:
         print(f"❌ Batch folder does not exist: {batch_folder}")
         return
     
-    # Find all CSV files in the batch folder
-    batch_files = list(batch_folder_path.glob("batch_*.csv"))
+    # Find all batch CSV files (both regular and run ID patterns)
+    all_batch_files = list(batch_folder_path.glob("batch_*.csv"))
     
-    if not batch_files:
+    if not all_batch_files:
         print(f"❌ No batch files found in: {batch_folder}")
         return
     
-    # Sort batch files by name to ensure consistent ordering
-    batch_files.sort()
-    batch_file_paths = [str(f) for f in batch_files]
+    # Separate regular batch files and run ID batch files for reporting
+    regular_batch_files = [f for f in all_batch_files if not f.name.startswith("batch_runid_")]
+    runid_batch_files = [f for f in all_batch_files if f.name.startswith("batch_runid_")]
     
-    print(f"📁 Found {len(batch_files)} batch files in: {batch_folder}")
-    for batch_file in batch_files:
-        print(f"  - {batch_file.name}")
+    # Sort files by name for consistent ordering
+    all_batch_files.sort()
+    batch_file_paths = [str(f) for f in all_batch_files]
+    
+    print(f"📁 Found {len(all_batch_files)} batch files in: {batch_folder}")
+    if regular_batch_files:
+        print(f"  - {len(regular_batch_files)} regular batch files (batch_###_rows_*)")
+    if runid_batch_files:
+        print(f"  - {len(runid_batch_files)} run ID batch files (batch_runid_*)")
+    
+    # Show first few files of each type
+    if regular_batch_files:
+        print(f"\n  Regular batch files:")
+        for batch_file in sorted(regular_batch_files)[:3]:
+            print(f"    - {batch_file.name}")
+        if len(regular_batch_files) > 3:
+            print(f"    ... and {len(regular_batch_files) - 3} more")
+    
+    if runid_batch_files:
+        print(f"\n  Run ID batch files:")
+        for batch_file in sorted(runid_batch_files)[:3]:
+            print(f"    - {batch_file.name}")
+        if len(runid_batch_files) > 3:
+            print(f"    ... and {len(runid_batch_files) - 3} more")
+    
+    print()
     
     # Use existing combine function
     combine_batch_results(batch_file_paths, output_csv)
     
-    print(f"✅ Combined {len(batch_files)} batch files into: {output_csv}")
+    print(f"✅ Combined {len(all_batch_files)} batch files into: {output_csv}")
 
 
 def combine_batch_results(batch_output_files: List[str], final_output_csv: str) -> None:
@@ -726,6 +757,143 @@ async def run_single_workflow(input_data: Dict[str, Any], test_name: str) -> tup
     logger.info(f"{test_name} completed with status: {status_str}")
     
     return final_run_status_obj, final_run_outputs
+
+
+async def poll_existing_run_id(run_id: str, batch_folder_path: Path, output_csv_suffix: str) -> Dict[str, Any]:
+    """
+    Poll an existing workflow run ID and save results.
+    
+    Args:
+        run_id: The workflow run ID to poll
+        batch_folder_path: Folder to store batch result files
+        output_csv_suffix: File extension for output files (e.g., '.csv')
+        
+    Returns:
+        Dictionary containing polling results and timing information
+    """
+    from kiwi_client.test_run_workflow_client import poll_workflow_run_until_completion
+    
+    poll_start_time = time.time()
+    
+    print(f"📡 Polling run ID: {run_id}")
+    
+    try:
+        # Poll the existing workflow run until completion
+        final_run_status_obj, final_run_outputs = await poll_workflow_run_until_completion(
+            run_id=run_id,
+            poll_interval_sec=10,
+            timeout_sec=3600  # 1 hour timeout for polling
+        )
+        
+        poll_duration = time.time() - poll_start_time
+        
+        # Save results to file with run ID in filename
+        investors_processed = 0
+        batch_output_file = batch_folder_path / f"batch_runid_{run_id}{output_csv_suffix}"
+        
+        if final_run_outputs and 'scored_investors' in final_run_outputs:
+            save_results_to_csv(final_run_outputs, str(batch_output_file))
+            investors_processed = len(final_run_outputs['scored_investors'])
+            print(f"  ✅ Saved {investors_processed} results to: {batch_output_file.name}")
+        else:
+            print(f"  ⚠️  No results found for run ID: {run_id}")
+        
+        success = final_run_status_obj and final_run_status_obj.status == WorkflowRunStatus.COMPLETED
+        
+        return {
+            'run_id': run_id,
+            'status': final_run_status_obj,
+            'outputs': final_run_outputs,
+            'duration': poll_duration,
+            'investors_processed': investors_processed,
+            'output_file': str(batch_output_file),
+            'success': success
+        }
+        
+    except Exception as e:
+        poll_duration = time.time() - poll_start_time
+        print(f"  ❌ Failed to poll run ID {run_id}: {str(e)}")
+        
+        return {
+            'run_id': run_id,
+            'status': None,
+            'outputs': None,
+            'duration': poll_duration,
+            'investors_processed': 0,
+            'output_file': None,
+            'success': False,
+            'error': str(e)
+        }
+
+
+async def poll_existing_run_ids(
+    run_ids: List[str],
+    batch_folder_path: Path,
+    output_csv: str,
+    poll_limit: Optional[int] = None
+) -> tuple:
+    """
+    Poll multiple existing workflow run IDs and save their results.
+    
+    Args:
+        run_ids: List of workflow run IDs to poll
+        batch_folder_path: Folder to store batch result files
+        output_csv: Path to output CSV file (used for file extension)
+        poll_limit: Maximum number of run IDs to poll (None = poll all)
+        
+    Returns:
+        Tuple of (successful_polls, failed_polls, poll_timings, total_investors_processed)
+    """
+    output_suffix = Path(output_csv).suffix
+    
+    # Apply poll limit if specified
+    if poll_limit is not None and poll_limit > 0:
+        run_ids = run_ids[:poll_limit]
+        print(f"📊 Polling {len(run_ids)} run IDs (limited to {poll_limit})")
+    else:
+        print(f"📊 Polling {len(run_ids)} run IDs")
+    
+    print()
+    
+    # Poll each run ID sequentially
+    poll_results = []
+    for i, run_id in enumerate(run_ids, 1):
+        print(f"{'='*60}")
+        print(f"POLLING RUN ID {i}/{len(run_ids)}: {run_id}")
+        print(f"{'='*60}")
+        
+        result = await poll_existing_run_id(
+            run_id=run_id,
+            batch_folder_path=batch_folder_path,
+            output_csv_suffix=output_suffix
+        )
+        
+        poll_results.append(result)
+        print()
+    
+    # Process results
+    successful_polls = sum(1 for r in poll_results if r['success'])
+    failed_polls = len(poll_results) - successful_polls
+    total_investors_processed = sum(r['investors_processed'] for r in poll_results)
+    
+    poll_timings = [
+        {
+            'run_id': r['run_id'],
+            'duration': r['duration'],
+            'investors_processed': r['investors_processed'],
+            'success': r['success']
+        }
+        for r in poll_results
+    ]
+    
+    print(f"📈 POLLING SUMMARY:")
+    print(f"  Total run IDs polled: {len(run_ids)}")
+    print(f"  Successful: {successful_polls}")
+    print(f"  Failed: {failed_polls}")
+    print(f"  Total investors retrieved: {total_investors_processed}")
+    print()
+    
+    return successful_polls, failed_polls, poll_timings, total_investors_processed
 
 
 def print_partial_statistics(overall_start_time: float, 
@@ -993,7 +1161,9 @@ async def main_batch_investor_scoring(input_csv: Optional[str] = None,
                                       stop_on_failure: bool = True,
                                       run_batches_in_parallel: bool = True,
                                       batch_parallelism_limit: int = 2,
-                                      intra_parallel_batch_delay: int = 0):
+                                      intra_parallel_batch_delay: int = 0,
+                                      run_ids: Optional[List[str]] = None,
+                                      poll_limit: Optional[int] = None):
     """
     Main function for batch processing investor lead scoring workflow.
     
@@ -1011,7 +1181,67 @@ async def main_batch_investor_scoring(input_csv: Optional[str] = None,
         intra_parallel_batch_delay: Delay in seconds between batch starts in parallel mode.
                                    Each batch waits (batch_num - 1) * intra_parallel_batch_delay seconds
                                    before starting. Default: 0 (no staggering)
+        run_ids: List of existing workflow run IDs to poll (if provided, skips job submission)
+        poll_limit: Maximum number of run IDs to poll (only used with run_ids)
     """
+    # Check if we're in run-IDs polling mode
+    if run_ids:
+        print(f"--- Starting Run IDs Polling Mode ---")
+        print(f"Configuration:")
+        print(f"  Output CSV: {output_csv if output_csv else 'No output file'}")
+        print(f"  Batch folder: {batch_folder}")
+        print(f"  Run IDs provided: {len(run_ids)}")
+        if poll_limit:
+            print(f"  Poll limit: {poll_limit}")
+        print()
+        
+        overall_start_time = time.time()
+        
+        # Create batch results folder
+        batch_folder_path = Path(batch_folder)
+        batch_folder_path.mkdir(parents=True, exist_ok=True)
+        print(f"Batch results will be stored in: {batch_folder_path.resolve()}")
+        print()
+        
+        # Poll existing run IDs
+        successful_polls, failed_polls, poll_timings, total_investors_processed = await poll_existing_run_ids(
+            run_ids=run_ids,
+            batch_folder_path=batch_folder_path,
+            output_csv=output_csv,
+            poll_limit=poll_limit
+        )
+        
+        # Combine all batch results
+        print(f"{'='*60}")
+        print(f"COMBINING BATCH RESULTS")
+        print(f"{'='*60}")
+        
+        try:
+            combine_existing_batch_files(batch_folder, output_csv)
+            print(f"✓ All batch results combined into: {output_csv}")
+            print(f"✓ Individual batch files preserved in: {batch_folder_path}")
+        except Exception as e:
+            logger.error(f"Error combining batch results: {str(e)}")
+            print(f"✗ Error combining batch results: {str(e)}")
+        
+        # Final statistics
+        overall_end_time = time.time()
+        total_execution_time = overall_end_time - overall_start_time
+        
+        print(f"\n{'='*60}")
+        print(f"RUN IDs POLLING COMPLETE")
+        print(f"{'='*60}")
+        print(f"Total run IDs polled: {len(run_ids) if not poll_limit else min(len(run_ids), poll_limit)}")
+        print(f"Successful polls: {successful_polls}")
+        print(f"Failed polls: {failed_polls}")
+        print(f"Total investors retrieved: {total_investors_processed}")
+        print(f"Total execution time: {total_execution_time:.1f} seconds ({total_execution_time/60:.1f} minutes)")
+        print(f"Final combined results saved to: {output_csv}")
+        print(f"{'='*60}")
+        
+        return successful_polls, failed_polls
+    
+    # Normal batch processing mode
     print(f"--- Starting Batch Investor Lead Scoring Workflow ---")
     print(f"Configuration:")
     print(f"  Input CSV: {input_csv if input_csv else 'Using default test data'}")
@@ -1211,11 +1441,18 @@ Examples:
   # Run batches sequentially
   python wf_runner.py --input investors.csv --output results.csv --sequential
   
-  # Combine existing batch files without running workflows
+  # Poll existing workflow run IDs (no job submission, just retrieve results)
+  python wf_runner.py --output results.csv --run-ids abc123 def456 ghi789
+  
+  # Poll run IDs with limit (only first 5)
+  python wf_runner.py --output results.csv --run-ids abc123 def456 ghi789 jkl012 mno345 --poll-limit 5
+  
+  # Combine existing batch files (handles both regular and run-ID batches)
   python wf_runner.py --output results.csv --combine-only
 
 Note: Deep research workflows are time-intensive. Expect 2-3 minutes per investor lead.
       Use --intra-parallel-batch-delay to stagger batch starts for API rate limiting.
+      Use --run-ids to retrieve results from already-running workflows without submitting new jobs.
         """
     )
 
@@ -1231,7 +1468,10 @@ Note: Deep research workflows are time-intensive. Expect 2-3 minutes per investo
     default_combine_batch_files_only_mode = False
     default_run_batches_in_parallel = True
     default_batch_parallelism_limit = 3
-    default_intra_parallel_batch_delay = 90
+    default_intra_parallel_batch_delay = 120
+
+    default_run_ids = None
+    default_poll_limit = None
     
     parser.add_argument('--input', '--input-csv', type=str, default=default_input_csv,
                        help=f'Path to input CSV file (default: {default_input_csv})')
@@ -1261,6 +1501,10 @@ Note: Deep research workflows are time-intensive. Expect 2-3 minutes per investo
                        help='Max concurrent batches (parallel mode). Default: 2')
     parser.add_argument('--intra-parallel-batch-delay', type=int, default=default_intra_parallel_batch_delay,
                        help='Delay in seconds between batch starts in parallel mode. Each batch waits (batch_num - 1) * delay before starting. Default: 0 (no staggering)')
+    parser.add_argument('--run-ids', type=str, nargs='+', default=default_run_ids,
+                       help='List of existing workflow run IDs to poll. When provided, skips job submission and only polls these run IDs. Example: --run-ids abc123 def456 ghi789')
+    parser.add_argument('--poll-limit', type=int, default=default_poll_limit,
+                       help='Maximum number of run IDs to poll (only used with --run-ids). Default: None (poll all provided run IDs)')
     
     args = parser.parse_args()
     
@@ -1269,16 +1513,24 @@ Note: Deep research workflows are time-intensive. Expect 2-3 minutes per investo
     args.input = str(input_path)
     args.output = str(Path(args.output).resolve())
     
-    if args.start_row < 0:
-        parser.error("Start row must be >= 0")
-    if args.end_row is not None and args.end_row <= args.start_row:
-        parser.error("End row must be greater than start row")
-    if args.batch_size <= 0:
-        parser.error("Batch size must be greater than 0")
-    if args.batch_parallelism_limit <= 0:
-        parser.error("Batch parallelism limit must be greater than 0")
-    if args.intra_parallel_batch_delay < 0:
-        parser.error("Intra-parallel batch delay must be >= 0")
+    # Validation checks (skip some if in run-ids mode)
+    if not args.run_ids:
+        if args.start_row < 0:
+            parser.error("Start row must be >= 0")
+        if args.end_row is not None and args.end_row <= args.start_row:
+            parser.error("End row must be greater than start row")
+        if args.batch_size <= 0:
+            parser.error("Batch size must be greater than 0")
+        if args.batch_parallelism_limit <= 0:
+            parser.error("Batch parallelism limit must be greater than 0")
+        if args.intra_parallel_batch_delay < 0:
+            parser.error("Intra-parallel batch delay must be >= 0")
+    
+    # Validate run-ids specific arguments
+    if args.poll_limit is not None and args.poll_limit <= 0:
+        parser.error("Poll limit must be greater than 0")
+    if args.poll_limit is not None and not args.run_ids:
+        parser.error("--poll-limit can only be used with --run-ids")
     
     return args
 
@@ -1309,6 +1561,8 @@ if __name__ == "__main__":
         stop_on_failure=args.stop_on_failure,
         run_batches_in_parallel=args.run_batches_in_parallel,
         batch_parallelism_limit=args.batch_parallelism_limit,
-        intra_parallel_batch_delay=args.intra_parallel_batch_delay
+        intra_parallel_batch_delay=args.intra_parallel_batch_delay,
+        run_ids=args.run_ids,
+        poll_limit=args.poll_limit
     ))
 

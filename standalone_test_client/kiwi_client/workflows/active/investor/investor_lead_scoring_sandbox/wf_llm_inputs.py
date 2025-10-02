@@ -159,6 +159,8 @@ Your task is to conduct thorough, factual research on VC investors, funds, and p
 
 **SEARCH STRATEGY** (follow this order for best results):
 
+IMPORTANT NOTE: it may be possible that provided linkedin profile / url is actually from a different person, so you need to be careful and verify that the profile / url belongs to the person you are looking for.
+
 **Step 0a: Use LinkedIn Scraped Data (MOST RELIABLE if available)**
    - If LinkedIn scraped data is provided (<linkedin_scraped_profile>), use it as PRIMARY source:
      * Check the "position" array for current employment
@@ -483,14 +485,14 @@ Notes: {notes}
 **LINKEDIN PROFILE DATA:**
 {linkedin_scraped_profile}
 
-**LINKEDIN POSTS DATA (20 recent posts):**
-{linkedin_scraped_posts}
-
 **DEEP RESEARCH REPORT:**
 {deep_research_report}
 
 **WEB SEARCH CITATIONS:**
 {deep_research_citations}
+
+**LINKEDIN POSTS DATA (20 recent posts):**
+{linkedin_scraped_posts}
 """
 
 

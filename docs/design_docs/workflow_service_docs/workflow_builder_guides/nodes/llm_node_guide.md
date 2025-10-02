@@ -33,7 +33,8 @@ The `LLMNode` has a rich set of configuration options nested within the `node_co
           "model_spec": {
             // See llm_node.py/config.py for specific enum values
             "provider": "openai",   // e.g., "openai", "anthropic", "google_genai", "perplexity", "fireworks", "aws_bedrock"
-            "model": "gpt-4-turbo" // e.g., "gpt-4-turbo", "gpt-5", "gpt-5-mini", "gpt-5-nano", "claude-3-7-sonnet-20250219", "gemini-2.5-pro-exp-03-25", "sonar-reasoning-pro"
+            "model": "gpt-4-turbo", // e.g., "gpt-4-turbo", "gpt-5", "gpt-5-mini", "gpt-5-nano", "claude-3-7-sonnet-20250219", "gemini-2.5-pro-exp-03-25", "sonar-reasoning-pro"
+            "backup_model": "gpt-4o" // Optional: Fallback model to use if primary model refuses the request (e.g., due to safety/policy concerns)
           },
           "temperature": 0.5,       // 0.0 (deterministic) to 1.0+ (creative)
           "max_tokens": 1024,       // Max tokens in the *response* (check model limits)
@@ -212,6 +213,7 @@ The `LLMNode` has a rich set of configuration options nested within the `node_co
 
 2.  **`llm_config`**:
     *   `model_spec`: **Required**. Specifies the AI `provider` and the exact `model` name. Check `llm_node.py` or `config.py` for available provider/model enums (e.g., `LLMModelProvider.ANTHROPIC`, `AnthropicModels.CLAUDE_3_7_SONNET`).
+        *   `backup_model`: **Optional but Recommended**. Specifies a fallback model to automatically retry requests that are refused by the primary model. When the primary model returns a refusal (typically due to safety concerns, content policy violations, or filtering), the system automatically catches the `RefusalError` and retries the request with the backup model. This is particularly useful for models like `claude-sonnet-4-5` (Claude Sonnet 4.5), which have been observed to refuse requests more frequently than other models. The backup model should be from the same or compatible provider and ideally have similar or more permissive content policies. **Note:** Refusal detection uses the `finish_reason` field from the LLM response. Anthropic models also provide a `refusal_reason` field with specific details about why the request was refused, though this field is Anthropic-specific and not available from other providers.
     *   `temperature`: Controls randomness (0.0 deterministic, ~1.0 creative). **Note:** Models in reasoning/thinking mode often default to or require a high temperature (e.g., 1.0 for Anthropic).
     *   `verbosity`: Optional string `"low" | "medium" | "high"`. Supported only on GPT-5 series models. If omitted (`null`), the provider default of `"medium"` is used. Passed as `text={"verbosity": "..."}`.
     *   `max_tokens`: Limits the length of the *generated response*. Ensure this is within the model's limits.
@@ -412,10 +414,75 @@ OpenAI's Deep Research models (`o4-mini-deep-research` and `o3-deep-research`) a
 }
 ```
 
+## Refusal Handling & Backup Models
+
+The LLM Node includes automatic refusal handling to improve reliability when models refuse requests:
+
+### How It Works
+
+1. **Refusal Detection**: When an LLM refuses to process a request (indicated by `finish_reason: "refusal"` in the response metadata), the system raises a `RefusalError`.
+
+2. **Automatic Fallback**: If a `backup_model` is configured in `model_spec`, the system automatically:
+   - Catches the `RefusalError`
+   - Logs the refusal with metadata (including `refusal_reason` for Anthropic models)
+   - Switches to the backup model
+   - Retries the same request with the backup model
+
+3. **No Manual Intervention**: The fallback happens transparently within the node execution - your workflow continues without additional error handling logic.
+
+### Common Refusal Scenarios
+
+LLMs may refuse requests due to:
+- **Safety Concerns**: Content that violates the provider's usage policies
+- **Content Filtering**: Requests or responses that trigger content moderation systems
+- **Policy Violations**: Prompts that attempt prohibited activities
+- **Ambiguous Edge Cases**: Content that's borderline acceptable to the model's safety systems
+
+### Model-Specific Behavior
+
+- **Claude Sonnet 4.5** (`claude-sonnet-4-5`): This model has been observed to refuse requests more frequently than other models, making backup model configuration particularly important when using it.
+- **Anthropic Models**: Provide detailed `refusal_reason` in their response metadata explaining why the request was refused. This information is logged for debugging.
+- **Other Providers**: May only provide the generic `finish_reason: "refusal"` without detailed explanations.
+
+### Configuration Example
+
+```json
+{
+  "llm_config": {
+    "model_spec": {
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-5",
+      "backup_model": "claude-opus-4"  // Will be used if primary model refuses
+    },
+    "temperature": 0.7,
+    "max_tokens": 2048
+  }
+}
+```
+
+### Best Practices
+
+1. **Always Configure Backup Models**: Especially when using Claude Sonnet 4.5 or handling user-generated content that might trigger safety systems.
+2. **Choose Compatible Backups**: Use backup models from the same provider when possible for consistent behavior.
+3. **Consider Policy Differences**: Some models have more permissive content policies than others. Choose backup models accordingly.
+4. **Monitor Refusals**: Check logs for refusal patterns - frequent refusals might indicate prompts that need refinement.
+5. **Test Edge Cases**: If your workflow handles sensitive or edge-case content, test with and without backup models to understand behavior.
+
+### Logging
+
+When a refusal occurs, the system logs:
+```
+LLM refused processing: {metadata} ; 
+retrying with backup model: {backup_model_name}
+```
+
+This includes the full response metadata, which for Anthropic models contains the `refusal_reason` explaining why the request was refused.
+
 ## Notes for Non-Coders
 
 -   Use `LLMNode` for AI tasks: writing, summarizing, Q&A, extraction, tool selection.
 -   **Pick the Right Model:** `model_spec` is key. Consider cost, speed, and features (reasoning, tools, web search, code execution support).
+-   **Set a Backup Model:** Configure `backup_model` in `model_spec` to automatically retry requests if the primary model refuses (important for Claude Sonnet 4.5 which refuses more often). The system will automatically try the backup model if the first one says no.
 -   **Control Creativity:** Use `temperature` (low=factual, high=creative).
 -   **Control Costs (Deep Research Only):** Use `max_tool_calls` to limit how many tools the AI can use - this is currently only available for OpenAI's Deep Research models.
 -   **Get Specific Info:** Use `output_schema` (via `dynamic_schema_spec` or `schema_template_name`) to tell the AI *exactly* what fields you want back (e.g., `"email_subject"`, `"priority"`). Leave blank for plain text.

@@ -253,6 +253,38 @@ from workflow_service.registry.schemas.base import create_dynamic_schema_with_fi
 if TYPE_CHECKING:
     from workflow_service.services.external_context_manager import ExternalContextManager
 
+
+class RefusalError(ValueError):
+    """
+    Exception raised when an LLM refuses to process a request.
+    
+    This error is raised when the LLM's finish_reason indicates a refusal,
+    typically due to safety concerns, policy violations, or content filtering.
+    When caught, the system can fall back to a backup model to retry the request.
+    
+    Attributes:
+        message (str): Explanation of the refusal
+        metadata (Optional[Dict]): Response metadata containing refusal details
+    
+    Example:
+        >>> if metadata.finish_reason == "refusal":
+        >>>     raise RefusalError(
+        >>>         f"LLM refused to process request: {metadata.refusal_reason}",
+        >>>         metadata=metadata.model_dump()
+        >>>     )
+    """
+    def __init__(self, message: str, metadata: Optional[Dict[str, Any]] = None):
+        """
+        Initialize RefusalError with message and optional metadata.
+        
+        Args:
+            message: Human-readable error message explaining the refusal
+            metadata: Optional dictionary containing response metadata with refusal details
+        """
+        self.metadata = metadata
+        super().__init__(message)
+
+
 class MessageType(str, Enum):
     """Message types."""
     HUMAN = "human"
@@ -401,8 +433,13 @@ class ModelSpec(BaseNodeConfig):
         description="The model provider to use"
     )
     model: str = Field(  # str  OR   OpenAIModels | AnthropicModels
-        default=AnthropicModels.CLAUDE_3_7_SONNET.value,
+        default=AnthropicModels.CLAUDE_SONNET_4_5.value,
         description="The model name to use"
+    )
+
+    backup_model: Optional[str] = Field(
+        default=AnthropicModels.CLAUDE_SONNET_4.value,
+        description="The backup model to use in case of specific failures eg refusal"
     )
     
     model_config = ConfigDict(
@@ -930,7 +967,6 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
         app_context: Optional[Dict[str, Any]] = config.get(APPLICATION_CONTEXT_KEY)
         
         ext_context: "ExternalContextManager" = config.get(EXTERNAL_CONTEXT_MANAGER_KEY)  # : Optional[ExternalContextManager]
-        registry = ext_context.db_registry  # : Optional[DBRegistry]
 
         if not app_context or not ext_context:
             self.error(f"Missing required keys in runtime_config: {APPLICATION_CONTEXT_KEY}, {EXTERNAL_CONTEXT_MANAGER_KEY} in external config.")
@@ -941,10 +977,9 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
 
         user = app_context.get("user")  # : Optional[User]
         run_job = app_context.get("workflow_run_job")  # : Optional[WorkflowRunJobCreate]
-        customer_data_service = ext_context.customer_data_service  # : Optional[CustomerDataService]
 
-        if not user or not run_job or not customer_data_service:
-            self.error("Missing 'user', 'workflow_run_job', or 'customer_data_service' in context.")
+        if not user or not run_job:
+            self.error("Missing 'user', 'workflow_run_job' in context.")
             return LLMNodeOutputSchema(
                 current_messages=[],
                 metadata=LLMMetadata(model_name=self.config.llm_config.model_spec.model),
@@ -952,7 +987,19 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
 
         org_id = run_job.owner_org_id
 
+        try:
+            response = await self._process_llm(user, org_id, input_data, ext_context, app_context)
+        except RefusalError as e:
+            self.warning(f"LLM refused processing: {e.metadata} ; \n\n retrying with backup model: {self.config.llm_config.model_spec.backup_model}")
+            self.config.llm_config.model_spec.model = self.config.llm_config.model_spec.backup_model
+            response = await self._process_llm(user, org_id, input_data, ext_context, app_context)
+            
+        return response
+
+    async def _process_llm(self, user, org_id, input_data: LLMNodeInputSchema, ext_context: "ExternalContextManager", app_context: Optional[Dict[str, Any]]):
         # Initialize model using node config
+        registry = ext_context.db_registry  # : Optional[DBRegistry]
+        customer_data_service = ext_context.customer_data_service  # : Optional[CustomerDataService]
         try:
             model_metadata: ModelMetadata
             chat_model, model_metadata = self._init_model()
@@ -1630,6 +1677,64 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
 
       # import ipdb; ipdb.set_trace()
 
+        token_metadata, estimated_cost = self._calculate_estimated_cost(
+            messages=messages,
+            provider=self.config.llm_config.model_spec.provider,
+            model_name=self.config.llm_config.model_spec.model,
+            max_output_tokens=self.config.llm_config.max_tokens
+        )
+
+        prompt_tokens = token_metadata["input_tokens"]
+
+        effective_context_limit = model_metadata.context_limit - min(self.config.llm_config.max_tokens, model_metadata.output_token_limit) - 100
+        if prompt_tokens and effective_context_limit < prompt_tokens:
+            self.warning(f"Prompt tokens ({prompt_tokens}) exceed context limit ({effective_context_limit})!")
+
+            # NOTE: the below is a hack for fitting prompt into context limits!
+            if isinstance(messages[-1], HumanMessage) and isinstance(messages[-1].content, str):
+                chars_per_token = len(messages[-1].content) / prompt_tokens
+                chars_to_remove = (prompt_tokens - effective_context_limit) * chars_per_token
+                self.info(f"trying to truncate context: Chars to remove: {chars_to_remove}; tokens to remove: {prompt_tokens - effective_context_limit}")
+                content = messages[-1].content
+                
+                # Check if both markers are present
+                done = False
+
+                # NOTE: the below is a hack for the investor workflow only!
+                linkedin_marker = "**LINKEDIN POSTS DATA (20 recent posts):**"
+                research_marker = "**DEEP RESEARCH REPORT:**"
+                if linkedin_marker in content and research_marker in content:
+                    linkedin_start = content.find(linkedin_marker)
+                    research_start = content.find(research_marker)
+                    
+                    # Only proceed if linkedin marker comes before research marker
+                    if linkedin_start < research_start:
+                        # Calculate how much content is between the markers
+                        between_start = linkedin_start + len(linkedin_marker)
+                        between_end = research_start
+                        between_length = between_end - between_start
+                        
+                        if between_length >= chars_to_remove:
+                            # Remove chars from the end of the linkedin section
+                            new_between = content[between_start:between_end - int(chars_to_remove)]
+                            new_content = content[:between_start] + new_between + content[between_end:]
+                        else:
+                            # Not enough chars between markers, remove what we can and truncate from end
+                            chars_remaining = int(chars_to_remove) - between_length
+                            # Remove all content between markers
+                            new_content = content[:between_start] + content[between_end:]
+                            # Truncate remaining chars from the end
+                            new_content = new_content[:-chars_remaining]
+                        
+                        messages[-1].content = new_content
+                        done = True
+                # hack ends!
+                
+                if not done:
+                    # Markers not present, just truncate from end
+                    new_content = content[:-int(chars_to_remove)]
+                    messages[-1].content = new_content
+
         return messages, current_messages
     
     def _apply_structured_output(self, model: Any, output_schema: Union[Type[BaseSchema], Dict[str, Any]], model_metadata: ModelMetadata) -> Any:
@@ -1864,7 +1969,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
         
         if self.billing_mode:
             # Calculate estimated cost
-            estimated_cost = self._calculate_estimated_cost(
+            token_metadata, estimated_cost = self._calculate_estimated_cost(
                 messages=messages,
                 provider=self.config.llm_config.model_spec.provider,
                 model_name=self.config.llm_config.model_spec.model,
@@ -2180,6 +2285,13 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                 structured_output = structured_output or (original_response["parsed"] if isinstance(original_response, dict) and ((not original_response.get("parsing_error", None)) and "parsed" in original_response) else None)
                 structured_output = structured_output.model_dump() if isinstance(structured_output, BaseModel) else structured_output
                 if not structured_output:
+                    if metadata.finish_reason == "refusal":
+                        # LLM refused to generate output due to safety/policy concerns
+                        # This will trigger fallback to backup model if configured
+                        raise RefusalError(
+                            f"LLM refused to process request. Finish reason: {metadata.finish_reason}",
+                            metadata=metadata.model_dump() if metadata else None
+                        )
                     raise ValueError(f"No structured output found in LLM response! -- response metadata: {metadata.model_dump_json(indent=4) if metadata else ''}")
                 
         
@@ -2836,7 +2948,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
         provider: LLMModelProvider,
         model_name: str,
         max_output_tokens: Optional[int] = None
-    ) -> float:
+    ) -> Tuple[Dict[str, Any], float]:
         """
         Calculate estimated cost for the LLM call.
         
@@ -2847,8 +2959,15 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
             max_output_tokens: Maximum number of output tokens (for estimation)
             
         Returns:
+            token_metadata: Token metadata with input_tokens, output_tokens, total_tokens, cost
             float: Estimated cost in USD
         """
+        token_metadata = {
+            "input_tokens": None,
+            "output_tokens": None,
+            "total_tokens": None,
+            "cost": None,
+        }
         try:
 
             # Deep research models have a higher cost for single research report!
@@ -2861,7 +2980,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                 # LLMModelProvider.FIREWORKS: 0.5,
             }
             if "deep-research" in model_name:
-                return deep_research_fallback_costs.get(provider, 0.5)
+                return token_metadata, deep_research_fallback_costs.get(provider, 0.5)
             
             # Map model to tokencost format
             tokencost_model = self.map_model_to_tokencost_format(provider, model_name)
@@ -2908,6 +3027,8 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                         messages=prompt_messages,
                         **kwargs,
                     ).input_tokens
+                # self.info(f"input_tokens: {input_tokens}")
+                token_metadata["input_tokens"] = input_tokens
                 prompt_cost =  calculate_cost_by_tokens(input_tokens, tokencost_model, "input")
             else:
                 try:
@@ -2929,7 +3050,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
             estimated_cost = float(estimated_cost)
             
             self.info(f"Estimated token cost for {provider.value}/{model_name}: ${estimated_cost:.6f}")
-            return estimated_cost
+            return token_metadata, estimated_cost
             
         except Exception as e:
             self.warning(f"Error calculating token cost: {str(e)}")
@@ -2943,7 +3064,7 @@ class LLMNode(BaseNode[LLMNodeInputSchema, LLMNodeOutputSchema, LLMNodeConfigSch
                 LLMModelProvider.FIREWORKS: 0.001,
             }
             
-            return fallback_costs.get(provider, 0.001)
+            return token_metadata, fallback_costs.get(provider, 0.001)
 
     def _calculate_actual_cost(
         self,
