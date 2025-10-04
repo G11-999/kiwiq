@@ -40,6 +40,9 @@ logger = logging.getLogger(__name__)
 if not logging.getLogger().handlers:
     logging.basicConfig(level=CLIENT_LOG_LEVEL)
 
+# Disable httpx info level logging
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
 
 def load_hitl_inputs_from_file(file_path: str) -> List[Dict[str, Any]]:
     """

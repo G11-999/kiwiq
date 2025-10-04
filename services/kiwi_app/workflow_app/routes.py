@@ -736,7 +736,7 @@ async def create_workflow(
     summary="List Workflows for the active org. Superusers can list workflows for any org by providing the `owner_org_id` query parameter or using the active org context from header (the former overrides the latter).",
     # dependencies=[Depends(wf_deps.RequireWorkflowRead)] # Requires workflow:read on active org
 )
-async def list_workflows(
+async def admin_list_workflows(
     query_params: Annotated[schemas.WorkflowListQuery, Query()],
     active_org_id: uuid.UUID = Depends(get_active_org_id),
     current_user: User = Depends(wf_deps.RequireWorkflowReadActiveOrg),
@@ -744,7 +744,7 @@ async def list_workflows(
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
 ):
     """
-    Lists workflows accessible to the current user.
+    Lists workflows accessible only to admins (superusers).
 
     - By default, lists workflows belonging to the active organization.
     - **Superusers** can list workflows for any organization by providing the `owner_org_id` query parameter.
@@ -766,9 +766,6 @@ async def list_workflows(
                  status_code=status.HTTP_403_FORBIDDEN,
                  detail="Insufficient permissions to list workflows for other organizations."
              )
-        include_system_entities = False
-        if current_user.is_superuser:
-            include_system_entities = True
 
         # Pass relevant filters (excluding pagination) to the service layer
         # launch_status filter is removed as it's not on the workflow model according to models.py
@@ -776,8 +773,8 @@ async def list_workflows(
             db=db,
             owner_org_id=list_org_id, # Use the determined org_id
             # launch_status=query_params.launch_status,
-            include_public=query_params.include_public,
-            include_system_entities=include_system_entities,
+            only_public=query_params.only_public,
+            only_system_entities=query_params.only_system_entities,
             skip=query_params.skip,
             limit=query_params.limit
         )

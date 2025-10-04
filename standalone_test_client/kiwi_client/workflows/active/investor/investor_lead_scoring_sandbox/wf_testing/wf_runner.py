@@ -1457,7 +1457,7 @@ Note: Deep research workflows are time-intensive. Expect 2-3 minutes per investo
     )
 
     current_file_dir = Path(__file__).parent
-    default_input_csv = str(current_file_dir / "Outreach Box - Sheet14.csv")  # Outreach Box - Investor Pool (OVERALL).csv  sample_investors.csv
+    default_input_csv = str(current_file_dir / "Outreach Box - needs scoring.csv")  # Outreach Box - Investor Pool (OVERALL).csv  sample_investors.csv
     default_output_csv = str(current_file_dir / "results.csv")
     default_batch_folder = str(current_file_dir / "batch_results")
     default_start_row = 0
@@ -1470,7 +1470,7 @@ Note: Deep research workflows are time-intensive. Expect 2-3 minutes per investo
     default_batch_parallelism_limit = 3
     default_intra_parallel_batch_delay = 120
 
-    default_run_ids = None
+    default_run_ids = None  # ["ad6e4374-4edc-421f-a9ee-4a4ee68aa895", ]
     default_poll_limit = None
     
     parser.add_argument('--input', '--input-csv', type=str, default=default_input_csv,

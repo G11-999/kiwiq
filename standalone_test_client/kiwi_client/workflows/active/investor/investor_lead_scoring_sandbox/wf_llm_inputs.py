@@ -29,11 +29,12 @@ LLM_DEEP_RESEARCH_REASONING_EFFORT = "low"
 LLM_DEEP_RESEARCH_SEARCH_CONTEXT_SIZE = "low"
 
 # Structured Extraction (Claude Sonnet)
-LLM_PROVIDER_EXTRACTION = "anthropic"
-LLM_MODEL_EXTRACTION = "claude-sonnet-4-5-20250929"
+LLM_PROVIDER_EXTRACTION = "openai"  # anthropic
+LLM_MODEL_EXTRACTION = "gpt-5"  # claude-sonnet-4-5-20250929
 LLM_TEMPERATURE_EXTRACTION = 0.1
 LLM_MAX_TOKENS_EXTRACTION = 16000
-
+LLM_EXTRACTION_REASONING_EFFORT = "low"
+VERBOSITY_EXTRACTION = "high"
 
 # ========================================
 # LinkedIn URL Finder Configuration

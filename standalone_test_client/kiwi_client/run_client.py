@@ -44,6 +44,9 @@ from kiwi_client.schemas.graph_schema import GraphSchema
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=CLIENT_LOG_LEVEL)
 
+# Disable httpx info level logging
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
 # Create TypeAdapters for validating lists of schemas
 WorkflowRunReadListAdapter = TypeAdapter(List[wf_schemas.WorkflowRunRead])
 WorkflowRunEventDetailListAdapter = TypeAdapter(List[wf_schemas.WorkflowRunEventDetail])

@@ -350,7 +350,8 @@ class CommonListQuery(BaseModel):
 class WorkflowListQuery(CommonListQuery):
     """Query parameters for listing workflows."""
     owner_org_id: Optional[uuid.UUID] = Field(None, description="Filter by owning organization ID (Superuser only)")
-    include_public: Optional[bool] = Field(True, description="Include public workflows in the results")
+    only_public: Optional[bool] = Field(True, description="Include public workflows in the results")
+    only_system_entities: bool = Field(True, description="Include system entities (superuser only)")
 
 
 class WorkflowRunListQuery(CommonListQuery):

@@ -341,8 +341,8 @@ class WorkflowDAO(BaseDAO[models.Workflow, schemas.WorkflowCreate, schemas.Workf
     async def get_multi_by_org(
         self, db: AsyncSession, *,
         owner_org_id: uuid.UUID,
-        include_public: bool = True,
-        include_system_entities: bool = False,
+        only_public: bool = True,
+        only_system_entities: bool = False,
         skip: int = 0,
         limit: int = 100
         ) -> Sequence[models.Workflow]:
@@ -351,15 +351,16 @@ class WorkflowDAO(BaseDAO[models.Workflow, schemas.WorkflowCreate, schemas.Workf
         clause = or_(
             self.model.owner_org_id == owner_org_id,
         )
-        if include_public:
-            clause = or_(clause, self.model.is_public == True)
-        if not include_system_entities:
-            clause = and_(clause, self.model.is_system_entity == False)
+        if only_public:
+            clause = and_(clause, self.model.is_public == True)
+        if only_system_entities:
+            clause = and_(clause, self.model.is_system_entity == True)
         stmt = stmt.where(clause)
         
+        # Apply pagination
         stmt = stmt.order_by(self.model.updated_at.desc()).offset(skip).limit(limit)
         result = await db.exec(stmt)
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     async def create(
         self,

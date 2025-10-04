@@ -167,8 +167,8 @@ class WorkflowService:
         db: AsyncSession, 
         *, 
         owner_org_id: uuid.UUID, 
-        include_public: bool = True,
-        include_system_entities: bool = False,
+        only_public: bool = True,
+        only_system_entities: bool = False,
         # launch_status: Optional[LaunchStatus] = None, # LaunchStatus not on Workflow model
         skip: int = 0, 
         limit: int = 100
@@ -176,7 +176,7 @@ class WorkflowService:
         """Lists workflows for a specific organization."""
         # Pass filters to DAO if they were available
         workflows = await self.workflow_dao.get_multi_by_org(
-            db, owner_org_id=owner_org_id, include_public=include_public, include_system_entities=include_system_entities, skip=skip, limit=limit
+            db, owner_org_id=owner_org_id, only_public=only_public, only_system_entities=only_system_entities, skip=skip, limit=limit
         )
         return list(workflows) # Ensure list return type
 

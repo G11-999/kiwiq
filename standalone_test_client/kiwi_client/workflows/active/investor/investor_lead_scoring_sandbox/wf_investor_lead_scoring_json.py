@@ -71,7 +71,9 @@ from kiwi_client.workflows.active.investor.investor_lead_scoring_sandbox.wf_llm_
     # Structured Extraction
     STEP2_EXTRACTION_SYSTEM_PROMPT, STEP2_EXTRACTION_USER_PROMPT,
     INVESTOR_LEAD_SCORING_OUTPUT_SCHEMA,
-    LLM_PROVIDER_EXTRACTION, LLM_MODEL_EXTRACTION, LLM_TEMPERATURE_EXTRACTION, LLM_MAX_TOKENS_EXTRACTION
+    LLM_PROVIDER_EXTRACTION, LLM_MODEL_EXTRACTION, LLM_TEMPERATURE_EXTRACTION, LLM_MAX_TOKENS_EXTRACTION,
+    LLM_EXTRACTION_REASONING_EFFORT,
+    VERBOSITY_EXTRACTION,
 )
 
 # Import filter targets configuration for LinkedIn data filtering
@@ -502,14 +504,16 @@ workflow_graph_schema = {
             "private_output_passthrough_data_to_central_state_keys": step1_passthrough_keys,
             "private_output_to_central_state_node_output_key": "scoring_result",
             "node_config": {
-                "max_random_artificial_delay_in_seconds": 120,
+                # "max_random_artificial_delay_in_seconds": 120,
                 "llm_config": {
                     "model_spec": {
                         "provider": LLM_PROVIDER_EXTRACTION,
                         "model": LLM_MODEL_EXTRACTION
                     },
                     "temperature": LLM_TEMPERATURE_EXTRACTION,
-                    "max_tokens": LLM_MAX_TOKENS_EXTRACTION
+                    "max_tokens": LLM_MAX_TOKENS_EXTRACTION,
+                    "reasoning_effort_class": LLM_EXTRACTION_REASONING_EFFORT,
+                    "verbosity": VERBOSITY_EXTRACTION
                 },
                 "output_schema": {
                     "schema_definition": INVESTOR_LEAD_SCORING_OUTPUT_SCHEMA,
