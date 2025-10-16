@@ -114,7 +114,8 @@ class DefaultReducers:
             return copy.deepcopy(right)
         
         result = left.copy()
-        result.update(right)
+        if right:
+            result.update(right)
         return result
     
     @staticmethod
