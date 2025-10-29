@@ -6,11 +6,9 @@
 
 ## **🎯 CONTEXT & TASK**
 
-**Mission**: Research and score VC investors (0-100) for a B2B AI/MarTech seed-stage startup.
+**Mission**: Research and score VC investors (0-100) for a B2B AI/MarTech pre-seed startup raising $500K-$750K.
 
-**Single Disqualifier**: Fund AUM \< $20M → Mark as DQ and stop.
-
-**If ≥ $20M**: Complete full scoring across 5 categories \+ capture actionable intelligence.
+**Approach**: Complete full scoring across 5 categories + capture actionable intelligence for all investors.
 
 ---
 
@@ -25,7 +23,8 @@ Fund Size:
   $100M-$200M = 10 pts
   $50M-$100M = 7 pts
   $20M-$50M = 5 pts
-  <$20M = DQ
+  $10M-$20M = 3 pts
+  <$10M = 1 pt
 
 Activity (2024-2025):
   3+ deals in 2025 = 10 pts
@@ -47,14 +46,14 @@ Lead Behavior:
   Mostly participates = 5 pts
   Unclear = 2 pts
 
-Check Size:
-  $1M-$3M = 10 pts
-  $500K-$1M = 7 pts
-  $3M-$5M = 8 pts
-  Other = 3 pts
+Check Size (average cheques):
+  $500K-$2M = 10 pts
+  $250K-$500K = 6 pts
+  $2M-$10M = 2 pts
+  >$10M = 0 pts
 ```
 
-**Queries**: `"[Fund]" led "seed" 2024 OR 2025` | `"[Fund]" check size seed`
+**Queries**: `"[Fund]" led "pre-seed" OR "seed" 2024 OR 2025` | `"[Fund]" check size pre-seed` | `"[Fund]" check size seed`
 
 ---
 
@@ -120,7 +119,7 @@ Momentum (pick one):
 
 ```
 INVESTOR: [Fund] - [Partner]
-STATUS: [Active/DQ] | SCORE: [XX/100] | TIER: [A/B/C/D]
+SCORE: [XX/100] | TIER: [A/B/C/D]
 
 SCORE BREAKDOWN:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -210,10 +209,10 @@ ACTIONABLE INTELLIGENCE
 
 ## **🚫 CRITICAL RULES**
 
-✅ **Only DQ if**: Fund AUM \< $20M  
- ✅ **Don't DQ for**: No leading, no 2025 activity, portfolio overlaps  
- ✅ **If partner moved**: Research new firm  
- ✅ **Use specifics**: Not "helps with hiring" but "Intro'd 15 VP Marketing candidates to portfolio in 2024"
+✅ **No disqualifications**: Score all investors 0-100  
+✅ **If partner moved**: Research new firm  
+✅ **Use specifics**: Not "helps with hiring" but "Intro'd 15 VP Marketing candidates to portfolio in 2024"  
+✅ **Be honest**: Low scores are valuable data, not failures
 
 ---
 
@@ -223,7 +222,7 @@ ACTIONABLE INTELLIGENCE
 
 ```
 INVESTOR: Acme Ventures - Jane Doe
-STATUS: Active | SCORE: 88/100 | TIER: A
+SCORE: 88/100 | TIER: A
 
 SCORE BREAKDOWN:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

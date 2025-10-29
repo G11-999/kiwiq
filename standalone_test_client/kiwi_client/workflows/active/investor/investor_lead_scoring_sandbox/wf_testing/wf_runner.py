@@ -59,6 +59,11 @@ from kiwi_client.workflows.active.investor.investor_lead_scoring_sandbox.wf_inve
     workflow_graph_schema
 )
 
+# Import framework indicator to detect which scoring framework is active
+from kiwi_client.workflows.active.investor.investor_lead_scoring_sandbox.wf_llm_inputs import (
+    ACTIVE_FRAMEWORK
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -75,17 +80,19 @@ def load_csv_data(csv_filename: str, start_row: int = 0, end_row: Optional[int] 
         List of investor lead dictionaries with required fields
         
     Expected CSV columns (supports aliases):
-        - first_name: First name of partner (aliases: 'First Name', 'first_name', 'First')
-        - last_name: Last name of partner (aliases: 'Last Name', 'last_name', 'Last')
-        - title: Partner's title (aliases: 'Title', 'title', 'Current Title', 'Role')
-        - firm_company: Firm/company name (aliases: 'Firm/Company', 'firm_company', 'Current Company', 'Company', 'Fund', 'Firm')
-        - firm_id: Firm ID (aliases: 'Firm ID', 'firm_id', 'FirmID')
-        - investor_type: Investor type (aliases: 'Investor Type', 'investor_type', 'Type')
-        - investor_role_detail: Investor role detail (aliases: 'Investor Role Detail', 'investor_role_detail', 'Role Detail')
-        - relationship_status: Relationship status (aliases: 'Relationship Status', 'relationship_status', 'Status')
+        - first_name: First name of investor (aliases: 'First Name', 'first_name', 'First')
+        - last_name: Last name of investor (aliases: 'Last Name', 'last_name', 'Last')
+        - full_name: Full name of investor (optional, aliases: 'Full Name', 'full_name') - will be ignored if first_name and last_name are present
+        - title: Investor's title (aliases: 'Title', 'title', 'Current Title', 'Role')
+        - firm_company: Firm/company name (aliases: 'Company Name', 'Firm/Company', 'firm_company', 'Current Company', 'Company', 'Fund', 'Firm')
+        - firm_id: Firm ID (optional, aliases: 'Firm ID', 'firm_id', 'FirmID')
+        - investor_type: Investor type (optional, aliases: 'Investor Type', 'investor_type', 'Type')
+        - investor_role_detail: Investor role detail (optional, aliases: 'Investor Role Detail', 'investor_role_detail', 'Role Detail')
+        - relationship_status: Relationship status (optional, aliases: 'Relationship Status', 'relationship_status', 'Status')
         - linkedin_url: LinkedIn profile URL (aliases: 'LinkedIn URL', 'linkedin_url', 'LinkedIn')
         - twitter_url: Twitter profile URL (optional, aliases: 'Twitter URL', 'twitter_url', 'Twitter')
         - crunchbase_url: Crunchbase URL (optional, aliases: 'Crunchbase URL', 'crunchbase_url', 'Crunchbase')
+        - email: Email address (optional, aliases: 'Email', 'email', 'Email ID', 'Email Address')
         - investment_criteria: Investment criteria (optional, aliases: 'Investment Criteria', 'investment_criteria', 'Criteria')
         - notes: Notes (optional, aliases: 'Notes', 'notes', 'Detailed Notes')
         - source_sheets: Source sheets (optional, aliases: 'Source Sheets', 'source_sheets', 'Source')
@@ -108,15 +115,17 @@ def load_csv_data(csv_filename: str, start_row: int = 0, end_row: Optional[int] 
         column_aliases = {
             'first_name': ['First Name', 'first_name', 'First', 'firstName'],
             'last_name': ['Last Name', 'last_name', 'Last', 'lastName'],
+            'full_name': ['Full Name', 'full_name', 'fullName'],  # Optional - will be split into first/last if those are missing
             'title': ['Title', 'title', 'Current Title', 'current_title', 'Role', 'role'],
-            'firm_company': ['Firm/Company', 'firm_company', 'Current Company', 'current_company', 'Company', 'company', 'Fund', 'fund', 'Firm', 'firm'],
+            'firm_company': ['Company Name', 'Firm/Company', 'firm_company', 'Current Company', 'current_company', 'Company', 'company', 'Fund', 'fund', 'Firm', 'firm'],
             'firm_id': ['Firm ID', 'firm_id', 'FirmID', 'firm ID'],
             'investor_type': ['Investor Type', 'investor_type', 'Type', 'type'],
             'investor_role_detail': ['Investor Role Detail', 'investor_role_detail', 'Role Detail', 'role_detail'],
             'relationship_status': ['Relationship Status', 'relationship_status', 'Status', 'status', 'Classification', 'classification'],
-            'linkedin_url': ['LinkedIn URL', 'linkedin_url', 'LinkedIn', 'linkedin', 'LinkedIn Profile'],
+            'linkedin_url': ['LinkedIn URL', 'linkedin_url', 'LinkedIn', 'linkedin', 'LinkedIn Profile', 'Person Linkedin Url'],
             'twitter_url': ['Twitter URL', 'twitter_url', 'Twitter', 'twitter', 'Twitter Profile'],
             'crunchbase_url': ['Crunchbase URL', 'crunchbase_url', 'Crunchbase', 'crunchbase'],
+            'email': ['Email', 'email', 'Email ID', 'email_id', 'Email Address', 'email_address'],
             'investment_criteria': ['Investment Criteria', 'investment_criteria', 'Criteria', 'criteria'],
             'notes': ['Notes', 'notes', 'Detailed Notes', 'detailed_notes'],
             'source_sheets': ['Source Sheets', 'source_sheets', 'Source', 'source']
@@ -139,18 +148,24 @@ def load_csv_data(csv_filename: str, start_row: int = 0, end_row: Optional[int] 
             else:
                 logger.info(f"Column '{standard_field}' not found - will use empty string")
         
-        # Check if required fields have been mapped (only first_name and last_name are truly required)
-        required_fields = ['first_name', 'last_name']
-        missing_required_fields = [field for field in required_fields if field not in column_mapping]
+        # Check if required fields have been mapped
+        # We need either (first_name AND last_name) OR full_name
+        has_first_and_last = 'first_name' in column_mapping and 'last_name' in column_mapping
+        has_full_name = 'full_name' in column_mapping
         
-        if missing_required_fields:
+        if not has_first_and_last and not has_full_name:
             available_cols_str = ", ".join(available_columns)
-            missing_aliases = {field: column_aliases[field] for field in missing_required_fields}
             raise ValueError(
-                f"Could not map required fields to CSV columns: {missing_required_fields}\n"
-                f"Available CSV columns: {available_cols_str}\n"
-                f"Expected column names for missing fields: {missing_aliases}"
+                f"Could not find name columns in CSV.\n"
+                f"Need either:\n"
+                f"  - Both 'first_name' ({column_aliases['first_name']}) AND 'last_name' ({column_aliases['last_name']})\n"
+                f"  - OR 'full_name' ({column_aliases['full_name']})\n"
+                f"Available CSV columns: {available_cols_str}"
             )
+        
+        # If we only have full_name, log that we'll split it
+        if has_full_name and not has_first_and_last:
+            logger.info("'full_name' column found but 'first_name' and 'last_name' missing - will split full_name")
         
         # Convert to list of dictionaries using the column mapping
         investors_data = []
@@ -168,10 +183,34 @@ def load_csv_data(csv_filename: str, start_row: int = 0, end_row: Optional[int] 
                     # This is especially important for linkedin_url to ensure empty check works in workflow
                     investor_data[standard_field] = str(value).strip()
             
-            # Add empty strings for any optional fields not found in CSV
+            # Handle full_name splitting if first_name and last_name are missing
+            if has_full_name and not has_first_and_last:
+                full_name = investor_data.get('full_name', '').strip()
+                if full_name:
+                    # Split full name into first and last
+                    # Handle cases like "John Doe", "John Q. Doe", "John", etc.
+                    name_parts = full_name.split()
+                    if len(name_parts) >= 2:
+                        investor_data['first_name'] = name_parts[0]
+                        investor_data['last_name'] = ' '.join(name_parts[1:])
+                    elif len(name_parts) == 1:
+                        # Only one name provided
+                        investor_data['first_name'] = name_parts[0]
+                        investor_data['last_name'] = ""
+                    else:
+                        investor_data['first_name'] = ""
+                        investor_data['last_name'] = ""
+                else:
+                    investor_data['first_name'] = ""
+                    investor_data['last_name'] = ""
+            
+            # Add empty strings for any optional fields not found in CSV (excluding full_name if we split it)
             for standard_field in column_aliases.keys():
-                if standard_field not in investor_data:
+                if standard_field not in investor_data and standard_field != 'full_name':
                     investor_data[standard_field] = ""
+            
+            # Remove full_name from final data (we only keep first_name and last_name)
+            investor_data.pop('full_name', None)
             
             investors_data.append(investor_data)
         
@@ -190,7 +229,8 @@ def load_csv_data(csv_filename: str, start_row: int = 0, end_row: Optional[int] 
 def save_results_to_csv(final_run_outputs: Dict[str, Any], output_csv_filename: str) -> None:
     """
     Save workflow results to CSV file with comprehensive investor scoring data.
-    Handles nested Pydantic schema structure and avoids column name overlaps with input.
+    Handles both VC and Angel framework outputs with nested Pydantic schema structures.
+    Automatically detects framework from ACTIVE_FRAMEWORK setting.
     
     Args:
         final_run_outputs: Final workflow outputs containing scored_investors
@@ -202,6 +242,12 @@ def save_results_to_csv(final_run_outputs: Dict[str, Any], output_csv_filename: 
         if not scored_investors:
             logger.warning("No scored investors found in workflow outputs")
             return
+        
+        # Determine which framework is active
+        is_vc_framework = ACTIVE_FRAMEWORK == "VC"
+        is_angel_framework = ACTIVE_FRAMEWORK == "ANGEL"
+        
+        logger.info(f"Saving results using {ACTIVE_FRAMEWORK} framework output format")
         
         # Helper function to flatten nested portfolio company lists
         def flatten_portfolio_companies(companies_list):
@@ -270,12 +316,35 @@ def save_results_to_csv(final_run_outputs: Dict[str, Any], output_csv_filename: 
             row['input_linkedin_url'] = investor.get('linkedin_url', '')
             row['input_twitter_url'] = investor.get('twitter_url', '')
             row['input_crunchbase_url'] = investor.get('crunchbase_url', '')
+            row['input_email'] = investor.get('email', '')
             row['input_investment_criteria'] = investor.get('investment_criteria', '')
             row['input_notes'] = investor.get('notes', '')
             row['input_source_sheets'] = investor.get('source_sheets', '')
             # URL found by Perplexity if originally missing
             row['linkedin_url_found_by_perplexity'] = investor.get('linkedin_url_found', '')
             
+            # ===== EMAIL GENERATION (if enabled) =====
+            # Extract email result from the workflow output
+            email_result = investor.get('email_result', {})
+            personalized_results = investor.get('personalization_results', {})
+            if email_result:
+                # row['personalization_line'] = personalized_results.get('personalization_line', '')
+                # row['personalization_reasoning'] = personalized_results.get('personalization_reasoning', '')
+                # row['generated_email'] = email_result  # .get('generated_email', '')
+                row['personalization_line'] = ''
+                row['personalization_reasoning'] = ''
+                row['generated_email'] = ''
+            else:
+                row['personalization_line'] = ''
+                row['personalization_reasoning'] = ''
+                row['generated_email'] = ''
+            
+            # ===== LINKEDIN SCRAPED PROFILE & POSTS =====
+            linkedin_scraped_profile = investor.get('linkedin_scraped_profile', '')
+            row['linkedin_scraped_profile'] = linkedin_scraped_profile
+            # linkedin_scraped_posts = investor.get('linkedin_scraped_posts', '')
+            # row['linkedin_scraped_posts'] = linkedin_scraped_posts
+
             # # ===== DEEP RESEARCH REPORT =====
             # deep_research_report = investor.get('deep_research_report', '')
             # row['research_report'] = deep_research_report  # [:2000] + '...' if len(deep_research_report) > 2000 else deep_research_report
@@ -299,132 +368,254 @@ def save_results_to_csv(final_run_outputs: Dict[str, Any], output_csv_filename: 
             
             # ===== EXTRACT NESTED SCORING RESULTS =====
             if isinstance(scoring_result, dict):
-                # === CURRENT EMPLOYMENT INFO (NEW - at top for visibility) ===
+                # === CURRENT EMPLOYMENT INFO (at top for visibility) ===
                 employment = scoring_result.get('current_employment', {})
                 if isinstance(employment, dict):
-                    row['current_fund_verified'] = employment.get('current_fund_name', '')
-                    row['current_title_verified'] = employment.get('current_title', '')
-                    row['still_at_input_firm'] = employment.get('is_still_at_input_firm', True)
-                    row['firm_change_detected'] = employment.get('firm_change_detected', False)
-                    row['firm_change_details'] = employment.get('firm_change_details', '')
-                    row['still_in_vc'] = employment.get('is_still_in_vc', True)
-                    row['employment_notes'] = employment.get('employment_notes', '')
+                    if is_vc_framework:
+                        row['current_fund_verified'] = employment.get('current_fund_name', '')
+                        row['current_title_verified'] = employment.get('current_title', '')
+                        row['still_at_input_firm'] = employment.get('is_still_at_input_firm', True)
+                        row['firm_change_detected'] = employment.get('firm_change_detected', False)
+                        row['firm_change_details'] = employment.get('firm_change_details', '')
+                        row['still_in_vc'] = employment.get('is_still_in_vc', True)
+                        row['employment_notes'] = employment.get('employment_notes', '')
+                    elif is_angel_framework:
+                        row['current_company_verified'] = employment.get('current_company_name', '')
+                        row['current_title_verified'] = employment.get('current_title', '')
+                        row['still_at_input_company'] = employment.get('is_still_at_input_company', True)
+                        row['company_change_detected'] = employment.get('company_change_detected', False)
+                        row['company_change_details'] = employment.get('company_change_details', '')
+                        row['still_operating'] = employment.get('is_still_operating', True)
+                        row['employment_notes'] = employment.get('employment_notes', '')
                 
-                # === OVERALL SCORES (100-point framework) ===
-                row['total_score'] = scoring_result.get('total_score', 0)
+                # === OVERALL SCORES ===
+                if is_vc_framework:
+                    row['total_score'] = scoring_result.get('total_score', 0)
+                elif is_angel_framework:
+                    row['total_score_raw'] = scoring_result.get('total_score_raw', 0)
+                    row['total_score_normalized'] = scoring_result.get('total_score_normalized', 0)
+                    row['total_score'] = row['total_score_normalized']  # For compatibility
 
-                # === DISQUALIFICATION (right after score for easy review) ===
-                dq = scoring_result.get('disqualification', {})
-                if isinstance(dq, dict):
-                    row['is_disqualified'] = dq.get('is_disqualified', False)
-                    row['disqualification_reason'] = dq.get('disqualification_reason', '')
+                # === DISQUALIFICATION (VC framework only) ===
+                if is_vc_framework:
+                    dq = scoring_result.get('disqualification', {})
+                    if isinstance(dq, dict):
+                        row['is_disqualified'] = dq.get('is_disqualified', False)
+                        row['disqualification_reason'] = dq.get('disqualification_reason', '')
+                elif is_angel_framework:
+                    # Angel framework has no disqualification
+                    row['is_disqualified'] = False
+                    row['disqualification_reason'] = 'N/A - Angels not disqualified'
 
-                # === TIER & ACTION (after DQ status) ===
+                # === TIER & ACTION ===
                 row['score_tier'] = scoring_result.get('score_tier', '')
                 row['recommended_action'] = scoring_result.get('recommended_action', '')
                 
-                # === FUND VITALS (0-25 points) ===
-                fund_vitals = scoring_result.get('fund_vitals', {})
-                if isinstance(fund_vitals, dict):
-                    row['fund_size_usd'] = fund_vitals.get('fund_size_usd', '')
-                    row['fund_size_points'] = fund_vitals.get('fund_size_points', 0)
-                    row['fund_size_reasoning'] = fund_vitals.get('fund_size_reasoning', '')
-                    row['fund_number'] = fund_vitals.get('fund_number', '')
-                    row['latest_fund_raise_date'] = fund_vitals.get('latest_fund_raise_date', '')
-                    row['recent_activity_2024_2025'] = fund_vitals.get('recent_activity_2024_2025', '')
-                    row['deals_in_2025_count'] = fund_vitals.get('deals_in_2025_count', 0)
-                    row['deals_in_2024_count'] = fund_vitals.get('deals_in_2024_count', 0)
-                    row['activity_points'] = fund_vitals.get('activity_points', 0)
-                    row['activity_reasoning'] = fund_vitals.get('activity_reasoning', '')
-                    row['fund_vitals_total'] = fund_vitals.get('category_total', 0)
-                
-                # === LEAD CAPABILITY (0-25 points) ===
-                lead_cap = scoring_result.get('lead_capability', {})
-                if isinstance(lead_cap, dict):
-                    row['lead_behavior'] = lead_cap.get('lead_behavior', '')
-                    row['led_rounds_count'] = lead_cap.get('led_rounds_count', 0)
-                    row['led_round_examples'] = flatten_led_rounds(lead_cap.get('led_round_examples', []))
-                    row['lead_behavior_points'] = lead_cap.get('lead_behavior_points', 0)
-                    row['lead_behavior_reasoning'] = lead_cap.get('lead_behavior_reasoning', '')
-                    row['typical_check_size'] = lead_cap.get('typical_check_size', '')
-                    row['check_size_points'] = lead_cap.get('check_size_points', 0)
-                    row['check_size_reasoning'] = lead_cap.get('check_size_reasoning', '')
-                    row['lead_capability_total'] = lead_cap.get('category_total', 0)
-                
-                # === THESIS ALIGNMENT (0-30 points) ===
-                thesis = scoring_result.get('thesis_alignment', {})
-                if isinstance(thesis, dict):
-                    row['ai_b2b_portfolio_count'] = thesis.get('ai_b2b_portfolio_count', 0)
-                    row['ai_b2b_companies'] = flatten_portfolio_companies(thesis.get('ai_b2b_companies', []))
-                    row['ai_b2b_points'] = thesis.get('ai_b2b_points', 0)
-                    row['martech_portfolio_count'] = thesis.get('martech_portfolio_count', 0)
-                    row['martech_companies'] = flatten_portfolio_companies(thesis.get('martech_companies', []))
-                    row['martech_points'] = thesis.get('martech_points', 0)
-                    row['has_explicit_ai_b2b_thesis'] = thesis.get('has_explicit_ai_b2b_thesis', False)
-                    row['investment_thesis_summary'] = thesis.get('investment_thesis_summary', '')
-                    row['thesis_points'] = thesis.get('thesis_points', 0)
-                    row['devtools_api_portfolio_count'] = thesis.get('devtools_api_portfolio_count', 0)
-                    row['devtools_api_companies'] = flatten_portfolio_companies(thesis.get('devtools_api_companies', []))
-                    row['has_devtools_api_focus'] = thesis.get('has_devtools_api_focus', False)
-                    row['devtools_api_points'] = thesis.get('devtools_api_points', 0)
-                    row['plg_portfolio_count'] = thesis.get('plg_portfolio_count', 0)
-                    row['plg_companies'] = flatten_portfolio_companies(thesis.get('plg_companies', []))
-                    row['has_plg_focus'] = thesis.get('has_plg_focus', False)
-                    row['plg_points'] = thesis.get('plg_points', 0)
-                    row['thesis_alignment_total'] = thesis.get('category_total', 0)
-                
-                # === PARTNER VALUE (0-15 points) ===
-                partner = scoring_result.get('partner_value', {})
-                if isinstance(partner, dict):
-                    row['partner_title'] = partner.get('partner_title', '')
-                    row['decision_authority_level'] = partner.get('decision_authority_level', '')
-                    row['title_points'] = partner.get('title_points', 0)
-                    row['title_reasoning'] = partner.get('title_reasoning', '')
-                    row['operational_background_summary'] = partner.get('operational_background_summary', '')
-                    row['is_ex_founder_martech_b2b'] = partner.get('is_ex_founder_martech_b2b', False)
-                    row['founder_details'] = partner.get('founder_details', '')
-                    row['ex_founder_points'] = partner.get('ex_founder_points', 0)
-                    row['is_ex_cmo_vp_marketing'] = partner.get('is_ex_cmo_vp_marketing', False)
-                    row['cmo_marketing_details'] = partner.get('cmo_marketing_details', '')
-                    row['ex_cmo_marketing_points'] = partner.get('ex_cmo_marketing_points', 0)
-                    row['is_ex_vp_sales_growth'] = partner.get('is_ex_vp_sales_growth', False)
-                    row['vp_sales_growth_details'] = partner.get('vp_sales_growth_details', '')
-                    row['ex_vp_sales_points'] = partner.get('ex_vp_sales_points', 0)
-                    row['is_active_creator'] = partner.get('is_active_creator', False)
-                    row['active_creator_details'] = partner.get('active_creator_details', '')
-                    row['active_creator_points'] = partner.get('active_creator_points', 0)
-                    row['background_total_points'] = partner.get('background_total_points', 0)
-                    row['partner_value_total'] = partner.get('category_total', 0)
-                
-                # === STRATEGIC FACTORS (0-5 points) ===
-                strategic = scoring_result.get('strategic_factors', {})
-                if isinstance(strategic, dict):
-                    row['fund_hq_location'] = strategic.get('fund_hq_location', '')
-                    row['geography_category'] = strategic.get('geography_category', '')
-                    row['geography_points'] = strategic.get('geography_points', 0)
-                    row['has_new_fund_under_18mo'] = strategic.get('has_new_fund_under_18mo', False)
-                    row['new_fund_details'] = strategic.get('new_fund_details', '')
-                    row['has_recent_exits'] = strategic.get('has_recent_exits', False)
-                    row['exits_count_3yr'] = strategic.get('exits_count_3yr', 0)
-                    row['exit_details'] = flatten_exits(strategic.get('exit_details', []))
-                    row['has_portfolio_followons'] = strategic.get('has_portfolio_followons', False)
-                    row['followon_details'] = strategic.get('followon_details', '')
-                    row['momentum_points'] = strategic.get('momentum_points', 0)
-                    row['momentum_reasoning'] = strategic.get('momentum_reasoning', '')
-                    row['strategic_factors_total'] = strategic.get('category_total', 0)
+                # === FRAMEWORK-SPECIFIC SCORING SECTIONS ===
+                if is_vc_framework:
+                    # === VC: FUND VITALS (0-25 points) ===
+                    fund_vitals = scoring_result.get('fund_vitals', {})
+                    if isinstance(fund_vitals, dict):
+                        row['fund_size_usd'] = fund_vitals.get('fund_size_usd', '')
+                        row['fund_size_points'] = fund_vitals.get('fund_size_points', 0)
+                        row['fund_size_reasoning'] = fund_vitals.get('fund_size_reasoning', '')
+                        row['fund_number'] = fund_vitals.get('fund_number', '')
+                        row['latest_fund_raise_date'] = fund_vitals.get('latest_fund_raise_date', '')
+                        row['recent_activity_2024_2025'] = fund_vitals.get('recent_activity_2024_2025', '')
+                        row['deals_in_2025_count'] = fund_vitals.get('deals_in_2025_count', 0)
+                        row['deals_in_2024_count'] = fund_vitals.get('deals_in_2024_count', 0)
+                        row['activity_points'] = fund_vitals.get('activity_points', 0)
+                        row['activity_reasoning'] = fund_vitals.get('activity_reasoning', '')
+                        row['fund_vitals_total'] = fund_vitals.get('category_total', 0)
+                    
+                    # === VC: LEAD CAPABILITY (0-25 points) ===
+                    lead_cap = scoring_result.get('lead_capability', {})
+                    if isinstance(lead_cap, dict):
+                        row['lead_behavior'] = lead_cap.get('lead_behavior', '')
+                        row['led_rounds_count'] = lead_cap.get('led_rounds_count', 0)
+                        row['led_round_examples'] = flatten_led_rounds(lead_cap.get('led_round_examples', []))
+                        row['lead_behavior_points'] = lead_cap.get('lead_behavior_points', 0)
+                        row['lead_behavior_reasoning'] = lead_cap.get('lead_behavior_reasoning', '')
+                        row['typical_check_size'] = lead_cap.get('typical_check_size', '')
+                        row['check_size_points'] = lead_cap.get('check_size_points', 0)
+                        row['check_size_reasoning'] = lead_cap.get('check_size_reasoning', '')
+                        row['lead_capability_total'] = lead_cap.get('category_total', 0)
+                    
+                    # === VC: THESIS ALIGNMENT (0-30 points) ===
+                    thesis = scoring_result.get('thesis_alignment', {})
+                    if isinstance(thesis, dict):
+                        row['ai_b2b_portfolio_count'] = thesis.get('ai_b2b_portfolio_count', 0)
+                        row['ai_b2b_companies'] = flatten_portfolio_companies(thesis.get('ai_b2b_companies', []))
+                        row['ai_b2b_points'] = thesis.get('ai_b2b_points', 0)
+                        row['martech_portfolio_count'] = thesis.get('martech_portfolio_count', 0)
+                        row['martech_companies'] = flatten_portfolio_companies(thesis.get('martech_companies', []))
+                        row['martech_points'] = thesis.get('martech_points', 0)
+                        row['has_explicit_ai_b2b_thesis'] = thesis.get('has_explicit_ai_b2b_thesis', False)
+                        row['investment_thesis_summary'] = thesis.get('investment_thesis_summary', '')
+                        row['thesis_points'] = thesis.get('thesis_points', 0)
+                        row['devtools_api_portfolio_count'] = thesis.get('devtools_api_portfolio_count', 0)
+                        row['devtools_api_companies'] = flatten_portfolio_companies(thesis.get('devtools_api_companies', []))
+                        row['has_devtools_api_focus'] = thesis.get('has_devtools_api_focus', False)
+                        row['devtools_api_points'] = thesis.get('devtools_api_points', 0)
+                        row['plg_portfolio_count'] = thesis.get('plg_portfolio_count', 0)
+                        row['plg_companies'] = flatten_portfolio_companies(thesis.get('plg_companies', []))
+                        row['has_plg_focus'] = thesis.get('has_plg_focus', False)
+                        row['plg_points'] = thesis.get('plg_points', 0)
+                        row['thesis_alignment_total'] = thesis.get('category_total', 0)
+                    
+                    # === VC: PARTNER VALUE (0-15 points) ===
+                    partner = scoring_result.get('partner_value', {})
+                    if isinstance(partner, dict):
+                        row['partner_title'] = partner.get('partner_title', '')
+                        row['decision_authority_level'] = partner.get('decision_authority_level', '')
+                        row['title_points'] = partner.get('title_points', 0)
+                        row['title_reasoning'] = partner.get('title_reasoning', '')
+                        row['operational_background_summary'] = partner.get('operational_background_summary', '')
+                        row['is_ex_founder_martech_b2b'] = partner.get('is_ex_founder_martech_b2b', False)
+                        row['founder_details'] = partner.get('founder_details', '')
+                        row['ex_founder_points'] = partner.get('ex_founder_points', 0)
+                        row['is_ex_cmo_vp_marketing'] = partner.get('is_ex_cmo_vp_marketing', False)
+                        row['cmo_marketing_details'] = partner.get('cmo_marketing_details', '')
+                        row['ex_cmo_marketing_points'] = partner.get('ex_cmo_marketing_points', 0)
+                        row['is_ex_vp_sales_growth'] = partner.get('is_ex_vp_sales_growth', False)
+                        row['vp_sales_growth_details'] = partner.get('vp_sales_growth_details', '')
+                        row['ex_vp_sales_points'] = partner.get('ex_vp_sales_points', 0)
+                        row['is_active_creator'] = partner.get('is_active_creator', False)
+                        row['active_creator_details'] = partner.get('active_creator_details', '')
+                        row['active_creator_points'] = partner.get('active_creator_points', 0)
+                        row['background_total_points'] = partner.get('background_total_points', 0)
+                        row['partner_value_total'] = partner.get('category_total', 0)
+                    
+                    # === VC: STRATEGIC FACTORS (0-5 points) ===
+                    strategic = scoring_result.get('strategic_factors', {})
+                    if isinstance(strategic, dict):
+                        row['fund_hq_location'] = strategic.get('fund_hq_location', '')
+                        row['geography_category'] = strategic.get('geography_category', '')
+                        row['geography_points'] = strategic.get('geography_points', 0)
+                        row['has_new_fund_under_18mo'] = strategic.get('has_new_fund_under_18mo', False)
+                        row['new_fund_details'] = strategic.get('new_fund_details', '')
+                        row['has_recent_exits'] = strategic.get('has_recent_exits', False)
+                        row['exits_count_3yr'] = strategic.get('exits_count_3yr', 0)
+                        row['exit_details'] = flatten_exits(strategic.get('exit_details', []))
+                        row['has_portfolio_followons'] = strategic.get('has_portfolio_followons', False)
+                        row['followon_details'] = strategic.get('followon_details', '')
+                        row['momentum_points'] = strategic.get('momentum_points', 0)
+                        row['momentum_reasoning'] = strategic.get('momentum_reasoning', '')
+                        row['strategic_factors_total'] = strategic.get('category_total', 0)
 
-                # === ACTIONABLE INTELLIGENCE (9 sections from playbook) ===
-                intel = scoring_result.get('actionable_intelligence', {})
-                if isinstance(intel, dict):
-                    row['portfolio_pattern'] = intel.get('portfolio_pattern', '')
-                    row['partner_insights'] = intel.get('partner_insights', '')
-                    row['investment_pace_and_process'] = intel.get('investment_pace_and_process', '')
-                    row['value_add_evidence'] = intel.get('value_add_evidence', '')
-                    row['deal_preferences'] = intel.get('deal_preferences', '')
-                    row['recent_positioning'] = intel.get('recent_positioning', '')
-                    row['fund_context'] = intel.get('fund_context', '')
-                    row['competitive_intel'] = intel.get('competitive_intel', '')
-                    row['pitch_prep'] = intel.get('pitch_prep', '')
+                    # === VC: ACTIONABLE INTELLIGENCE (9 sections) ===
+                    intel = scoring_result.get('actionable_intelligence', {})
+                    if isinstance(intel, dict):
+                        row['portfolio_pattern'] = intel.get('portfolio_pattern', '')
+                        row['partner_insights'] = intel.get('partner_insights', '')
+                        row['investment_pace_and_process'] = intel.get('investment_pace_and_process', '')
+                        row['value_add_evidence'] = intel.get('value_add_evidence', '')
+                        row['deal_preferences'] = intel.get('deal_preferences', '')
+                        row['recent_positioning'] = intel.get('recent_positioning', '')
+                        row['fund_context'] = intel.get('fund_context', '')
+                        row['competitive_intel'] = intel.get('competitive_intel', '')
+                        row['pitch_prep'] = intel.get('pitch_prep', '')
+                
+                elif is_angel_framework:
+                    # Helper function to flatten investment examples
+                    def flatten_investment_examples(investments_list):
+                        """Convert list of InvestmentExample objects to formatted string."""
+                        if not investments_list:
+                            return ""
+                        result = []
+                        for inv in investments_list:
+                            if isinstance(inv, dict):
+                                parts = [inv.get('company_name', '')]
+                                if inv.get('investment_date'):
+                                    parts.append(f"({inv['investment_date']})")
+                                if inv.get('check_size'):
+                                    parts.append(f"[{inv['check_size']}]")
+                                result.append(' '.join(parts))
+                        return ' | '.join(result)
+                    
+                    # === ANGEL: EMPLOYER BRAND & CREDIBILITY (0-25 points normalized) ===
+                    employer_brand = scoring_result.get('employer_brand', {})
+                    if isinstance(employer_brand, dict):
+                        row['current_employer'] = employer_brand.get('current_employer', '')
+                        row['employer_tier'] = employer_brand.get('employer_tier', '')
+                        row['employer_brand_points'] = employer_brand.get('employer_brand_points', 0)
+                        row['employer_brand_reasoning'] = employer_brand.get('employer_brand_reasoning', '')
+                        row['role_level'] = employer_brand.get('role_level', '')
+                        row['role_level_points'] = employer_brand.get('role_level_points', 0)
+                        row['role_level_reasoning'] = employer_brand.get('role_level_reasoning', '')
+                        row['is_ex_founder'] = employer_brand.get('is_ex_founder', False)
+                        row['founder_exit_type'] = employer_brand.get('founder_exit_type', '')
+                        row['founder_details'] = employer_brand.get('founder_details', '')
+                        row['ex_founder_bonus_points'] = employer_brand.get('ex_founder_bonus_points', 0)
+                        row['employer_brand_total_raw'] = employer_brand.get('category_total_raw', 0)
+                        row['employer_brand_total_normalized'] = employer_brand.get('category_total_normalized', 0)
+                    
+                    # === ANGEL: FUNCTIONAL EXPERTISE (0-25 points) ===
+                    functional = scoring_result.get('functional_expertise', {})
+                    if isinstance(functional, dict):
+                        row['domain'] = functional.get('domain', '')
+                        row['domain_expertise_points'] = functional.get('domain_expertise_points', 0)
+                        row['domain_reasoning'] = functional.get('domain_reasoning', '')
+                        row['relevance'] = functional.get('relevance', '')
+                        row['relevance_points'] = functional.get('relevance_points', 0)
+                        row['relevance_reasoning'] = functional.get('relevance_reasoning', '')
+                        row['functional_expertise_total'] = functional.get('category_total', 0)
+                    
+                    # === ANGEL: VC NETWORK ACCESS (0-20 points) ===
+                    vc_network = scoring_result.get('vc_network', {})
+                    if isinstance(vc_network, dict):
+                        row['vc_ecosystem_integration'] = vc_network.get('vc_ecosystem_integration', '')
+                        row['co_investment_examples'] = ' | '.join(vc_network.get('co_investment_examples', []))
+                        row['vc_integration_points'] = vc_network.get('vc_integration_points', 0)
+                        row['vc_integration_reasoning'] = vc_network.get('vc_integration_reasoning', '')
+                        row['portfolio_followon_count'] = vc_network.get('portfolio_followon_count', 0)
+                        row['portfolio_followon_companies'] = flatten_portfolio_companies(vc_network.get('portfolio_followon_companies', []))
+                        row['portfolio_success_points'] = vc_network.get('portfolio_success_points', 0)
+                        row['portfolio_success_reasoning'] = vc_network.get('portfolio_success_reasoning', '')
+                        row['vc_network_total'] = vc_network.get('category_total', 0)
+                    
+                    # === ANGEL: CHECK ACTIVITY & SIZE (0-20 points) ===
+                    check_activity = scoring_result.get('check_activity', {})
+                    if isinstance(check_activity, dict):
+                        row['check_frequency_24mo'] = check_activity.get('check_frequency_24mo', 0)
+                        row['recent_investments'] = flatten_investment_examples(check_activity.get('recent_investments', []))
+                        row['check_frequency_points'] = check_activity.get('check_frequency_points', 0)
+                        row['check_frequency_reasoning'] = check_activity.get('check_frequency_reasoning', '')
+                        row['typical_check_size'] = check_activity.get('typical_check_size', '')
+                        row['check_size_points'] = check_activity.get('check_size_points', 0)
+                        row['check_size_reasoning'] = check_activity.get('check_size_reasoning', '')
+                        row['check_activity_total'] = check_activity.get('category_total', 0)
+                    
+                    # === ANGEL: SHARED AFFINITY (0-22 points) ===
+                    affinity = scoring_result.get('shared_affinity', {})
+                    if isinstance(affinity, dict):
+                        row['educational_connection'] = affinity.get('educational_connection', '')
+                        row['educational_points'] = affinity.get('educational_points', 0)
+                        row['educational_reasoning'] = affinity.get('educational_reasoning', '')
+                        row['is_ex_amazon'] = affinity.get('is_ex_amazon', False)
+                        row['ex_amazon_points'] = affinity.get('ex_amazon_points', 0)
+                        row['is_ex_google'] = affinity.get('is_ex_google', False)
+                        row['ex_google_points'] = affinity.get('ex_google_points', 0)
+                        row['ex_amazon_google_reasoning'] = affinity.get('ex_amazon_google_reasoning', '')
+                        row['geographic_cultural_connection'] = affinity.get('geographic_cultural_connection', '')
+                        row['geographic_cultural_points'] = affinity.get('geographic_cultural_points', 0)
+                        row['geographic_cultural_reasoning'] = affinity.get('geographic_cultural_reasoning', '')
+                        row['technical_background'] = affinity.get('technical_background', False)
+                        row['technical_background_points'] = affinity.get('technical_background_points', 0)
+                        row['technical_background_reasoning'] = affinity.get('technical_background_reasoning', '')
+                        row['shared_affinity_total'] = affinity.get('category_total', 0)
+
+                    # === ANGEL: ACTIONABLE INTELLIGENCE (8 sections) ===
+                    intel = scoring_result.get('actionable_intelligence', {})
+                    if isinstance(intel, dict):
+                        row['brand_value_and_expertise'] = intel.get('brand_value_and_expertise', '')
+                        row['founder_story'] = intel.get('founder_story', '')
+                        row['vc_connectivity'] = intel.get('vc_connectivity', '')
+                        row['portfolio_pattern'] = intel.get('portfolio_pattern', '')
+                        row['value_add_specifics'] = intel.get('value_add_specifics', '')
+                        row['networking_power'] = intel.get('networking_power', '')
+                        row['affinity_points'] = intel.get('affinity_points', '')
+                        row['pitch_prep'] = intel.get('pitch_prep', '')
 
                 # === ADDITIONAL CONTEXT ===
                 row['notable_portfolio_companies'] = flatten_portfolio_companies(scoring_result.get('notable_portfolio_companies', []))
@@ -698,9 +889,15 @@ def combine_batch_results(batch_output_files: List[str], final_output_csv: str) 
             continue
     
     if combined_rows:
-        # Write combined results to final CSV
+        # Write combined results to final CSV with row indexes (1 - N)
         combined_df = pd.DataFrame(combined_rows)
-        combined_df.to_csv(final_output_csv, index=False)
+        
+        # Add row index starting from 1
+        combined_df.index = range(1, len(combined_df) + 1)
+        combined_df.index.name = 'row_index'
+        
+        # Write to CSV with index column included
+        combined_df.to_csv(final_output_csv, index=True)
         
         logger.info(f"Successfully combined {len(combined_rows)} total results into: {final_output_csv}")
         
@@ -1457,7 +1654,7 @@ Note: Deep research workflows are time-intensive. Expect 2-3 minutes per investo
     )
 
     current_file_dir = Path(__file__).parent
-    default_input_csv = str(current_file_dir / "Outreach Box - needs scoring.csv")  # Outreach Box - Investor Pool (OVERALL).csv  sample_investors.csv
+    default_input_csv = str(current_file_dir / "Outreach Box - Angels_Enriched_Needs Review (1).csv")  # Outreach Box - Investor Pool (OVERALL).csv  sample_investors.csv
     default_output_csv = str(current_file_dir / "results.csv")
     default_batch_folder = str(current_file_dir / "batch_results")
     default_start_row = 0
@@ -1470,7 +1667,51 @@ Note: Deep research workflows are time-intensive. Expect 2-3 minutes per investo
     default_batch_parallelism_limit = 3
     default_intra_parallel_batch_delay = 120
 
-    default_run_ids = None  # ["ad6e4374-4edc-421f-a9ee-4a4ee68aa895", ]
+    
+    vc_run_ids = ["4c2c9e57-19e1-4f34-9053-b29fc5aed370",
+    "b627b0e1-3790-4cdb-b4ba-0cc002a6324b",
+    "fefb4882-447a-49d4-89d1-4c69fbade60e",
+    "331239f2-dd54-4d89-aec0-be9ad03c8376",
+    "506b938f-49bb-4c00-a627-d44d783ba998",
+    "2420f1cf-f29c-42a8-98ae-d0a2420108c0",
+    "78ea4be3-0a2a-46a7-a10d-bf19acc2062d",
+    "b09fe5f0-c55e-4bc0-a473-d3e2311f3647",
+    "ebc1ddbc-4d99-4c1c-a13c-359970e62819",
+    "56e09ddf-62c4-4722-bedf-4d562a1a7fdf",
+    "5d928f56-94a7-4623-9d9e-125951537efe",
+    "8fcac532-8746-408b-9b81-d90da5d85137",
+    "74ea67af-fc8d-4374-a634-136fa438a934",
+    "11fefd36-5a3c-4260-9487-ba6b75953c82",
+    "fd57d004-75ee-4e3b-b1b6-18cb8c328de4",
+    "ea36836b-f695-405e-b57a-8fe42fa25ebd",
+    "d1632c83-030c-43da-912e-160ab0556c61",
+    "11b80628-f695-4638-b10c-5ab6ebd6dd04",
+    "4b1156d0-bfc4-479f-b98b-f80afc80f3ed",
+    "ad6e4374-4edc-421f-a9ee-4a4ee68aa895",
+    "a750577e-6032-4116-8927-3cfbbe4f92ac",
+    "1f1a3e3e-5c89-4ed4-acd6-1c71ae2cc0bb",
+    "f31345f6-fce6-4910-bb1a-a847cb5819a0",
+    "0b88f287-9550-4299-8a6b-59c366bfb16a",
+    "13bf57d9-f5a6-4f60-8af9-f71f4b42ba1a",
+    "63660534-0fd7-45a3-978e-10ba172ad3a5",
+    ]
+    
+    angel_run_ids = ["20ed48a7-a8f0-4852-b93a-0b16d0a4370c", 
+    "e3e84225-a3d1-4072-a369-5a4ad30e95e0",
+    "b5a05c4f-c28c-4b76-891a-c80c19feeeb3",
+    "d3c3ae26-8dd6-40cb-bf66-bd957b8ade3a",
+    "a0ae9e6d-7844-4b16-bda0-6d4e7681ce98",
+    "e3b1b52d-8da9-458c-a7c1-f0209923d118",
+    "2d3cdbb3-b2ea-41ca-b596-46fb76852479",
+    "2b014809-cf26-4879-ab4a-3e106a90ab03",
+    "5aaed9c5-5901-4076-ba94-63a276d3a73d",
+    "fdc8592d-9122-4c47-a2a5-061b77b0bc76",
+    "d22eba4d-b412-4e91-9a0c-edfd32e393a1",
+    "cb9c030c-50df-4371-bca9-c3376b46f1dc",
+    "5bafed76-af35-4455-aa40-63acf6919bd6",
+    ]
+
+    default_run_ids = angel_run_ids
     default_poll_limit = None
     
     parser.add_argument('--input', '--input-csv', type=str, default=default_input_csv,

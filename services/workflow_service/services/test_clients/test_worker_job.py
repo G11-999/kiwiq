@@ -1,222 +1,1873 @@
-# PYTHONPATH=.:./services poetry run python /path/to/project/services/workflow_service/services/test_worker_job.py
 
-import asyncio
-import uuid
-from typing import Dict, Any, Optional
+"""
+Test worker job for workflow execution with environment setup.
 
-# Assuming workflow_service and tests are importable
-from workflow_service.config.constants import HITL_USER_PROMPT_KEY, HITL_USER_SCHEMA_KEY
-from workflow_service.registry.nodes.llm.config import AnthropicModels, LLMModelProvider
-from workflow_service.registry.registry import DBRegistry
-from workflow_service.services.worker import trigger_workflow_run
-from workflow_service.graph.graph import GraphSchema
-# Import the function to create the graph schema
-# Ensure the path is correct relative to your project structure/PYTHONPATH
-from tests.unit.services.workflow_service.graph.runtime.tests.test_AI_loop import create_ai_loop_graph, human_review_handler, HumanReviewNode, AIGeneratorNode, ApprovalRouterNode, FinalProcessorNode
-from workflow_service.registry.nodes.llm.tests.test_basic_llm_workflow import create_basic_llm_graph
-from workflow_service.services.external_context_manager import register_node_templates, get_external_context_manager_with_clients
-# --- Database and Schema Imports ---
-from db.session import get_async_db_as_manager
-from kiwi_app.workflow_app.crud import WorkflowDAO, WorkflowRunDAO
-from kiwi_app.workflow_app.schemas import WorkflowCreate
-from kiwi_app.workflow_app.constants import LaunchStatus
+This module sets up all necessary environment variables before importing
+any dependencies to ensure proper configuration for Prefect worker context.
+"""
 
+# CRITICAL: Load environment variables BEFORE any imports
+import os
+from pathlib import Path
+from dotenv import load_dotenv
 
-# async def register_test_nodes(db_registry: DBRegistry):
-#     async with get_async_db_as_manager() as db:
-#         await db_registry.register_node_template(db, HumanReviewNode)
-#         await db_registry.register_node_template(db, AIGeneratorNode)
-#         await db_registry.register_node_template(db, ApprovalRouterNode)
-#         await db_registry.register_node_template(db, FinalProcessorNode)
+# Load .env file from project root
+project_root = Path("/path/to/project")
+os.environ["HOST_PROJECT_PATH"] = str(project_root)
+# project_root = Path(__file__).resolve().parents[5]  # Go up 5 levels to kiwiq-backend/
+env_path = project_root / ".env"
+load_dotenv(dotenv_path=env_path)
 
-async def deregister_test_nodes(db_registry: DBRegistry):
-    async with get_async_db_as_manager() as db:
-        await db_registry.deregister_node_template(db, HumanReviewNode)
-        await db_registry.deregister_node_template(db, AIGeneratorNode)
-        await db_registry.deregister_node_template(db, ApprovalRouterNode)
-        await db_registry.deregister_node_template(db, FinalProcessorNode)
+# Set Prefect worker-specific environment variables
+os.environ["IS_PREFECT_WORKER"] = "true"
+os.environ["PREFECT_API_AUTH_STRING"] = os.getenv("PREFECT_AUTH_STRING", "")
+
+# Host project path
 
 
-async def test_trigger_workflow_run() -> None:
+
+
+
+# import timing
+# PYTHONPROFILEIMPORTTIME=1 | PYTHONPATH=$(pwd):$(pwd)/services poetry run python -X importtime services/workflow_service/services/test_clients/test_worker_job.py 2> importtime.log
+# poetry run tuna importtime.log
+
+# memory flamegraph
+# PYTHONPATH=$(pwd):$(pwd)/services poetry run python -m memray run -o memray.bin services/workflow_service/services/test_clients/test_worker_job.py
+# poetry run memray flamegraph memray.bin -o memray.html
+
+async def test_flow_func(
+    dry_run: bool = False
+):
     """
-    Tests triggering a workflow run using the trigger_workflow_run helper.
-
-    This test first ensures that the target Workflow object exists in the database,
-    creating it if necessary using a predefined UUID and the AI loop graph schema.
-    It then triggers the workflow run.
-    """
-    # register test nodes!
-    external_context = await get_external_context_manager_with_clients()
-    # NOTE: already registered in `db_node_register.py` !
-    # await deregister_test_nodes(external_context.db_registry)
-    # return
-
-    # --- Define Test Parameters ---
-    # Hardcoded UUIDs for testing. Replace with actual IDs from your test DB if needed.
-    test_org_id: uuid.UUID = uuid.UUID("f8f9284f-c643-4672-b8a9-4fed8533a014")
-    test_user_id: uuid.UUID = uuid.UUID("2b838ede-8d20-40cf-9086-ea54fe93139b")
-    # Define a *fixed* Workflow ID for this test.
-    # The test will create a workflow with this ID if it doesn't exist.
-    test_workflow_id: uuid.UUID = uuid.UUID("a1b2c3d4-e5f6-7890-1234-567890abcdef") # Fixed ID for test workflow
-
-    # Generate the graph schema from the test AI loop definition
-    # test_graph_schema: GraphSchema = create_ai_loop_graph()
-    # test_graph_schema: GraphSchema = create_ai_loop_graph()
-    test_graph_schema: GraphSchema = create_basic_llm_graph(
-        model_provider=LLMModelProvider.ANTHROPIC,
-        model_name=AnthropicModels.CLAUDE_3_7_SONNET.value,
-        output_type="text"
-    )
-
-    # Define inputs required by the AI loop graph
-    test_inputs: Dict[str, Any] = {
-        "user_prompt": "Generate a short creative story about a robot learning to paint."
-    }
-
-    # Optional parameters for the run trigger
-    # NOTE: set these values if resuming after hitl
-    test_resume_after_hitl: bool = False  # True
-    test_run_id: Optional[uuid.UUID] = None  # "fb727ec4-e496-4abc-8bd5-53eaf524c2e4"  # MUST Be set to triggering run!
-    # test_thread_id: Optional[uuid.UUID] = None   # Not required, autofetched when retrieving run!
+    Weekly Prefect flow to generate content calendar briefs for all active entity usernames.
     
+    This flow:
+    1. Fetches all active entity usernames using extract_active_entity_usernames_flow
+    2. For each org/user/entity_username triplet, triggers the content_calendar_entry_workflow
+    3. Uses non-streaming mode for reliable batch processing
+    4. Runs weekly on Friday PST midnight so content is ready for Saturday morning
+    
+    Args:
+        limit: Optional limit on number of org-user pairs to process (for testing)
+        include_inactive_orgs: Whether to include inactive organizations
+        weeks_to_generate: Number of weeks to generate content for (default: 1)
+        past_context_posts_limit: Number of past posts to use for context (default: 20)
+        dry_run: If True, only logs what would be triggered without actually starting workflows
+    
+    Returns:
+        Dict[str, Any]: Summary of triggered workflows and processing statistics
+    """
+    logger = get_prefect_or_regular_python_logger(name="weekly-content-calendar-generation-flow")
+    
+    # Initialize external context and database session
+    external_context = await get_external_context_manager_with_clients()
+    logger.info("External context manager initialized")
 
-    if test_resume_after_hitl:
-        # assert test_thread_id is not None, "Thread ID must be provided if resuming after HITL"
-        assert test_run_id is not None, "Run ID must be provided if resuming after HITL"
-        # assert test_resume_inputs is not None, "Resume inputs must be provided if resuming after HITL"
-        # logger.info(f"Resuming workflow after HITL for Run ID: {run_id}")
-        # Fetch any pending HITL jobs for this run to process their responses
-        async with get_async_db_as_manager() as db:
-            # NOTE: this is sorted by descending created at, latest first!
-            pending_hitl_jobs = await external_context.daos.hitl_job.get_pending_by_run(
-                db=db, 
-                requesting_run_id=test_run_id
-            )
-            pending_hitl_job = pending_hitl_jobs[0]
-            hitl_user_prompt = pending_hitl_job.request_details
-            hitl_response_schema = pending_hitl_job.response_schema
-            interrupt_data = {
-                HITL_USER_PROMPT_KEY: hitl_user_prompt,
-                HITL_USER_SCHEMA_KEY: hitl_response_schema,
-            }
-            test_inputs = human_review_handler(interrupt_data)
-            # if pending_hitl_jobs:
-            #     # logger.info(f"Found {len(pending_hitl_jobs)} pending HITL jobs to process")
-            #     for job in pending_hitl_jobs:
-            #         # logger.info(f"Processing HITL job: {job.id}")
-            #         # logger.info(f"Request details: {job.request_details}")
-            #         # logger.info(f"Response schema: {job.response_schema}")
-        # test_inputs = test_resume_inputs
-    else:
-        test_thread_id = uuid.uuid4() # random Langgraph thread ID
-
-    # --- Ensure Workflow Exists in DB ---
-    async with get_async_db_as_manager() as db:
-        workflow_dao = WorkflowDAO()
-        # Check if the workflow with the predefined ID exists
-        # We use get() which is simpler than get_by_id_and_org for this check
-        existing_workflow = await workflow_dao.get(db, id=test_workflow_id)
-
-        if not existing_workflow:
-            print(f"Workflow {test_workflow_id} not found. Creating...")
-            # Prepare data for the new workflow
-            workflow_data = WorkflowCreate(
-                name="Test AI Loop Workflow (Created by Test)",
-                description="Workflow created automatically for testing trigger_workflow_run.",
-                # Serialize the GraphSchema object to a dictionary for storage
-                graph_config=test_graph_schema.model_dump(mode='json'),
-                is_template=False,
-                launch_status=LaunchStatus.DEVELOPMENT
-            )
-            # Create the workflow using the DAO
-            # Note: We are forcing the ID here by creating the model instance directly
-            # This might bypass default ID generation if DAO's create doesn't handle it.
-            # For testing with a fixed ID, this is often acceptable.
-            # A more robust DAO might have create_with_id or update_or_create.
-            new_workflow_obj = models.Workflow(
-                id=test_workflow_id, # Set the fixed ID
-                owner_org_id=test_org_id,
-                created_by_user_id=test_user_id,
-                **workflow_data.model_dump() # Get data from the schema
-            )
-            db.add(new_workflow_obj)
-            await db.commit()
-            await db.refresh(new_workflow_obj) # Refresh to load any DB defaults
-
-            # created_workflow = await workflow_dao.create(
-            #     db=db,
-            #     obj_in=workflow_data,
-            #     owner_org_id=test_org_id,
-            #     user_id=test_user_id
-            # )
-            # # If create doesn't allow specifying ID, we'd need a different approach
-            # # or assert that the created ID matches if we let it generate.
-            # # For this test, assuming we want to use the fixed test_workflow_id.
-            print(f"Workflow {test_workflow_id} created successfully.")
-        else:
-            print(f"Workflow {test_workflow_id} already exists. Ensuring graph config is up-to-date...")
-            # Optional: Update the graph_config of the existing workflow if needed
-            existing_workflow.graph_config = test_graph_schema.model_dump(mode='json')
-            existing_workflow.name = "Test AI Loop Workflow (Updated by Test)" # Update name too
-            db.add(existing_workflow)
-            await db.commit()
-            await db.refresh(existing_workflow)
-            print(f"Updated existing workflow {test_workflow_id}.")
+    try:
+    
+        workflow_service = None
         
-        # Create a new workflow run instance if this is not a resume
-        # This is needed when run_id is None and we need to create a new run
-        if test_run_id is not None:
-            # We are probably resuming!
-            assert test_resume_after_hitl, "if using an existing run_id, must set resume_after_hitl to True"
-            existing_workflow_run = await external_context.daos.workflow_run.get_run_by_id_and_org(
-                db=db,
-                run_id=test_run_id,
-                org_id=test_org_id
+        # Step 2: Search for the content calendar workflow first
+        workflow_name = "linkedin_content_strategy_workflow"
+        workflow_id = None
+        async with get_async_db_as_manager() as db:
+            workflow_id = await search_workflow_by_name(
+                workflow_name=workflow_name,
+                external_context=external_context,
+                db_session=db,
+                version_tag=None,  # Use latest version
+                org_id=None  # Search system and public workflows
             )
-            test_thread_id = existing_workflow_run.thread_id
-            assert test_thread_id is not None, "Thread ID must be set for resuming workflow runs"
-            assert existing_workflow_run is not None, "Workflow run must exist if run_id is provided"
+        
+        if not workflow_id:
+            error_msg = f"Could not find workflow with name '{workflow_name}'"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        
+        logger.info(f"Found workflow '{workflow_name}' with ID: {workflow_id}")
+        
+        # Step 3: Trigger content calendar workflow for each triplet
+        triggered_workflows = []
+        failed_triggers = []
+        
+        from kiwi_app.workflow_app.dependencies import get_workflow_service
+        workflow_service = await get_workflow_service()
+
+
+        org_id = uuid.UUID("6d4f8ba9-e275-4846-8e5b-4d7f5ca14eef")
+        user_id = uuid.UUID("e0545083-938f-4231-a2f4-dfa0840d6dfb")
+        user_email = "admin@example.com"
+        entity_username = "test_entity"
+
+        from kiwi_app.auth import schemas as auth_schemas
+
+        user = auth_schemas.UserReadWithSuperuserStatus(
+            id=user_id,
+            email=user_email,
+            full_name="test_user",
+            is_active=True,
+            is_verified=True,
+            linkedin_id=None,  # Not selected in query
+            is_superuser=True,
+            created_at=datetime.now(timezone.utc),  # Placeholder
+            updated_at=datetime.now(timezone.utc)   # Placeholder
+        )
+
+        # Compose workflow inputs based on test_workflow_direct_submit.py structure
+        
+
+        test_inputs = {
+            "entity_username": entity_username
+        }
+        workflow_inputs = test_inputs
+        
+        if dry_run:
+            # logger.info(f"DRY RUN: Would trigger workflow for {entity_username} (org: {triplet['org_name']}, user: {triplet['user_email']})")
+            triggered_workflows.append({
+                "entity_username": entity_username,
+                "org_id": str(org_id),
+                "user_id": str(user_id),
+                # "org_name": triplet["org_name"],
+                # "user_email": triplet["user_email"],
+                "workflow_inputs": workflow_inputs,
+                "dry_run": True
+            })
         else:
-            # We are creating a new run!
-            new_workflow_run = await external_context.daos.workflow_run.create(
-                db=db,
-                workflow_id=test_workflow_id,
-                owner_org_id=test_org_id,
-                triggered_by_user_id=test_user_id,
-                inputs=test_inputs,
-                thread_id=test_thread_id
+            # Generate a unique run ID for this workflow execution
+
+            run_submit = wf_schemas.WorkflowRunCreate(
+                workflow_id=workflow_id,
+                inputs=workflow_inputs,
+                thread_id=None,
+                tag="test_flow_func",
+                resume_after_hitl=False,
+                streaming_mode=False,
             )
-            test_run_id = new_workflow_run.id
+            
+            # Get the workflow run job object without submitting it
+            async with get_async_db_as_manager() as db:
+                workflow_run, flow_run_name = await workflow_service.submit_workflow_run(
+                    db=db,
+                    run_submit=run_submit,
+                    owner_org_id=org_id,
+                    user=user,
+                    return_job_object_no_submit=True
+                )
+            
+            # await workflow_execution_flow(run_job=workflow_run)
 
-    # --- Trigger the Workflow Run (Now that Workflow is guaranteed to exist) ---
-    print(f"\nTriggering workflow run with:")
-    print(f"  Workflow ID: {test_workflow_id}")
-    print(f"  Org ID: {test_org_id}")
-    print(f"  User ID: {test_user_id}")
-    print(f"  Run ID: {test_run_id}")
-    print(f"  Inputs: {test_inputs}")
 
-    triggered_run_id: uuid.UUID = await trigger_workflow_run(
-        workflow_id=test_workflow_id,
-        owner_org_id=test_org_id,
-        triggered_by_user_id=test_user_id,
-        inputs=test_inputs,
-        run_id=test_run_id,
-        thread_id=test_thread_id,
-        graph_schema=test_graph_schema, # Pass the schema directly
-        resume_after_hitl=test_resume_after_hitl,
+            from workflow_service.services.worker import workflow_execution_flow
+            from prefect.context import serialize_context, get_run_context
+            from prefect.flow_engine import run_flow_in_subprocess
+            from prefect import get_run_logger
+            context = serialize_context()
+            if "task_run_context" in context:
+                if "parameters" in context["task_run_context"]:
+                    context["task_run_context"]["parameters"] = {}
+            # context = {k: v for k, v in context.items() if k not in ["task_run_context"]}  # "flow_run_context", 
+            # self.warning(f"Context json {json.dumps(context, indent=4, default=str)}")
+            # context = {"logger_name": get_run_logger().name}
+            p = await asyncio.to_thread(run_flow_in_subprocess, flow=workflow_execution_flow,
+                parameters={"run_job": workflow_run.model_dump()},
+                context=context,)
+            # p = run_flow_in_subprocess(
+            #     flow=workflow_execution_flow,
+            #     parameters={"run_job": run_job.model_dump()},
+            #     context=context,
+            # )
+            await asyncio.to_thread(p.join)
+            # p.join()
+    except Exception as e:
+        logger.error(f"Error in test_flow_func: {e}", exc_info=True)
+        raise e
+    finally:    
+        await external_context.close()
+        await workflow_service.mongo_client.close()
+        logger.info("External context manager and workflow service mongo client closed successfully")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# PYTHONPATH=.:./services poetry run python /path/to/project/services/workflow_service/services/worker.py
+import asyncio
+import json
+import uuid
+from datetime import datetime, timezone
+from typing import Any, Dict, Tuple, AsyncGenerator, Optional, List, Union, cast
+from pydantic import BaseModel
+from functools import partial
+
+# Prefect imports
+from prefect import flow, Flow
+from prefect.deployments import run_deployment
+# from prefect import resume_flow_run, pause_flow_run, suspend_flow_run
+from prefect.client.schemas import FlowRun, State
+from prefect import get_client
+# from prefect.filesystems import S3, GitHub, LocalFileSystem
+from prefect.cache_policies import NO_CACHE
+# from prefect.context import get_run_context
+from prefect import runtime
+
+# LangGraph and DB imports
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from langchain_core.messages import AnyMessage, AIMessageChunk # Added AIMessageChunk
+from langchain_core.load import dumps # Added dumps for logging complex objects
+from sqlmodel.ext.asyncio.session import AsyncSession
+
+from db.session import configure_database, get_async_pool, get_async_db_as_manager, get_async_session # Assuming this provides psycopg pool
+from global_config.settings import global_settings
+from global_config.logger import get_prefect_or_regular_python_logger
+from kiwi_app.billing.models import CreditType
+from kiwi_app.billing import schemas as billing_schemas
+from workflow_service.utils.utils import get_prefect_logger
+# Local workflow service imports
+from workflow_service.graph.graph import GraphSchema
+from workflow_service.graph.builder import GraphBuilder
+# from workflow_service.registry import default_registry
+from workflow_service.graph.runtime.adapter import LangGraphRuntimeAdapter
+from workflow_service.config.constants import (
+    APPLICATION_CONTEXT_KEY,
+    EXTERNAL_CONTEXT_MANAGER_KEY,
+    HITL_USER_PROMPT_KEY, # Added HITL keys
+    HITL_USER_SCHEMA_KEY,
+    DB_SESSION_KEY,
+)
+
+from workflow_service.services.external_context_manager import (
+    ExternalContextManager,
+    get_external_context_manager_with_clients,
+)
+from kiwi_app.workflow_app import crud as wf_crud
+
+# Import specific event types
+from workflow_service.services.events import (
+    WorkflowBaseEvent, # Added Base Event
+    MessageStreamChunk,
+    WorkflowRunNodeOutputEvent,
+    WorkflowRunStatusUpdateEvent, # Renamed from Update to UpdateEvent
+    HITLRequestEvent,
+    ToolCallEvent,
+    NodeStatusEvent,
+)
+from kiwi_app.workflow_app.schemas import WorkflowRunUpdate, NotificationType # Added NotificationType
+
+from kiwi_app.workflow_app import schemas as wf_schemas # Assuming path
+from kiwi_app.settings import settings # Assuming path for central settings
+from workflow_service.utils.utils import get_node_output_state_key # Util for final output extraction
+from workflow_service.config.constants import STATE_KEY_DELIMITER
+
+from workflow_service.services.cron_flows import billing_expire_organization_credits_flow, search_scheduled_briefs_and_send_reminders_flow, rag_data_ingestion_flow, RAG_INGESTION_MAX_BATCHES_PER_RUN, RAG_INGESTION_BATCH_SIZE
+from linkedin_integration.models import *
+
+# --- Core Workflow Execution Flow ---
+
+
+# TODO: mount logs volume to persist logs!
+# get_logger(
+#     name="workflow-execution-worker",
+#     log_level=global_settings.LOG_LEVEL,
+#     log_filename=global_settings.LOG_PREFECT_FILE_NAME,
+#     # log_dir=,
+#     # log_to_console=,
+#     log_to_file=True,
+# )
+
+"""
+NOTE: when passing JSON schemas (I think as JSON objects and not as str); prefect tries to resolve them as blocks and fails with $ref references.
+TO disable this behavior, pass the JSON schema as a str or set validate_parameters=False.
+
+Bug:
+2025-04-29 04:25:03,999 - httpx - INFO - HTTP Request: GET http://prefect-server:4200/api/csrf-token?client=d7b38bc1-50aa-4e36-a685-9b57ff26acff "HTTP/1.1 422 Unprocessable Entity"
+prefect-agent-dev  | 2025-04-29 04:25:04,003 - httpx - INFO - HTTP Request: PATCH http://prefect-server:4200/api/flow_runs/80b69977-b379-439b-9f0d-eb3cdf494c4f "HTTP/1.1 204 No Content"
+prefect-agent-dev  | 2025-04-29 04:25:04,025 - prefect.engine - ERROR - Validation of flow parameters failed with error: Failed to resolve block references in parameters.
+prefect-agent-dev  | 2025-04-29 04:25:04,042 - httpx - INFO - HTTP Request: POST http://prefect-server:4200/api/flow_runs/80b69977-b379-439b-9f0d-eb3cdf494c4f/set_state "HTTP/1.1 201 Created"
+prefect-agent-dev  | 2025-04-29 04:25:04,042 - prefect.engine - ERROR - Finished in state Failed('Validation of flow parameters failed with error: ParameterTypeError: Failed to resolve block references in parameters.')
+prefect-agent-dev  | 2025-04-29 04:25:04,043 - prefect.engine - ERROR - Execution of flow run '80b69977-b379-439b-9f0d-eb3cdf494c4f' exited with unexpected exception
+prefect-agent-dev  | Traceback (most recent call last):
+prefect-agent-dev  |   File "/usr/local/lib/python3.12/site-packages/prefect/blocks/core.py", line 878, in _get_block_document_by_id
+prefect-agent-dev  |     block_document_id = UUID(block_document_id)
+prefect-agent-dev  |                         ^^^^^^^^^^^^^^^^^^^^^^^
+prefect-agent-dev  |   File "/usr/local/lib/python3.12/uuid.py", line 178, in __init__
+prefect-agent-dev  |     raise ValueError('badly formed hexadecimal UUID string')
+prefect-agent-dev  | ValueError: badly formed hexadecimal UUID string
+prefect-agent-dev  |
+prefect-agent-dev  | During handling of the above exception, another exception occurred:
+prefect-agent-dev  |
+"""
+
+
+
+@flow(
+    name="workflow-execution",
+    description="Orchestrates the execution of a LangGraph workflow",
+    log_prints=True,  # global_settings.DEBUG 
+    retries=1,
+    retry_delay_seconds=30,
+    # cache_result_in_memory=True, # by default, True
+    # cache_policy=NO_CACHE,
+    validate_parameters=False,
+    # persist_result=False,
+    # # TODO: persist_result and result_storage configs!
+    timeout_seconds=settings.WORKFLOW_TIMEOUT_SECONDS,
+    # on_crashed=[partial(handle_flow_crash, crashed=True)],
+    # on_cancellation=[partial(handle_flow_crash, crashed=False)],
+)
+async def workflow_execution_flow(
+    run_job: wf_schemas.WorkflowRunJobCreate
+) -> Dict[str, Any]:
+    """
+    Prefect flow to build and execute a single LangGraph workflow run.
+    
+    This flow handles the complete lifecycle of a workflow execution:
+    1. Initializes the external context (DB, services, Mongo, etc.)
+    2. Updates the run status to RUNNING
+    3. Fetches the workflow graph schema if not provided
+    4. Executes the LangGraph workflow (via run_graph)
+    5. Processes the final status and results from run_graph
+    6. Publishes completion/failure notifications
+    7. Handles failures with proper error reporting
+    
+    Args:
+        run_job: The workflow run job specification as a Pydantic model
+
+    Returns:
+        Dict[str, Any]: The workflow execution result or final status info.
+    """
+
+    # Disabled prefect params validation, so validate here!
+    if isinstance(run_job, dict):
+        run_job = wf_schemas.WorkflowRunJobCreate(**run_job)
+
+    # global external_context_global
+    logger = get_prefect_or_regular_python_logger(name="workflow-execution-flow")
+    db_concurrent_pool_tier = run_job.graph_schema.runtime_config.db_concurrent_pool_tier
+    configure_database(pool_tier_size=db_concurrent_pool_tier)
+    if db_concurrent_pool_tier != "small":
+        logger.info(f"Configured database with larger pool tier size: {db_concurrent_pool_tier}")
+    logger.info(f"Starting workflow execution for Run ID: {run_job.run_id}, Workflow ID: {run_job.workflow_id}")
+    
+    # Create application context for the LangGraph workflow
+    # This is now less critical as run_job is passed directly, but kept for potential future use
+    
+    # --- Initialize ExternalContextManager ---
+    # external_context = external_context_global
+    # if external_context is None:
+    external_context = await get_external_context_manager_with_clients()
+    logger.info("External context manager initialized")
+    
+    try:
+        # run_graph now handles internal status updates, event publishing, and returns final update info
+        workflow_run_update_result = await run_graph(
+            workflow_run_job=run_job,
+            external_context=external_context
+        )
+
+        logger.info(f"Workflow execution processing completed for Run ID: {run_job.run_id} with status: {workflow_run_update_result.status}")
+
+        # --- Process Final Result and Publish Notifications ---
+        # final_outputs = workflow_run_update_result.outputs # Outputs are now part of the result from run_graph
+
+        # logger.info(f"Workflow execution flow finished for Run ID {run_job.run_id}")
+        # Return the final update info, which includes status and outputs
+        
+        # logger.warning(f"TEST: ATTEMPTING TO SUSPEND FLOW RUN FOR RUN ID {run_job.run_id}")
+        # if workflow_run_update_result.status == wf_schemas.WorkflowRunStatus.WAITING_HITL:
+        #     logger.warning(f"TEST: Workflow execution waiting for HITL input for Run ID {run_job.run_id}")
+        #     suspend_flow_run(flow_run_id=get_run_context().flow_run.id, wait_for_input=wf_schemas.WorkflowRunJobCreate, timeout=None)
+        
+        return workflow_run_update_result  # .model_dump(mode='json', exclude_defaults=False)
+
+    except Exception as e:
+        # logger.error(f"Workflow execution flow failed critically for Run ID {run_job.run_id}: {e}", exc_info=True)
+        error_message = str(e)
+        final_status = wf_schemas.WorkflowRunStatus.FAILED
+        # Re-raise the original exception to ensure Prefect marks the flow as failed
+        raise e # Re-raise the original error
+
+    finally:
+        # Clean up resources regardless of success or failure
+        try:
+            await external_context.close()
+            logger.info("External context manager closed successfully")
+        except Exception as close_err:
+            logger.error(f"Error closing external context: {close_err}", exc_info=True)
+
+
+@workflow_execution_flow.on_crashed
+@workflow_execution_flow.on_cancellation
+async def handle_flow_crash(flow: Flow, flow_run: FlowRun, state: State, crashed: bool = False):
+    """
+    Handle a flow crash by logging the error and suspending the flow run.
+    """
+    logger = get_prefect_or_regular_python_logger(name="workflow-execution-flow-crash-handler")
+    workflow_run_job = flow_run.parameters.get("run_job")
+    workflow_run_job = wf_schemas.WorkflowRunJobCreate(**workflow_run_job)
+    if not workflow_run_job:
+        raise ValueError("Workflow run job not found in flow parameters")
+    workflow_run_dao = wf_crud.WorkflowRunDAO()
+    run_id = workflow_run_job.run_id
+    is_sub_workflow = workflow_run_job.parent_run_id is not None
+    log_prefix = f"{workflow_run_job.workflow_name}: " if is_sub_workflow else ""
+
+    # if parent_run_id is not None:
+    status = wf_schemas.WorkflowRunStatus.FAILED if crashed else wf_schemas.WorkflowRunStatus.CANCELLED
+    status_message = "crashed" if crashed else "cancelled"
+
+    logger.error(log_prefix + f"Flow {status_message}: {flow_run.state.message}")
+    async with get_async_db_as_manager() as db:
+        await workflow_run_dao.update_status(
+            db=db,
+            run_id=run_id,
+            status=status,
+            ended_at=datetime.now(tz=timezone.utc),
+            error_message=f"Flow {status_message}! State message: {flow_run.state.message}",
+            outputs=None,
+        )
+
+
+async def run_graph(
+    workflow_run_job: wf_schemas.WorkflowRunJobCreate,
+    external_context: ExternalContextManager
+) -> wf_schemas.WorkflowRunUpdate:
+    """
+    Build and execute a LangGraph graph, processing the stream for events,
+    status updates, and HITL requests.
+
+    Args:
+        workflow_run_job: The workflow run job specification.
+        external_context: The initialized ExternalContextManager instance.
+
+    Returns:
+        WorkflowRunUpdate: An object containing the final status, outputs, and error message (if any).
+    """
+    logger = get_prefect_or_regular_python_logger(name="workflow-execution-flow")
+    run_id = workflow_run_job.run_id
+    org_id = workflow_run_job.owner_org_id
+    user_id = workflow_run_job.triggered_by_user_id
+    final_output_node_id = None # Initialize
+    final_outputs = None
+    sequence_id_counter = 0 # Start event sequence counter
+    parent_run_id = workflow_run_job.parent_run_id
+
+
+    # if parent_run_id is not None:
+    async with get_async_db_as_manager() as db:
+        flow_id = runtime.flow_run.id
+        # lock_key = "prefect_parent_run_lock:" + str(parent_run_id)
+        # async with external_context.redis.text_client.with_lock(
+        #     lock_name=lock_key, 
+        #     timeout=10,
+        #     ttl=10,
+        # ):
+        workflow_run = await external_context.daos.workflow_run.get_run_by_id_and_org(db, run_id=run_id, org_id=org_id)
+        current_retry_count = workflow_run.retry_count or 0
+        start_retry_count = workflow_run_job.retry_count or 0
+        is_retry_of_run = current_retry_count > start_retry_count 
+        updated_retry_count = current_retry_count + 1
+
+        retry_count_msg = f"Retry Count: #{current_retry_count} " if is_retry_of_run else ""
+
+        logger.info(f"Info for Workflow run: {retry_count_msg}- Workflow Name: {workflow_run.workflow_name} - Workflow ID: {workflow_run.workflow_id} - Run ID: {workflow_run.id}")
+        obj_in={   
+            "retry_count": updated_retry_count,
+        }
+        if workflow_run and ((not workflow_run.prefect_run_ids) or (str(flow_id) not in workflow_run.prefect_run_ids)):
+            prefect_run_ids = ",".join([workflow_run.prefect_run_ids, str(flow_id)]) if workflow_run.prefect_run_ids else str(flow_id),
+            obj_in["prefect_run_ids"] = prefect_run_ids
+        
+        workflow_run = await external_context.daos.workflow_run.update(
+            db,
+            db_obj=workflow_run,
+            obj_in=obj_in,
+        )
+        is_sub_workflow = workflow_run.parent_run_id is not None
+        log_prefix = f"{workflow_run.workflow_name}: " if is_sub_workflow else ""
+
+        if is_sub_workflow:
+            # Rename the flow run to include the subworkflow name for better identification
+            try:
+                new_flow_run_name = f"[SUBFLOW] {workflow_run.workflow_name}:--{run_id} (Parent: {workflow_run.parent_run_id})" + "--(HITL-RESUMED)" if workflow_run_job.resume_after_hitl else ""
+                
+                async with get_client() as prefect_client:
+                    await prefect_client.update_flow_run(
+                        flow_run_id=flow_id,
+                        name=new_flow_run_name
+                    )
+                
+                logger.info(log_prefix + f"Renamed subworkflow flow run to: {new_flow_run_name}")
+                
+            except Exception as rename_err:
+                logger.warning(log_prefix + f"Failed to rename subworkflow flow run: {rename_err}")
+                # Don't fail the entire workflow if renaming fails
+            
+
+    try:
+        ################################################################
+        ######################### INIT INIT ##############################
+
+        # Check if this is a resume after HITL
+        if workflow_run_job.resume_after_hitl:
+            logger.info(log_prefix + f"Resuming workflow after HITL for Run ID: {run_id}")
+            # # Fetch any pending HITL jobs for this run to process their responses
+            # async with get_async_db_as_manager() as db:
+            #     # NOTE: this is sorted by descending created at, latest first!
+            #     pending_hitl_jobs = await external_context.daos.hitl_job.get_pending_by_run(
+            #         db=db, 
+            #         requesting_run_id=run_id
+            #     ) 
+            #     if pending_hitl_jobs:
+            #         logger.info(f"Found {len(pending_hitl_jobs)} pending HITL jobs to process")
+            #         for job in pending_hitl_jobs:
+            #             logger.info(f"Processing HITL job: {job.id}")
+            #             logger.info(f"Request details: {job.request_details}")
+            #             logger.info(f"Response schema: {job.response_schema}")
+            #     else:
+            #         logger.info("No pending HITL jobs found for this run")
+            
+            # # Check if resuming from FAILED state, then consume workflow credit if that's case, since after workflow fails, the consumed credit is returned!
+            # async with get_async_db_as_manager() as db:
+            #     workflow_run = await external_context.daos.workflow_run.get(
+            #         db=db,
+            #         id=run_id,
+            #     )
+            #     resume_from_status = workflow_run.status
+            #     if resume_from_status == wf_schemas.WorkflowRunStatus.FAILED:
+            #         await external_context.billing_service.allocate_credits_for_operation(
+            #             db=db,
+            #             org_id=org_id,
+            #             user_id=user_id,
+            #             operation_id=run_id,
+            #             credit_type=CreditType.WORKFLOWS,
+            #             estimated_credits=1,
+            #         )
+        else:
+            # Create a new workflow run instance if this is not a resume
+            # This is needed when run_id is None and we need to create a new run
+            if not run_id:
+                raise ValueError("Non NULL, existing Run ID is required to create a new workflow run")
+                # logger.info("Creating new workflow run instance")
+                # async with get_async_db_as_manager() as db:
+                #     new_workflow_run = await external_context.daos.workflow_run.create(
+                #         db=db,
+                #         workflow_id=workflow_run_job.workflow_id,
+                #         owner_org_id=org_id,
+                #         triggered_by_user_id=user_id,
+                #         inputs=workflow_run_job.inputs,
+                #         thread_id=workflow_run_job.thread_id
+                #     )
+                #     # Update the run_id in the job
+                #     run_id = new_workflow_run.id
+                #     workflow_run_job.run_id = run_id
+                #     logger.info(f"Created new workflow run with ID: {run_id}")
+
+            async with get_async_db_as_manager() as db:
+                await external_context.billing_service.consume_credits(
+                    db=db,
+                    org_id=org_id,
+                    user_id=user_id,
+                    consumption_request=billing_schemas.CreditConsumptionRequest(
+                        credit_type=CreditType.WORKFLOWS,
+                        credits_consumed=1,
+                        event_type="workflow_run_start",
+                        metadata={"operation_id": str(run_id)}
+                    )
+                )
+        
+        # If thread_id is not provided, use run_id as the thread_id
+        thread_id = workflow_run_job.thread_id or run_id
+
+        logger.info(log_prefix + f"Building graph for Run ID: {run_id}")
+        error_message = None
+
+        ################################################################
+        ################################################################
+        
+        # --- Graph Building ---
+        builder = GraphBuilder(external_context.db_registry)
+        # Pass run job directly for context if builder needs it
+        runtime_metadata = {
+            "workflow_name": workflow_run.workflow_name,
+            "is_sub_workflow": is_sub_workflow,
+        }
+        graph_entities = builder.build_graph_entities(workflow_run_job.graph_schema, prefect_mode=True, allow_non_user_editable_fields=True, runtime_metadata=runtime_metadata)
+        logger.info(log_prefix + "Graph entities built successfully")
+        final_output_node_id = graph_entities.get("output_node_id")
+
+        # --- Runtime Configuration ---
+        runtime_config = graph_entities.get("runtime_config", {})
+        # Pass necessary context items into the config for LangGraph nodes
+        runtime_config[DB_SESSION_KEY] = None
+        # Get user data for application context
+        async with get_async_db_as_manager() as db:
+            user = await external_context.daos.user.get(db, id=user_id)
+        runtime_config[APPLICATION_CONTEXT_KEY] = {
+            "workflow_run_job": workflow_run_job,
+            "user": user
+        }
+        runtime_config[EXTERNAL_CONTEXT_MANAGER_KEY] = external_context
+        initial_runtime_config = runtime_config
+
+        # Configure thread_id for checkpointing
+        thread_id = workflow_run_job.thread_id or run_id
+        runtime_config["thread_id"] = str(thread_id)
+        runtime_config["use_checkpointing"] = True # Assume checkpointing is always desired
+
+        # Setup Checkpointer using Postgres pool from external_context
+        # Assuming external_context provides the necessary pool or connection
+        # This requires external_context to have been initialized with DB access
+        async with get_async_pool() as async_psycopg_pool:
+            checkpointer = AsyncPostgresSaver(async_psycopg_pool)
+            runtime_config["checkpointer"] = checkpointer
+
+            # --- Adapter and Execution ---
+            adapter = LangGraphRuntimeAdapter()
+            compiled_graph = adapter.build_graph(graph_entities)
+            logger.info(log_prefix + "Graph compiled successfully")
+
+            # Get initial input data
+            initial_input = workflow_run_job.inputs or {}
+            logger.info(log_prefix + f"Executing graph stream with input data: {initial_input}")
+
+            # --- Process Graph Stream ---
+            current_status = wf_schemas.WorkflowRunStatus.RUNNING # Track status locally
+            error_message = None
+            exception_raised = False
+
+            # 1. Update DB status to RUNNING
+            async with get_async_db_as_manager() as db:
+                await external_context.daos.workflow_run.update_status(
+                    db=db, run_id=run_id, status=current_status
+                )
+            logger.info(log_prefix + f"Updated Run {run_id} status to RUNNING in DB.")
+
+            ######  ######  ######  ######  ######  ######  ######  ######  ######  ######
+            # Publish initial status update event to stream
+            ######  ######  ######  ######  ######  ######  ######  ######  ######  ######
+            initial_status_event = WorkflowRunStatusUpdateEvent(
+                event_id=str(uuid.uuid4()),
+                run_id=run_id,
+                org_id=org_id,
+                user_id=user_id,
+                sequence_i=sequence_id_counter, # Final sequence ID
+                status=current_status,
+                error_message=None,
+                timestamp=datetime.now(tz=timezone.utc),
+                payload=None,
+                parent_run_id=workflow_run_job.parent_run_id,
+            )
+            try:
+                initial_status_event_dump = initial_status_event.model_dump(mode='json', exclude_defaults=False)
+
+                mongo_path = [str(initial_status_event_dump[key]) for key in settings.MONGO_WORKFLOW_STREAM_SEGMENTS]
+                await external_context.mongo.workflow.create_object(
+                    path=mongo_path,
+                    data=initial_status_event_dump
+                    # No need for allowed_prefixes here, internal system operation
+                )
+                logger.debug(log_prefix + f"Persisted event {initial_status_event.event_type} (RunID: {initial_status_event.run_id}, SeqID: {initial_status_event.sequence_i}) to MongoDB.")
+                
+                await external_context.rabbit.publish_workflow_event(initial_status_event_dump)
+                sequence_id_counter += 1
+                
+            except Exception as e:
+                logger.error(log_prefix + f"Error publishing initial status event: {e}", exc_info=True)
+            ######  ######  ######  ######  ######  ######  ######  ######  ######  ######
+
+            async for chunk in adapter.aexecute_graph_stream(
+                graph=compiled_graph,
+                input_data=initial_input,
+                config=runtime_config, # Pass the full runtime config
+                output_node_id=final_output_node_id,
+                interrupt_handler=None, # Adapter handles internal interrupt loop
+                resume_with_hitl=workflow_run_job.resume_after_hitl,
+                is_retry=is_retry_of_run,
+                logger=logger,
+                log_prefix=log_prefix,
+            ):
+                try:
+                    # Ensure chunk is a tuple (stream_mode, data)
+                    if not isinstance(chunk, tuple) or len(chunk) != 2:
+                        logger.warning(log_prefix + f"Received unexpected chunk format: {chunk}")
+                        continue
+
+                    stream_mode, data = chunk
+                    timestamp = datetime.now(tz=timezone.utc)
+
+                    base_event_data = {
+                        "run_id": run_id,
+                        "org_id": org_id,
+                        "user_id": user_id,
+                        "event_id": str(uuid.uuid4()),
+                        "sequence_i": sequence_id_counter,
+                        "timestamp": timestamp,
+                        "parent_run_id": workflow_run_job.parent_run_id,
+                    }
+
+                    # Build the final path list in the order defined by settings
+                    mongo_path = [str(base_event_data.get(seg_name, "*")) for seg_name in settings.MONGO_WORKFLOW_STREAM_SEGMENTS]
+                    # Ensure no wildcards remain unintentionally
+                    if "*" in mongo_path:
+                        logger.warning(log_prefix + f"Failed to construct MongoDB path. Some segments missing for event: {stream_mode}::{sequence_id_counter}::{run_id}")
+                        mongo_path = None
+                    # logger.info(log_prefix + f"MongoDB path constructed successfully: {mongo_path}")
+
+                    # --- Handle Different Stream Modes ---
+                    if stream_mode == "messages" and workflow_run_job.streaming_mode:
+                        # Process message chunks (e.g., from LLMs)
+                        # Data is often AIMessageChunk or similar
+                        if isinstance(data, (tuple, list)) and len(data) == 2:  #  and isinstance(data[0], AIMessageChunk):
+                            message_chunk, runtime_config = data
+                            message_event = MessageStreamChunk(
+                                **base_event_data,
+                                node_id=runtime_config.get("langgraph_node", ""),
+                                message=message_chunk,
+                                # node_id might be available in data.response_metadata or config if adapter provides it
+                            )
+                            message_event_dump = message_event.model_dump(mode='json', exclude_defaults=False)
+
+                            # NOTE: this will help reconstruct the stream and resume output potentially!
+                            # Otherwise this is very high bandwidth potentially!
+                            if mongo_path:
+                                # Persist to Mongo DB
+                                await external_context.mongo.workflow.create_object(
+                                    path=mongo_path,
+                                    data=message_event_dump
+                                    # No need for allowed_prefixes here, internal system operation
+                                )
+                                logger.debug(log_prefix + f"Persisted event {message_event.event_type} (RunID: {message_event.run_id}, SeqID: {message_event.sequence_i}) to MongoDB.")
+
+                            # Publish to RabbitMQ Stream
+                            await external_context.rabbit.publish_workflow_event(message_event_dump)
+                            sequence_id_counter += 1
+                        else:
+                            logger.debug(log_prefix + f"Received non-AnyMessage in 'messages' stream: {type(data)} \n{data}\n")
+
+                    elif stream_mode == "custom":
+                        # Process tool call chunks (e.g., from tools)
+                        if isinstance(data, dict):
+                            try:
+                                if data.get("event_type") == "tool_call":
+                                    custom_event = ToolCallEvent(
+                                        **base_event_data,
+                                        node_id=data.get("node_id", ""),
+                                        payload={k:v for k,v in data.items() if k not in ["node_id", *ToolCallEvent.model_fields.keys()]},
+                                        tool_call_id=data.get("tool_call_id", ""),
+                                        tool_name=data.get("tool_name", ""),
+                                        status=data.get("status", ""),
+                                    )
+                                elif data.get("event_type") == "node_status":
+                                    custom_event = NodeStatusEvent(
+                                        **base_event_data,
+                                        node_id=data.get("node_id", ""),
+                                        status=data.get("status", ""),
+                                    )
+                                    if payload:=data.get("payload", {}):
+                                        custom_event.payload = payload
+                                else:
+                                    logger.warning(log_prefix + f"Received unhandled custom event type: {data.get('event_type')}")
+                                    continue
+                                
+                                custom_event_dump = custom_event.model_dump(mode='json', exclude_defaults=False)
+                                if mongo_path:
+                                    await external_context.mongo.workflow.create_object(
+                                        path=mongo_path,
+                                        data=custom_event_dump
+                                    )
+                                    logger.debug(log_prefix + f"Persisted event {custom_event.event_type} (RunID: {custom_event.run_id}, SeqID: {custom_event.sequence_i}) to MongoDB.")
+                                # Publish to RabbitMQ Stream
+                                await external_context.rabbit.publish_workflow_event(custom_event_dump)
+                                sequence_id_counter += 1
+                            except Exception as e:
+                                logger.error(log_prefix + f"Error processing {data.get('event_type', 'unknown')} event: {e}", exc_info=True)
+                                continue
+
+                    elif stream_mode == "updates":
+                        # Process state updates, node outputs, and interrupts
+                        if not isinstance(data, dict):
+                            logger.warning(log_prefix + f"Received non-dict data in 'updates' stream: {data}")
+                            continue
+
+                        for node_id, node_output in data.items():
+                            if node_id == "__interrupt__":
+                                # --- Handle HITL Interrupt ---
+                                current_status = wf_schemas.WorkflowRunStatus.WAITING_HITL
+                                logger.info(log_prefix + f"Run {run_id} interrupted for HITL.")
+
+                                # Extract interrupt payload
+                                interrupt_list = cast(List[Any], node_output)
+                                if not interrupt_list: continue
+                                interrupt_payload = interrupt_list[0].value # Get value from the langgraph Interrupt object
+
+                                hitl_prompt = interrupt_payload.get(HITL_USER_PROMPT_KEY, {})
+                                if isinstance(hitl_prompt, BaseModel):
+                                    hitl_prompt = json.loads(hitl_prompt.model_dump_json())
+                                hitl_schema = interrupt_payload.get(HITL_USER_SCHEMA_KEY, {})
+
+                                # 1. Update DB status to PENDING_HITL and create HITL job
+                                async with get_async_db_as_manager() as db:
+                                    await external_context.daos.workflow_run.update_status(
+                                        db=db, run_id=run_id, status=current_status
+                                    )
+                                    assigned_user = user_id # Default to triggering user for now
+                                    # 2. Create HITL Job in DB
+                                    hitl_job = await external_context.daos.hitl_job.create(
+                                        db=db,
+                                        requesting_run_id=run_id,
+                                        org_id=org_id,
+                                        request_details=hitl_prompt,
+                                        response_schema=hitl_schema,
+                                        assigned_user_id=assigned_user
+                                    )
+                                    # 2.b. Create User Notification in DB
+                                    user_notification = await external_context.daos.user_notification.create(
+                                        db=db,
+                                        user_id=assigned_user,
+                                        org_id=org_id,
+                                        notification_type=NotificationType.HITL_REQUESTED,
+                                        message=hitl_prompt,
+                                        related_run_id=run_id
+                                    )
+                                
+                                logger.info(log_prefix + f"Created HITL Job DB entry {hitl_job.id} and notification entry {user_notification.id} for Run {run_id}.")
+                                logger.info(log_prefix + f"Updated Run {run_id} status to PENDING_HITL in DB.")
+
+                                # 3. Publish Status Update Event
+                                status_event = WorkflowRunStatusUpdateEvent(
+                                    **base_event_data, status=current_status
+                                )
+                                status_event_dump = status_event.model_dump(mode='json', exclude_defaults=False)
+                                if mongo_path:
+                                    # Persist to Mongo DB
+                                    await external_context.mongo.workflow.create_object(
+                                        path=mongo_path,
+                                        data=status_event_dump
+                                        # No need for allowed_prefixes here, internal system operation
+                                    )
+                                    logger.debug(log_prefix + f"Persisted event {status_event.event_type} (RunID: {status_event.run_id}, SeqID: {status_event.sequence_i}) to MongoDB.")
+
+                                # Publish to RabbitMQ Stream
+                                await external_context.rabbit.publish_workflow_event(status_event_dump)
+                                sequence_id_counter += 1
+
+
+                                # 4. Publish HITL Request Event
+                                hitl_event = HITLRequestEvent(
+                                    **base_event_data,
+                                    # node_id: Needs context from adapter/interrupt payload if available
+                                    request_data_schema=hitl_schema,
+                                    user_prompt=hitl_prompt,
+                                    payload={"message": "User input required"} # Simple payload
+                                )
+                                hitl_event_dump = hitl_event.model_dump(mode='json', exclude_defaults=False)
+                                if mongo_path:
+                                    mongo_path[-1] = mongo_path[-1] + "_hitl_requests"
+                                    # Persist to Mongo DB
+                                    await external_context.mongo.workflow.create_object(
+                                        path=mongo_path,
+                                        data=hitl_event_dump
+                                        # No need for allowed_prefixes here, internal system operation
+                                    )
+                                    logger.debug(log_prefix + f"Persisted event {hitl_event.event_type} (RunID: {hitl_event.run_id}, SeqID: {hitl_event.sequence_i}) to MongoDB.")
+
+                                # Publish to RabbitMQ Stream
+                                await external_context.rabbit.publish_workflow_event(hitl_event_dump)
+                                
+                                
+                                sequence_id_counter += 1
+
+                                # # 5. Send User Notification for HITL
+                                # if assigned_user:
+                                #      await external_context.rabbit.publish_notification(
+                                #          hitl_event,
+                                #     #      {
+                                #     #      "user_id": str(assigned_user),
+                                #     #      "org_id": str(org_id),
+                                #     #      "notification_type": NotificationType.HITL_REQUEST.value,
+                                #     #      "message": {
+                                #     #          "summary": "Action required: Input needed for workflow",
+                                #     #          "run_id": str(run_id),
+                                #     #          "prompt": hitl_prompt # Include prompt in notification
+                                #     #      },
+                                #     #      "related_run_id": str(run_id)
+                                #     #  }
+                                #      )
+                                #      logger.info(log_prefix + f"Sent HITL notification for Run {run_id} to user {assigned_user}.")
+
+                            else:
+                                # --- Handle Node Output ---
+                                # Extract actual node_id from the state key
+                                # actual_node_id = node_id.replace(get_node_output_state_key(node_id), "")
+                                
+                                node_state_update = node_output  # .get(node_id, {})
+                                # print(node_output)
+                                node_output = node_state_update.get(get_node_output_state_key(node_id), {})
+                                if isinstance(node_output, BaseModel):
+                                    # node_output = json.loads(node_output.model_dump_json())
+
+                                    try:
+                                        node_output = node_output.model_dump(mode='json', exclude_defaults=False)
+                                    except Exception as e:
+                                        logger.warning(log_prefix + f"Error dumping output event for {node_id}: {e}")
+                                        node_output = json.loads(json.dumps(node_output.model_dump(mode='python', exclude_defaults=False), default=str))
+
+                                elif isinstance(node_output, dict):
+                                    node_output = json.loads(json.dumps(node_output, default=str))
+                                else:
+                                    node_output = str(node_output)
+                                
+                                # print(node_state_update)
+                                # print(node_output)
+                                # import ipdb; ipdb.set_trace()
+                                
+                                central_state_update = {k.split(STATE_KEY_DELIMITER)[-1]:v for k,v in node_state_update.items() if k != get_node_output_state_key(node_id)}
+                                for k,v in central_state_update.items():
+                                    if isinstance(v, BaseModel):
+                                        central_state_update[k] = json.loads(v.model_dump_json())
+
+                                payload={
+                                    "node_output": node_output,
+                                }
+                                if central_state_update:
+                                    payload["central_state_update"] = central_state_update
+                                
+                                # Redact potentially sensitive data such as shared system docs / prompts
+                                restricted_node_names = ["prompt_constructor", "load_customer_data", "tool_executor", "crawler_scraper", "ai_answer_engine_scraper"]  # , "llm"
+                                user = initial_runtime_config[APPLICATION_CONTEXT_KEY].get("user", None)
+                                
+                                try:
+                                    node_name = workflow_run_job.graph_schema.nodes.get(node_id).node_name
+                                    if (not user.is_superuser):  #  and node_name in restricted_node_names
+                                        payload["node_output"] = "DATA_REDACTED"
+                                        if "central_state_update" in payload:
+                                            payload["central_state_update"] = "DATA_REDACTED"
+                                except Exception as e:
+                                    logger.warning(log_prefix + f"Error getting node name for {node_id}: {e}")
+
+                                output_event = WorkflowRunNodeOutputEvent(
+                                    **base_event_data,
+                                    node_id=node_id,
+                                    payload=payload,
+                                )
+
+                                try:
+                                    output_event_dump = output_event.model_dump(mode='json', exclude_defaults=False)
+                                except Exception as e:
+                                    logger.warning(log_prefix + f"Error dumping output event for {node_id}: {e}")
+                                    output_event_dump = json.loads(json.dumps(output_event.model_dump(mode='python', exclude_defaults=False), default=str))
+
+                                if mongo_path:
+                                    # Persist to Mongo DB
+                                    await external_context.mongo.workflow.create_object(
+                                        path=mongo_path,
+                                        data=output_event_dump
+                                        # No need for allowed_prefixes here, internal system operation
+                                    )
+                                    logger.debug(log_prefix + f"Persisted event {output_event.event_type} (RunID: {output_event.run_id}, SeqID: {output_event.sequence_i}) to MongoDB.")
+
+                                # Publish to RabbitMQ Stream
+                                await external_context.rabbit.publish_workflow_event(output_event_dump)
+                                sequence_id_counter += 1
+
+                                # Capture final output if this is the designated output node
+                                if final_output_node_id and node_id == final_output_node_id:
+                                    final_outputs = node_output
+                                    logger.info(log_prefix + f"Captured final output from node {final_output_node_id}")
+
+                            # else: Handle other update keys if necessary (e.g., central state updates)
+                            #    logger.debug(f"Ignoring general state update key: {node_id}")
+
+                    elif stream_mode == "debug":
+                         # Log debug information if needed
+                         logger.debug(log_prefix + f"Graph Debug Chunk: {dumps(data, pretty=True)}")
+
+                    else:
+                         logger.warning(log_prefix + f"Received unhandled stream mode: {stream_mode}")
+
+                except Exception as stream_err:
+                     logger.error(log_prefix + f"Error processing stream chunk for Run ID {run_id}: {stream_err}", exc_info=True)
+                     # Decide if this error should fail the whole run
+                     # current_status = wf_schemas.WorkflowRunStatus.FAILED
+                     # error_message = f"Error processing stream chunk: {stream_err}"
+                     # break # Exit stream loop on processing error? Or continue?
+
+            # --- After Stream Loop ---
+            if current_status == wf_schemas.WorkflowRunStatus.RUNNING: # If it finished without error or HITL
+                 current_status = wf_schemas.WorkflowRunStatus.COMPLETED
+                #  async with get_async_db_as_manager() as db:
+                #     await external_context.billing_service.adjust_allocated_credits(
+                #             db=db,
+                #             org_id=org_id,
+                #             user_id=user_id,
+                #             operation_id=run_id,
+                #             credit_type=CreditType.WORKFLOWS,
+                #             allocated_credits=1,
+                #             actual_credits=1,
+                #         )
+                 logger.info(log_prefix + f"Graph stream execution completed successfully for Run ID: {run_id}")
+            # If status is PENDING_HITL, it remains so. If FAILED, it remains so.
+
+
+    except Exception as graph_exec_err:
+        logger.error(log_prefix + f"Graph execution failed for Workflow name {workflow_run_job.workflow_name} - Run ID {run_id}: {graph_exec_err}", exc_info=True)
+        current_status = wf_schemas.WorkflowRunStatus.FAILED
+        # async with get_async_db_as_manager() as db:
+        #     await external_context.billing_service.adjust_allocated_credits(
+        #             db=db,
+        #             org_id=org_id,
+        #             user_id=user_id,
+        #             operation_id=run_id,
+        #             credit_type=CreditType.WORKFLOWS,
+        #             allocated_credits=1,
+        #             actual_credits=0, # No actual credits consumed
+        #         )
+        error_message = str(graph_exec_err)
+        # exception_raised = graph_exec_err
+        # global external_context_global
+        # external_context_global = None
+        # external_context = None
+        raise graph_exec_err
+    
+    finally:
+        if current_status not in [wf_schemas.WorkflowRunStatus.COMPLETED, wf_schemas.WorkflowRunStatus.WAITING_HITL]:
+            current_status = wf_schemas.WorkflowRunStatus.FAILED
+        # --- Final Status Update and Event Publishing ---
+        ended_at = datetime.now(tz=timezone.utc) if current_status in [wf_schemas.WorkflowRunStatus.COMPLETED, wf_schemas.WorkflowRunStatus.FAILED] else None
+
+        # Create the final update object to return
+        workflow_run_update = WorkflowRunUpdate(
+            run_id=run_id,
+            status=current_status,
+            ended_at=ended_at,
+            error_message=error_message,
+            outputs=final_outputs # Include captured outputs
+        )
+
+        # Update DB with the final status (unless it's PENDING_HITL, which was already updated)
+        if current_status != wf_schemas.WorkflowRunStatus.WAITING_HITL:
+            try:
+                async with get_async_db_as_manager() as db:
+                    await external_context.daos.workflow_run.update_status(
+                        db=db,
+                        run_id=run_id,
+                        status=workflow_run_update.status,
+                        ended_at=workflow_run_update.ended_at,
+                        error_message=workflow_run_update.error_message,
+                        outputs=workflow_run_update.outputs
+                    )
+                logger.info(log_prefix + f"Updated final status ({current_status.value}) and outputs in DB for Run ID: {run_id}")
+            except Exception as db_update_err:
+                logger.error(log_prefix + f"Failed to update final DB status/outputs for Run ID {run_id}: {db_update_err}", exc_info=True)
+                # Potentially override status to FAILED if DB update fails critically?
+                # workflow_run_update.status = wf_schemas.WorkflowRunStatus.FAILED
+                # workflow_run_update.error_message = f"DB update failed: {db_update_err}"
+
+            # Publish final status update event to stream (unless PENDING_HITL)
+            final_status_event = WorkflowRunStatusUpdateEvent(
+                event_id=str(uuid.uuid4()),
+                run_id=run_id,
+                org_id=org_id,
+                user_id=user_id,
+                sequence_i=sequence_id_counter, # Final sequence ID
+                status=workflow_run_update.status,
+                error_message=workflow_run_update.error_message,
+                timestamp=ended_at or datetime.now(tz=timezone.utc),
+                payload=final_outputs if current_status == wf_schemas.WorkflowRunStatus.COMPLETED else None, # Include output in final event
+                parent_run_id=workflow_run_job.parent_run_id,
+            )
+            try:
+                # default: field: event_type!
+                final_status_event_dump = final_status_event.model_dump(mode='json', exclude_defaults=False)
+                mongo_path = [str(final_status_event_dump[key]) for key in settings.MONGO_WORKFLOW_STREAM_SEGMENTS]
+                await external_context.mongo.workflow.create_object(
+                    path=mongo_path,
+                    data=final_status_event_dump
+                    # No need for allowed_prefixes here, internal system operation
+                )
+                logger.info(log_prefix + f"Persisted event {final_status_event.event_type} (RunID: {final_status_event.run_id}, SeqID: {final_status_event.sequence_i}) to MongoDB.")
+
+                await external_context.rabbit.publish_workflow_event(final_status_event_dump)
+                logger.info(log_prefix + f"Published final status update event ({current_status.value}) for Run ID: {run_id}")
+
+                # Create User Notification in DB
+                async with get_async_db_as_manager() as db:
+                    await external_context.daos.user_notification.create(
+                        db=db,
+                        user_id=user_id,
+                        org_id=org_id,
+                        notification_type=NotificationType.RUN_COMPLETED if current_status == wf_schemas.WorkflowRunStatus.COMPLETED else NotificationType.RUN_FAILED,
+                        message=final_status_event_dump,
+                        related_run_id=run_id
+                    )
+                logger.info(log_prefix + f"Published final status update event ({current_status.value}) for Run ID: {run_id}")
+                # await external_context.rabbit.publish_notification(
+                #     final_status_event,
+                # )
+            except Exception as publish_err:
+                logger.error(log_prefix + f"Failed to publish final status event for Run ID {run_id}: {publish_err}", exc_info=True)
+
+    # if exception_raised is not None:
+    #     raise exception_raised
+
+    logger.info(log_prefix + f"run_graph finished processing for Run ID: {run_id}. Final status: {current_status.value}")
+    return workflow_run_update
+
+
+# --- Helper Functions ---
+
+async def trigger_workflow_run(
+    workflow_id: uuid.UUID,
+    workflow_name: Optional[str] = None,
+    inputs: Optional[Dict[str, Any]] = None,
+    owner_org_id: Optional[uuid.UUID] = None,
+    triggered_by_user_id: Optional[uuid.UUID] = None,
+    run_id: Optional[uuid.UUID] = None,
+    thread_id: Optional[uuid.UUID] = None, # Added thread_id
+    graph_schema: Optional[GraphSchema] = None,
+    resume_after_hitl: Optional[bool] = False,
+    prefect_run_ids: Optional[str] = None,
+    streaming_mode: Optional[bool] = True,
+    parent_run_id: Optional[uuid.UUID] = None,
+    retry_count: Optional[int] = 0,
+    reset_overrides_on_hitl_resume: Optional[bool] = False,
+    include_active_overrides: Optional[bool] = True,
+    include_override_tags: Optional[List[str]] = None,
+    return_job_object_no_submit: bool = False,
+) -> Union[FlowRun, Tuple[wf_schemas.WorkflowRunJobCreate, str]]:
+    """
+    Helper function to trigger a workflow run via the Prefect deployment.
+    
+    Args:
+        workflow_id: ID of the workflow to run
+        workflow_name: Name of the workflow to run, this is optional and is only used for debugging/logging purposes; workflow ID is used to fetch the workflow instance
+        inputs: Optional inputs for the workflow
+        owner_org_id: Organization ID that owns this workflow run
+        triggered_by_user_id: User ID that triggered this workflow run
+        run_id: Optional custom run_id, generated if not provided
+        thread_id: Optional thread_id for resuming runs
+        graph_schema: Optional graph schema for resuming runs
+        resume_after_hitl: Optional flag to resume after HITL
+        prefect_run_ids: Optional Prefect flow run ID for resuming runs
+        streaming_mode: Optional flag to enable/disable streaming mode
+        parent_run_id: Optional parent run ID for subflows
+        retry_count: Optional retry count for the workflow run
+        return_job_object_no_submit: Optional flag to return the job object without submitting it
+
+    Returns:
+        Union[FlowRun, wf_schemas.WorkflowRunJobCreate]: The run ID of the triggered flow or the job object if return_job_object_no_submit is True
+    """
+    # if run_id is None:
+    #     run_id = uuid.uuid4()
+        
+    if owner_org_id is None:
+        # Default to system org ID if available
+        # Use a specific system org ID if configured, otherwise generate one (might not be ideal)
+        system_org_id_str = getattr(settings, "SYSTEM_ORG_ID", None)
+        owner_org_id = uuid.UUID(system_org_id_str) if system_org_id_str else uuid.uuid4() # Handle potential None
+
+    # Create the run job payload
+    run_job = wf_schemas.WorkflowRunJobCreate(
+        run_id=run_id,
+        workflow_id=workflow_id,
+        workflow_name=workflow_name,
+        owner_org_id=owner_org_id,
+        triggered_by_user_id=triggered_by_user_id,
+        inputs=inputs or {},
+        thread_id=thread_id, # Pass thread_id
+        graph_schema=graph_schema,
+        resume_after_hitl=resume_after_hitl,
+        streaming_mode=streaming_mode,
+        parent_run_id=parent_run_id,
+        retry_count=retry_count,
+        reset_overrides_on_hitl_resume=reset_overrides_on_hitl_resume,
+        include_active_overrides=include_active_overrides,
+        include_override_tags=include_override_tags,
+    )
+    
+    # # Trigger the workflow as a deployment
+    # if resume_after_hitl:
+    #     flow_run = await resume_flow_run(
+    #         flow_run_id=prefect_run_ids,
+    #         run_input={"run_job": run_job}
+    #     )
+    # else:
+    hitl_suffix = "--(HITL-RESUMED)" if resume_after_hitl else ""
+    flow_run_name = f"{workflow_name}:--{run_id}" + hitl_suffix
+    
+    if return_job_object_no_submit:
+        return run_job, flow_run_name
+    
+    flow_run = await run_deployment(
+        name="workflow-execution/prod",  # References the deployment name below
+        parameters={"run_job": run_job},   # .model_dump(mode='json')}, # Ensure proper serialization
+        timeout=0,  # Don't wait for completion
+        flow_run_name=flow_run_name,
+        tags=["subflow", f"parent:{parent_run_id}"] if parent_run_id is not None else None,
+    )
+    from global_config.logger import get_logger
+    get_logger(__name__).info(f"Triggered deployment 'workflow-execution/prod' for Run ID: {run_id} (Prefect Flow Run ID: {flow_run.id})")
+
+    return flow_run
+
+
+async def trigger_web_scraper_job(
+    job_config: Dict[str, Any],
+    user: str,
+    org_id: str,
+    is_shared: bool = False,
+    tags: Optional[List[str]] = None
+) -> FlowRun:
+    """
+    Trigger the web crawler scraper deployment programmatically.
+    
+    This helper method allows workflow nodes to submit scraping jobs to the
+    Prefect deployment, avoiding subprocess stdout capture issues.
+    
+    Args:
+        job_config: Complete job configuration for the scraping spider
+        user: User ID for MongoDB storage
+        org_id: Organization ID for MongoDB storage
+        is_shared: Whether to store data as organization-shared
+        tags: Optional tags to add to the flow run
+        
+    Returns:
+        FlowRun: The submitted flow run object
+    """
+    logger = get_prefect_or_regular_python_logger(name="trigger_web_scraper_job")
+    
+    logger.info(f"Triggering web scraper deployment for job: {job_config.get('job_id')}")
+    
+    # Prepare parameters for the deployment
+    parameters = {
+        "job_config": job_config,
+        # "user": user,
+        # "org_id": org_id,
+        # "is_shared": is_shared
+    }
+    
+    # Add default tags if not provided
+    if tags is None:
+        tags = []
+    tags.extend([
+        "web-scraper",
+        f"job-id:{job_config.get('job_id', 'unknown')}",
+        f"org-id:{org_id}",
+        f"user:{user}"
+    ])
+    
+    # Run the deployment
+    flow_run = await run_deployment(
+        name="web-crawler-scraper/on-demand",
+        parameters=parameters,
+        tags=tags,
+        timeout=400  # Don't wait for completion
     )
 
-    print(f"\nSuccessfully triggered workflow run. Assigned Run ID: {triggered_run_id}")
-    # Check if the returned run_id matches the one we provided (if any)
-    if test_run_id:
-        assert triggered_run_id == test_run_id, "Returned run_id should match provided run_id"
+    result = await flow_run.state.aresult()
+    return result
+    logger.info(f"Web scraper deployment result: {result}")
+    
+    logger.info(f"Web scraper deployment triggered: {flow_run.id}")
+    
+    return flow_run
 
-# --- Script Execution ---
+
+# --- Helper Functions ---
+
+async def search_workflow_by_name(
+    workflow_name: str,
+    external_context: ExternalContextManager,
+    db_session: AsyncSession,
+    version_tag: Optional[str] = None,
+    org_id: Optional[uuid.UUID] = None
+) -> Optional[uuid.UUID]:
+    """
+    Search for a workflow by name and return its ID.
+    
+    Args:
+        workflow_name: Name of the workflow to search for
+        external_context: ExternalContextManager instance
+        db_session: Database session
+        version_tag: Optional version tag to filter by
+        org_id: Optional organization ID to filter by
+        
+    Returns:
+        Optional[uuid.UUID]: The workflow ID if found, None otherwise
+    """
+    logger = get_prefect_or_regular_python_logger(name="search-workflow-by-name")
+    try:
+        # Search for workflow by name
+        workflows = await external_context.daos.workflow.search_by_name_version(
+            db=db_session,
+            name=workflow_name,
+            version=version_tag,
+            version_field="version_tag",
+            owner_org_id=org_id,
+            include_public=True,
+            include_system_entities=True,
+            include_public_system_entities=True,
+            is_superuser=False,
+        )
+        
+        
+        if not workflows:
+            return None
+            
+        if len(workflows) > 1:
+            # If multiple workflows found, use the most recently updated one
+            workflows.sort(key=lambda w: w.updated_at, reverse=True)
+            
+        return workflows[0].id
+        
+    except Exception as e:
+        logger.error(f"Error searching for workflow '{workflow_name}': {e}", exc_info=True)
+        return None
+
+
+# --- Weekly Content Calendar Generation Flow ---
+
+@flow(
+    name="weekly-content-calendar-generation",
+    description="Weekly flow to generate content calendar briefs for all active entity usernames",
+    log_prints=global_settings.DEBUG,
+    retries=2,
+    retry_delay_seconds=120,
+)
+async def weekly_content_calendar_generation_flow(
+    limit: Optional[int] = None,
+    include_inactive_orgs: bool = False,
+    weeks_to_generate: int = 1,
+    past_context_posts_limit: int = 20,
+    dry_run: bool = False
+) -> Dict[str, Any]:
+    """
+    Weekly Prefect flow to generate content calendar briefs for all active entity usernames.
+    
+    This flow:
+    1. Fetches all active entity usernames using extract_active_entity_usernames_flow
+    2. For each org/user/entity_username triplet, triggers the content_calendar_entry_workflow
+    3. Uses non-streaming mode for reliable batch processing
+    4. Runs weekly on Friday PST midnight so content is ready for Saturday morning
+    
+    Args:
+        limit: Optional limit on number of org-user pairs to process (for testing)
+        include_inactive_orgs: Whether to include inactive organizations
+        weeks_to_generate: Number of weeks to generate content for (default: 1)
+        past_context_posts_limit: Number of past posts to use for context (default: 20)
+        dry_run: If True, only logs what would be triggered without actually starting workflows
+    
+    Returns:
+        Dict[str, Any]: Summary of triggered workflows and processing statistics
+    """
+    logger = get_prefect_or_regular_python_logger(name="weekly-content-calendar-generation-flow")
+    from workflow_service.services.workflow_cron_flows import extract_active_entity_usernames_flow
+    
+    logger.info("Starting weekly content calendar generation process")
+    
+    # Initialize external context and database session
+    external_context = await get_external_context_manager_with_clients()
+    logger.info("External context manager initialized")
+    
+    workflow_service = None
+    try:
+        # Step 1: Extract all active entity usernames
+        logger.info("Fetching active entity usernames from all organizations")
+        entity_data = await extract_active_entity_usernames_flow(
+            limit=limit,
+            include_inactive_orgs=include_inactive_orgs
+        )
+        
+        if entity_data["status"] != "success":
+            error_msg = f"Failed to fetch entity usernames: {entity_data.get('error_message', 'Unknown error')}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        
+        entity_username_triplets = entity_data["entity_username_triplets"]
+        logger.info(f"Found {len(entity_username_triplets)} entity username triplets to process")
+        
+        # Step 2: Search for the content calendar workflow first
+        workflow_name = "content_calendar_entry_workflow"
+        workflow_id = None
+        async with get_async_db_as_manager() as db:
+            workflow_id = await search_workflow_by_name(
+                workflow_name=workflow_name,
+                external_context=external_context,
+                db_session=db,
+                version_tag=None,  # Use latest version
+                org_id=None  # Search system and public workflows
+            )
+        
+        if not workflow_id:
+            error_msg = f"Could not find workflow with name '{workflow_name}'"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        
+        logger.info(f"Found workflow '{workflow_name}' with ID: {workflow_id}")
+        
+        # Step 3: Trigger content calendar workflow for each triplet
+        triggered_workflows = []
+        failed_triggers = []
+        
+        from kiwi_app.workflow_app.dependencies import get_workflow_service
+        workflow_service = await get_workflow_service()
+        for i, triplet in enumerate(entity_username_triplets):
+            try:
+                org_id = uuid.UUID(triplet["org_id"])
+                user_id = uuid.UUID(triplet["user_id"])
+                entity_username = triplet["entity_username"]
+                user = triplet["user"]
+
+                
+                
+                logger.info(f"Processing triplet {i+1}/{len(entity_username_triplets)}: {triplet['user_email']} / {entity_username}")
+                
+                # Compose workflow inputs based on test_workflow_direct_submit.py structure
+                workflow_inputs = {
+                    "entity_username": entity_username,
+                    "weeks_to_generate": weeks_to_generate,
+                    "customer_context_doc_configs": [
+                        {
+                            "filename_config": {
+                                "input_namespace_field_pattern": "user_strategy_{item}",
+                                "input_namespace_field": "entity_username",
+                                "static_docname": "user_dna_doc"
+                            },
+                            "output_field_name": "user_dna"
+                        },
+                        {
+                            "filename_config": {
+                                "input_namespace_field_pattern": "user_inputs_{item}",
+                                "input_namespace_field": "entity_username",
+                                "static_docname": "user_preferences_doc"
+                            },
+                            "output_field_name": "user_preferences"
+                        },
+                        {
+                            "filename_config": {
+                                "input_namespace_field_pattern": "user_strategy_{item}",
+                                "input_namespace_field": "entity_username",
+                                "static_docname": "content_strategy_doc"
+                            },
+                            "output_field_name": "strategy_doc"
+                        },
+                        {
+                            "filename_config": {
+                                "input_namespace_field_pattern": "scraping_results_{item}",
+                                "input_namespace_field": "entity_username",
+                                "static_docname": "linkedin_scraped_posts_doc"
+                            },
+                            "output_field_name": "scraped_posts"
+                        }
+                    ],
+                    "past_context_posts_limit": past_context_posts_limit
+                }
+                
+                if dry_run:
+                    logger.info(f"DRY RUN: Would trigger workflow for {entity_username} (org: {triplet['org_name']}, user: {triplet['user_email']})")
+                    triggered_workflows.append({
+                        "entity_username": entity_username,
+                        "org_id": str(org_id),
+                        "user_id": str(user_id),
+                        "org_name": triplet["org_name"],
+                        "user_email": triplet["user_email"],
+                        "workflow_inputs": workflow_inputs,
+                        "dry_run": True
+                    })
+                else:
+                    # Generate a unique run ID for this workflow execution
+
+                    run_submit = wf_schemas.WorkflowRunCreate(
+                        workflow_id=workflow_id,
+                        inputs=workflow_inputs,
+                        owner_org_id=org_id,
+                        thread_id=None,
+                        resume_after_hitl=False,
+                        tag="weekly-content-calendar-generation",
+                        streaming_mode=False,
+                    )
+
+                    workflow_run = None
+                    async with get_async_db_as_manager() as db:
+                        workflow_run = await workflow_service.submit_workflow_run(
+                            db=db,
+                            run_submit=run_submit,
+                            owner_org_id=org_id,
+                            user=user,
+                        )
+                    
+                    triggered_workflows.append({
+                        "entity_username": entity_username,
+                        "org_id": str(org_id),
+                        "user_id": str(user_id),
+                        "org_name": triplet["org_name"],
+                        "user_email": triplet["user_email"],
+                        "run_id": workflow_run.id,
+                        "prefect_flow_run_id": str(workflow_run.prefect_run_ids),
+                        "workflow_inputs": workflow_inputs,
+                        "triggered_at": datetime.now(tz=timezone.utc).isoformat()
+                    })
+                    
+                    logger.info(f"Triggered content calendar workflow for {entity_username} (Run ID: {workflow_run.id}, Prefect Flow Run ID: {workflow_run.prefect_run_ids})")
+                    
+            except Exception as triplet_err:
+                logger.error(f"Failed to trigger workflow for triplet {i+1}: {triplet_err}", exc_info=True)
+                failed_triggers.append({
+                    "triplet_index": i,
+                    "entity_username": triplet.get("entity_username", "unknown"),
+                    "org_name": triplet.get("org_name", "unknown"),
+                    "user_email": triplet.get("user_email", "unknown"),
+                    "error_message": str(triplet_err)
+                })
+                continue
+        
+        # Step 4: Compile summary results
+        result = {
+            "status": "success",
+            "executed_at": datetime.now(tz=timezone.utc).isoformat(),
+            "processing_config": {
+                "limit": limit,
+                "include_inactive_orgs": include_inactive_orgs,
+                "weeks_to_generate": weeks_to_generate,
+                "past_context_posts_limit": past_context_posts_limit,
+                "dry_run": dry_run
+            },
+            "summary_statistics": {
+                "total_entity_triplets_found": len(entity_username_triplets),
+                "total_workflows_triggered": len(triggered_workflows),
+                "total_failures": len(failed_triggers),
+                "success_rate": len(triggered_workflows) / len(entity_username_triplets) if entity_username_triplets else 0
+            },
+            "triggered_workflows": triggered_workflows,
+            "failed_triggers": failed_triggers,
+            "entity_data_summary": entity_data["summary_statistics"]
+        }
+        
+        logger.info(f"Weekly content calendar generation completed successfully")
+        logger.info(f"Statistics: {result['summary_statistics']}")
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Weekly content calendar generation flow failed: {e}", exc_info=True)
+        
+        # Return error information for monitoring
+        error_result = {
+            "status": "failed",
+            "executed_at": datetime.now(tz=timezone.utc).isoformat(),
+            "error_message": str(e),
+            "processing_config": {
+                "limit": limit,
+                "include_inactive_orgs": include_inactive_orgs,
+                "weeks_to_generate": weeks_to_generate,
+                "past_context_posts_limit": past_context_posts_limit,
+                "dry_run": dry_run
+            },
+            "summary_statistics": {
+                "total_entity_triplets_found": 0,
+                "total_workflows_triggered": 0,
+                "total_failures": 0,
+                "success_rate": 0.0
+            },
+            "triggered_workflows": [],
+            "failed_triggers": []
+        }
+        
+        # Re-raise the exception to ensure Prefect marks the flow as failed
+        raise e
+        
+    finally:
+        # Clean up resources
+        try:
+            await external_context.close()
+            if workflow_service:
+                await workflow_service.mongo_client.close()
+            logger.info("External context manager closed successfully")
+        except Exception as close_err:
+            logger.error(f"Error closing resources: {close_err}", exc_info=True)
+
+
+
+
+
+
+# @flow(
+#     name="web-crawler-scraper",
+#     description="Execute web scraping job with MongoDB storage",
+#     log_prints=True,
+#     retries=1,
+#     retry_delay_seconds=60,
+#     validate_parameters=False,
+#     # persist_result=True,
+# )
+# async def web_crawler_scraper_flow(
+#     job_config: Optional[Dict[str, Any]] = None,
+# ) -> Dict[str, Any]:
+#     """
+#     Asynchronous Prefect flow to execute web scraping jobs via spider server.
+    
+#     This flow submits scraping jobs to the spider server and waits for results.
+#     Results are stored in MongoDB via the customer data service. It's designed 
+#     to be called from workflow nodes to avoid subprocess execution issues.
+    
+#     Args:
+#         job_config: Complete job configuration for the scraping spider
+        
+#     Returns:
+#         Dict containing job results including status, stats, and namespace info
+#     """
+#     # from prefect.logging import get_run_logger
+#     from workflow_service.services.scraping.spider_client import request_scrape_and_wait
+    
+#     # logger = get_run_logger()
+#     logger = get_prefect_or_regular_python_logger(name="web-crawler-scraper-flow")
+    
+#     logger.info(f"Starting web scraping job: {job_config.get('job_id')}")
+#     logger.info(f"Domains: {job_config.get('allowed_domains')}")
+#     logger.info(f"Max URLs per domain: {job_config.get('max_processed_urls_per_domain')}")
+
+#     try:
+#         # Calculate timeout based on job configuration
+#         # Base timeout of 10 minutes, plus extra time for larger jobs
+#         base_timeout = 600.0  # 10 minutes
+        
+#         logger.info(f"Using timeout of {base_timeout}s for scraping job")
+        
+#         # Submit scraping job to spider server and wait for results
+#         spider_result = await request_scrape_and_wait(
+#             job_config=job_config,
+#             timeout=base_timeout
+#         )
+        
+#         # Transform spider client response to expected format
+#         if spider_result.get('success', False):
+#             # Extract data from successful spider response
+#             return spider_result
+#         else:
+#             # Handle failed spider response
+#             error = spider_result.get('error', None)
+#             error_msg = spider_result.get('message', 'Unknown error from spider server')
+#             full_error_msg = f"Spider server returned error: {error} - {error_msg}"
+#             logger.error(full_error_msg)
+#             raise Exception(full_error_msg)
+            
+#             # return {
+#             #     'job_id': job_config.get('job_id', 'unknown'),
+#             #     'status': False,
+#             #     'completed_at': spider_result.get('timestamp', datetime.now().isoformat()),
+#             #     'stats': {
+#             #         'error': error_msg,
+#             #         'error_type': spider_result.get('error', 'unknown'),
+#             #         'duration': spider_result.get('duration', 0)
+#             #     },
+#             #     'result_namespaces': {}
+#             # }
+        
+#     except Exception as e:
+#         logger.error(f"Scraping job failed: {str(e)}", exc_info=True)
+        
+#         # Return error result
+#         return {
+#             'job_id': job_config.get('job_id', 'unknown'),
+#             'status': 'failed',
+#             'completed_at': datetime.now().isoformat(),
+#             'stats': {'error': str(e)},
+#             'result_namespaces': {}
+#         }
+
+
+# --- Prefect Deployment Definition ---
+
+# def create_workflow_deployment(
+#     work_pool_name: str = "default-process-pool",
+#     cron_schedule: Optional[str] = None,
+#     version: str = "1.0.0",
+#     storage_block: Optional[str] = None,
+#     description: str = "Executes LangGraph workflows from configuration"
+# ) -> Deployment:
+#     """
+#     Create a Prefect deployment for the workflow execution flow.
+    
+#     Args:
+#         work_pool_name: The Prefect work pool to use
+#         cron_schedule: Optional cron expression for scheduled runs
+#         version: Version string for this deployment
+#         storage_block: Optional storage block for flow code (e.g., "github/my-repo")
+#         description: Description of this deployment
+        
+#     Returns:
+#         Deployment: The configured deployment definition
+#     """
+#     # Configure schedule if provided
+#     schedule = None
+#     if cron_schedule:
+#         schedule = CronSchedule(cron=cron_schedule, timezone="UTC")
+    
+#     # Configure storage if provided
+#     # Define infrastructure overrides, like environment variables
+#     infra_overrides = {
+#         "env": {
+#             "PREFECT_LOGGING_LEVEL": settings.LOG_LEVEL, # Use settings
+#             "PYTHONUNBUFFERED": "1", # Often useful for logging in containers
+#             # Add other environment variables needed by the flow from settings
+#             # e.g., "DATABASE_URL": settings.DATABASE_URL,
+#             # Ensure sensitive variables are handled securely (e.g., Prefect secrets)
+#         }
+#     }
+
+#     # storage = None
+#     # if storage_block:
+#     #     # Example assumes storage block names match Prefect Cloud/Server config
+#     #     if storage_block.startswith("s3/"):
+#     #          storage = S3.load(storage_block.replace("s3/", ""))
+#     #     elif storage_block.startswith("github/"):
+#     #          storage = GitHub.load(storage_block.replace("github/", ""))
+#     #     elif storage_block.startswith("local/"): # Example for local
+#     #          storage = LocalFileSystem.load(storage_block.replace("local/", ""))
+#     #     # Add more storage types as needed
+
+#     # Build the deployment
+#     deployment = Deployment.build_from_flow(
+#         flow=workflow_execution_flow,
+#         name="prod",  # Will be "<flow_name>/prod" when deployed
+#         version=version,
+#         work_pool_name=work_pool_name,
+#         schedule=schedule,
+#         parameters={},  # Parameters are provided at runtime via run_deployment
+#         tags=["workflow-service", "langgraph", settings.ENV], # Add environment tag
+#         description=description,
+#         infra_overrides=infra_overrides,
+#         # storage=storage # Use the loaded storage block object
+#     )
+
+#     return deployment
+
+
+
+# Entry point for deployment registration
 if __name__ == "__main__":
-    # Run the asynchronous test function
-    print("Starting test workflow trigger...")
-    # Need to import the actual model class for the direct creation approach
-    from kiwi_app.workflow_app import models # Add this import
-    asyncio.run(test_trigger_workflow_run())
-    print("Test workflow trigger finished.")
+    """
+    Script entry point for registering deployments with Prefect.
+    
+    Usage:
+        python -m services.workflow_service.services.worker
+
+    This will register/update multiple deployments with the Prefect server:
+    1. workflow-execution/prod - On-demand workflow execution
+    2. expire-organization-credits/hourly - Hourly credit expiration cron job
+    3. search-scheduled-briefs-and-send-reminders/daily - Daily search for scheduled briefs and send reminder emails
+    4. rag-data-ingestion/half-hourly - Half-hourly RAG data ingestion into Weaviate
+    5. weekly-content-calendar-generation/weekly - Weekly content calendar generation for all entities
+    6. web-crawler-scraper/on-demand - On-demand web scraping with MongoDB storage
+    """
+    # print("lol")
+    asyncio.run(test_flow_func())
+
+    # from workflow_service.services.scraping.browsers.scrapeless.scrapeless_browser import (
+    #     cleanup_scrapeless_redis_pool,
+    # )
+    # from workflow_service.services.scraping.settings import scraping_settings
+    # if scraping_settings.CLEANUP_SCRAPELESS_REDIS_POOL_ON_STARTUP:
+    #     # Cleanup redis pool on restart!
+    #     try:
+    #         asyncio.run(cleanup_scrapeless_redis_pool())
+    #     except Exception as e:
+    #         print(f"Error cleaning up redis pool: {e}", exc_info=True)
+    #         # logger.error(f"Error cleaning up redis pool: {e}", exc_info=True)
+
+    # serve(
+    #     workflow_execution_flow.to_deployment(
+    #         name="prod",
+    #         tags=["workflow-service"],
+    #         # parameters={"goodbye": True},
+    #         # pause_on_shutdown=global_settings.APP_ENV != "PROD",
+    #         # interval=60,
+    #         # cron="* * * * *",
+    #         concurrency_limit=50,  # ⬆️ from 15 (4x increase for higher throughput)
+    #         description=f"Production deployment for KiwiQ LangGraph workflows ({global_settings.APP_ENV})",
+    #         version="workflow-service/deployments",
+    #     ),
+    #     # Credit expiration deployment (hourly cron job)
+    #     billing_expire_organization_credits_flow.to_deployment(
+    #         name="hourly",
+    #         tags=["billing-service", "maintenance", "cron"],
+    #         cron="0 * * * *",  # Run every hour at minute 0
+    #         # pause_on_shutdown=global_settings.APP_ENV != "PROD",
+    #         description=f"Hourly credit expiration maintenance job ({global_settings.APP_ENV})",
+    #         version="billing-service/maintenance",
+    #         parameters={}  # Use default parameters (expire all orgs at current time)
+    #     ),
+    #     # Scheduled briefs search and reminder deployment (daily cron job)
+    #     search_scheduled_briefs_and_send_reminders_flow.to_deployment(
+    #         name="daily",
+    #         tags=["content-service", "scheduling", "email-reminders", "cron"],
+    #         cron="0 12 * * *",  # Run daily at 12 PM UTC / 5 AM PST / 8 AM EST
+    #         description=f"Daily search for scheduled content briefs and send draft progress reminders ({global_settings.APP_ENV})",
+    #         version="content-service/scheduling",
+    #         parameters={
+    #             "send_reminder_emails": True,  # Enable email reminders by default
+    #             "trigger_workflows": False  # Can be set to True when workflow triggering is implemented
+    #         }
+    #     ),
+    #     # RAG data ingestion deployment (half-hourly cron job)
+    #     rag_data_ingestion_flow.to_deployment(
+    #         name="half-hourly",
+    #         tags=["rag-service", "data-ingestion", "weaviate", "cron"],
+    #         cron="0/30 * * * *",  # Run every 30 minutes
+    #         description=f"Half-hourly incremental ingestion of updated documents into Weaviate for RAG ({global_settings.APP_ENV})",
+    #         version="rag-service/ingestion",
+    #         parameters={
+    #             # Use default parameters for automatic incremental ingestion
+    #             "start_timestamp": None,  # Will use last successful job timestamp
+    #             "end_timestamp": None,    # Will use current time
+    #             "document_patterns": None, # Will use DEFAULT_INGESTION_DOCUMENT_PATTERNS
+    #             "batch_size": RAG_INGESTION_BATCH_SIZE,       # Default batch size
+    #             "max_batches": RAG_INGESTION_MAX_BATCHES_PER_RUN,        # Default max batches
+    #             "generate_vectors": True  # Enable vector generation
+    #         }
+    #     ),
+    #     # # Weekly content calendar generation deployment (weekly cron job)
+    #     # weekly_content_calendar_generation_flow.to_deployment(
+    #     #     name="weekly",
+    #     #     tags=["content-service", "calendar-generation", "workflow-automation", "cron"],
+    #     #     cron="0 8 * * 5",  # Run weekly on Friday at 8 AM UTC (Friday midnight PST)
+    #     #     description=f"Weekly content calendar brief generation for all active entity usernames ({global_settings.APP_ENV})",
+    #     #     version="content-service/calendar-generation",
+    #     #     parameters={
+    #     #         # Use default parameters for production runs
+    #     #         "limit": None,  # Process all entities
+    #     #         "include_inactive_orgs": False,  # Only active organizations
+    #     #         "weeks_to_generate": 1,  # Generate 1 week of content
+    #     #         "past_context_posts_limit": 20,  # Use 20 past posts for context
+    #     #         "dry_run": False  # Actually trigger workflows (set to True for testing)
+    #     #     }
+    #     # ),
+    #     # Web crawler scraper deployment (on-demand)
+    #     # web_crawler_scraper_flow.to_deployment(
+    #     #     name="on-demand",
+    #     #     tags=["scraping-service", "web-crawler", "mongodb-storage"],
+    #     #     description=f"On-demand web scraping job execution with MongoDB storage ({global_settings.APP_ENV})",
+    #     #     version="scraping-service/web-crawler",
+    #     #     concurrency_limit=5,  # Limit concurrent scraping jobs
+    #     #     parameters={}  # Parameters provided at runtime
+    #     # ),
+
+    #     # pause_on_shutdown=global_settings.APP_ENV != "PROD",
+    # )

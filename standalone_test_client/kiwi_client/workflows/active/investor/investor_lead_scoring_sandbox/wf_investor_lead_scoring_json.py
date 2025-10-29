@@ -74,21 +74,34 @@ from kiwi_client.workflows.active.investor.investor_lead_scoring_sandbox.wf_llm_
     LLM_PROVIDER_EXTRACTION, LLM_MODEL_EXTRACTION, LLM_TEMPERATURE_EXTRACTION, LLM_MAX_TOKENS_EXTRACTION,
     LLM_EXTRACTION_REASONING_EFFORT,
     VERBOSITY_EXTRACTION,
+    # Email Generation
+    PERSONALIZATION_LINE_SYSTEM_PROMPT, PERSONALIZATION_LINE_USER_PROMPT,
+    PERSONALIZATION_LINE_OUTPUT_SCHEMA,
+    EMAIL_TEMPLATE,
+    LLM_PROVIDER_PERSONALIZATION, LLM_MODEL_PERSONALIZATION, LLM_TEMPERATURE_PERSONALIZATION, LLM_MAX_TOKENS_PERSONALIZATION,
 )
 
 # Import filter targets configuration for LinkedIn data filtering
 from kiwi_client.workflows.active.investor.investor_lead_scoring_sandbox.filter_targets_config import ALL_FILTER_TARGETS
 
 # --- Private mode passthrough data keys for preserving context across steps ---
-# Step 1 outputs that need to be preserved through step 2
+# Step 1 outputs that need to be preserved through step 2 and email generation
 step1_passthrough_keys = [
     "first_name", "last_name", "title", "firm_company", "firm_id", "investor_type",
     "investor_role_detail", "relationship_status", "linkedin_url", "twitter_url",
-    "crunchbase_url", "investment_criteria", "notes", "source_sheets",
+    "crunchbase_url", "email", "investment_criteria", "notes", "source_sheets",
     "linkedin_url_found",  # URL found by Perplexity if originally missing
     "linkedin_scraped_profile",  # LinkedIn scraped profile data
     "linkedin_scraped_posts",  # LinkedIn scraped posts data (20 posts)
-    "deep_research_report", "deep_research_citations"
+    "deep_research_report", "deep_research_citations",
+    "scoring_result",
+]
+
+# Email generation outputs that need to be preserved
+email_passthrough_keys = step1_passthrough_keys + [
+    "personalization_results",  # Generated personalization line
+    # "personalization_reasoning",  # Reasoning for personalization
+    # "personalized_email"  # Full generated email
 ]
 
 # --- Workflow Graph Definition ---
@@ -117,6 +130,7 @@ workflow_graph_schema = {
                                 "linkedin_url": "https://www.linkedin.com/in/ohsu",
                                 "twitter_url": "https://twitter.com/oyhsu",
                                 "crunchbase_url": "",
+                                "email": "",
                                 "investment_criteria": "AI/B2B SaaS, Seed to Series A",
                                 "notes": "Location: New York, New York, United States | GOOD FIT: Partner at US-based VC",
                                 "source_sheets": "Test Data"
@@ -133,12 +147,19 @@ workflow_graph_schema = {
                                 "linkedin_url": "",
                                 "twitter_url": "",
                                 "crunchbase_url": "",
+                                "email": "",
                                 "investment_criteria": "Infrastructure; Developer Tools; AI | Seed; Series A | $2,000,000",
                                 "notes": "Tel Aviv (Israel), Strong focus on infrastructure and developer tools",
                                 "source_sheets": "Test Data"
                             }
                         ],
                         "description": "List of investor leads with fund/partner information and optional reference data"
+                    },
+                    "generate_email": {
+                        "type": "bool",
+                        "required": False,
+                        "default": True,
+                        "description": "Whether to generate personalized email for each investor (default: True)"
                     }
                 }
             }
@@ -499,10 +520,14 @@ workflow_graph_schema = {
             "node_id": "step2_structured_extraction",
             "node_name": "llm",
             "private_input_mode": True,
+            "private_output_mode": True,
             # private_output_mode False - we want to write structured output to central state
             "output_private_output_to_central_state": True,
             "private_output_passthrough_data_to_central_state_keys": step1_passthrough_keys,
-            "private_output_to_central_state_node_output_key": "scoring_result",
+            # "private_output_to_central_state_node_output_key": "scoring_result",
+            "write_to_private_output_passthrough_data_from_output_mappings": {
+                "structured_output": "scoring_result"
+            },
             "node_config": {
                 # "max_random_artificial_delay_in_seconds": 120,
                 "llm_config": {
@@ -522,11 +547,139 @@ workflow_graph_schema = {
             }
         },
 
+        # --- 6. EMAIL GENERATION (OPTIONAL) ---
+
+        # --- 6b. Route based on email generation flag ---
+        "route_email_generation": {
+            "node_id": "route_email_generation",
+            "node_name": "router_node",
+            "private_input_mode": True,
+            "private_output_mode": True,
+            "output_private_output_to_central_state": True,
+            "private_output_passthrough_data_to_central_state_keys": step1_passthrough_keys,
+            "node_config": {
+                "choices": ["placeholder_node_3", "build_personalization_prompt"],
+                "allow_multiple": False,
+                "choices_with_conditions": [
+                    {
+                        "choice_id": "build_personalization_prompt",
+                        "input_path": "generate_email",
+                        "target_value": True
+                    },
+                    {
+                        "choice_id": "placeholder_node_3",
+                        "input_path": "generate_email",
+                        "target_value": False
+                    }
+                ],
+                "default_choice": "placeholder_node_3",
+            }
+        },
+
+        "placeholder_node_3": {
+            "node_id": "placeholder_node_3",
+            "node_name": "transform_data",
+            "private_input_mode": True,
+            "private_output_passthrough_data_to_central_state_keys": email_passthrough_keys,
+            "private_output_to_central_state_node_output_key": "dummy_ignore",
+            "node_config": {
+                "mappings": [
+                ]
+            }
+        },
+
+        "build_personalization_prompt": {
+            "node_id": "build_personalization_prompt",
+            "node_name": "prompt_constructor",
+            "private_input_mode": True,
+            "private_output_mode": True,
+            "output_private_output_to_central_state": True,
+            "private_output_passthrough_data_to_central_state_keys": step1_passthrough_keys,
+            "node_config": {
+                "prompt_templates": {
+                    "system_prompt": {
+                        "id": "system_prompt",
+                        "template": PERSONALIZATION_LINE_SYSTEM_PROMPT,
+                        "variables": {},
+                        "construct_options": {}
+                    },
+                    "user_prompt": {
+                        "id": "user_prompt",
+                        "template": PERSONALIZATION_LINE_USER_PROMPT,
+                        "variables": {
+                            "first_name": "",
+                            "last_name": "",
+                            "scoring_result": "",
+                            "linkedin_scraped_profile": "",
+                        },
+                        "construct_options": {
+                            "first_name": "first_name",
+                            "last_name": "last_name",
+                            "scoring_result": "scoring_result",
+                            "linkedin_scraped_profile": "linkedin_scraped_profile",
+                        }
+                    }
+                }
+            }
+        },
+
+        # --- 6e. Generate personalization line with Anthropic ---
+        "generate_personalization": {
+            "node_id": "generate_personalization",
+            "node_name": "llm",
+            "private_input_mode": True,
+            "private_output_mode": True,
+            "output_private_output_to_central_state": True,
+            "private_output_passthrough_data_to_central_state_keys": email_passthrough_keys,
+            # "private_output_to_central_state_node_output_key": "email_result",
+            "write_to_private_output_passthrough_data_from_output_mappings": {
+                "structured_output": "personalization_results"
+            },
+            "node_config": {
+                "llm_config": {
+                    "model_spec": {
+                        "provider": LLM_PROVIDER_PERSONALIZATION,
+                        "model": LLM_MODEL_PERSONALIZATION
+                    },
+                    "temperature": LLM_TEMPERATURE_PERSONALIZATION,
+                    "max_tokens": LLM_MAX_TOKENS_PERSONALIZATION
+                },
+                "output_schema": {
+                    "schema_definition": PERSONALIZATION_LINE_OUTPUT_SCHEMA,
+                    "convert_loaded_schema_to_pydantic": False
+                }
+            }
+        },
+
+        "build_personalized_email": {
+            "node_id": "build_personalized_email",
+            "node_name": "prompt_constructor",
+            "private_input_mode": True,
+            "output_private_output_to_central_state": True,
+            "private_output_passthrough_data_to_central_state_keys": email_passthrough_keys,
+            "private_output_to_central_state_node_output_key": "email_result",
+            "node_config": {
+                "prompt_templates": {
+                    "personalized_email": {
+                        "id": "personalized_email",
+                        "template": EMAIL_TEMPLATE,
+                        "variables": {
+                            "first_name": "",
+                            "personalization_line": "",
+                        },
+                        "construct_options": {
+                            "first_name": "first_name",
+                            "personalization_line": "personalization_line",
+                        }
+                    },
+                }
+            }
+        },
+
         # --- 7. Output Node with Fan-In ---
         "output_node": {
             "node_id": "output_node",
             "node_name": "output_node",
-            "enable_node_fan_in": True,
             "node_config": {}
         }
     },
@@ -535,12 +688,13 @@ workflow_graph_schema = {
     "edges": [
         # Input to state and router
         {"src_node_id": "input_node", "dst_node_id": "$graph_state", "mappings": [
-            {"src_field": "investors_to_process", "dst_field": "original_investors"}
+            {"src_field": "investors_to_process", "dst_field": "original_investors"},
+            {"src_field": "generate_email", "dst_field": "generate_email"}
         ]},
 
         # Input to investor router (distributes each investor to URL check)
         {"src_node_id": "input_node", "dst_node_id": "route_investors_to_research", "mappings": [
-            {"src_field": "investors_to_process", "dst_field": "investors_to_process"}
+            {"src_field": "investors_to_process", "dst_field": "investors_to_process"},
         ]},
 
         # Map router to if_else check (check if LinkedIn URL exists)
@@ -591,11 +745,43 @@ workflow_graph_schema = {
             {"src_field": "extraction_user_prompt", "dst_field": "user_prompt"}
         ]},
         
-        # Step 2 to output (with fan-in) and state
-        {"src_node_id": "step2_structured_extraction", "dst_node_id": "output_node", "mappings": []},
+        # Step 2 to state (always save scoring result)
+        # {"src_node_id": "step2_structured_extraction", "dst_node_id": "$graph_state", "mappings": [
+        #     {"src_field": "structured_output", "dst_field": "final_results"}
+        # ]},
         
-        {"src_node_id": "step2_structured_extraction", "dst_node_id": "$graph_state", "mappings": [
-            {"src_field": "structured_output", "dst_field": "final_results"}
+        # Step 2 to email generation flow
+        {"src_node_id": "step2_structured_extraction", "dst_node_id": "route_email_generation", "mappings": []},
+
+        {"src_node_id": "$graph_state", "dst_node_id": "route_email_generation", "mappings": [
+            {"src_field": "generate_email", "dst_field": "generate_email"}
+        ]},
+        
+        # Router to build_personalization_prompt or skip_email_generation
+        {"src_node_id": "route_email_generation", "dst_node_id": "build_personalization_prompt", "mappings": []},
+        {"src_node_id": "route_email_generation", "dst_node_id": "placeholder_node_3", "mappings": []},
+        
+        # Prompt constructor to LLM
+        {"src_node_id": "build_personalization_prompt", "dst_node_id": "generate_personalization", "mappings": [
+            {"src_field": "system_prompt", "dst_field": "system_prompt"},
+            {"src_field": "user_prompt", "dst_field": "user_prompt"}
+        ]},
+        
+        # Field extractor to email constructor
+        {"src_node_id": "generate_personalization", "dst_node_id": "build_personalized_email", "mappings": [
+            {"src_field": "structured_output.personalization_line", "dst_field": "personalization_line"},
+        ]},
+        
+        # Both email paths to output
+        {"src_node_id": "build_personalized_email", "dst_node_id": "output_node", "mappings": []},
+        {"src_node_id": "placeholder_node_3", "dst_node_id": "output_node", "mappings": []},
+
+        {"src_node_id": "build_personalized_email", "dst_node_id": "$graph_state", "mappings": [
+            {"src_field": "personalized_email", "dst_field": "final_results"}
+        ]},
+
+        {"src_node_id": "placeholder_node_3", "dst_node_id": "$graph_state", "mappings": [
+            {"src_field": "transformed_data", "dst_field": "final_results"}
         ]},
         
         # State to output for final collection
