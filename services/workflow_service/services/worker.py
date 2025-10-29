@@ -534,7 +534,7 @@ async def run_graph(
         if is_sub_workflow:
             # Rename the flow run to include the subworkflow name for better identification
             try:
-                new_flow_run_name = f"[SUBFLOW] {workflow_run_job.workflow_name}:--{run_id} (Parent: {workflow_run_job.parent_run_id})" + "--(HITL-RESUMED)" if workflow_run_job.resume_after_hitl else ""
+                new_flow_run_name = f"[SUBFLOW] {workflow_run_job.workflow_name}:--{run_id} (Parent: {workflow_run_job.parent_run_id})" + ("--(HITL-RESUMED)" if workflow_run_job.resume_after_hitl else "")
                 
                 async with get_client() as prefect_client:
                     await prefect_client.update_flow_run(
