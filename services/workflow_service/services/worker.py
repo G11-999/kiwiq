@@ -1828,7 +1828,7 @@ if __name__ == "__main__":
             # pause_on_shutdown=global_settings.APP_ENV != "PROD",
             # interval=60,
             # cron="* * * * *",
-            concurrency_limit=50,  # ⬆️ from 15 (4x increase for higher throughput)
+            concurrency_limit=75,  # ⬆️ from 15 (4x increase for higher throughput)
             description=f"Production deployment for KiwiQ LangGraph workflows ({global_settings.APP_ENV})",
             version="workflow-service/deployments",
         ),
