@@ -250,10 +250,9 @@ workflow_graph_schema = {
                 "choices": [
                     "run_linkedin_scraping",
                     "run_blog_crawler",
-                    "initial_router"
                 ],
                 "allow_multiple": True,
-                "default_choice": "initial_router",
+                "default_choice": None,
                 "choices_with_conditions": [
                     {"choice_id": "run_linkedin_scraping", "input_path": "run_linkedin_exec", "target_value": True},
                     {"choice_id": "run_blog_crawler", "input_path": "run_blog_analysis", "target_value": True},
@@ -402,7 +401,7 @@ workflow_graph_schema = {
             "node_config": {
                 "workflow_name": COMPANY_ANALYSIS_WORKFLOW_NAME,
                 "timeout_seconds": ANALYSIS_TIMEOUT,
-                "check_error_free_logs": False,
+                # "check_error_free_logs": False,
                 "enable_workflow_cache": CACHE_ENABLED
             }
         },
@@ -1539,12 +1538,6 @@ workflow_graph_schema = {
         {
             "src_node_id": "data_collection_router",
             "dst_node_id": "run_blog_crawler",
-            "mappings": []
-        },
-
-        {
-            "src_node_id": "data_collection_router",
-            "dst_node_id": "initial_router",
             "mappings": []
         },
 

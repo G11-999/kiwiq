@@ -290,7 +290,7 @@ async def run_graph(
             db_obj=workflow_run,
             obj_in=obj_in,
         )
-        is_sub_workflow = workflow_run.parent_run_id is not None
+        is_sub_workflow = parent_run_id is not None
         log_prefix = f"{workflow_run.workflow_name}: " if is_sub_workflow else ""
 
         if is_sub_workflow:
