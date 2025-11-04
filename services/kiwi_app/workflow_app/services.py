@@ -659,7 +659,9 @@ class WorkflowService:
         db: AsyncSession, # Keep db session for SQL part
         *,
         run: models.WorkflowRun, # Fetched run object from dependency
-        user: User # Added user for permission check
+        user: User, # Added user for permission check
+        skip: int = 0,
+        limit: int = 100
     ) -> schemas.WorkflowRunDetailRead:
         """
         Retrieves detailed results for a workflow run, combining SQL summary
@@ -704,10 +706,12 @@ class WorkflowService:
             event_dicts = await self.mongo_client.search_objects(
                 key_pattern=mongo_runs_events_pattern,
                 # filter_query={}, # Get all events for the run
-                value_sort_by=[("timestamp", -1), ("sequence_i", -1)], # Sort by timestamp descending, then sequence descending
+                value_sort_by=[("timestamp", 1), ("sequence_i", 1)], # Sort by timestamp descending, then sequence descending
                 allowed_prefixes=allowed_prefixes, # Apply permission check
                 value_filter={"event_type": {"$in": allowed_event_types}},
                 include_fields=include_fields,
+                skip=skip,
+                limit=limit,
             )
 
             # Validate and structure events
@@ -753,8 +757,8 @@ class WorkflowService:
         *,
         run: models.WorkflowRun, # Fetched run object from dependency
         user: User, # Added user for permission check
-        # skip: int = 0,
-        # limit: int = 1000 # Default limit for stream events
+        skip: int = 0,
+        limit: int = 1000 # Default limit for stream events
     ) -> List[schemas.WorkflowRunEventDetail]:
         """
         Retrieves the event stream for a workflow run from MongoDB, respecting user permissions.
@@ -794,9 +798,9 @@ class WorkflowService:
             event_dicts = await self.mongo_client.search_objects(
                 key_pattern=mongo_runs_events_pattern,
                 # filter_query={}, # Get all events for the run
-                value_sort_by=[("timestamp", -1), ("sequence_i", -1)], # Sort by sequence ascending for chronological order
-                # skip=skip,
-                # limit=limit,
+                value_sort_by=[("timestamp", 1), ("sequence_i", 1)], # Sort by sequence ascending for chronological order
+                skip=skip,
+                limit=limit,
                 allowed_prefixes=allowed_prefixes # Apply permission check
             )
 

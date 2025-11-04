@@ -1343,9 +1343,13 @@ async def get_run_details(
     db: AsyncSession = Depends(get_async_db_dependency),
     current_user: User = Depends(wf_deps.RequireRunReadActiveOrg),
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
+    skip: int = Query(0, ge=0, description="Number of events to skip"),
+    limit: int = Query(100, ge=1, le=5000, description="Maximum number of events to return"),
 ):
     """
     Gets detailed results for a specific workflow run.
+
+    Default: chronological order (ascending), returns first 100 events.
 
     - Combines the summary data from the SQL database with the detailed event stream
       fetched from the configured NoSQL store (e.g., MongoDB).
@@ -1354,7 +1358,7 @@ async def get_run_details(
     """
     try:
         # Dependency handles fetch and access check
-        details = await workflow_service.get_run_details(db=db, run=run, user=current_user)
+        details = await workflow_service.get_run_details(db=db, run=run, skip=skip, limit=limit, user=current_user)
         workflow_logger.info(f"User {current_user.id} retrieved details for workflow run {run.id}")
         return details
     # except exceptions.RunDetailsNotFoundException as e:
@@ -1375,11 +1379,13 @@ async def get_run_stream(
     db: AsyncSession = Depends(get_async_db_dependency),
     current_user: User = Depends(wf_deps.RequireRunReadActiveOrg),
     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
-    # skip: int = Query(0, ge=0, description="Number of events to skip"),
-    # limit: int = Query(1000, ge=1, le=5000, description="Maximum number of events to return"),
+    skip: int = Query(0, ge=0, description="Number of events to skip"),
+    limit: int = Query(100, ge=1, le=5000, description="Maximum number of events to return"),
 ):
     """
     Retrieves the sequence of events for a specific workflow run from the event store (e.g., MongoDB).
+
+    Default: chronological order (ascending), returns first 100 events.
 
     - Useful for displaying progress or debugging.
     - Supports pagination using `skip` and `limit`.
@@ -1390,7 +1396,7 @@ async def get_run_stream(
     try:
         # Dependency handles fetch and access check
         events = await workflow_service.get_run_stream(db=db, run=run,
-                                                    # skip=skip, limit=limit,
+                                                    skip=skip, limit=limit,
                                                     user=current_user)
         workflow_logger.info(f"User {current_user.id} retrieved event stream for workflow run {run.id}")
         return events
