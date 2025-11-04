@@ -28,6 +28,7 @@ class WorkflowBaseEvent(BaseModel):
     sequence_i: int
     event_type: WorkflowEvent
     node_id: Optional[str] = None
+    node_name: Optional[str] = None
     timestamp: Optional[datetime] = None
     payload: Optional[Dict[str, Any]] = None
 

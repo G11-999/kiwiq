@@ -545,133 +545,95 @@ async def main():
     
     # Define multiple workflow configurations
     workflow_configs = [
-        # Content Diagnostics Workflows (10 workflows - ALREADY INGESTED)
+        # ===== COMPLETED WORKFLOWS - COMMENTED OUT =====
+
+        # Content Diagnostics Workflows (10 workflows - COMPLETED)
         # {
         #     "workflow_key": "company_ai_visibility_workflow",
         #     "module_path": "kiwi_client.workflows.active.content_diagnostics.company_ai_visibility_workflow_sandbox.wf_company_ai_visibility_workflow_json",
         # },
-
         # {
         #     "workflow_key": "linkedin_linkedin_scraping_workflow",
         #     "module_path": "kiwi_client.workflows.active.content_diagnostics.linkedin_scraping_sandbox.wf_linkedin_scraping_json",
         # },
-
         # {
         #     "workflow_key": "linkedin_linkedin_content_analysis_workflow",
         #     "module_path": "kiwi_client.workflows.active.content_diagnostics.linkedin_content_analysis_sandbox.wf_linkedin_content_analysis_json",
         # },
-
         # {
         #     "workflow_key": "deep_research_workflow",
         #     "module_path": "kiwi_client.workflows.active.content_diagnostics.deep_research_workflow_sandbox.wf_deep_research_workflow_json",
         # },
-
         # {
         #     "workflow_key": "blog_content_analysis_workflow",
         #     "module_path": "kiwi_client.workflows.active.content_diagnostics.blog_content_analysis_sandbox.wf_blog_content_analysis_json",
         # },
-
         # {
         #     "workflow_key": "executive_ai_visibility_workflow",
         #     "module_path": "kiwi_client.workflows.active.content_diagnostics.executive_ai_visibility_sandbox.wf_executive_ai_visibility_json",
         # },
-
         # {
         #     "workflow_key": "blog_competitor_content_analysis_workflow",
         #     "module_path": "kiwi_client.workflows.active.content_diagnostics.competitor_content_analysis_sandbox.wf_competitor_content_analysis_json",
         # },
-
         {
             "workflow_key": "orchestrator_workflow",
             "module_path": "kiwi_client.workflows.active.content_diagnostics.orchestrator_workflow_sandbox.wf_orchestrator_workflow_json",
         },
-
         # {
         #     "workflow_key": "company_ai_visibility_edge_case_workflow",
         #     "module_path": "kiwi_client.workflows.active.content_diagnostics.company_ai_visibility_edge_case_sandbox.wf_company_ai_visibility_edge_case_json",
         # },
-
         # {
         #     "workflow_key": "blog_company_analysis_workflow",
         #     "module_path": "kiwi_client.workflows.active.content_diagnostics.company_analysis_workflow_sandbox.wf_company_analysis_workflow_json",
         # },
 
-        # Labs Workflows (2 workflows - ALREADY INGESTED)
+        # Labs Workflows (COMPLETED: file_summarisation_workflow)
         # {
         #     "workflow_key": "file_summarisation_workflow",
         #     "module_path": "kiwi_client.workflows.active.labs.file_summarisation_workflow.wf_file_summarisation_workflow_json",
         # },
 
-        # {
-        #     "workflow_key": "on_demand_external_research_workflow",
-        #     "module_path": "kiwi_client.workflows.active.labs.on_demand_external_research.wf_on_demand_external_research_json",
-        # },
-
-        # Content Studio Workflows (8 workflows - ALREADY INGESTED)
+        # Content Studio Workflows (COMPLETED)
         # {
         #     "workflow_key": "blog_content_calendar_entry",
         #     "module_path": "kiwi_client.workflows.active.content_studio.blog_content_calendar_entry_sandbox.wf_blog_content_calendar_entry_json",
         # },
-
         # {
         #     "workflow_key": "linkedin_content_calendar_entry",
         #     "module_path": "kiwi_client.workflows.active.content_studio.linkedin_content_calendar_entry_sandbox.wf_linkedin_content_calendar_entry_json",
         # },
-
         # {
         #     "workflow_key": "linkedin_brief_to_post_draft_workflow",
         #     "module_path": "kiwi_client.workflows.active.content_studio.linkedin_content_creation_sandbox.wf_linkedin_content_creation_json",
         # },
-
         # {
         #     "workflow_key": "linkedin_user_input_to_brief_workflow",
         #     "module_path": "kiwi_client.workflows.active.content_studio.linkedin_user_input_to_brief_sandbox.wf_linkedin_user_input_to_brief_json",
         # },
-
         # {
         #     "workflow_key": "blog_brief_to_blog_draft_workflow",
         #     "module_path": "kiwi_client.workflows.active.content_studio.blog_brief_to_blog_sandbox.wf_blog_brief_to_blog_json",
         # },
-
         # {
         #     "workflow_key": "blog_user_input_to_brief_workflow",
         #     "module_path": "kiwi_client.workflows.active.content_studio.blog_user_input_to_brief_sandbox.wf_blog_user_input_to_brief_json",
         # },
-
         # {
         #     "workflow_key": "blog_content_optimisation_workflow",
         #     "module_path": "kiwi_client.workflows.active.content_studio.blog_content_optimization_sandbox.wf_blog_content_optimization_json",
         # },
-
         # {
         #     "workflow_key": "linkedin_brief_from_calendar_topic",
         #     "module_path": "kiwi_client.workflows.active.content_studio.linkedin_calendar_selected_topic_to_brief_sandbox.wf_linkedin_calendar_selected_topic_to_brief_json",
         # },
-
         # {
         #     "workflow_key": "blog_brief_from_calendar_topic",
         #     "module_path": "kiwi_client.workflows.active.content_studio.blog_calendar_selected_topic_to_brief_sandbox.wf_calendar_selected_topic_to_brief_json",
         # },
 
-        # NOTE: Following workflows commented out - modules don't exist yet
-        # {
-        #     "workflow_key": "blog_aeo_seo_scoring_workflow",
-        #     "module_path": "kiwi_client.workflows.active.content_studio.blog_aeo_seo_scoring.wf_blog_aeo_seo_scoring_json",
-        # },
-        # {
-        #     "workflow_key": "linkedin_content_calendar_workflow",
-        #     "module_path": "kiwi_client.workflows.active.content_studio.linkedin_content_calendar_sandbox.wf_linkedin_content_calendar_json",
-        # },
-        # {
-        #     "workflow_key": "blog_content_calendar_workflow",
-        #     "module_path": "kiwi_client.workflows.active.content_studio.blog_content_calendar_sandbox.wf_blog_content_calendar_json",
-        # },
-        # {
-        #     "workflow_key": "linkedin_content_backlog_workflow",
-        #     "module_path": "kiwi_client.workflows.active.content_studio.linkedin_content_backlog_sandbox.wf_linkedin_content_backlog_json",
-        # },
-
-        # Playbook Workflows (2 workflows - READY TO INGEST with node_category updates)
+        # Playbook Workflows (COMPLETED)
         # {
         #     "workflow_key": "blog_content_playbook_workflow",
         #     "module_path": "kiwi_client.workflows.active.playbook.blog_content_playbook_generation.wf_blog_content_playbook_generation_json",
@@ -680,6 +642,34 @@ async def main():
         #     "workflow_key": "linkedin_content_playbook_workflow",
         #     "module_path": "kiwi_client.workflows.active.playbook.linkedin_content_playbook_generation.wf_linkedin_content_playbook_generation_json",
         # },
+
+        # ===== FAILED WORKFLOWS - ACTIVE FOR DEBUGGING =====
+
+        # Labs Workflows (FAILED)
+        # {
+        #     "workflow_key": "external_research_workflow",
+        #     "module_path": "kiwi_client.workflows.active.labs.on_demand_external_research.wf_on_demand_external_research_json",
+        # },
+
+        # # Content Studio Workflows (FAILED)
+        # {
+        #     "workflow_key": "blog_aeo_seo_scoring_workflow",
+        #     "module_path": "kiwi_client.workflows.active.content_studio.blog_aeo_seo_scoring.wf_blog_aeo_seo_scoring_json",
+        # },
+        # NOTE: These workflows don't exist - they use the "entry" versions instead
+        # The workflow_keys linkedin_content_calendar_workflow and blog_content_calendar_workflow
+        # are NOT in workflow_config.json. The correct keys are:
+        # - linkedin_content_calendar_entry (line 379 in workflow_config.json)
+        # - blog_content_calendar_entry (line 369 in workflow_config.json)
+        # Commenting out since the workflow keys don't exist in the database
+        # {
+        #     "workflow_key": "linkedin_content_calendar_entry_workflow",
+        #     "module_path": "kiwi_client.workflows.active.content_studio.linkedin_content_calendar_entry_sandbox.wf_linkedin_content_calendar_entry_json",
+        # },
+        # {
+        #     "workflow_key": "blog_content_calendar_entry",
+        #     "module_path": "kiwi_client.workflows.active.content_studio.blog_content_calendar_entry_sandbox.wf_blog_content_calendar_entry_json",
+        # }
     ]
     
     try:

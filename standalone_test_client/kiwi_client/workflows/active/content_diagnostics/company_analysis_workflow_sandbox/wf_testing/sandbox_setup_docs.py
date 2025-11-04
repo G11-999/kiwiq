@@ -12,31 +12,31 @@ from kiwi_client.workflows.active.document_models.customer_docs import (
 
 setup_docs: List[SetupDocInfo] = [
         # Company Goals Document
-#         {
-#             'namespace': BLOG_COMPANY_NAMESPACE_TEMPLATE.format(item=company_name),
-#             'docname': BLOG_COMPANY_DOCNAME,
-#             'initial_data': {
-#                 "name": "KiwiQ",
-#                 "website_url": "https://www.kiwiq.ai",
-#                 "value_proposition": "AI-powered content generation platform specifically designed for B2B SaaS companies. Our platform leverages GPT-5 and proprietary algorithms to create high-quality blog posts, whitepapers, and marketing content that resonates with technical B2B audiences.",
-#                 "company_goals": [
-#                     "Become the leading AI-powered content creation platform for B2B SaaS companies",
-#                     "Achieve 10,000 active users by end of 2025", 
-#                     "Expand into enterprise market with custom solutions",
-#                     "Build strategic partnerships with major marketing agencies",
-#                     "Establish thought leadership in AI content generation space"
-#                 ],
-#                 "target_metrics": {
-#                     "user_growth": "50% MoM",
-#                     "revenue_target": "10M ARR by 2025",
-#                     "customer_satisfaction": "NPS > 50"
-#                 }
-#             },
-#             'is_shared': False,
-#             'is_versioned': False,
-#             'is_system_entity': False,
-#         },
-#         # Sample Internal Company Documents (multiple docs under uploaded files namespace)
+        {
+            'namespace': BLOG_COMPANY_NAMESPACE_TEMPLATE.format(item=company_name),
+            'docname': BLOG_COMPANY_DOCNAME,
+            'initial_data': {
+                "name": "KiwiQ",
+                "website_url": "https://www.kiwiq.ai",
+                "value_proposition": "AI-powered content generation platform specifically designed for B2B SaaS companies. Our platform leverages GPT-5 and proprietary algorithms to create high-quality blog posts, whitepapers, and marketing content that resonates with technical B2B audiences.",
+                "company_goals": [
+                    "Become the leading AI-powered content creation platform for B2B SaaS companies",
+                    "Achieve 10,000 active users by end of 2025", 
+                    "Expand into enterprise market with custom solutions",
+                    "Build strategic partnerships with major marketing agencies",
+                    "Establish thought leadership in AI content generation space"
+                ],
+                "target_metrics": {
+                    "user_growth": "50% MoM",
+                    "revenue_target": "10M ARR by 2025",
+                    "customer_satisfaction": "NPS > 50"
+                }
+            },
+            'is_shared': False,
+            'is_versioned': False,
+            'is_system_entity': False,
+        },
+        # Sample Internal Company Documents (multiple docs under uploaded files namespace)
 #         {
 #             'namespace': BLOG_UPLOADED_FILES_NAMESPACE_TEMPLATE.format(item=company_name),
 #             'docname': "kiwiq_product_overview_doc_1",
@@ -1254,10 +1254,10 @@ setup_docs: List[SetupDocInfo] = [
     # Add more example docs (kept smaller for brevity during tests)
 
 cleanup_docs: List[CleanupDocInfo] = [
-    #     {'namespace': BLOG_COMPANY_NAMESPACE_TEMPLATE.format(item=company_name), 'docname': BLOG_COMPANY_DOCNAME, 'is_versioned': False, 'is_shared': False},
-    #     {'namespace': BLOG_UPLOADED_FILES_NAMESPACE_TEMPLATE.format(item=company_name), 'docname': "kiwiq_product_overview_doc_1", 'is_versioned': False, 'is_shared': False},
-    #     {'namespace': BLOG_UPLOADED_FILES_NAMESPACE_TEMPLATE.format(item=company_name), 'docname': "kiwiq_product_overview_doc_2", 'is_versioned': False, 'is_shared': False},
-    #     {'namespace': BLOG_UPLOADED_FILES_NAMESPACE_TEMPLATE.format(item=company_name), 'docname': "kiwiq_product_overview_doc_3", 'is_versioned': False, 'is_shared': False},
-    #     {'namespace': BLOG_UPLOADED_FILES_NAMESPACE_TEMPLATE.format(item=company_name), 'docname': "kiwiq_target_audience_analysis_1", 'is_versioned': False, 'is_shared': False},
-    #     {'namespace': BLOG_UPLOADED_FILES_NAMESPACE_TEMPLATE.format(item=company_name), 'docname': "kiwiq_pricing_strategy_doc", 'is_versioned': False, 'is_shared': False},
+        {'namespace': BLOG_COMPANY_NAMESPACE_TEMPLATE.format(item=company_name), 'docname': BLOG_COMPANY_DOCNAME, 'is_versioned': False, 'is_shared': False},
+        {'namespace': BLOG_UPLOADED_FILES_NAMESPACE_TEMPLATE.format(item=company_name), 'docname': "kiwiq_product_overview_doc_1", 'is_versioned': False, 'is_shared': False},
+        {'namespace': BLOG_UPLOADED_FILES_NAMESPACE_TEMPLATE.format(item=company_name), 'docname': "kiwiq_product_overview_doc_2", 'is_versioned': False, 'is_shared': False},
+        {'namespace': BLOG_UPLOADED_FILES_NAMESPACE_TEMPLATE.format(item=company_name), 'docname': "kiwiq_product_overview_doc_3", 'is_versioned': False, 'is_shared': False},
+        {'namespace': BLOG_UPLOADED_FILES_NAMESPACE_TEMPLATE.format(item=company_name), 'docname': "kiwiq_target_audience_analysis_1", 'is_versioned': False, 'is_shared': False},
+        {'namespace': BLOG_UPLOADED_FILES_NAMESPACE_TEMPLATE.format(item=company_name), 'docname': "kiwiq_pricing_strategy_doc", 'is_versioned': False, 'is_shared': False},
     ]

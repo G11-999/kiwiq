@@ -69,7 +69,7 @@ async def test_flow_func(
         workflow_service = None
         
         # Step 2: Search for the content calendar workflow first
-        workflow_name = "linkedin_content_strategy_workflow"
+        workflow_name = "linkedin_linkedin_scraping_workflow"
         workflow_id = None
         async with get_async_db_as_manager() as db:
             workflow_id = await search_workflow_by_name(
@@ -94,7 +94,6 @@ async def test_flow_func(
         from kiwi_app.workflow_app.dependencies import get_workflow_service
         workflow_service = await get_workflow_service()
 
-
         org_id = uuid.UUID("6d4f8ba9-e275-4846-8e5b-4d7f5ca14eef")
         user_id = uuid.UUID("e0545083-938f-4231-a2f4-dfa0840d6dfb")
         user_email = "admin@example.com"
@@ -116,9 +115,13 @@ async def test_flow_func(
 
         # Compose workflow inputs based on test_workflow_direct_submit.py structure
         
-
-        test_inputs = {
+        test_inputs = {  #         workflow_name = "linkedin_content_strategy_workflow"
             "entity_username": entity_username
+        }
+        test_inputs = {  # workflow_name = "linkedin_linkedin_scraping_workflow"
+            # Replace with a valid LinkedIn profile URL for testing
+            "entity_url": "https://www.linkedin.com/in/joyeedesigner/",
+            "entity_username": "example-user",  # Used for document naming in the workflow
         }
         workflow_inputs = test_inputs
         
@@ -169,15 +172,11 @@ async def test_flow_func(
             # context = {k: v for k, v in context.items() if k not in ["task_run_context"]}  # "flow_run_context", 
             # self.warning(f"Context json {json.dumps(context, indent=4, default=str)}")
             # context = {"logger_name": get_run_logger().name}
-            p = await asyncio.to_thread(run_flow_in_subprocess, flow=workflow_execution_flow,
-                parameters={"run_job": workflow_run.model_dump()},
-                context=context,)
-            # p = run_flow_in_subprocess(
-            #     flow=workflow_execution_flow,
-            #     parameters={"run_job": run_job.model_dump()},
-            #     context=context,
-            # )
-            await asyncio.to_thread(p.join)
+            await workflow_execution_flow(run_job=workflow_run)
+            # p = await asyncio.to_thread(run_flow_in_subprocess, flow=workflow_execution_flow,
+            #     parameters={"run_job": workflow_run.model_dump()},
+            #     context=context,)
+            # await asyncio.to_thread(p.join)
             # p.join()
     except Exception as e:
         logger.error(f"Error in test_flow_func: {e}", exc_info=True)

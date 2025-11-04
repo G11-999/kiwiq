@@ -287,7 +287,7 @@ workflow_graph_schema = {
                         "id": "analysis_user_prompt",
                         "template": DOCUMENT_ANALYSIS_USER_PROMPT_TEMPLATE,
                         "variables": {
-                            "documents_batch": None,
+                            "documents_batch": "",
                             "company_goals": None
                         },
                         "construct_options": {

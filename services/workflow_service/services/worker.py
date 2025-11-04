@@ -765,9 +765,11 @@ async def run_graph(
                         # Data is often AIMessageChunk or similar
                         if isinstance(data, (tuple, list)) and len(data) == 2:  #  and isinstance(data[0], AIMessageChunk):
                             message_chunk, runtime_config = data
+                            node_id = runtime_config.get("langgraph_node", "")
                             message_event = MessageStreamChunk(
                                 **base_event_data,
-                                node_id=runtime_config.get("langgraph_node", ""),
+                                node_id=node_id,
+                                node_name=graph_entities["graph_schema"].nodes.get(node_id).node_name,
                                 message=message_chunk,
                                 # node_id might be available in data.response_metadata or config if adapter provides it
                             )
@@ -794,10 +796,12 @@ async def run_graph(
                         # Process tool call chunks (e.g., from tools)
                         if isinstance(data, dict):
                             try:
+                                node_id = data.get("node_id", "")
                                 if data.get("event_type") == "tool_call":
                                     custom_event = ToolCallEvent(
                                         **base_event_data,
-                                        node_id=data.get("node_id", ""),
+                                        node_id=node_id,
+                                        node_name=graph_entities["graph_schema"].nodes.get(node_id).node_name,
                                         payload={k:v for k,v in data.items() if k not in ["node_id", *ToolCallEvent.model_fields.keys()]},
                                         tool_call_id=data.get("tool_call_id", ""),
                                         tool_name=data.get("tool_name", ""),
@@ -806,7 +810,8 @@ async def run_graph(
                                 elif data.get("event_type") == "node_status":
                                     custom_event = NodeStatusEvent(
                                         **base_event_data,
-                                        node_id=data.get("node_id", ""),
+                                        node_id=node_id,
+                                        node_name=graph_entities["graph_schema"].nodes.get(node_id).node_name,
                                         status=data.get("status", ""),
                                     )
                                     if payload:=data.get("payload", {}):
@@ -994,6 +999,7 @@ async def run_graph(
                                 output_event = WorkflowRunNodeOutputEvent(
                                     **base_event_data,
                                     node_id=node_id,
+                                    node_name=graph_entities["graph_schema"].nodes.get(node_id).node_name,
                                     payload=payload,
                                 )
 
