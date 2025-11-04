@@ -769,6 +769,7 @@ async def admin_list_workflows(
             # launch_status=query_params.launch_status,
             only_public=query_params.only_public,
             only_system_entities=query_params.only_system_entities,
+            workflow_name_search=query_params.workflow_name_search,
             skip=query_params.skip,
             limit=query_params.limit
         )
@@ -1349,7 +1350,7 @@ async def get_run_details(
     """
     Gets detailed results for a specific workflow run.
 
-    Default: chronological order (ascending), returns first 100 events.
+    Default: reverse chronological order (descending), returns last 100 events.
 
     - Combines the summary data from the SQL database with the detailed event stream
       fetched from the configured NoSQL store (e.g., MongoDB).
@@ -1385,7 +1386,7 @@ async def get_run_stream(
     """
     Retrieves the sequence of events for a specific workflow run from the event store (e.g., MongoDB).
 
-    Default: chronological order (ascending), returns first 100 events.
+    Default: reverse chronological order (descending), returns last 100 events.
 
     - Useful for displaying progress or debugging.
     - Supports pagination using `skip` and `limit`.

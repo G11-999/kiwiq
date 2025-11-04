@@ -353,6 +353,7 @@ class WorkflowListQuery(CommonListQuery):
     only_public: Optional[bool] = Field(True, description="Include public workflows in the results")
     only_system_entities: bool = Field(True, description="Include system entities (superuser only)")
     return_graphs_schemas: Optional[bool] = Field(True, description="Return graphs schemas with the results")
+    workflow_name_search: Optional[str] = Field(None, description="Search workflows by name (case-insensitive partial match)")
 
 
 class WorkflowRunListQuery(CommonListQuery):

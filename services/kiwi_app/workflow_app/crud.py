@@ -343,10 +343,25 @@ class WorkflowDAO(BaseDAO[models.Workflow, schemas.WorkflowCreate, schemas.Workf
         owner_org_id: uuid.UUID,
         only_public: bool = True,
         only_system_entities: bool = False,
+        workflow_name_search: Optional[str] = None,
         skip: int = 0,
         limit: int = 100
         ) -> Sequence[models.Workflow]:
-        """Get multiple workflows for a specific organization."""
+        """
+        Get multiple workflows for a specific organization.
+        
+        Args:
+            db: Database session
+            owner_org_id: Organization ID to filter workflows
+            only_public: If True, include only public workflows
+            only_system_entities: If True, include only system entity workflows
+            workflow_name_search: Optional search keyword for workflow name (case-insensitive partial match)
+            skip: Number of records to skip for pagination
+            limit: Maximum number of records to return
+            
+        Returns:
+            Sequence of Workflow models matching the criteria
+        """
         stmt = select(self.model)
         clause = or_(
             self.model.owner_org_id == owner_org_id,
@@ -356,6 +371,13 @@ class WorkflowDAO(BaseDAO[models.Workflow, schemas.WorkflowCreate, schemas.Workf
         if only_system_entities:
             clause = and_(clause, self.model.is_system_entity == True)
         stmt = stmt.where(clause)
+        
+        # Apply text search filter if provided
+        if workflow_name_search:
+            # Use ilike for case-insensitive partial matching (PostgreSQL)
+            # Adding wildcards for partial match on both sides
+            search_pattern = f"%{workflow_name_search}%"
+            stmt = stmt.where(self.model.name.ilike(search_pattern))
         
         # Apply pagination
         stmt = stmt.order_by(self.model.updated_at.desc()).offset(skip).limit(limit)

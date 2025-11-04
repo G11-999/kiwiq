@@ -170,14 +170,35 @@ class WorkflowService:
         owner_org_id: uuid.UUID, 
         only_public: bool = True,
         only_system_entities: bool = False,
+        workflow_name_search: Optional[str] = None,
         # launch_status: Optional[LaunchStatus] = None, # LaunchStatus not on Workflow model
         skip: int = 0, 
         limit: int = 100
     ) -> List[models.Workflow]:
-        """Lists workflows for a specific organization."""
-        # Pass filters to DAO if they were available
+        """
+        Lists workflows for a specific organization.
+        
+        Args:
+            db: Database session
+            owner_org_id: Organization ID to filter workflows
+            only_public: Include public workflows
+            only_system_entities: Include system entity workflows
+            workflow_name_search: Optional search keyword for workflow name (case-insensitive partial match)
+            skip: Number of records to skip for pagination
+            limit: Maximum number of records to return
+            
+        Returns:
+            List of Workflow models matching the criteria
+        """
+        # Pass filters to DAO including the name search parameter
         workflows = await self.workflow_dao.get_multi_by_org(
-            db, owner_org_id=owner_org_id, only_public=only_public, only_system_entities=only_system_entities, skip=skip, limit=limit
+            db, 
+            owner_org_id=owner_org_id, 
+            only_public=only_public, 
+            only_system_entities=only_system_entities,
+            workflow_name_search=workflow_name_search,
+            skip=skip, 
+            limit=limit
         )
         return list(workflows) # Ensure list return type
 
@@ -706,7 +727,7 @@ class WorkflowService:
             event_dicts = await self.mongo_client.search_objects(
                 key_pattern=mongo_runs_events_pattern,
                 # filter_query={}, # Get all events for the run
-                value_sort_by=[("timestamp", 1), ("sequence_i", 1)], # Sort by timestamp descending, then sequence descending
+                value_sort_by=[("timestamp", -1), ("sequence_i", -1)], # Sort by timestamp descending, then sequence descending
                 allowed_prefixes=allowed_prefixes, # Apply permission check
                 value_filter={"event_type": {"$in": allowed_event_types}},
                 include_fields=include_fields,
@@ -798,7 +819,7 @@ class WorkflowService:
             event_dicts = await self.mongo_client.search_objects(
                 key_pattern=mongo_runs_events_pattern,
                 # filter_query={}, # Get all events for the run
-                value_sort_by=[("timestamp", 1), ("sequence_i", 1)], # Sort by sequence ascending for chronological order
+                value_sort_by=[("timestamp", -1), ("sequence_i", -1)], # Sort by sequence ascending for chronological order
                 skip=skip,
                 limit=limit,
                 allowed_prefixes=allowed_prefixes # Apply permission check
