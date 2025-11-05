@@ -534,8 +534,9 @@ async def run_graph(
         if is_sub_workflow:
             # Rename the flow run to include the subworkflow name for better identification
             try:
-                new_flow_run_name = f"[SUBFLOW] {workflow_run_job.workflow_name}:--{run_id} (Parent: {workflow_run_job.parent_run_id})" + ("--(HITL-RESUMED)" if workflow_run_job.resume_after_hitl else "")
-                
+                new_flow_run_name = f"[SUBFLOW] {workflow_run_job.workflow_name}:--run_id:{run_id} (Parent: {workflow_run_job.parent_run_id})" + ("--(HITL-RESUMED)" if workflow_run_job.resume_after_hitl else "")
+                new_flow_run_name = f"{new_flow_run_name}:--user_id:{workflow_run_job.triggered_by_user_id}"
+
                 async with get_client() as prefect_client:
                     await prefect_client.update_flow_run(
                         flow_run_id=flow_id,
@@ -1245,7 +1246,8 @@ async def trigger_workflow_run(
     #     )
     # else:
     hitl_suffix = "--(HITL-RESUMED)" if resume_after_hitl else ""
-    flow_run_name = f"{workflow_name}:--{run_id}" + hitl_suffix
+    flow_run_name = f"{workflow_name}:--run_id:{run_id}" + hitl_suffix
+    flow_run_name = f"{flow_run_name}:--user_id:{triggered_by_user_id}"
     
     if return_job_object_no_submit:
         return run_job, flow_run_name
