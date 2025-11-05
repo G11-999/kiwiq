@@ -138,6 +138,8 @@ async def get_node_template(
     Retrieves a specific Node Template by its unique name and version.
 
     - Requires `template:read` permission.
+
+    NOTE: if version == "latest", the latest version will be returned.
     """
     # NOTE: if we disallow this, non superusers will not be able to modify workflow configs since they won't know what to validate!
     # # NOTE: workflow builder is not available publically so only allow superusers to list node templates!
