@@ -596,6 +596,7 @@ class WeaviateBaseClient:
         offset: int = 0,
         return_properties: Optional[List[str]] = None,
         collection_name: Optional[str] = None,
+        include_vector: bool = False,
     ) -> List[Dict[str, Any]]:
         """
         Fetch objects by filter criteria.
@@ -606,6 +607,7 @@ class WeaviateBaseClient:
             offset: Number of results to skip before applying the limit
             return_properties: Properties to return
             collection_name: Collection to query (defaults to self.collection_name)
+            include_vector: Whether to include vectors in response (default: False)
 
         Returns:
             List[Dict[str, Any]]: Fetched objects
@@ -619,6 +621,7 @@ class WeaviateBaseClient:
         kwargs = {
             "limit": limit,
             "offset": offset,
+            "include_vector": include_vector,
         }
         if where_filter:
             kwargs["filters"] = where_filter
