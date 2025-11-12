@@ -1125,35 +1125,147 @@ class WorkflowService:
         run: models.WorkflowRun, # Fetched run object from dependency
         user: User # User performing the action
     ) -> models.WorkflowRun:
-        """Cancels a workflow run."""
+        """
+        Cancels a workflow run by:
+        1. Cancelling all associated Prefect flow runs using Prefect's cancellation API
+        2. Updating the database status to CANCELLED
+        
+        Prefect automatically handles cancellation of child/subworkflow runs when a parent
+        is cancelled, so we only need to cancel the top-level flow run(s).
+        
+        This is a best-effort operation - the flow may still complete if it's already
+        finishing or if it doesn't check for cancellation signals.
+        
+        Args:
+            db: AsyncSession for database operations
+            run: The WorkflowRun object to cancel
+            user: The user performing the cancellation
+            
+        Returns:
+            The updated WorkflowRun object with CANCELLED status
+            
+        Raises:
+            HTTPException: If the run is not in a cancellable state or if cancellation fails
+        """
         # Check if the run is in a cancellable state
         if run.status not in [WorkflowRunStatus.SCHEDULED, WorkflowRunStatus.RUNNING, WorkflowRunStatus.WAITING_HITL, WorkflowRunStatus.PAUSED]:
-             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Run in status {run.status} cannot be cancelled.")
+             raise HTTPException(
+                 status_code=status.HTTP_400_BAD_REQUEST, 
+                 detail=f"Run in status {run.status} cannot be cancelled."
+             )
 
-        # TODO: Implement logic to signal the execution engine (Prefect/worker) to actually stop the run.
-        # This is CRITICAL for actual cancellation.
-        # Example Placeholder:
-        # try:
-        #     await signal_engine_to_cancel(run.id)
-        # except Exception as engine_error:
-        #     raise HTTPException(status_code=500, detail=f"Failed to signal engine cancellation: {engine_error}")
-        logger.info(f"Signaling cancellation for run {run.id} (actual engine stop needs implementation)")
+        # Cancel the most recent Prefect flow run (last in the comma-separated list)
+        # Prefect will automatically cancel any child workflows
+        cancellation_errors = []
+        
+        if run.prefect_run_ids:
+            from prefect import get_client
+            from prefect.states import Cancelling
+            from uuid import UUID
+            
+            # Parse comma-separated Prefect run IDs and get the last (most recent) one
+            # The prefect_run_ids field stores IDs as "uuid1,uuid2,uuid3"
+            flow_run_id_list = [
+                fid.strip() 
+                for fid in run.prefect_run_ids.split(",") 
+                if fid.strip()
+            ]
+            
+            if not flow_run_id_list:
+                logger.warning(
+                    f"No valid Prefect run IDs found for workflow run {run.id} - "
+                    f"updating DB status only"
+                )
+            else:
+                # Only cancel the last (most recent) flow run
+                flow_run_id_str = flow_run_id_list[-1]
+                
+                logger.info(
+                    f"Attempting to cancel most recent Prefect flow run {flow_run_id_str} "
+                    f"for workflow run {run.id}"
+                )
+                
+                try:
+                    async with get_client() as prefect_client:
+                        # Convert string to UUID
+                        flow_run_uuid = UUID(flow_run_id_str)
+                        
+                        # Create a Cancelling state with a message
+                        # Prefect will automatically cancel child workflows when parent is cancelled
+                        cancelling_state = Cancelling(
+                            message=f"Cancelled by user {user.email or user.id}"
+                        )
+                        
+                        # Cancel the Prefect flow run by setting its state to Cancelling
+                        # The Prefect worker will then attempt to terminate the flow run's infrastructure
+                        result = await prefect_client.set_flow_run_state(
+                            flow_run_id=flow_run_uuid,
+                            state=cancelling_state
+                        )
+                        
+                        # Check if the cancellation was accepted
+                        if result.status == "ABORT":
+                            reason = result.details.reason if hasattr(result, 'details') else 'Unknown reason'
+                            logger.warning(
+                                f"Prefect flow run {flow_run_id_str} could not be cancelled: {reason}"
+                            )
+                            cancellation_errors.append(
+                                f"Flow run {flow_run_id_str}: {reason}"
+                            )
+                        else:
+                            logger.info(
+                                f"Prefect flow run {flow_run_id_str} scheduled for cancellation"
+                            )
+                    
+                except ValueError as ve:
+                    # Invalid UUID format
+                    error_msg = f"Invalid Prefect flow run ID format: {flow_run_id_str}"
+                    logger.warning(f"{error_msg} - {ve}")
+                    cancellation_errors.append(error_msg)
+                except Exception as cancel_err:
+                    # Prefect API error (flow might not exist, already finished, etc.)
+                    error_msg = f"Failed to cancel Prefect flow run {flow_run_id_str}: {cancel_err}"
+                    logger.warning(error_msg)
+                    cancellation_errors.append(error_msg)
+        else:
+            logger.warning(
+                f"No Prefect run IDs found for workflow run {run.id} - "
+                f"updating DB status only"
+            )
 
-        # Update DB status optimistically
+        # Update DB status to CANCELLED
+        # Note: We update the DB even if some Prefect cancellations failed,
+        # as the user intent is clear and the DB should reflect that
+        error_message = f"Run cancelled by user {user.email or user.id}"
+        if cancellation_errors:
+            error_message += f" (Prefect cancellation issues: {'; '.join(cancellation_errors)})"
+        
         updated = await self.workflow_run_dao.update_status(
             db,
             run_id=run.id,
             status=WorkflowRunStatus.CANCELLED,
             ended_at=datetime_now_utc(),
-            error_message=f"Run cancelled by user {user.email or user.id}"
+            error_message=error_message
         )
+        
         if not updated:
              # This might happen if the status changed between the check and the update
              # Fetch the latest status to return accurate info
              await db.refresh(run)
-             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Run status changed to {run.status}, could not cancel.")
+             raise HTTPException(
+                 status_code=status.HTTP_409_CONFLICT, 
+                 detail=f"Run status changed to {run.status}, could not cancel."
+             )
 
-        await db.refresh(run) # Refresh the object with the updated status
+        # Refresh the object with the updated status
+        await db.refresh(run)
+        
+        logger.info(
+            f"Successfully cancelled workflow run {run.id} by user {user.id}. "
+            f"Prefect flow run cancellation {'completed' if not cancellation_errors else 'attempted'}. "
+            f"Child workflows will be automatically cancelled by Prefect."
+        )
+        
         return run
 
     # Add Pause/Resume similarly if needed, requiring engine interaction

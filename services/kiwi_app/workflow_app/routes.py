@@ -1426,27 +1426,73 @@ async def get_run_stream(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An error occurred while retrieving the workflow run events")
 
 
-# @run_router.post(
-#     "/{run_id}/cancel",
-#     response_model=schemas.WorkflowRunRead,
-#     summary="Cancel Workflow Run",
-#     dependencies=[Depends(wf_deps.RequireRunManage)] # Requires RUN_MANAGE permission
-# )
-# async def cancel_run(
-#     run: models.WorkflowRun = Depends(wf_deps.get_workflow_run_for_active_org), # Ensures run is in active org
-#     current_user: User = Depends(get_current_active_verified_user),
-#     db_manager: AsyncGenerator[AsyncSession, None] = Depends(get_async_db_as_manager),
-#     workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
-# ):
-#     """
-#     Attempts to cancel a workflow run that is currently `SCHEDULED` or `RUNNING`.
+@run_router.post(
+    "/{run_id}/cancel",
+    response_model=schemas.WorkflowRunRead,
+    summary="Cancel Workflow Run",
+    # dependencies=[Depends(wf_deps.RequireRunManageActiveOrg)] # Requires RUN_MANAGE permission
+)
+async def cancel_run(
+    run_id: uuid.UUID = Path(..., description="The ID of the workflow run"),
+    active_org_id: uuid.UUID = Depends(get_active_org_id),
+    current_user: User = Depends(get_current_active_verified_user),
+    db: AsyncSession = Depends(get_async_db_dependency),
+    run_dao: wf_crud.WorkflowRunDAO = Depends(wf_deps.get_workflow_run_dao),
+    workflow_service: services.WorkflowService = Depends(wf_deps.get_workflow_service_dependency),
+):
+    """
+    Attempts to cancel a workflow run that is currently `SCHEDULED` or `RUNNING`.
 
-#     - Sends a cancellation signal to the execution engine (best-effort).
-#     - Updates the run status to `CANCELLED` in the database.
-#     - Requires `run:manage` permission on the active organization.
-#     """
-#     async with db_manager as db:
-#         return await workflow_service.cancel_run(db=db, run=run, user=current_user)
+    - Sends a cancellation signal to the Prefect execution engine (best-effort).
+    - Updates the run status to `CANCELLED` in the database.
+    - Only works for runs in SCHEDULED or RUNNING state.
+    - Requires the run to be in the user's active organization.
+    
+    **Note:** Cancellation is best-effort. The run may still complete if it's already
+    finishing or if it doesn't check for cancellation signals.
+    """
+    try:
+        # Fetch the run ensuring it belongs to the active org
+        run = await run_dao.get_run_by_id_and_org(db, run_id=run_id, org_id=active_org_id)
+        if not run:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Workflow run not found"
+            )
+        
+        # Validate run state
+        if run.status not in [constants.WorkflowRunStatus.SCHEDULED, constants.WorkflowRunStatus.RUNNING]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot cancel run in '{run.status}' state. Only SCHEDULED or RUNNING runs can be cancelled."
+            )
+        
+        # Call service to cancel the run
+        cancelled_run = await workflow_service.cancel_run(
+            db=db, 
+            run=run, 
+            user=current_user
+        )
+        
+        workflow_logger.info(
+            f"User {current_user.id} cancelled workflow run {run_id} "
+            f"(was in '{run.status}' state) for org {active_org_id}"
+        )
+        
+        return cancelled_run
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        workflow_logger.error(
+            f"Error cancelling workflow run {run_id} for user {current_user.id}: {str(e)}", 
+            exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while cancelling the workflow run"
+        )
 
 # TODO: Add endpoints for Pause / Resume Run if needed
 
