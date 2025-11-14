@@ -74,9 +74,7 @@ class TestDualHistoryNoneWhenNoCompaction(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": self._generate_test_messages(3),
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(2),
         }
 
@@ -99,9 +97,7 @@ class TestDualHistoryNoneWhenNoCompaction(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": self._generate_test_messages(2),  # Small count
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(2),
         }
 
@@ -192,9 +188,7 @@ class TestDualHistoryCompactionResult(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": self._generate_test_messages(count=10),
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(count=3),
         }
 

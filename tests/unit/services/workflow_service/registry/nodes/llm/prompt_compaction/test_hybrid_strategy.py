@@ -25,9 +25,54 @@ from workflow_service.registry.nodes.llm.prompt_compaction.strategies import (
 )
 from workflow_service.registry.nodes.llm.prompt_compaction.utils import (
     ExtractionStrategy as ExtractionStrategyType,
+    get_message_metadata,
 )
 
 from .test_base import PromptCompactionUnitTestBase
+
+
+class TestHybridPositionWeights(PromptCompactionUnitTestBase):
+    """Test hybrid strategy uses full_history_indices for position weights (v3.1)."""
+
+    async def test_hybrid_uses_full_history_indices(self):
+        """Test that hybrid strategy uses full_history_indices for position weights."""
+        strategy = HybridStrategy()
+        
+        # Generate messages
+        messages = self._generate_test_messages(8)
+        full_history_indices = {msg.id: idx for idx, msg in enumerate(messages)}
+        
+        # Create runtime_config with full_history_indices
+        runtime_config = {
+            "full_history_indices": full_history_indices,
+            "thread_id": self.test_thread_id,
+            "node_id": self.test_node_id,
+        }
+        
+        sections = {
+            "system": [],
+            "summaries": [],
+            "historical": messages[:5],
+            "marked": [],
+            "recent": messages[5:],
+        }
+        
+        result = await strategy.compact(
+            sections=sections,
+            budget=self._create_test_budget(),
+            model_metadata=self._create_test_model_metadata(),
+            ext_context=self.ext_context,
+            runtime_config=runtime_config,
+        )
+        
+        # Verify compacted messages have position_weight set where expected
+        # (extractions and summaries should have position_weight)
+        messages_with_weight = [
+            msg for msg in result.compacted_messages
+            if get_message_metadata(msg, "position_weight") is not None
+        ]
+        self.assertGreater(len(messages_with_weight), 0, 
+                          "Some compacted messages should have position_weight set")
 
 
 class TestHybridBudgetAllocation(PromptCompactionUnitTestBase):
@@ -89,9 +134,7 @@ class TestHybridSequentialExecution(PromptCompactionUnitTestBase):
             "system": self._generate_test_messages(1, roles=["system"]),
             "summaries": [],
             "historical": self._generate_test_messages(20),
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(5),
         }
 
@@ -185,9 +228,7 @@ class TestHybridBudgetReallocation(PromptCompactionUnitTestBase):
             "system": self._generate_test_messages(1, roles=["system"]),
             "summaries": [],
             "historical": self._generate_test_messages(30),
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(5),
         }
 
@@ -228,9 +269,7 @@ class TestHybridCombinedOutput(PromptCompactionUnitTestBase):
             "system": self._generate_test_messages(1, roles=["system"]),
             "summaries": [],
             "historical": self._generate_test_messages(20),
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(5),
         }
 
@@ -252,6 +291,85 @@ class TestHybridCombinedOutput(PromptCompactionUnitTestBase):
         # Output should include messages
         compacted_count = len(result.compacted_messages)
         self.assertGreater(compacted_count, 0)
+
+
+class TestHybridStrategyIntegration(PromptCompactionUnitTestBase):
+    """Test hybrid strategy uses same code paths as standalone strategies (v3.1)."""
+
+    async def test_hybrid_summarization_uses_same_code_path(self):
+        """Test that hybrid's summarization phase matches standalone summarization."""
+        # This verifies that HybridStrategy calls summarization_strategy.compact() directly
+        # which means it uses the EXACT same code path including all v3.1 enhancements
+        
+        hybrid_strategy = HybridStrategy()
+        
+        messages = self._generate_test_messages(10)
+        
+        sections = {
+            "system": [],
+            "summaries": [],
+            "historical": messages[:7],  # Will be split between extraction and summarization
+            "marked": [],
+            "recent": messages[7:],
+        }
+        
+        result = await hybrid_strategy.compact(
+            sections=sections,
+            budget=self._create_test_budget(),
+            model_metadata=self._create_test_model_metadata(),
+            ext_context=self.ext_context,
+        )
+        
+        # Verify both extraction and summarization happened
+        self.assertIsNotNone(result.summary_messages, "Should have summary messages")
+        self.assertIsNotNone(result.extracted_messages, "Should have extracted messages")
+        
+        # Verify summaries have v3.1 metadata (same as standalone summarization)
+        for summary in result.summary_messages:
+            llm_call_made = get_message_metadata(summary, "llm_call_made")
+            # Metadata should exist (may be None if no LLM call was actually made in test)
+            self.assertIn(llm_call_made, [None, True],
+                         "llm_call_made should be None or True")
+        
+        # Verify extractions have v3.1 metadata
+        for extraction in result.extracted_messages:
+            extraction_performed = get_message_metadata(extraction, "extraction_performed")
+            self.assertEqual(extraction_performed, True,
+                           "extraction_performed should be True on extracted messages")
+
+    async def test_hybrid_metadata_from_both_strategies(self):
+        """Test that hybrid preserves metadata from both extraction and summarization."""
+        hybrid_strategy = HybridStrategy()
+        
+        messages = self._generate_test_messages(8)
+        full_history_indices = {msg.id: idx for idx, msg in enumerate(messages)}
+        
+        runtime_config = {
+            "full_history_indices": full_history_indices,
+            "thread_id": self.test_thread_id,
+            "node_id": self.test_node_id,
+        }
+        
+        sections = {
+            "system": [],
+            "summaries": [],
+            "historical": messages[:5],
+            "marked": [],
+            "recent": messages[5:],
+        }
+        
+        result = await hybrid_strategy.compact(
+            sections=sections,
+            budget=self._create_test_budget(),
+            model_metadata=self._create_test_model_metadata(),
+            ext_context=self.ext_context,
+            runtime_config=runtime_config,
+        )
+        
+        # Verify result has both extraction and summarization metadata
+        self.assertIn("extraction_cost", result.metadata, "Should have extraction_cost in metadata")
+        self.assertIn("summarization_cost", result.metadata, "Should have summarization_cost in metadata")
+        self.assertEqual(result.metadata.get("strategy"), "hybrid", "Strategy should be hybrid")
 
 
 if __name__ == "__main__":

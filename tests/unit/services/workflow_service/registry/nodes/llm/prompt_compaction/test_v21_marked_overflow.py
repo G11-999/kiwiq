@@ -43,62 +43,62 @@ class TestMarkedOverflowFlagHandling(unittest.TestCase):
         message = HumanMessage(content="Important message", id="msg_1")
 
         # Initially mark as preserve
-        if not hasattr(message, "additional_kwargs"):
-            message.additional_kwargs = {}
-        message.additional_kwargs["preserve"] = True
+        if not hasattr(message, "response_metadata"):
+            message.response_metadata = {}
+        message.response_metadata["preserve"] = True
 
         # Verify preserve flag is set
-        self.assertTrue(message.additional_kwargs.get("preserve"))
+        self.assertTrue(message.response_metadata.get("preserve"))
 
         # Simulate overflow handling: remove preserve, add originally_marked
-        message.additional_kwargs.pop("preserve", None)
-        message.additional_kwargs["originally_marked"] = True
+        message.response_metadata.pop("preserve", None)
+        message.response_metadata["originally_marked"] = True
 
         # Verify flag changes
-        self.assertNotIn("preserve", message.additional_kwargs)
-        self.assertTrue(message.additional_kwargs.get("originally_marked"))
+        self.assertNotIn("preserve", message.response_metadata)
+        self.assertTrue(message.response_metadata.get("originally_marked"))
 
     def test_marked_overflow_removes_dont_summarize_flag(self):
         """Test 28: dont_summarize=True flag is removed on overflow."""
         message = HumanMessage(content="Important message", id="msg_2")
 
         # Initially mark as dont_summarize
-        if not hasattr(message, "additional_kwargs"):
-            message.additional_kwargs = {}
-        message.additional_kwargs["dont_summarize"] = True
+        if not hasattr(message, "response_metadata"):
+            message.response_metadata = {}
+        message.response_metadata["dont_summarize"] = True
 
         # Verify flag is set
-        self.assertTrue(message.additional_kwargs.get("dont_summarize"))
+        self.assertTrue(message.response_metadata.get("dont_summarize"))
 
         # Simulate overflow handling
-        message.additional_kwargs.pop("dont_summarize", None)
-        message.additional_kwargs["originally_marked"] = True
+        message.response_metadata.pop("dont_summarize", None)
+        message.response_metadata["originally_marked"] = True
 
         # Verify flag changes
-        self.assertNotIn("dont_summarize", message.additional_kwargs)
-        self.assertTrue(message.additional_kwargs.get("originally_marked"))
+        self.assertNotIn("dont_summarize", message.response_metadata)
+        self.assertTrue(message.response_metadata.get("originally_marked"))
 
     def test_marked_overflow_adds_originally_marked_flag(self):
         """Test 29: originally_marked=True flag is added on overflow."""
         message = HumanMessage(content="Important message", id="msg_3")
 
         # Initially has preserve or dont_summarize
-        if not hasattr(message, "additional_kwargs"):
-            message.additional_kwargs = {}
-        message.additional_kwargs["preserve"] = True
+        if not hasattr(message, "response_metadata"):
+            message.response_metadata = {}
+        message.response_metadata["preserve"] = True
 
         # Simulate overflow handling
-        had_marking = message.additional_kwargs.get("preserve") or \
-                     message.additional_kwargs.get("dont_summarize")
+        had_marking = message.response_metadata.get("preserve") or \
+                     message.response_metadata.get("dont_summarize")
 
         if had_marking:
-            message.additional_kwargs.pop("preserve", None)
-            message.additional_kwargs.pop("dont_summarize", None)
-            message.additional_kwargs["originally_marked"] = True
+            message.response_metadata.pop("preserve", None)
+            message.response_metadata.pop("dont_summarize", None)
+            message.response_metadata["originally_marked"] = True
 
         # Verify originally_marked was added
-        self.assertTrue(message.additional_kwargs.get("originally_marked"))
-        self.assertNotIn("preserve", message.additional_kwargs)
+        self.assertTrue(message.response_metadata.get("originally_marked"))
+        self.assertNotIn("preserve", message.response_metadata)
 
 
 class TestMarkedOverflowIngestion(PromptCompactionUnitTestBase):

@@ -25,6 +25,7 @@ from workflow_service.registry.nodes.llm.prompt_compaction.strategies import (
 from workflow_service.registry.nodes.llm.prompt_compaction.utils import (
     ExtractionStrategy as ExtractionStrategyType,
     MessageSectionLabel,
+    get_message_metadata,
 )
 
 from .test_base import PromptCompactionUnitTestBase
@@ -43,9 +44,7 @@ class TestSectionLabels(PromptCompactionUnitTestBase):
             "system": [system_msg],
             "summaries": [],
             "historical": [],
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(3),
         }
 
@@ -77,9 +76,7 @@ class TestSectionLabels(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": self._generate_test_messages(10),
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(3),
         }
 
@@ -106,9 +103,7 @@ class TestSectionLabels(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": self._generate_test_messages(10),
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(3),
         }
 
@@ -134,9 +129,7 @@ class TestSectionLabels(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": [],
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(3),
         }
 
@@ -167,9 +160,7 @@ class TestBipartiteGraphEdges(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": self._generate_test_messages(10),
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(3),
         }
 
@@ -192,9 +183,7 @@ class TestBipartiteGraphEdges(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": self._generate_test_messages(5),
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(2),
         }
 
@@ -239,9 +228,7 @@ class TestProvenanceTracking(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": self._generate_test_messages(10),
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(3),
         }
 
@@ -267,9 +254,7 @@ class TestProvenanceTracking(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": self._generate_test_messages(10),
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(3),
         }
 
@@ -296,9 +281,7 @@ class TestMetadataStructure(PromptCompactionUnitTestBase):
             "system": self._generate_test_messages(1, roles=["system"]),
             "summaries": [],
             "historical": [],
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(3),
         }
 
@@ -326,9 +309,7 @@ class TestMetadataStructure(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": self._generate_test_messages(10),
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(3),
         }
 
@@ -358,9 +339,7 @@ class TestExtractionMetadata(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": self._generate_test_messages(10),
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(3),
         }
 
@@ -388,9 +367,7 @@ class TestMetadataCompleteness(PromptCompactionUnitTestBase):
             "system": self._generate_test_messages(1, roles=["system"]),
             "summaries": [],
             "historical": self._generate_test_messages(5),
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(3),
         }
 
@@ -422,9 +399,7 @@ class TestMetadataPreservation(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": [],
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": msgs,
         }
 
@@ -437,6 +412,94 @@ class TestMetadataPreservation(PromptCompactionUnitTestBase):
 
         # Should have messages
         self.assertGreater(len(result.compacted_messages), 0)
+
+
+class TestExtractionMetadataTracking(PromptCompactionUnitTestBase):
+    """Test extraction strategy adds enhanced verification metadata (v3.1)."""
+
+    async def test_extraction_metadata_on_extracted_messages(self):
+        """Test that extraction adds verification metadata to extracted messages."""
+        strategy = ExtractionStrategy(
+            construction_strategy=ExtractionStrategyType.EXTRACT_FULL,
+            embedding_model="text-embedding-3-small",
+            store_embeddings=False,
+            top_k=3,
+        )
+        
+        messages = self._generate_test_messages(6)
+        
+        sections = {
+            "system": [],
+            "summaries": [],
+            "historical": messages[:4],
+            "marked": [],
+            "recent": messages[4:],
+        }
+        
+        result = await strategy.compact(
+            sections=sections,
+            budget=self._create_test_budget(),
+            model_metadata=self._create_test_model_metadata(),
+            ext_context=self.ext_context,
+        )
+        
+        # Verify extracted messages have new metadata fields
+        for msg in result.extracted_messages:
+            # v3.1: Enhanced extraction metadata
+            self.assertEqual(
+                get_message_metadata(msg, "extraction_performed"),
+                True,
+                "extraction_performed should be True"
+            )
+            self.assertEqual(
+                get_message_metadata(msg, "embedding_model"),
+                "text-embedding-3-small",
+                "embedding_model should match strategy config"
+            )
+            construction_strategy = get_message_metadata(msg, "construction_strategy")
+            self.assertIsNotNone(construction_strategy, "construction_strategy should be set")
+            # Enum value is lowercase: "extract_full"
+            self.assertIn("extract_full", str(construction_strategy).lower(), 
+                         "construction_strategy should contain extract_full")
+            
+            num_candidates = get_message_metadata(msg, "num_candidates")
+            self.assertIsNotNone(num_candidates, "num_candidates should be set")
+            self.assertGreater(num_candidates, 0, "num_candidates should be positive")
+
+    async def test_extraction_metadata_with_different_strategies(self):
+        """Test that extraction metadata reflects different construction strategies."""
+        for strategy_type in [ExtractionStrategyType.EXTRACT_FULL, ExtractionStrategyType.DUMP]:
+            with self.subTest(strategy=strategy_type):
+                strategy = ExtractionStrategy(
+                    construction_strategy=strategy_type,
+                    embedding_model="text-embedding-3-small",
+                    store_embeddings=False,
+                    top_k=2,
+                )
+                
+                messages = self._generate_test_messages(4)
+                
+                sections = {
+                    "system": [],
+                    "summaries": [],
+                    "historical": messages[:2],
+                    "marked": [],
+                    "recent": messages[2:],
+                }
+                
+                result = await strategy.compact(
+                    sections=sections,
+                    budget=self._create_test_budget(),
+                    model_metadata=self._create_test_model_metadata(),
+                    ext_context=self.ext_context,
+                )
+                
+                # Verify metadata is set (even if no extraction happened)
+                if result.extracted_messages:
+                    for msg in result.extracted_messages:
+                        construction_strategy = get_message_metadata(msg, "construction_strategy")
+                        self.assertIn(strategy_type.value, str(construction_strategy),
+                                     f"Should reflect {strategy_type.value} strategy")
 
 
 if __name__ == "__main__":

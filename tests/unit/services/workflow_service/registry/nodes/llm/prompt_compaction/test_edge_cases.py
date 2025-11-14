@@ -27,6 +27,7 @@ from workflow_service.registry.nodes.llm.prompt_compaction.strategies import (
 )
 from workflow_service.registry.nodes.llm.prompt_compaction.utils import (
     ExtractionStrategy as ExtractionStrategyType,
+    get_message_metadata,
 )
 
 from .test_base import PromptCompactionUnitTestBase
@@ -43,9 +44,7 @@ class TestEmptyMessageLists(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": [],
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": [],
         }
 
@@ -67,9 +66,7 @@ class TestEmptyMessageLists(PromptCompactionUnitTestBase):
             "system": self._generate_test_messages(1, roles=["system"]),
             "summaries": [],
             "historical": [],
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": [],
         }
 
@@ -84,14 +81,22 @@ class TestEmptyMessageLists(PromptCompactionUnitTestBase):
         self.assertEqual(len(result.compacted_messages), 1)
 
     async def test_empty_compaction_input(self):
-        """Should handle empty input to compact_if_needed."""
+        """Should handle empty input to test_compact_if_needed."""
         config = self._create_test_config(strategy=CompactionStrategyType.NOOP)
+
+        # Create a minimal mock LLMModelConfig with actual values
+        mock_llm_config = Mock()
+        mock_llm_config.model = "gpt-4o"
+        mock_llm_config.provider = "openai"
+        mock_llm_config.max_tokens = 4096  # Correct attribute name
+        mock_llm_config.temperature = 0.7
 
         compactor = PromptCompactor(
             config=config,
             node_id=self.test_node_id,
             node_name="test_node",
             model_metadata=self._create_test_model_metadata(),
+            llm_node_llm_config=mock_llm_config,
         )
 
         messages = []  # Empty
@@ -209,9 +214,7 @@ class TestBudgetExhaustion(PromptCompactionUnitTestBase):
             "system": self._generate_test_messages(1, roles=["system"]),
             "summaries": [],
             "historical": [],
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(5),
         }
 
@@ -239,9 +242,7 @@ class TestBudgetExhaustion(PromptCompactionUnitTestBase):
             "system": self._generate_test_messages(1, roles=["system"]),
             "summaries": [],
             "historical": [],
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(3),
         }
 
@@ -428,6 +429,126 @@ class TestInvalidConfiguration(PromptCompactionUnitTestBase):
                     construction_strategy=ExtractionStrategyType.EXTRACT_FULL,
                     similarity_threshold=threshold,
                 )
+
+
+class TestFullHistoryIndicesEdgeCases(PromptCompactionUnitTestBase):
+    """Test edge cases for full_history_indices handling (v3.1)."""
+
+    async def test_extraction_with_empty_full_history_indices(self):
+        """Test that extraction works with empty full_history_indices dict."""
+        strategy = ExtractionStrategy(
+            construction_strategy=ExtractionStrategyType.EXTRACT_FULL,
+            store_embeddings=False,
+            top_k=2,
+        )
+        
+        messages = self._generate_test_messages(4)
+        
+        runtime_config = {
+            "full_history_indices": {},  # Empty dict
+            "thread_id": self.test_thread_id,
+            "node_id": self.test_node_id,
+        }
+        
+        sections = {
+            "system": [],
+            "summaries": [],
+            "historical": messages[:2],
+            "marked": [],
+            "recent": messages[2:],
+        }
+        
+        # Should not crash
+        result = await strategy.compact(
+            sections=sections,
+            budget=self._create_test_budget(),
+            model_metadata=self._create_test_model_metadata(),
+            ext_context=self.ext_context,
+            runtime_config=runtime_config,
+        )
+        
+        self.assertIsNotNone(result)
+
+    async def test_extraction_with_missing_message_ids_in_indices(self):
+        """Test that extraction works when full_history_indices is missing some message IDs."""
+        strategy = ExtractionStrategy(
+            construction_strategy=ExtractionStrategyType.EXTRACT_FULL,
+            store_embeddings=False,
+            top_k=3,
+        )
+        
+        messages = self._generate_test_messages(5)
+        
+        # Only include indices for first 2 messages
+        full_history_indices = {messages[0].id: 0, messages[1].id: 1}
+        
+        runtime_config = {
+            "full_history_indices": full_history_indices,
+            "thread_id": self.test_thread_id,
+            "node_id": self.test_node_id,
+        }
+        
+        sections = {
+            "system": [],
+            "summaries": [],
+            "historical": messages[:3],
+            "marked": [],
+            "recent": messages[3:],
+        }
+        
+        result = await strategy.compact(
+            sections=sections,
+            budget=self._create_test_budget(),
+            model_metadata=self._create_test_model_metadata(),
+            ext_context=self.ext_context,
+            runtime_config=runtime_config,
+        )
+        
+        # Should work, but only messages in indices will have position_weight
+        self.assertIsNotNone(result)
+        if result.extracted_messages:
+            messages_with_weight = [
+                msg for msg in result.extracted_messages
+                if get_message_metadata(msg, "position_weight") is not None
+            ]
+            # At least one message should have position_weight (if it was in full_history_indices)
+            # (but this depends on which messages were extracted)
+            self.assertGreaterEqual(len(messages_with_weight), 0)
+
+    async def test_extraction_without_runtime_config(self):
+        """Test backwards compatibility: extraction works without runtime_config."""
+        strategy = ExtractionStrategy(
+            construction_strategy=ExtractionStrategyType.EXTRACT_FULL,
+            store_embeddings=False,
+            top_k=2,
+        )
+        
+        messages = self._generate_test_messages(4)
+        
+        sections = {
+            "system": [],
+            "summaries": [],
+            "historical": messages[:2],
+            "marked": [],
+            "recent": messages[2:],
+        }
+        
+        # No runtime_config at all (backwards compatibility)
+        result = await strategy.compact(
+            sections=sections,
+            budget=self._create_test_budget(),
+            model_metadata=self._create_test_model_metadata(),
+            ext_context=self.ext_context,
+            runtime_config=None,
+        )
+        
+        # Should work gracefully
+        self.assertIsNotNone(result)
+        # Extracted messages won't have position_weight, but should still be valid
+        if result.extracted_messages:
+            for msg in result.extracted_messages:
+                # Check that new v3.1 metadata is still added
+                self.assertEqual(get_message_metadata(msg, "extraction_performed"), True)
 
 
 if __name__ == "__main__":

@@ -447,7 +447,7 @@ class PromptCompactionIntegrationTestBase(unittest.IsolatedAsyncioTestCase):
             enabled=True,
             enable_billing=False,  # Disable billing for tests
             strategy=strategy,
-            trigger_threshold_pct=trigger_pct,
+            context_budget=ContextBudgetConfig(trigger_threshold_pct=trigger_pct),
             summarization=summarization_config,
         )
         
@@ -536,7 +536,70 @@ class PromptCompactionIntegrationTestBase(unittest.IsolatedAsyncioTestCase):
         return {
             "summarized_messages": result.compacted_messages,
             "metadata": result.metadata,
-            "current_messages": result.messages_with_updated_metadata,
+        }
+
+    async def _run_compaction_with_provider(
+        self,
+        messages: List["BaseMessage"],
+        config: "PromptCompactionConfig",
+        thread_id: str,
+        provider: str = "openai",
+        model_name: str = "gpt-4o",
+    ) -> Dict[str, Any]:
+        """
+        Run compaction with specific provider and model.
+
+        This variant allows testing fallback behavior by specifying the main model's provider.
+        For example, provider="perplexity" will trigger Perplexity fallback logic.
+        """
+        from uuid import uuid4
+        from workflow_service.registry.nodes.llm.prompt_compaction.compactor import PromptCompactor
+
+        # Create model metadata with specified provider
+        context_limit = getattr(config, '_test_max_tokens', 128000)
+        output_limit = getattr(config, '_test_output_tokens', 16384)
+        
+        model_metadata = self._create_test_model_metadata(
+            model_name=model_name,
+            provider=provider,
+            context_limit=context_limit,
+            output_token_limit=output_limit,
+        )
+
+        # Create compactor with all required arguments
+        compactor = PromptCompactor(
+            config=config,
+            model_metadata=model_metadata,
+            node_id="test_node",
+            node_name="test_compaction_node",
+        )
+
+        # Create app_context matching production expectations
+        class MockUser:
+            def __init__(self):
+                self.id = self.test_user_id if hasattr(self, 'test_user_id') else uuid4()
+
+        class MockRunJob:
+            def __init__(self):
+                self.owner_org_id = self.test_org_id if hasattr(self, 'test_org_id') else uuid4()
+                self.run_id = self.test_run_id if hasattr(self, 'test_run_id') else uuid4()
+                self.id = uuid4()
+
+        app_context = {
+            "user": MockUser(),
+            "workflow_run_job": MockRunJob(),
+        }
+
+        # Run compaction
+        result = await compactor.compact(
+            messages=messages,
+            ext_context=self.ext_context,
+            app_context=app_context,
+        )
+
+        return {
+            "summarized_messages": result.compacted_messages,
+            "metadata": result.metadata,
         }
 
 
@@ -565,24 +628,24 @@ class TestMessageClassifier(unittest.TestCase):
         
         sections = self.classifier.classify(messages, recent_message_count=2)
         
-        # v2.3: Latest tool sequence uses MAX SPAN, including HumanMessages after tool response
-        # Until next AIMessage. So the sequence includes: AIMessage + HumanMessage(tool_result) + HumanMessage(user input)
-        self.assertEqual(len(sections["latest_tools"]), 3)  # Updated for max span
-        self.assertEqual(len(sections["recent"]), 1)  # Only the initial user message remains
-        self.assertEqual(len(sections["historical"]), 0)
-        self.assertEqual(len(sections["old_tools"]), 0)
+        # v2.5: Tool sequences merged into recent/historical (no separate latest_tools/old_tools)
+        # Tool sequence uses MAX SPAN: AIMessage + HumanMessage(tool_result) + HumanMessage(user input)
+        # With recent_message_count=2, we'd take last 2 messages, but tool sequence (indices 2-4)
+        # causes split to move earlier to keep sequence intact, so recent gets all 3 messages
+        self.assertEqual(len(sections["recent"]), 3)  # Tool sequence in recent (last tool sequence)
+        self.assertEqual(len(sections["historical"]), 1)  # Initial user input goes to historical
 
-        # Check content of latest_tools (max span includes all messages until next AI turn)
-        self.assertIsInstance(sections["latest_tools"][0], AIMessage)
-        self.assertIsInstance(sections["latest_tools"][1], HumanMessage)
-        self.assertIsInstance(sections["latest_tools"][2], HumanMessage)
-        self.assertEqual(sections["latest_tools"][0].id, "ai_msg")
-        self.assertEqual(sections["latest_tools"][1].id, "human_tool_response")
-        self.assertEqual(sections["latest_tools"][2].id, "last_human")
+        # Check content of recent (includes the complete tool sequence)
+        self.assertIsInstance(sections["recent"][0], AIMessage)
+        self.assertIsInstance(sections["recent"][1], HumanMessage)
+        self.assertIsInstance(sections["recent"][2], HumanMessage)
+        self.assertEqual(sections["recent"][0].id, "ai_msg")
+        self.assertEqual(sections["recent"][1].id, "human_tool_response")
+        self.assertEqual(sections["recent"][2].id, "last_human")
 
-        # Check content of recent (only messages before tool sequence)
-        self.assertEqual(len(sections["recent"]), 1)
-        self.assertIsNone(sections["recent"][0].id)  # Initial user input
+        # Check content of historical (initial user input before tool sequence)
+        self.assertEqual(len(sections["historical"]), 1)
+        self.assertIsNone(sections["historical"][0].id)  # Initial user input
 
 
 # Mock utilities

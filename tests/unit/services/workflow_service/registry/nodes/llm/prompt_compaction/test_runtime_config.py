@@ -35,9 +35,7 @@ class TestRuntimeConfigConstruction(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": self._generate_test_messages(5),
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(3),
         }
 
@@ -65,9 +63,7 @@ class TestRuntimeConfigConstruction(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": self._generate_test_messages(5),
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(3),
         }
 
@@ -95,9 +91,7 @@ class TestRuntimeConfigPropagation(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": [],
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(3),
         }
 
@@ -127,9 +121,7 @@ class TestRuntimeConfigPropagation(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": self._generate_test_messages(10),
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(3),
         }
 
@@ -156,9 +148,7 @@ class TestRuntimeConfigPropagation(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": self._generate_test_messages(10),
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(3),
         }
 
@@ -195,9 +185,7 @@ class TestRuntimeConfigPropagation(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": self._generate_test_messages(20),
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(5),
         }
 
@@ -228,9 +216,7 @@ class TestRuntimeConfigExtraction(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": [],
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(3),
         }
 
@@ -257,9 +243,7 @@ class TestRuntimeConfigExtraction(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": [],
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(3),
         }
 
@@ -286,9 +270,7 @@ class TestRuntimeConfigExtraction(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": [],
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(3),
         }
 
@@ -314,9 +296,7 @@ class TestRuntimeConfigExtraction(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": [],
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(3),
         }
 
@@ -349,9 +329,7 @@ class TestRuntimeConfigNone(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": self._generate_test_messages(10),
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(3),
         }
 
@@ -383,9 +361,7 @@ class TestRuntimeConfigNone(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": self._generate_test_messages(20),
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(5),
         }
 
@@ -439,9 +415,7 @@ class TestRuntimeConfigFlowEndToEnd(PromptCompactionUnitTestBase):
             "system": self._generate_test_messages(1, roles=["system"]),
             "summaries": [],
             "historical": self._generate_test_messages(15),
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(5),
         }
 

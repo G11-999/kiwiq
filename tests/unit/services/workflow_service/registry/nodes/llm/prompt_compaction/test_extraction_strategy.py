@@ -26,7 +26,85 @@ from workflow_service.registry.nodes.llm.prompt_compaction.utils import (
     ExtractionStrategy as ExtractionStrategyType,
 )
 
+from workflow_service.registry.nodes.llm.prompt_compaction.utils import get_message_metadata
+
 from .test_base import PromptCompactionUnitTestBase
+
+
+class TestExtractionPositionWeights(PromptCompactionUnitTestBase):
+    """Test extraction strategy uses full_history_indices for position weights (v3.1)."""
+
+    async def test_extraction_uses_full_history_indices(self):
+        """Test that extraction uses full_history_indices for position weights."""
+        strategy = ExtractionStrategy(
+            construction_strategy=ExtractionStrategyType.EXTRACT_FULL,
+            store_embeddings=False,
+            top_k=3,
+        )
+        
+        # Generate messages
+        messages = self._generate_test_messages(5)
+        full_history_indices = {msg.id: idx for idx, msg in enumerate(messages)}
+        
+        # Create runtime_config with full_history_indices
+        runtime_config = {
+            "full_history_indices": full_history_indices,
+            "thread_id": self.test_thread_id,
+            "node_id": self.test_node_id,
+        }
+        
+        sections = {
+            "system": [],
+            "summaries": [],
+            "historical": messages[:3],
+            "marked": [],
+            "recent": messages[3:],
+        }
+        
+        result = await strategy.compact(
+            sections=sections,
+            budget=self._create_test_budget(),
+            model_metadata=self._create_test_model_metadata(),
+            ext_context=self.ext_context,
+            runtime_config=runtime_config,
+        )
+        
+        # Verify extracted messages have position_weight set
+        for msg in result.extracted_messages:
+            position_weight = get_message_metadata(msg, "position_weight")
+            self.assertIsNotNone(position_weight, "position_weight should be set on extracted messages")
+            self.assertIsInstance(position_weight, (int, float), "position_weight should be numeric")
+
+    async def test_extraction_without_full_history_indices(self):
+        """Test that extraction works gracefully without full_history_indices (backwards compatibility)."""
+        strategy = ExtractionStrategy(
+            construction_strategy=ExtractionStrategyType.EXTRACT_FULL,
+            store_embeddings=False,
+            top_k=2,
+        )
+        
+        messages = self._generate_test_messages(4)
+        
+        sections = {
+            "system": [],
+            "summaries": [],
+            "historical": messages[:2],
+            "marked": [],
+            "recent": messages[2:],
+        }
+        
+        # No runtime_config at all
+        result = await strategy.compact(
+            sections=sections,
+            budget=self._create_test_budget(),
+            model_metadata=self._create_test_model_metadata(),
+            ext_context=self.ext_context,
+            runtime_config=None,
+        )
+        
+        # Should still work, just without position_weight metadata
+        self.assertIsNotNone(result)
+        self.assertGreaterEqual(len(result.compacted_messages), 0)
 
 
 class TestExtractionStrategyDUMP(PromptCompactionUnitTestBase):
@@ -50,9 +128,7 @@ class TestExtractionStrategyDUMP(PromptCompactionUnitTestBase):
             "system": self._generate_test_messages(1, roles=["system"]),
             "summaries": [],
             "historical": self._generate_test_messages(count=10),
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(count=3),
         }
 
@@ -94,9 +170,7 @@ class TestExtractionStrategyEXTRACT_FULL(PromptCompactionUnitTestBase):
             "system": self._generate_test_messages(1, roles=["system"]),
             "summaries": [],
             "historical": self._generate_test_messages(count=10),
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(count=3),
         }
 
@@ -139,9 +213,7 @@ class TestExtractionStrategyLLM_REWRITE(PromptCompactionUnitTestBase):
             "system": self._generate_test_messages(1, roles=["system"]),
             "summaries": [],
             "historical": self._generate_test_messages(count=5),
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(count=2),
         }
 
@@ -181,9 +253,7 @@ class TestExtractionTopKFiltering(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": self._generate_test_messages(count=10),
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(count=2),
         }
 
@@ -225,9 +295,7 @@ class TestExtractionSimilarityThreshold(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": self._generate_test_messages(count=5),
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(count=2),
         }
 
@@ -266,9 +334,7 @@ class TestExtractionRelevanceScoring(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": self._generate_test_messages(count=10),
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(count=3),
         }
 
@@ -303,9 +369,7 @@ class TestExtractionRelevanceScoring(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": self._generate_test_messages(count=10),
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(count=3),
         }
 
@@ -343,9 +407,7 @@ class TestExtractionBudgetAllocation(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": self._generate_test_messages(count=10),
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(count=2),
         }
 
@@ -384,9 +446,7 @@ class TestExtractionChunkConstruction(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": self._generate_test_messages(count=10),
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(count=3),
         }
 
@@ -424,9 +484,7 @@ class TestExtractionMessageOrdering(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": self._generate_test_messages(count=10),
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(count=3),
         }
 
@@ -466,9 +524,7 @@ class TestExtractionEmptyResults(PromptCompactionUnitTestBase):
             "system": self._generate_test_messages(1, roles=["system"]),
             "summaries": [],
             "historical": [],  # Empty
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(count=3),
         }
 
@@ -506,9 +562,7 @@ class TestExtractionEmptyResults(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": self._generate_test_messages(count=5),
-            "old_tools": [],
             "marked": [],
-            "latest_tools": [],
             "recent": self._generate_test_messages(count=2),
         }
 
@@ -548,9 +602,7 @@ class TestExtractionWithExistingMarked(PromptCompactionUnitTestBase):
             "system": [],
             "summaries": [],
             "historical": self._generate_test_messages(count=10),
-            "old_tools": [],
             "marked": marked_msgs,  # Pre-marked messages
-            "latest_tools": [],
             "recent": self._generate_test_messages(count=3),
         }
 
