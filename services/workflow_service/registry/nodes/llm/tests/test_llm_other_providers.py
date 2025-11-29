@@ -355,62 +355,62 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
 
     # --- Gemini Tests ---
 
-    # async def test_gemini_pro_exp_text_reasoning(self):
-    #     """Test Gemini 2.5 Pro Exp with text output and reasoning (thinking model)."""
-    #     if not hasattr(GeminiModels, "GEMINI_2_5_PRO"):
-    #          self.skipTest("GeminiModels.GEMINI_2_5_PRO not defined in enum.")
+    async def test_gemini_pro_exp_text_reasoning(self):
+        """Test Gemini 2.5 Pro Exp with text output and reasoning (thinking model)."""
+        if not hasattr(GeminiModels, "GEMINI_2_5_PRO"):
+             self.skipTest("GeminiModels.GEMINI_2_5_PRO not defined in enum.")
 
-    #     result = await arun_llm_test(
-    #         runtime_config=self.runtime_config_regular,
-    #         model_provider=LLMModelProvider.GEMINI,
-    #         model_name=GeminiModels.GEMINI_2_5_PRO.value,
-    #         output_schema_config=None, # Text output
-    #         # Gemini reasoning config might differ, test without specific reasoning flags first
-    #         # reasoning_config={ # Example, adjust if Gemini uses different keys
-    #         #     "reasoning_effort_class": "low"
-    #         # }
-    #         user_prompt="Explain the concept of quantum entanglement simply."
-    #     )
-    #     self.assertIsInstance(result, dict)
-    #     self.assertIn("content", result)
+        result = await arun_llm_test(
+            runtime_config=self.runtime_config_regular,
+            model_provider=LLMModelProvider.GEMINI,
+            model_name=GeminiModels.GEMINI_2_5_PRO.value,
+            output_schema_config=None, # Text output
+            # Gemini reasoning config might differ, test without specific reasoning flags first
+            # reasoning_config={ # Example, adjust if Gemini uses different keys
+            #     "reasoning_effort_class": "low"
+            # }
+            user_prompt="Explain the concept of quantum entanglement simply."
+        )
+        self.assertIsInstance(result, dict)
+        self.assertIn("content", result)
         
-    #     self.assertIn("metadata", result)
-    #     self.assertIsInstance(result["content"], str)
-    #     print("\n\n", result["content"], "\n\n")
-    #     # import ipdb; ipdb.set_trace()
-    #     self.assertGreater(len(result["content"]), 0)
+        self.assertIn("metadata", result)
+        self.assertIsInstance(result["content"], str)
+        print("\n\n", result["content"], "\n\n")
+        # import ipdb; ipdb.set_trace()
+        self.assertGreater(len(result["content"]), 0)
 
-    # async def test_gemini_pro_exp_structured_reasoning(self):
-    #     """Test Gemini 2.5 Pro Exp with structured output and reasoning (thinking model)."""
-    #     if not hasattr(GeminiModels, "GEMINI_2_5_PRO"):
-    #          self.skipTest("GeminiModels.GEMINI_2_5_PRO not defined in enum.")
+    async def test_gemini_pro_exp_structured_reasoning(self):
+        """Test Gemini 2.5 Pro Exp with structured output and reasoning (thinking model)."""
+        if not hasattr(GeminiModels, "GEMINI_2_5_PRO"):
+             self.skipTest("GeminiModels.GEMINI_2_5_PRO not defined in enum.")
 
-    #     dynamic_schema_spec = ConstructDynamicSchema(
-    #          schema_name="GeminiReasoningStructSchema",
-    #          fields={
-    #              "explanation": DynamicSchemaFieldConfig(type="str", required=True, description="The explanation."),
-    #              "key_points": DynamicSchemaFieldConfig(type="list", items_type="str", required=True, description="Key takeaways.")
-    #          }
-    #     )
-    #     schema_config = LLMStructuredOutputSchema(dynamic_schema_spec=dynamic_schema_spec)
+        dynamic_schema_spec = ConstructDynamicSchema(
+             schema_name="GeminiReasoningStructSchema",
+             fields={
+                 "explanation": DynamicSchemaFieldConfig(type="str", required=True, description="The explanation."),
+                 "key_points": DynamicSchemaFieldConfig(type="list", items_type="str", required=True, description="Key takeaways.")
+             }
+        )
+        schema_config = LLMStructuredOutputSchema(dynamic_schema_spec=dynamic_schema_spec)
 
-    #     result = await arun_llm_test(
-    #         runtime_config=self.runtime_config_regular,
-    #         model_provider=LLMModelProvider.GEMINI,
-    #         model_name=GeminiModels.GEMINI_2_5_PRO.value,
-    #         output_schema_config=schema_config, # Structured output
-    #         # reasoning_config={ # Example, adjust if Gemini uses different keys
-    #         #     "reasoning_effort_class": "low"
-    #         # },
-    #         user_prompt="Explain the theory of relativity simply and list key points."
-    #     )
-    #     self.assertIsInstance(result, dict)
-    #     self.assertIn("structured_output", result)
-    #     self.assertIn("metadata", result)
-    #     self.assertIsInstance(result["structured_output"], dict)
-    #     self.assertIn("explanation", result["structured_output"])
-    #     self.assertIn("key_points", result["structured_output"])
-    #     self.assertIsInstance(result["structured_output"]["key_points"], list)
+        result = await arun_llm_test(
+            runtime_config=self.runtime_config_regular,
+            model_provider=LLMModelProvider.GEMINI,
+            model_name=GeminiModels.GEMINI_2_5_PRO.value,
+            output_schema_config=schema_config, # Structured output
+            # reasoning_config={ # Example, adjust if Gemini uses different keys
+            #     "reasoning_effort_class": "low"
+            # },
+            user_prompt="Explain the theory of relativity simply and list key points."
+        )
+        self.assertIsInstance(result, dict)
+        self.assertIn("structured_output", result)
+        self.assertIn("metadata", result)
+        self.assertIsInstance(result["structured_output"], dict)
+        self.assertIn("explanation", result["structured_output"])
+        self.assertIn("key_points", result["structured_output"])
+        self.assertIsInstance(result["structured_output"]["key_points"], list)
 
     # async def test_gemini_flash_text(self):
     #     """Test Gemini 2.5 Flash with text output (non-thinking model)."""
@@ -682,49 +682,49 @@ class TestBasicLLMWorkflow(unittest.IsolatedAsyncioTestCase):
     #     self.assertIsNotNone(result["web_search_result"])
     #     self.assertIsInstance(result["web_search_result"].get("citations"), list)
 
-    async def test_perplexity_structured_output_reasoning_model(self):
-        """Test Perplexity Sonar Reasoning Pro with structured output and web search."""
-        if not hasattr(PerplexityModels, "SONAR_REASONING_PRO"):
-             self.skipTest("PerplexityModels.SONAR_REASONING_PRO not defined in enum.")
+    # async def test_perplexity_structured_output_reasoning_model(self):
+    #     """Test Perplexity Sonar Reasoning Pro with structured output and web search."""
+    #     if not hasattr(PerplexityModels, "SONAR_REASONING_PRO"):
+    #          self.skipTest("PerplexityModels.SONAR_REASONING_PRO not defined in enum.")
 
-        # Define the structured output schema based on the user's example fields
-        dynamic_schema_spec = ConstructDynamicSchema(
-             schema_name="PerplexitySearchStructSchema",
-             fields={
-                 "summary": DynamicSchemaFieldConfig(type="str", required=True, description="Content of the response"),
-                 "key_findings": DynamicSchemaFieldConfig(type="list", items_type="str", required=True, description="List of key findings from the search"), # Changed to list
-                 "citations": DynamicSchemaFieldConfig(type="list", items_type="str", required=True, description="List of citations from the search results") # Changed to list
-             }
-        )
-        schema_config = LLMStructuredOutputSchema(dynamic_schema_spec=dynamic_schema_spec)
+    #     # Define the structured output schema based on the user's example fields
+    #     dynamic_schema_spec = ConstructDynamicSchema(
+    #          schema_name="PerplexitySearchStructSchema",
+    #          fields={
+    #              "summary": DynamicSchemaFieldConfig(type="str", required=True, description="Content of the response"),
+    #              "key_findings": DynamicSchemaFieldConfig(type="list", items_type="str", required=True, description="List of key findings from the search"), # Changed to list
+    #              "citations": DynamicSchemaFieldConfig(type="list", items_type="str", required=True, description="List of citations from the search results") # Changed to list
+    #          }
+    #     )
+    #     schema_config = LLMStructuredOutputSchema(dynamic_schema_spec=dynamic_schema_spec)
 
-        result = await arun_llm_test(
-            runtime_config=self.runtime_config_regular,
-            model_provider=LLMModelProvider.PERPLEXITY,
-            model_name=PerplexityModels.SONAR.value,  # SONAR_REASONING_PRO  SONAR_DEEP_RESEARCH  SONAR
-            output_schema_config=schema_config, # Structured output
-            web_search_options={
-                "search_recency_filter": "month",
-                "search_context_size": "low",  # small  medium
-                "search_domain_filter": ["arxiv.org", "openai.com"]
-            },
-            # THE below prompt circumvents the deep researcher's output constraint in system prompt of 10K report size!
-            user_prompt="What are the latest developments in AI safety research? Provide a summary, key findings, and citations. NOTE: since I want structured output, you don't need to do deep research, but just stop after acumulating 500 words, I need brief answer and don't write a 10,000 word report since that is not required and I'm not giving you enough context for it so it will be gibberish and not very useful either!",
-            max_tokens=15000
-        )
-        print(json.dumps(result["metadata"], indent=4))
-        import ipdb; ipdb.set_trace()
-        self.assertIsInstance(result, dict)
-        self.assertIn("structured_output", result)
-        self.assertIn("metadata", result)
-        self.assertIsInstance(result["structured_output"], dict)
-        self.assertIn("summary", result["structured_output"])
-        self.assertIn("key_findings", result["structured_output"])
-        self.assertIsInstance(result["structured_output"]["key_findings"], list)
-        self.assertIn("citations", result["structured_output"])
-        self.assertIsInstance(result["structured_output"]["citations"], list)
-        self.assertIn("web_search_result", result) # Expect search results metadata as well
-        self.assertIsNotNone(result["web_search_result"])
+    #     result = await arun_llm_test(
+    #         runtime_config=self.runtime_config_regular,
+    #         model_provider=LLMModelProvider.PERPLEXITY,
+    #         model_name=PerplexityModels.SONAR.value,  # SONAR_REASONING_PRO  SONAR_DEEP_RESEARCH  SONAR
+    #         output_schema_config=schema_config, # Structured output
+    #         web_search_options={
+    #             "search_recency_filter": "month",
+    #             "search_context_size": "low",  # small  medium
+    #             "search_domain_filter": ["arxiv.org", "openai.com"]
+    #         },
+    #         # THE below prompt circumvents the deep researcher's output constraint in system prompt of 10K report size!
+    #         user_prompt="What are the latest developments in AI safety research? Provide a summary, key findings, and citations. NOTE: since I want structured output, you don't need to do deep research, but just stop after acumulating 500 words, I need brief answer and don't write a 10,000 word report since that is not required and I'm not giving you enough context for it so it will be gibberish and not very useful either!",
+    #         max_tokens=15000
+    #     )
+    #     print(json.dumps(result["metadata"], indent=4))
+    #     import ipdb; ipdb.set_trace()
+    #     self.assertIsInstance(result, dict)
+    #     self.assertIn("structured_output", result)
+    #     self.assertIn("metadata", result)
+    #     self.assertIsInstance(result["structured_output"], dict)
+    #     self.assertIn("summary", result["structured_output"])
+    #     self.assertIn("key_findings", result["structured_output"])
+    #     self.assertIsInstance(result["structured_output"]["key_findings"], list)
+    #     self.assertIn("citations", result["structured_output"])
+    #     self.assertIsInstance(result["structured_output"]["citations"], list)
+    #     self.assertIn("web_search_result", result) # Expect search results metadata as well
+    #     self.assertIsNotNone(result["web_search_result"])
 
     # async def test_perplexity_text_output_non_reasoning_model(self):
     #     """Test Perplexity Sonar Pro with text output and web search."""

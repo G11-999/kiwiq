@@ -229,6 +229,62 @@ async def run_untrusted_docker(
         output_dir: <persisted_dir or temp_dir>,
         job_id
       }
+    
+    TODO: FIXME: CRITICAL: SECURITY: limit max writes
+
+    2. Use a size-limited tmpfs for /work/out (Simpler, works everywhere)
+    Instead of mounting a host directory for output, use a tmpfs with a size limit:
+    # In run_untrusted_docker(), modify the mounts:
+    cmd = [
+        "docker", "run", "--rm", "-i",
+        "--read-only",
+        # ... existing options ...
+        # Mount only code and inputs from host (read-only)
+        "-v", f"{host_temp_dir}/code.py:/work/code.py:ro",
+        "-v", f"{host_temp_dir}/inputs:/work/inputs:ro",
+        # Use size-limited tmpfs for output
+        "--tmpfs", f"/work/out:rw,size={max_output_mb}m,mode=1777,uid=10001,gid=10001",
+        "--tmpfs", "/tmp:rw,size=32m,mode=1777",
+        # ...
+    ]
+    Caveat: Output files live only in container memory and are lost when the container exits. You'd need to copy them out before the container stops (e.g., via docker cp or having the runner script output them to stdout).
+
+    Recommended Implementation
+    The tmpfs approach (#2) is the simplest and most portable. Here's how to integrate it into your code:
+    # In code_runner_node.py, add to CodeRunnerConfigSchema:
+    max_output_mb: int = Field(
+        50,
+        description="Maximum output directory size in MB"
+    )
+    # In run_untrusted_docker(), modify the command construction:
+    async def run_untrusted_docker(
+        # ... existing params ...
+        max_output_mb: int = 50,  # Add this parameter
+    ):
+        # ... setup code ...
+        
+        # Build docker command with size-limited output
+        cmd = [
+            "docker", "run", "--rm", "-i",
+            "--read-only",
+            "--cap-drop=ALL",
+            "--pids-limit", "128",
+            "--security-opt", "no-new-privileges",
+            "--user", "10001:10001",
+            "--cpus", str(cpus),
+            "--memory", f"{mem_mb}m",
+            "--memory-swap", f"{mem_mb}m",
+            "--ulimit", "nofile=64:64",
+            # Size-limited tmpfs for temp and output
+            "--tmpfs", "/tmp:rw,size=32m,mode=1777",
+            "--tmpfs", f"/work/out:rw,size={max_output_mb}m,mode=1777,uid=10001,gid=10001",
+            # Mount code and inputs read-only from host
+            "-v", f"{host_temp_dir}/code.py:/work/code.py:ro",
+            "-v", f"{host_temp_dir}/inputs:/work/inputs:ro",
+        ]
+        cmd += ["--network", docker_network if allow_net else "none"]
+        cmd.append(RUNNER_IMAGE)
+    The key tradeoff: with tmpfs for output, you need to extract files before the container exits. You could modify the runner to base64-encode small outputs in the JSON response, or use docker cp after execution but before --rm cleanup. Would you like me to implement one of these approaches fully?
     """
     logger = logger or logging.getLogger(__name__) 
     host_temp_dir = host_temp_dir or temp_dir

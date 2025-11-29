@@ -365,7 +365,8 @@ The `LLMNode` has a rich set of configuration options nested within the `node_co
 
 Provide input via incoming `EdgeSchema` mappings:
 
--   **`messages_history`** (List[Message Object]): The recommended way for multi-turn conversations. Provide a list of past message objects (usually from a previous `LLMNode`'s `current_messages` output or manually constructed). Expected format (similar to LangChain Message types): `[{ "type": "human", "content": "..." }, { "type": "ai", "content": "..." }, ...]` including `system` and `tool` types. Overrides `user_prompt` and `system_prompt` if provided.
+-   **`messages_history`** (List[Message Object]): The recommended way for multi-turn conversations. Provide a list of past message objects (usually from a previous `LLMNode`'s `current_messages` output or manually constructed). Expected format (similar to LangChain Message types): `[{ "type": "human", "content": "..." }, { "type": "ai", "content": "..." }, ...]` including `system` and `tool` types. Overrides `user_prompt` and `system_prompt` if provided. **For iterative compaction:** This should always contain the full uncompacted history for context tracking across all conversation turns.
+-   **`summarized_messages`** (List[Message Object], Optional): **For iterative compaction:** Summarized/compacted message history from the previous turn. When provided, this will be used as the base for compaction instead of `messages_history`, enabling progressive reduction across multiple conversation turns. The compaction system will build upon the previous turn's compaction result rather than starting from scratch. Leave empty/null on the first turn. See the "Continuous Iterative Compaction" section below for configuration details.
 -   **`user_prompt`** (str, Optional): A simple text prompt. Used if `messages_history` is not provided.
 -   **`system_prompt`** (str, Optional): A specific system message for this call. Overrides `default_system_prompt` in the config. Only used if `messages_history` is not provided.
 -   **`tool_outputs`** (List[Tool Output Object], Optional): Required if the *previous* turn resulted in `tool_calls` from this LLM. Provide the results here as a list of objects: `[{ "name": "...", "tool_call_id": "...", "content": "...result...", "status": "success", "type": "tool", "error_message": null, "state_changes": null }, ...]`. Match `tool_call_id` from the request.
@@ -393,6 +394,7 @@ The node produces data matching the `LLMNodeOutputSchema`:
 -   **`structured_output`** (Dict[str, Any] | `null`): If `output_schema` was configured (and the model successfully produced compliant output), this holds the parsed JSON object matching the schema. `null` otherwise or if parsing failed.
 -   **`tool_calls`** (List[`ToolCall`] | `null`): If the LLM requested tool calls, this list contains objects with `tool_name`, `tool_input` (arguments dict), and `tool_id`. `null` otherwise. **Note:** Internal calls used by some providers for structured output (e.g., by Anthropic) are filtered out and won't appear here; the result will be in `structured_output`.
 -   **`web_search_result`** (`WebSearchResult` | `null`): If web search was used (either via `web_search_options` or an inbuilt search tool), this field contains the results. It includes an optional list of `citations` (each with `url`, `title`, `snippet`, `timestamp`, and `metadata`) and potentially `search_metadata` from the provider. `null` if web search was not used or yielded no results. See `llm_node.py:_parse_search_results` and `_parse_citations_from_response` for parsing logic.
+-   **`summarized_messages`** (List[Message Object] | `null`): **For iterative compaction:** If prompt compaction was triggered during this turn, this field contains the compacted message history. Feed this into the next `LLMNode`'s `summarized_messages` input to enable progressive reduction across turns. If no compaction occurred (e.g., context limit not reached), this will be `null` - in which case continue using the previous turn's `summarized_messages` or fall back to `current_messages`. See the "Continuous Iterative Compaction" section below for usage patterns.
 
 ## Example (`GraphSchema`)
 
@@ -568,6 +570,342 @@ retrying with backup model: {backup_model_name}
 
 This includes the full response metadata, which for Anthropic models contains the `refusal_reason` explaining why the request was refused.
 
+## Continuous Iterative Compaction
+
+For multi-turn conversations (like chatbots, agents, or long-running workflows), the LLM Node supports **continuous iterative compaction** through the `summarized_messages` field. This enables progressive message reduction across multiple conversation turns, preventing the "starting from scratch" problem where each compaction ignores previous compaction work.
+
+### The Problem Without Iterative Compaction
+
+Without iterative compaction, each LLM turn would compact the entire full message history independently:
+
+```
+Turn 1: 50 messages → compact to 25 messages
+Turn 2: 60 messages (50 old + 10 new) → compact all 60 to 30 messages (wasteful!)
+Turn 3: 70 messages (60 old + 10 new) → compact all 70 to 35 messages (even more wasteful!)
+```
+
+This approach:
+- **Wastes compute & costs**: Re-compacts messages that were already compacted
+- **Loses progressive optimization**: Can't build summaries hierarchically
+- **Redundant ingestion**: Re-embeds messages into Weaviate that were already embedded
+- **Slower execution**: Each turn processes more messages than necessary
+
+### The Solution: Dual History Architecture
+
+The iterative compaction system maintains **two parallel message histories**:
+
+1. **Full History** (`messages_history`) - Complete uncompacted conversation
+   - Grows monotonically across all turns
+   - Never compacted or modified
+   - Used for ingestion, similarity search, and context tracking
+   - Always map `current_messages` → `messages_history` with `add_messages` reducer
+
+2. **Summarized History** (`summarized_messages`) - Progressively compacted messages
+   - Output from previous turn's compaction (if compaction occurred)
+   - Fed as input to current turn's compaction
+   - Enables iterative reduction across turns
+   - Always map `summarized_messages` → `summarized_messages` with `replace` reducer
+
+### How It Works
+
+**Turn 1: Initial Compaction**
+```
+Input:
+- messages_history: [msg1, msg2, ..., msg50]  (50 messages)
+- summarized_messages: null  (first turn - no previous compaction)
+
+Compaction triggers at 75% context usage:
+- Compacts all 50 messages → 25 compacted messages
+
+Output:
+- current_messages: [msg1, ..., msg50, ai_response]  (51 messages)
+- summarized_messages: [25 compacted messages]  (NEW!)
+```
+
+**Turn 2: Iterative Compaction**
+```
+Input:
+- messages_history: [msg1, ..., msg50, ai_response1, msg51, ..., msg60]  (61 messages)
+- summarized_messages: [25 compacted messages from Turn 1]  (reused!)
+
+Compaction logic:
+- Starts with 25 already-compacted messages (not 61!)
+- Identifies 11 new messages (msg51...msg60 + ai_response1) by comparing IDs
+- Only needs to process new messages + re-compact if needed
+- Prevents re-ingestion: messages already in Weaviate are skipped
+
+Output:
+- current_messages: [msg1, ..., msg60, ai_response1, ai_response2]  (62 messages)
+- summarized_messages: [20 compacted messages]  (progressive reduction!)
+```
+
+**Turn 3: Continued Iteration**
+```
+Input:
+- messages_history: [msg1, ..., msg62, ai_response2, msg63, ..., msg70]  (72 messages)
+- summarized_messages: [20 compacted messages from Turn 2]  (reused!)
+
+Compaction continues building on Turn 2's work:
+- Starts with 20 compacted messages
+- Identifies 11 new messages
+- Progressive summarization continues
+
+Output:
+- current_messages: [msg1, ..., msg70, ai_response2, ai_response3]  (73 messages)
+- summarized_messages: [18 compacted messages]  (further reduction!)
+```
+
+### Workflow Configuration
+
+To enable continuous iterative compaction in your workflow, configure both the **state reducers** and **edge mappings**:
+
+#### 1. State Reducers Configuration
+
+```json
+{
+  "state_reducers": {
+    "messages_history": "add_messages",      // Append-only: accumulates full history
+    "summarized_messages": "replace"         // Replace: latest compaction overwrites
+  }
+}
+```
+
+**Why these reducers?**
+- `messages_history` uses `add_messages` to build the complete uncompacted history across all turns
+- `summarized_messages` uses `replace` so each turn's compaction result overwrites the previous one
+- These work together to maintain dual histories efficiently
+
+#### 2. Edge Mappings Configuration
+
+For **edges connecting LLM nodes** in multi-turn conversations:
+
+```json
+{
+  "edges": [
+    {
+      "src_node_id": "llm_turn_1",
+      "dst_node_id": "llm_turn_2",
+      "mappings": [
+        // Full history: Append current turn's messages
+        {
+          "src_field": "current_messages",
+          "dst_field": "messages_history"
+        },
+        // Summarized history: Replace with latest compaction result
+        {
+          "src_field": "summarized_messages",
+          "dst_field": "summarized_messages"
+        }
+      ]
+    },
+    {
+      "src_node_id": "llm_turn_2",
+      "dst_node_id": "llm_turn_3",
+      "mappings": [
+        // Same pattern for subsequent turns
+        {"src_field": "current_messages", "dst_field": "messages_history"},
+        {"src_field": "summarized_messages", "dst_field": "summarized_messages"}
+      ]
+    }
+  ]
+}
+```
+
+**Important:** Map `summarized_messages` on **every** edge between LLM nodes, even if compaction doesn't trigger every turn. The field will be `null` when compaction doesn't occur, preserving the previous value due to the `replace` reducer.
+
+#### 3. Loop Patterns
+
+For workflows with **loops** (e.g., agentic workflows, HITL loops):
+
+```json
+{
+  "edges": [
+    {
+      "src_node_id": "llm_agent",
+      "dst_node_id": "tool_executor",
+      "mappings": [
+        {"src_field": "tool_calls", "dst_field": "tools_to_execute"}
+      ]
+    },
+    {
+      "src_node_id": "tool_executor",
+      "dst_node_id": "llm_agent",  // Loop back!
+      "mappings": [
+        // Continue both histories through the loop
+        {"src_field": "tool_outputs", "dst_field": "tool_outputs"},
+        {"src_field": "messages_history", "dst_field": "messages_history"},
+        {"src_field": "summarized_messages", "dst_field": "summarized_messages"}
+      ]
+    }
+  ],
+  "state_reducers": {
+    "messages_history": "add_messages",
+    "summarized_messages": "replace",
+    "tool_outputs": "add"  // Accumulate tool results
+  }
+}
+```
+
+### Re-Ingestion Prevention
+
+The iterative compaction system automatically prevents redundant Weaviate ingestion:
+
+- **Metadata Tracking**: Each message gets a `compaction.ingestion.ingested` flag after embedding
+- **ID-Based Deduplication**: Message IDs are checked before ingestion
+- **Cross-Turn Efficiency**: Messages ingested in Turn 1 are skipped in Turn 2
+- **Chunk Preservation**: Existing `chunk_id` values are preserved across turns
+
+This is completely automatic - no configuration needed.
+
+### Performance Benefits
+
+**Token Reduction Progression Example:**
+```
+Turn 1: 50 messages (40K tokens) → 25 messages (20K tokens)  | 50% reduction
+Turn 2: +10 new messages → 20 messages (16K tokens)          | Progressive: 60→20 (67% total)
+Turn 3: +10 new messages → 18 messages (14K tokens)          | Progressive: 70→18 (74% total)
+```
+
+**Without Iterative Compaction:**
+```
+Turn 1: 50 messages → 25 messages | 50% reduction
+Turn 2: 60 messages → 30 messages | Only 50% reduction (re-compacts Turn 1's work!)
+Turn 3: 70 messages → 35 messages | Only 50% reduction (re-compacts Turn 1 & 2's work!)
+```
+
+**Cost Savings:**
+- **Embedding costs**: Only new messages are embedded (not re-embedded)
+- **Summarization costs**: Only operates on net-new or remaining historical content
+- **API costs**: Fewer tokens sent to LLM providers
+- **Latency**: Faster compaction on subsequent turns
+
+### Advanced: Handling Null Values
+
+When `summarized_messages` is `null` (no compaction triggered yet):
+
+**Option 1: Workflow State Handling (Automatic)**
+```json
+{
+  "state_reducers": {
+    "summarized_messages": "replace"  // null replaces previous value (preserves it)
+  }
+}
+```
+With the `replace` reducer, if the current turn outputs `null`, the previous turn's value is preserved in the state.
+
+**Option 2: Conditional Mapping (Advanced)**
+Some workflows may need explicit handling:
+```json
+{
+  "edges": [
+    {
+      "src_node_id": "llm_node",
+      "dst_node_id": "conditional_mapper",
+      "mappings": [
+        {"src_field": "summarized_messages", "dst_field": "compacted_or_null"}
+      ]
+    }
+  ]
+}
+```
+Then use a transform node to fall back to `current_messages` if `compacted_or_null` is null.
+
+**Recommendation:** Use Option 1 (automatic with `replace` reducer) - it's simpler and works for 99% of cases.
+
+### Complete Working Example
+
+Here's a complete multi-turn chatbot workflow with iterative compaction:
+
+```json
+{
+  "nodes": {
+    "get_user_input": {
+      "node_id": "get_user_input",
+      "node_name": "input_node"
+    },
+    "chatbot": {
+      "node_id": "chatbot",
+      "node_name": "llm",
+      "node_config": {
+        "llm_config": {
+          "model_spec": {
+            "provider": "openai",
+            "model": "gpt-4o"
+          },
+          "temperature": 0.7,
+          "max_tokens": 1000
+        },
+        "prompt_compaction": {
+          "enabled": true,
+          "strategy": "HYBRID",
+          "context_budget": {
+            "summary_max_pct": 0.25,
+            "recent_messages_min_pct": 0.30,
+            "reserved_buffer_pct": 0.20
+          },
+          "llm_config": {
+            "default_provider": "openai",
+            "default_model": "gpt-4o-mini"
+          }
+        }
+      }
+    },
+    "output": {
+      "node_id": "output",
+      "node_name": "output_node"
+    }
+  },
+  "edges": [
+    {
+      "src_node_id": "get_user_input",
+      "dst_node_id": "chatbot",
+      "mappings": [
+        {"src_field": "user_message", "dst_field": "user_prompt"}
+      ]
+    },
+    {
+      "src_node_id": "chatbot",
+      "dst_node_id": "chatbot",  // Loop for multi-turn conversation
+      "mappings": [
+        // Maintain both histories
+        {"src_field": "current_messages", "dst_field": "messages_history"},
+        {"src_field": "summarized_messages", "dst_field": "summarized_messages"}
+      ]
+    },
+    {
+      "src_node_id": "chatbot",
+      "dst_node_id": "output",
+      "mappings": [
+        {"src_field": "text_content", "dst_field": "response"}
+      ]
+    }
+  ],
+  "state_reducers": {
+    "messages_history": "add_messages",      // Accumulate full conversation
+    "summarized_messages": "replace"         // Replace with latest compaction
+  },
+  "input_node_id": "get_user_input",
+  "output_node_id": "output"
+}
+```
+
+### Best Practices
+
+1. **Always map both histories**: Even when compaction may not trigger every turn, always map both `messages_history` and `summarized_messages` between LLM nodes.
+
+2. **Use appropriate reducers**: 
+   - `messages_history`: Always use `add_messages`
+   - `summarized_messages`: Always use `replace`
+
+3. **Enable extraction strategies**: Use `"HYBRID"` or `"EXTRACTIVE"` strategies with `store_embeddings: true` for maximum cross-turn efficiency.
+
+4. **Monitor compaction frequency**: Log entries like `"Triggering iterative compaction at 75.3% usage (summarized: 25, full history: 61)"` help you tune thresholds.
+
+5. **Test the full conversation flow**: Test workflows with multiple turns to verify progressive reduction is working as expected.
+
+6. **Consider tool-heavy workflows**: Tool sequences are never compacted and consume more context - ensure recent_messages budget can expand appropriately.
+
+
 ## Notes for Non-Coders
 
 -   Use `LLMNode` for AI tasks: writing, summarizing, Q&A, extraction, tool selection.
@@ -578,6 +916,7 @@ This includes the full response metadata, which for Anthropic models contains th
     *   **Default is good:** The default `"HYBRID"` strategy works well for most cases - it balances quality and speed.
     *   **Cost aware:** Compaction uses a cheaper AI model (default: `gpt-4o-mini`) to keep costs down. You can change this if needed.
     *   **Tool calls protected:** If the AI used tools (like web search or database queries), those are never compressed - they're too important.
+    *   **Smart memory across turns:** The system remembers what it already compressed in previous conversation turns, so it doesn't waste time re-compressing the same messages. To enable this, make sure your workflow maps both `messages_history` (full conversation) and `summarized_messages` (compressed version) between AI turns. See the "Continuous Iterative Compaction" section for details.
 -   **Set a Backup Model:** Configure `backup_model` in `model_spec` to automatically retry requests if the primary model refuses (important for Claude Sonnet 4.5 which refuses more often). The system will automatically try the backup model if the first one says no.
 -   **Control Creativity:** Use `temperature` (low=factual, high=creative).
 -   **Control Costs (Deep Research Only):** Use `max_tool_calls` to limit how many tools the AI can use - this is currently only available for OpenAI's Deep Research models.

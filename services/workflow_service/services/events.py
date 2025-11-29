@@ -52,6 +52,7 @@ class ToolCallEvent(WorkflowBaseEvent):
     tool_name: str
     status: str
 
+
 class NodeStatusEvent(WorkflowBaseEvent):
     """Event emitted when a node status changes."""
     event_type: WorkflowEvent = WorkflowEvent.NODE_STATUS
