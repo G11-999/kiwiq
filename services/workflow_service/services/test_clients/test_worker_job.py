@@ -12,9 +12,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # Load .env file from project root
-project_root = Path("/path/to/project")
+project_root = Path(__file__).resolve().parents[4]  # Go up to project root
 os.environ["HOST_PROJECT_PATH"] = str(project_root)
-# project_root = Path(__file__).resolve().parents[5]  # Go up 5 levels to kiwiq-backend/
 env_path = project_root / ".env"
 load_dotenv(dotenv_path=env_path)
 
@@ -94,9 +93,9 @@ async def test_flow_func(
         from kiwi_app.workflow_app.dependencies import get_workflow_service
         workflow_service = await get_workflow_service()
 
-        org_id = uuid.UUID("6d4f8ba9-e275-4846-8e5b-4d7f5ca14eef")
-        user_id = uuid.UUID("e0545083-938f-4231-a2f4-dfa0840d6dfb")
-        user_email = "admin@example.com"
+        org_id = uuid.UUID(os.getenv("TEST_ORG_ID", "00000000-0000-0000-0000-000000000001"))
+        user_id = uuid.UUID(os.getenv("TEST_USER_ID", "00000000-0000-0000-0000-000000000002"))
+        user_email = os.getenv("TEST_USER_EMAIL", "test@example.com")
         entity_username = "test_entity"
 
         from kiwi_app.auth import schemas as auth_schemas
@@ -206,7 +205,7 @@ async def test_flow_func(
 
 
 
-# PYTHONPATH=.:./services poetry run python /path/to/project/services/workflow_service/services/worker.py
+# PYTHONPATH=.:./services poetry run python services/workflow_service/services/worker.py
 import asyncio
 import json
 import uuid
@@ -295,22 +294,9 @@ NOTE: when passing JSON schemas (I think as JSON objects and not as str); prefec
 TO disable this behavior, pass the JSON schema as a str or set validate_parameters=False.
 
 Bug:
-2025-04-29 04:25:03,999 - httpx - INFO - HTTP Request: GET http://prefect-server:4200/api/csrf-token?client=d7b38bc1-50aa-4e36-a685-9b57ff26acff "HTTP/1.1 422 Unprocessable Entity"
-prefect-agent-dev  | 2025-04-29 04:25:04,003 - httpx - INFO - HTTP Request: PATCH http://prefect-server:4200/api/flow_runs/80b69977-b379-439b-9f0d-eb3cdf494c4f "HTTP/1.1 204 No Content"
-prefect-agent-dev  | 2025-04-29 04:25:04,025 - prefect.engine - ERROR - Validation of flow parameters failed with error: Failed to resolve block references in parameters.
-prefect-agent-dev  | 2025-04-29 04:25:04,042 - httpx - INFO - HTTP Request: POST http://prefect-server:4200/api/flow_runs/80b69977-b379-439b-9f0d-eb3cdf494c4f/set_state "HTTP/1.1 201 Created"
-prefect-agent-dev  | 2025-04-29 04:25:04,042 - prefect.engine - ERROR - Finished in state Failed('Validation of flow parameters failed with error: ParameterTypeError: Failed to resolve block references in parameters.')
-prefect-agent-dev  | 2025-04-29 04:25:04,043 - prefect.engine - ERROR - Execution of flow run '80b69977-b379-439b-9f0d-eb3cdf494c4f' exited with unexpected exception
-prefect-agent-dev  | Traceback (most recent call last):
-prefect-agent-dev  |   File "/usr/local/lib/python3.12/site-packages/prefect/blocks/core.py", line 878, in _get_block_document_by_id
-prefect-agent-dev  |     block_document_id = UUID(block_document_id)
-prefect-agent-dev  |                         ^^^^^^^^^^^^^^^^^^^^^^^
-prefect-agent-dev  |   File "/usr/local/lib/python3.12/uuid.py", line 178, in __init__
-prefect-agent-dev  |     raise ValueError('badly formed hexadecimal UUID string')
-prefect-agent-dev  | ValueError: badly formed hexadecimal UUID string
-prefect-agent-dev  |
-prefect-agent-dev  | During handling of the above exception, another exception occurred:
-prefect-agent-dev  |
+When passing JSON schemas as JSON objects (not as str), Prefect tries to resolve them as blocks and fails with $ref references.
+The error is "Failed to resolve block references in parameters" / "badly formed hexadecimal UUID string".
+The traceback originates from prefect/blocks/core.py _get_block_document_by_id trying to parse $ref as UUID.
 """
 
 

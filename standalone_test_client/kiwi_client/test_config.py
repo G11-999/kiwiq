@@ -13,7 +13,7 @@ load_dotenv()
 
 # --- Configuration ---
 # Replace with your actual API base URL
-BASE_HOST = "http://127.0.0.1:8000" if os.getenv("TEST_ENV") == "local" else "https://api.prod.kiwiq.ai"
+BASE_HOST = "http://127.0.0.1:8000" if os.getenv("TEST_ENV") == "local" else os.getenv("API_BASE_HOST", "https://api.prod.kiwiq.ai")
 API_BASE_URL = f"{BASE_HOST}/api/v1" # Example: http://localhost:8000
 
 # Data directory for output files
@@ -21,17 +21,15 @@ DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 os.makedirs(DATA_DIR, exist_ok=True)  # Create the directory if it doesn't exist
 
 # Replace with your test user credentials
-TEST_USER_EMAIL = os.getenv("TEST_USER_EMAIL", "admin@example.com")
+TEST_USER_EMAIL = os.getenv("TEST_USER_EMAIL", "test@example.com")
 TEST_USER_PASSWORD = os.getenv("TEST_USER_PASSWORD", "testpass")
 
 # NOTE: Important to also test with regular non-superuser User after registration!
-# TEST_USER_EMAIL = "admin@example.com"
-# TEST_USER_PASSWORD = "testpass"
 
 # Replace with a valid organization UUID accessible by the test user
 # This will be used for the X-Active-Org header
 # You might need to register the test user and create/find an org ID first.
-TEST_ORG_ID = uuid.UUID(os.getenv("TEST_ORG_ID", "a7e22f23-1829-4f65-b21c-fecab74ef948"))
+TEST_ORG_ID = uuid.UUID(os.getenv("TEST_ORG_ID", "00000000-0000-0000-0000-000000000001"))
 
 # --- Standard Headers ---
 BASE_HEADERS = {

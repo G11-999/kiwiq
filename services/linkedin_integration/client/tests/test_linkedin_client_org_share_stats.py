@@ -421,7 +421,7 @@ async def main() -> None:
     # Prompt user for necessary credentials.
     client_id = settings.LINKEDIN_CLIENT_ID
     client_secret = settings.LINKEDIN_CLIENT_SECRET
-    access_token = settings.LINKEDIN_ACCESS_TOKEN  # LINKEDIN_ACCESS_TOKEN  LINKEDIN_ACCESS_TOKEN
+    access_token = settings.LINKEDIN_ACCESS_TOKEN
     # urn:li:person:NxwL-IvR2n
     # urn:li:person:qUvas1UvE2
     version_input = settings.LINKEDIN_API_VERSION

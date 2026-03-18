@@ -34,8 +34,8 @@ Key innovation: Human input trains the system on company-specific voice/audience
 
 Key Personalizations to Research
 
-- **Google connections:** Founder A ex-Googler (Gemini team)
-- **Amazon connections:** Founder B ex-Amazonian
+- **BigTech connections:** Founder A ex-BigTech (ML team)
+- **BigTech connections:** Founder B ex-BigTech
 - **YC connections:** Founder B worked at YC startup, currently working with YC-backed companies
 - **AI/ML infrastructure thesis:** Multi-agent systems, LLM infrastructure, production ML
 - **Marketing tech thesis:** Experimentation platforms, marketing operations, GTM infrastructure

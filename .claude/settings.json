@@ -8,5 +8,9 @@
     ],
     "deny": [],
     "ask": []
+  },
+  "attribution": {
+    "commit": "",
+    "pr": ""
   }
 }

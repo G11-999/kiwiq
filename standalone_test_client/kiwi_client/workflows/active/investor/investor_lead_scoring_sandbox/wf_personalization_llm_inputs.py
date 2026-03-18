@@ -20,7 +20,7 @@ class PersonalizationOutput(BaseModel):
     personalization_reason_founder_a: str = Field(
         description="Brief explanation of why this Founder A perspective was chosen and what context informed it (2-3 sentences)."
     )
-    
+
     personalization_line_founder_a: str = Field(
         description="Personalization line from Founder A's perspective (1-2 sentences). Use 'I/my' referring to Founder A: ex-BigTech ML Lead, ex-Top Engineering University."
     )
@@ -30,7 +30,7 @@ class PersonalizationOutput(BaseModel):
     )
 
     personalization_line_founder_b: str = Field(
-        description="Personalization line from Founder B's perspective (1-2 sentences). Use 'I/my' referring to Founder B: eg ex-Amazon. Can reference Founder A as 'my co-founder led Gemini ML at Google'."
+        description="Personalization line from Founder B's perspective (1-2 sentences). Use 'I/my' referring to Founder B: eg ex-BigTech Product Lead. Can reference Founder A as 'my co-founder led ML at BigTech'."
     )
 
     
@@ -78,8 +78,8 @@ Match their stated thesis to your reality in 1-2 sentences. No fluff, no made-up
 - Write more than 2 sentences per line
 - Use generic compliments
 - **Confuse whose background you're referencing**:
-  - If Founder A line: DON'T say "ex Amazon"
-  - If Founder B line: DON'T say "I led Gemini ML at Google"
+  - If Founder A line: DON'T say "ex-BigTech Product Lead"
+  - If Founder B line: DON'T say "I led ML at BigTech"
 
 ### ✅ ALWAYS:
 - Use only facts explicitly provided in the investor context
@@ -88,8 +88,8 @@ Match their stated thesis to your reality in 1-2 sentences. No fluff, no made-up
 - If mentioning customers, say "our customers" not brand names
 - Keep it to the point (1-2 sentences max)
 - **Reference the correct founder's background**:
-  - Founder A line: "I led Gemini ML...", "I'm ex-IIT...", can say "Founder B (my co-founder) is ex-Amazon (eg only, reference the relevant found background)"
-  - Founder B line: "I'm ex-Amazon...", can say "Founder A (my co-founder) led Gemini ML at Google"
+  - Founder A line: "I led ML at BigTech...", "I'm ex-Top Engineering University...", can say "my co-founder is ex-BigTech Product Lead (eg only, reference the relevant founder background)"
+  - Founder B line: "I'm ex-BigTech Product Lead...", can say "my co-founder led ML at BigTech"
 
 ---
 
@@ -156,13 +156,13 @@ Match their stated founder criteria to actual backgrounds.
 **Formula:** `[What they look for] → [Sender's specific proof OR both founders' proof]`
 
 **Founder A line examples:**
-- "You look for technical founders — I led Gemini ML at Google, shipped to 100M+ users."
-- "You back xooglers — I'm from Gemini team, Founder B is a marketing expert, we combined ML + domain expertise."
-- "You wrote you want IIT founders who can execute — Top Engineering University, built production systems at Google, now shipping agents."
+- "You look for technical founders — I led ML at BigTech, shipped to 100M+ users."
+- "You back xooglers — I'm from BigTech ML team, Founder B is a marketing expert, we combined ML + domain expertise."
+- "You wrote you want top-school founders who can execute — Top Engineering University, built production systems at BigTech, now shipping agents."
 
 **Founder B line examples:**
 - "You look for operators who saw the problem — While embedded with X B2B founders for 6 months for content marketing, I watched clients drown in tool chaos.",
-- "Your memo says 'domain experts who code' — I built marketing intelligence products at Amazon and YC startups, Founder A built production ML at Google."
+- "Your memo says 'domain experts who code' — I built marketing intelligence products at BigTech and YC startups, Founder A built production ML at BigTech."
 - "You back second-time operators — I ran 50+ client campaigns, learned the orchestration gaps before building."
 
 ### 6. PERSONAL CONNECTION ⭐
@@ -171,13 +171,13 @@ Shared background that's relevant to the problem.
 **Formula:** `[Shared background] → [Why it matters for this company]`
 
 **Founder A line examples:**
-- "Fellow xoogler — I saw how Google coordinates thousands of launches, bringing that to marketing teams."
-- "You backed 3 IIT founders — I'm Top Engineering University, built this after seeing marketing teams drown in tools."
-- "You're ex-Google — you know how complex coordination works at scale, that's what marketing teams need."
+- "Fellow BigTech alum — I saw how BigTech coordinates thousands of launches, bringing that to marketing teams."
+- "You backed 3 top-school founders — I'm Top Engineering University, built this after seeing marketing teams drown in tools."
+- "You're ex-BigTech — you know how complex coordination works at scale, that's what marketing teams need."
 
 **Founder B line examples:**
-- "You're ex-Amazon — so am I. Saw how rigid launch processes broke, we're making them flexible with agents."
-- "Fellow ex-Amazon — you know how cross-functional launches work at scale, that's what we're building for marketing."
+- "You're ex-BigTech Product Lead — so am I. Saw how rigid launch processes broke, we're making them flexible with agents."
+- "Fellow ex-BigTech Product Lead — you know how cross-functional launches work at scale, that's what we're building for marketing."
 
 ---
 
@@ -210,7 +210,7 @@ You must generate TWO complete personalization lines:
 
 1. **Founder A's perspective**: Use "I/my" referring to Founder A (ex-BigTech ML Lead, ex-Top Engineering University).
 
-2. **Founder B's perspective**: Use "I/my" referring to Founder B (ex-Amazon). Can reference "Founder A (my co-founder) led Gemini ML at Google" if relevant.
+2. **Founder B's perspective**: Use "I/my" referring to Founder B (ex-BigTech Product Lead). Can reference "Founder A (my co-founder) led ML at BigTech" if relevant.
 
 Each line should:
 - Be 1-2 sentences maximum

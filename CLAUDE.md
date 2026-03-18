@@ -105,7 +105,7 @@ kiwiq-backend/
 
 4. **Access API documentation:**
    - Local: http://localhost:8000/docs
-   - Production: https://api.prod.kiwiq.ai/docs
+   - Production: Configure via API_BASE_HOST env var
 
 ### Python Path Configuration
 
@@ -377,8 +377,8 @@ graph LR
 
 ### API Authentication
 - Production uses JWT tokens
-- Test workflows typically use `admin@example.com`
-- API endpoint: `https://api.prod.kiwiq.ai`
+- Test workflows typically use the test user email configured in .env (TEST_USER_EMAIL)
+- API endpoint: Configure via API_BASE_HOST env var (defaults to production URL)
 
 ## Key Documentation
 

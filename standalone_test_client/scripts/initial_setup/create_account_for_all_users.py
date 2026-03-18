@@ -32,73 +32,17 @@ USERS_TO_CREATE = [
     # {
     #     'email': 'user1@example.com',
     #     'password': 'SecurePassword#123',
-    #     'full_name': 'Alejandra',
+    #     'full_name': 'Test User 1',
     #     'is_verified': True,
     #     'is_superuser': False
     # },
     # {
     #     'email': 'user2@example.com',
     #     'password': 'SecurePassword#123',
-    #     'full_name': 'Test User',
+    #     'full_name': 'Test User 2',
     #     'is_verified': True,
     #     'is_superuser': False
     # },
-    # {
-    #     'email': 'user3@example.com',
-    #     'password': 'SecurePassword#123',
-    #     'full_name': 'Jason',
-    #     'is_verified': True,
-    #     'is_superuser': False
-    # },
-    # {
-    #     'email': 'user4@example.com',
-    #     'password': 'SecurePassword#123',
-    #     'full_name': 'Thomas',
-    #     'is_verified': True,
-    #     'is_superuser': False
-    # },
-    # {
-    #     'email': 'user5@example.com',
-    #     'password': 'SecurePassword#123',
-    #     'full_name': 'Damon',
-    #     'is_verified': True,
-    #     'is_superuser': False
-    # },
-    # {
-    #     'email': 'user6@example.com',
-    #     'password': 'SecurePassword#123',
-    #     'full_name': 'Mahak',
-    #     'is_verified': True,
-    #     'is_superuser': False
-    # },
-    # {
-    #     'email': 'user7@example.com',
-    #     'password': 'SecurePassword#123',
-    #     'full_name': 'Test User',
-    #     'is_verified': True,
-    #     'is_superuser': False
-    # },
-    # {
-    #     'email': 'user8@example.com',
-    #     'password': 'SecurePassword#123',
-    #     'full_name': 'Test User',
-    #     'is_verified': True,
-    #     'is_superuser': False
-    # },
-    # {
-    #     'email': 'user9@example.com',
-    #     'password': 'SecurePassword#123',
-    #     'full_name': 'Founder B',
-    #     'is_verified': True,
-    #     'is_superuser': False
-    # },
-    # {
-    #     'email': 'user10@example.com',
-    #     'password': 'SecurePassword#123',
-    #     'full_name': 'Gaurav Kumar',
-    #     'is_verified': True,
-    #     'is_superuser': False
-    # }
 ]
 
 

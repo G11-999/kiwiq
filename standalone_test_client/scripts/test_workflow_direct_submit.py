@@ -21,43 +21,43 @@ workflow_key = "orchestrator_workflow"
 
 workflow_inputs = {
     "entity_username": "example-user-1",  # LinkedIn username
-    "company_name": "Entelligence.ai",  # Company name for analysis
-    "run_linkedin_exec": True,  # Execute LinkedIn workflows
-    "run_blog_analysis": True,  # Skip company workflows for now
-    "linkedin_profile_url": "https://www.linkedin.com/in/example-user-1/",  # LinkedIn URL
-    "company_url": "https://www.entelligence.ai/",  # Company website URL (optional)
-    "blog_start_urls": ["https://www.entelligence.ai/"] # Example blog start URL
-}
-
-workflow_inputs_1 = {
-    "entity_username": "example-user-2-1a4b25172",  # LinkedIn username
     "company_name": "ExampleCorp",  # Company name for analysis
     "run_linkedin_exec": True,  # Execute LinkedIn workflows
     "run_blog_analysis": True,  # Skip company workflows for now
-    "linkedin_profile_url": "https://www.linkedin.com/in/example-user-2-1a4b25172/",  # LinkedIn URL
-    "company_url": "https://www.gumloop.com/blog",  # Company website URL (optional)
-    "blog_start_urls": ["https://www.gumloop.com/blog"], # Example blog start URL
+    "linkedin_profile_url": "https://www.linkedin.com/in/example-user-1/",  # LinkedIn URL
+    "company_url": "https://www.example.com/",  # Company website URL (optional)
+    "blog_start_urls": ["https://www.example.com/blog"] # Example blog start URL
+}
+
+workflow_inputs_1 = {
+    "entity_username": "example-user-2",  # LinkedIn username
+    "company_name": "ExampleCorp",  # Company name for analysis
+    "run_linkedin_exec": True,  # Execute LinkedIn workflows
+    "run_blog_analysis": True,  # Skip company workflows for now
+    "linkedin_profile_url": "https://www.linkedin.com/in/example-user-2/",  # LinkedIn URL
+    "company_url": "https://www.example.com/blog",  # Company website URL (optional)
+    "blog_start_urls": ["https://www.example.com/blog"], # Example blog start URL
     "include_only_paths": ["/blog*"],
 }
 
 workflow_inputs_2 = {
     "entity_username": "example-user-3",  # LinkedIn username
-    "company_name": "Astronomer",  # Company name for analysis
+    "company_name": "ExampleCorp2",  # Company name for analysis
     "run_linkedin_exec": True,  # Execute LinkedIn workflows
     "run_blog_analysis": True,  # Skip company workflows for now
     "linkedin_profile_url": "https://www.linkedin.com/in/example-user-3/",  # LinkedIn URL
-    "company_url": "https://www.astronomer.io/blog",  # Company website URL (optional)
-    "blog_start_urls": ["https://www.astronomer.io/blog"] # Example blog start URL
+    "company_url": "https://www.example2.com/blog",  # Company website URL (optional)
+    "blog_start_urls": ["https://www.example2.com/blog"] # Example blog start URL
 }
 
 workflow_inputs_3 = {
     "entity_username": "example-user-4",  # LinkedIn username
-    "company_name": "hex",  # Company name for analysis
+    "company_name": "ExampleCorp3",  # Company name for analysis
     "run_linkedin_exec": True,  # Execute LinkedIn workflows
     "run_blog_analysis": True,  # Skip company workflows for now
     "linkedin_profile_url": "https://www.linkedin.com/in/example-user-4/",  # LinkedIn URL
-    "company_url": "https://hex.tech/blog/",  # Company website URL (optional)
-    "blog_start_urls": ["https://hex.tech/blog/"] # Example blog start URL
+    "company_url": "https://www.example3.com/blog/",  # Company website URL (optional)
+    "blog_start_urls": ["https://www.example3.com/blog/"] # Example blog start URL
 }
 
 workflow_inputs = [workflow_inputs_1]  # , workflow_inputs_2, workflow_inputs_3

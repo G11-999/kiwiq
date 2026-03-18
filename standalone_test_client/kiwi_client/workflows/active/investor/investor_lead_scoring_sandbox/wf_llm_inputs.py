@@ -986,7 +986,7 @@ Apply scoring rigorously based on evidence. Be conservative but fair.
    - **Functional Expertise** (0-25 pts): Domain expertise + relevance to MarTech/AI
    - **VC Network Access** (0-20 pts): VC ecosystem integration + portfolio success
    - **Check Activity & Size** (0-20 pts): Check frequency + typical check size
-   - **Shared Affinity** (0-22 pts): Educational + ex-Amazon/ex-Google + geographic/cultural + technical (all additive)
+   - **Shared Affinity** (0-22 pts): Educational + ex-BigTech/ex-Google + geographic/cultural + technical (all additive)
    - **Raw Total**: Sum all categories (max 112)
    - **Normalized Score**: raw_total / 1.12 (scale to 0-100)
 
@@ -1125,13 +1125,13 @@ class ANGEL_SharedAffinityScoring(BaseModel):
     educational_points: int = Field(ge=0, le=7, description="IIT=7, U-Michigan=7, Other top=4, None=0")
     educational_reasoning: str = Field(description="Explanation of educational connection scoring")
     
-    is_ex_amazon: bool = Field(description="Is ex-Amazon employee")
+    is_ex_amazon: bool = Field(description="Is ex-BigTech employee")
     ex_amazon_points: int = Field(ge=0, le=7, description="Ex-Amazon=7, None=0")
     
     is_ex_google: bool = Field(description="Is ex-Google employee")
     ex_google_points: int = Field(ge=0, le=7, description="Ex-Google=7, None=0")
     
-    ex_amazon_google_reasoning: str = Field(description="Explanation of ex-Amazon/Google scoring")
+    ex_amazon_google_reasoning: str = Field(description="Explanation of ex-BigTech/Google scoring")
     
     geographic_cultural_connection: str = Field(description="Geographic/cultural background (Indian/South Asian, Lived/worked India, None)")
     geographic_cultural_points: int = Field(ge=0, le=5, description="Indian/South Asian=5, Lived/worked India=3, None=0")
@@ -1141,7 +1141,7 @@ class ANGEL_SharedAffinityScoring(BaseModel):
     technical_background_points: int = Field(ge=0, le=3, description="Eng/CS degree=3, None=0")
     technical_background_reasoning: str = Field(description="Explanation of technical background scoring")
     
-    category_total: int = Field(ge=0, le=22, description="Shared Affinity total (education + ex-Amazon/Google + geo/cultural + technical, all additive)")
+    category_total: int = Field(ge=0, le=22, description="Shared Affinity total (education + ex-BigTech/Google + geo/cultural + technical, all additive)")
 
 class ANGEL_ActionableIntelligence(BaseModel):
     """Actionable intelligence for pitch preparation (8 sections from angel playbook)."""
@@ -1299,7 +1299,7 @@ Under the hood, it's built on a production-grade multi-agent platform with self-
 
 Chat? \[Cal link\]
 
-Cheers,  
+Cheers,
  Founder A
 
 P.S \- If there are any portfolio companies (B2B pre-seed → Series B) who might be good candidates to accelerate their thought leadership content efforts, we'd love to chat with them and help out :)

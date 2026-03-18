@@ -15,7 +15,7 @@ Column Ordering (Default):
 1. All input_* columns (alphabetically sorted)
 2. total_score
 3. recommended_action
-4. All personalization_* columns (raunak & anish variants)
+4. All personalization_* columns (founder_a & founder_b variants)
 5. Remaining columns (alphabetically sorted)
 
 Usage:

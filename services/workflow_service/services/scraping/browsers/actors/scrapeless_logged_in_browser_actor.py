@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 # import ipdb
 from typing import Dict, Any, Optional
 
@@ -39,7 +40,7 @@ class ScrapelessLoggedInBrowserActor(BaseBrowserActor):
             **kwargs: Keyword arguments passed to BaseBrowserActor
         """
         super().__init__(*args, **kwargs)
-        self.profile_management_url = "https://app.scrapeless.com/example-user/products/browser/profiles/list"
+        self.profile_management_url = f"https://app.scrapeless.com/{os.getenv('SCRAPELESS_USERNAME', 'your-username')}/products/browser/profiles/list"
         # self.live_url = kwargs.get("live_url")
     
     async def wait_for_manual_login(self) -> str:

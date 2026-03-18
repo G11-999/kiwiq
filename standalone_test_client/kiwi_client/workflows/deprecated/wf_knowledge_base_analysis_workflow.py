@@ -449,7 +449,7 @@ async def main_test_extraction_workflow():
 
     # --- Define Input Data ---
     workflow_inputs: Dict[str, Any] = {
-        "entity_username": "example-user-4",
+        "entity_username": "example-user",
         "description": "Analyze these documents to extract key insights about content strategy and SEO practices. Focus on identifying best practices, common challenges, and specific techniques mentioned. This analysis will be used to inform our content creation strategy."
     }
 

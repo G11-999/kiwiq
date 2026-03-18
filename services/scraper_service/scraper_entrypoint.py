@@ -242,7 +242,7 @@ async def run_test(config_data: Dict[str, Any], test_name: str):
 if __name__ == "__main__":
 
     PERSON_USERNAME = "example-user"
-    URL = "https://www.linkedin.com/in/sytalal/"
+    URL = "https://www.linkedin.com/in/example-user/"
     COMPANY_USERNAME = "microsoft"
     KEYWORD = "generative ai applications"
     HASHTAG = "genai"

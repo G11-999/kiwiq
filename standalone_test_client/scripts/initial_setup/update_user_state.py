@@ -354,10 +354,10 @@ async def main():
     # =============================================================================
     
     # Document name to delete (if it exists)
-    DOCNAME_TO_DELETE = "user_state_example-user-2"  # Update this with your actual docname
+    DOCNAME_TO_DELETE = "user_state_example-user"  # Update this with your actual docname
     
     # LinkedIn URL for initialization
-    LINKEDIN_PROFILE_URL = "https://www.linkedin.com/in/example-user-2/"  # Update this with actual LinkedIn URL
+    LINKEDIN_PROFILE_URL = "https://www.linkedin.com/in/example-user/"  # Update this with actual LinkedIn URL
     
     # Organization UUID (for on_behalf_of_user_id parameter)
     ON_BEHALF_OF_USER_ID = "ddf46605-7c10-4549-a2f8-2d180f375f42"  # Update this with actual org UUID

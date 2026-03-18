@@ -291,25 +291,22 @@ def print_env_update_instructions():
     Print instructions for updating the .env file with the correct TEST_ORG_ID.
     """
     USER_TO_ORG_MAPPING = {
-        "Test User": "dc9baf1b-3742-4682-90cd-e383df9d4c08",
-        "Test User": "1949d64f-bd0b-485c-b81f-68d27e787e5b", 
-        "Test User": "170502af-8c59-4dca-9998-c5268d8a834b",
-        "Test User": "03683ae6-05c6-4506-bd9e-f5cea1fed0de",
-        "Test User": "c6958a2e-ddd3-44f3-b57a-136bc2d74060"
+        "Example User 1": "00000000-0000-0000-0000-000000000001",
+        "Example User 2": "00000000-0000-0000-0000-000000000002",
     }
-    
+
     print("\n" + "="*60)
-    print("📝 UPDATE YOUR .env FILE")
+    print("UPDATE YOUR .env FILE")
     print("="*60)
     print("To run this script, you need to update the TEST_ORG_ID in your .env file")
     print("based on which user's organization context you want to run in:")
     print()
-    
+
     for user_name, org_id in USER_TO_ORG_MAPPING.items():
         print(f"For {user_name}:")
         print(f"  TEST_ORG_ID={org_id}")
         print()
-    
+
     print("IMPORTANT DISTINCTION:")
     print("- TEST_ORG_ID (in .env): Used for X-Active-Org header during authentication")
     print("- on_behalf_of_user_id (in script): Used as parameter in API calls")
@@ -329,43 +326,25 @@ async def main():
     # Organization ID mapping for each user
     # This is used to understand which organization context each user belongs to
     USER_TO_ORG_MAPPING = {
-        "Test User": "dc9baf1b-3742-4682-90cd-e383df9d4c08",
-        "Test User": "1949d64f-bd0b-485c-b81f-68d27e787e5b", 
-        "Test User": "170502af-8c59-4dca-9998-c5268d8a834b",
-        "Test User": "03683ae6-05c6-4506-bd9e-f5cea1fed0de",
-        "Test User": "c6958a2e-ddd3-44f3-b57a-136bc2d74060"
+        "Example User 1": "00000000-0000-0000-0000-000000000001",
+        "Example User 2": "00000000-0000-0000-0000-000000000002",
     }
-    
+
     # Define the list of users to process
     # NOTE: on_behalf_of_user_id is DIFFERENT from the organization ID above
     # on_behalf_of_user_id is used as a parameter in API calls
     # The organization ID above is used for TEST_ORG_ID in .env file
-    s = [
+    users_to_process = [
         # UserInfo(
         #     linkedin_url="https://www.linkedin.com/in/example-user-1/",
-        #     on_behalf_of_user_id="f6bd0245-5b9b-4c45-87c0-bd7b7902c3cc",
-        #     name="Test User"
-        # )
+        #     on_behalf_of_user_id="00000000-0000-0000-0000-000000000001",
+        #     name="Example User 1"
+        # ),
         # UserInfo(
         #     linkedin_url="https://www.linkedin.com/in/example-user-2/",
-        #     on_behalf_of_user_id="ae464205-8b99-42c0-a202-c01bb060a5cc",
-        #     name="Test User"
-        # )
-        # UserInfo(
-        #     linkedin_url="https://www.linkedin.com/in/example-user-3/",
-        #     on_behalf_of_user_id="39a2fc5b-c7b9-4d3a-81ca-bd1def5922b5",
-        #     name="Test User"
-        # )
-        # UserInfo(
-        #     linkedin_url="https://www.linkedin.com/in/example-user-4/",
-        #     on_behalf_of_user_id="dbcf00d1-eb23-4165-a349-53da0a3ac9de",
-        #     name="Test User"
-        # )
-        UserInfo(
-            linkedin_url="https://www.linkedin.com/in/example-user-5/",
-            on_behalf_of_user_id="42aa9f1a-6ad5-468b-bc3d-0b30e02079f8",
-            name="Test User"
-        )
+        #     on_behalf_of_user_id="00000000-0000-0000-0000-000000000002",
+        #     name="Example User 2"
+        # ),
     ]
     
     # Whether to update onboarded status for all users (set to True to mark all users as onboarded)
@@ -476,12 +455,7 @@ if __name__ == "__main__":
     # Show env update instructions
     print_env_update_instructions()
     
-    print("\n🚀 Script is ready to run with 5 users:")
-    print("   - Test User")
-    print("   - Test User") 
-    print("   - Test User")
-    print("   - Test User")
-    print("   - Test User")
+    print("\nScript is ready to run. Configure users in the users_to_process list above.")
     print("\nTo run the script:")
     print("   python scripts/update_user_state_for_all_users.py")
     

@@ -19,6 +19,7 @@ Typical workflow:
 import asyncio
 import json
 import logging
+import os
 import httpx
 import uuid
 from typing import Dict, Any, Optional, List, Tuple, Union, NamedTuple, TypedDict
@@ -70,8 +71,8 @@ class WorkflowIngestionClient:
     - Superuser validation
     """
     
-    # Define expected superuser email - should be configurable via ENV in future
-    SUPERUSER_EMAIL = "admin@example.com"
+    # Define expected superuser email - configurable via ENV
+    SUPERUSER_EMAIL = os.getenv("SUPERUSER_EMAIL", "admin@example.com")
     
     def __init__(self, auth_client: AuthenticatedClient):
         """

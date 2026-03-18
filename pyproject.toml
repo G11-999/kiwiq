@@ -2,7 +2,7 @@
 name = "kiwiq-ai"
 version = "0.1.0"
 description = "KiwiQ AI Platform"
-authors = ["Your Name <your.email@example.com>"]
+authors = ["Raunak Bhandari"]
 readme = "README.md"
 package-mode = false
 # packages = [{include = "global_config", from = "libs"}]

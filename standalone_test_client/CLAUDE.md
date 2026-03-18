@@ -300,8 +300,8 @@ MAX_ITERATIONS = 10  # Maximum iterations for HITL feedback loops
 - Now enhanced with dot notation support for condition field access
 
 ### Workflow Execution
-- Workflows require proper authentication (uses admin@example.com)
-- API endpoint: https://api.prod.kiwiq.ai
+- Workflows require proper authentication (configure TEST_USER_EMAIL in .env)
+- API endpoint: Configure via API_BASE_HOST env var
 - Workflows create temporary workflow instances during testing
 - HITL inputs must match expected schema exactly
 - Runtime config now supports optimized database connection pooling

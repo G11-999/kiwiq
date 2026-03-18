@@ -4,7 +4,7 @@ Generate tailored personalization lines for investor outreach based on their con
 
 ## Overview
 
-This workflow uses GPT-4.1 to analyze investor data and generate compelling, specific personalization lines that can be used in outreach emails. The system generates **TWO personalization lines per investor** - one from Founder A's perspective (ex-BigTech ML Lead) and one from Founder B's perspective (agency operator, ex-Amazon).
+This workflow uses GPT-4.1 to analyze investor data and generate compelling, specific personalization lines that can be used in outreach emails. The system generates **TWO personalization lines per investor** - one from Founder A's perspective (ex-BigTech ML Lead) and one from Founder B's perspective (agency operator, ex-BigTech).
 
 The system is fully generic - you can feed it any CSV with any columns, and it will intelligently build context from the available data.
 
@@ -89,14 +89,14 @@ The output CSV contains **dual perspective** results:
 | `row_index` | Original row identifier for tracking |
 | `personalization_line_founder_a` | 1-2 sentence line from Founder A's perspective (ex-BigTech ML Lead) |
 | `personalization_reason_founder_a` | 2-3 sentence explanation for Founder A's approach |
-| `personalization_line_founder_b` | 1-2 sentence line from Founder B's perspective (agency operator, ex-Amazon) |
+| `personalization_line_founder_b` | 1-2 sentence line from Founder B's perspective (agency operator, ex-BigTech) |
 | `personalization_reason_founder_b` | 2-3 sentence explanation for Founder B's approach |
 
 **Example Output:**
 
 | row_index | personalization_line_founder_a | personalization_line_founder_b |
 |-----------|----------------------------|---------------------------|
-| 1 | "You wrote 'best AI tools execute, not recommend' — I led Gemini ML at Google, saw how complex systems coordinate at scale, that's what we're building for marketing teams." | "You wrote 'best AI tools execute, not recommend' — I ran an agency for 2 years, watched clients drown in tools that only suggest, built agents that actually run campaigns." |
+| 1 | "You wrote 'best AI tools execute, not recommend' — I led ML at BigTech, saw how complex systems coordinate at scale, that's what we're building for marketing teams." | "You wrote 'best AI tools execute, not recommend' — I ran an agency for 2 years, watched clients drown in tools that only suggest, built agents that actually run campaigns." |
 
 ## Column Filtering Logic
 
@@ -438,7 +438,7 @@ Match their stated thesis to your reality in 1-2 sentences. No fluff, no made-up
 - **Who's sending:** Founder B or Founder A (critical for "I/my" references)
 - **Founder backgrounds:**
   - Founder A: ex-BigTech ML Lead, ex-Top Engineering University
-  - Founder B: agency operator, ex-Amazon
+  - Founder B: agency operator, ex-BigTech
 - Company positioning (multi-agent marketing, AEO focus, intelligence-to-action gap)
 - Product reality (what agents actually do, what workflows actually run)
 - Actual traction/milestones (only if you provide them)
@@ -464,7 +464,7 @@ Match their stated thesis to your reality in 1-2 sentences. No fluff, no made-up
 - Use adjectives without proof (innovative, revolutionary, cutting-edge, game-changing, world-class, groundbreaking, next-generation, transformative, disruptive)
 - Write more than 2 sentences
 - Use generic compliments
-- **Confuse whose background you're referencing** (if Founder B sends, don't say "my Google background")
+- **Confuse whose background you're referencing** (if Founder B sends, don't say "my BigTech background")
 
 ### ✅ ALWAYS:
 - Use only facts explicitly provided in inputs
@@ -473,7 +473,7 @@ Match their stated thesis to your reality in 1-2 sentences. No fluff, no made-up
 - If mentioning customers, say "our customers" not brand names
 - Keep it to the point
 - Make every word count
-- **Reference the correct sender's background** (Founder B = agency/Amazon, Founder A = Google/IIT)
+- **Reference the correct sender's background** (Founder B = agency/BigTech, Founder A = BigTech/IIT)
 
 ---
 
@@ -616,11 +616,11 @@ Match their stated thesis to your reality in 1-2 sentences. No fluff, no made-up
 **If Founder B sends:**
 - "I ran a content agency..."
 - "I saw the coordination problem firsthand..."
-- "I'm ex-Amazon, saw how..."
-- "Founder A (my co-founder) led Gemini ML at Google..."
+- "I'm ex-BigTech, saw how..."
+- "Founder A (my co-founder) led ML at BigTech..."
 
 **If Founder A sends:**
-- "I led Gemini ML at Google..."
+- "I led ML at BigTech..."
 - "I'm ex-Top Engineering University..."
 - "I shipped models to 100M+ users..."
 - "Founder B (my co-founder) ran an agency and saw..."
@@ -629,17 +629,17 @@ Match their stated thesis to your reality in 1-2 sentences. No fluff, no made-up
 
 **If Founder B sends:**
 1. "You look for operators who saw the problem — I ran a content agency for 6 months, watched clients drown in tool chaos."
-2. "Your memo says 'domain experts who code' — I ran a content agency for 6 months, Founder A built production ML at Google."
+2. "Your memo says 'domain experts who code' — I ran a content agency for 6 months, Founder A built production ML at BigTech."
 3. "You back second-time operators — I ran 50+ client campaigns, learned the orchestration gaps before building."
 4. "You wrote you want speed — I went from agency insights to product with Founder A (ex-BigTech ML) in 6 months."
-5. "You said you bet on technical + domain expertise — Founder A's Gemini ML, I ran a content agency, we lived both sides."
+5. "You said you bet on technical + domain expertise — Founder A's ML at BigTech, I ran a content agency, we lived both sides."
 
 **If Founder A sends:**
-1. "You look for technical founders — I led Gemini ML at Google, shipped to 100M+ users."
-2. "Your memo says 'researchers who ship' — I published ML papers and shipped Gemini features."
-3. "You back xooglers — I'm from Gemini team, Founder B ran an agency, we combined ML + domain expertise."
-4. "You wrote you want IIT founders who can execute — Top Engineering University, built production systems at Google, now shipping agents."
-5. "You said you bet on technical depth — I built LLM infrastructure at Google, saw how complex coordination should work."
+1. "You look for technical founders — I led ML at BigTech, shipped to 100M+ users."
+2. "Your memo says 'researchers who ship' — I published ML papers and shipped BigTech features."
+3. "You back BigTech alums — I'm from BigTech ML team, Founder B ran an agency, we combined ML + domain expertise."
+4. "You wrote you want top-school founders who can execute — Top Engineering University, built production systems at BigTech, now shipping agents."
+5. "You said you bet on technical depth — I built LLM infrastructure at BigTech, saw how complex coordination should work."
 
 ### ❌ BAD EXAMPLES:
 
@@ -661,41 +661,41 @@ Match their stated thesis to your reality in 1-2 sentences. No fluff, no made-up
 
 **Formula:** `[Shared background] → [Why it matters for this company]`
 
-**When to Use:** They're ex-Google, ex-IIT, ex-Amazon, or have clear affinity for certain founder profiles.
+**When to Use:** They're ex-BigTech, ex-top-school, ex-BigTech, or have clear affinity for certain founder profiles.
 
 **What You Can Use Based on Sender:**
 
 **If Founder B sends:**
-- Ex-Amazon connection (if they are too)
+- Ex-BigTech connection (if they are too)
 - Agency operator background
-- Reference Founder A as "my co-founder is ex-Google/IIT"
+- Reference Founder A as "my co-founder is ex-BigTech/IIT"
 
 **If Founder A sends:**
-- Ex-Google connection
+- Ex-BigTech connection
 - Ex-IIT connection
 - Reference Founder B as "my co-founder ran an agency"
 
 ### ✅ GOOD EXAMPLES:
 
 **If Founder B sends:**
-1. "You're ex-Amazon — so am I. Saw how rigid launch processes broke, we're making them flexible with agents."
+1. "You're ex-BigTech — so am I. Saw how rigid launch processes broke, we're making them flexible with agents."
 2. "You backed 3 agency operators turned founders — same path, learned coordination problems can't be solved with more tools."
 3. "Founder A (my co-founder) is ex-BigTech ML — we're bringing BigTech-level launch coordination to marketing teams."
-4. "Fellow ex-Amazon — you know how cross-functional launches work at scale, that's what we're building for marketing."
+4. "Fellow ex-BigTech — you know how cross-functional launches work at scale, that's what we're building for marketing."
 5. "You invest in operator-turned-founders — I ran an agency before this, saw the problem for 2 years before building."
 
 **If Founder A sends:**
-1. "Fellow xoogler — I saw how Google coordinates thousands of launches, bringing that to marketing teams."
-2. "You backed 3 IIT founders — I'm Top Engineering University, built this after seeing marketing teams drown in tools."
-3. "You're ex-Google — you know how complex coordination works at scale, that's what marketing teams need."
-4. "You invested in 2 xooglers last year — I'm from Gemini team, building marketing's version of internal tools."
-5. "Fellow IITian — you know the technical depth that takes, applying it to multi-agent orchestration for marketing."
+1. "Fellow BigTech alum — I saw how BigTech coordinates thousands of launches, bringing that to marketing teams."
+2. "You backed 3 top-school founders — I'm Top Engineering University, built this after seeing marketing teams drown in tools."
+3. "You're ex-BigTech — you know how complex coordination works at scale, that's what marketing teams need."
+4. "You invested in 2 BigTech alums last year — I'm from BigTech ML team, building marketing's version of internal tools."
+5. "Fellow top-school alum — you know the technical depth that takes, applying it to multi-agent orchestration for marketing."
 
 ### ❌ BAD EXAMPLES:
 
 1. "I noticed we both went to top schools and thought we'd connect well." (irrelevant)
 
-2. "As fellow members of the Google alumni network, I wanted to reach out." (networking fluff)
+2. "As fellow members of the BigTech alumni network, I wanted to reach out." (networking fluff)
 
 3. "We share similar backgrounds which creates natural synergy." (empty)
 
@@ -715,13 +715,13 @@ Match their stated thesis to your reality in 1-2 sentences. No fluff, no made-up
 
 4. "Your tweet about agents replacing dashboards — we built multi-agent workflows that coordinate marketing launches with no human handoffs."
 
-5. **[If Founder A sends]** "You look for technical founders — I led Gemini ML at Google, shipped to 100M+ users."  
+5. **[If Founder A sends]** "You look for technical founders — I led ML at BigTech, shipped to 100M+ users."  
    **[If Founder B sends]** "You look for operators who saw the problem — I ran an agency for 2 years, watched clients drown in tool chaos."
 
 6. "You said LLMs need memory for business contexts — we built persistent context so agents remember brand voice across campaigns."
 
-7. **[If Founder A sends]** "Fellow xoogler — I saw how Google coordinates thousands of launches, bringing that to marketing teams."  
-   **[If Founder B sends]** "You're ex-Amazon — so am I. Saw how rigid launch processes broke, we're making them flexible with agents."
+7. **[If Founder A sends]** "Fellow BigTech alum — I saw how BigTech coordinates thousands of launches, bringing that to marketing teams."  
+   **[If Founder B sends]** "You're ex-BigTech — so am I. Saw how rigid launch processes broke, we're making them flexible with agents."
 
 8. "You backed [dev tool] and [infrastructure co] — both carving out new categories, both needing to nail storytelling first."
 
@@ -768,7 +768,7 @@ Match their stated thesis to your reality in 1-2 sentences. No fluff, no made-up
 - ✓ Use concrete terms (agents, workflows, campaigns, launches)
 - ✓ Reference specific tweets, posts, or portfolio companies
 - ✓ Only state facts you can prove
-- ✓ **Match "I/my" to who's actually sending** (Founder B = agency/Amazon, Founder A = Google/IIT)
+- ✓ **Match "I/my" to who's actually sending** (Founder B = agency/BigTech, Founder A = BigTech/IIT)
 
 **DON'T:**
 - ✗ Use multiple adjectives in a row
@@ -779,7 +779,7 @@ Match their stated thesis to your reality in 1-2 sentences. No fluff, no made-up
 - ✗ Explain things they already know
 - ✗ Use emojis or exclamation marks
 - ✗ Apologize or ask permission ("I hope this isn't too forward")
-- ✗ **Say "I'm ex-Google" if Founder B is sending, or "I ran an agency" if Founder A is sending**
+- ✗ **Say "I'm ex-BigTech" if Founder B is sending, or "I ran an agency" if Founder A is sending**
 
 ### RESEARCH PROCESS:
 
@@ -885,11 +885,11 @@ When creating personalization lines, fill this out first:
 **Input Provided:**
 - VC's memo: "We look for operators who lived the problem"
 - Founder B ran agency for 2 years
-- Founder A: Google Gemini ML Lead
+- Founder A: BigTech ML at BigTech Lead
 - Sender: Founder B
 
 **Output:**
-"You look for operators who lived the problem — I ran an agency for 2 years, Founder A built ML at Google, we saw coordination chaos from both sides."
+"You look for operators who lived the problem — I ran an agency for 2 years, Founder A built ML at BigTech, we saw coordination chaos from both sides."
 
 ---
 
@@ -897,35 +897,35 @@ When creating personalization lines, fill this out first:
 
 **Input Provided:**
 - VC's memo: "We back technical founders from top labs"
-- Founder A: Google Gemini ML Lead, Top Engineering University
+- Founder A: BigTech ML at BigTech Lead, Top Engineering University
 - Sender: Founder A
 
 **Output:**
-"You back technical founders from top labs — I led Gemini ML at Google, Top Engineering University, shipped models to 100M+ users."
+"You back technical founders from top labs — I led ML at BigTech, Top Engineering University, shipped models to 100M+ users."
 
 ---
 
 ### Example 5: Personal Connection (Sender: Founder B)
 
 **Input Provided:**
-- VC is ex-Amazon
-- Founder B is ex-Amazon
+- VC is ex-BigTech
+- Founder B is ex-BigTech
 - Sender: Founder B
 
 **Output:**
-"Fellow ex-Amazon — you know how cross-functional launches work at scale, that's what we're building for marketing teams."
+"Fellow ex-BigTech — you know how cross-functional launches work at scale, that's what we're building for marketing teams."
 
 ---
 
 ### Example 6: Personal Connection (Sender: Founder A)
 
 **Input Provided:**
-- VC is ex-Google
+- VC is ex-BigTech
 - Founder A is ex-BigTech ML
 - Sender: Founder A
 
 **Output:**
-"Fellow xoogler — I saw how Google coordinates thousands of launches, bringing that orchestration to marketing teams."
+"Fellow BigTech alum — I saw how BigTech coordinates thousands of launches, bringing that orchestration to marketing teams."
 
 ---
 
@@ -939,7 +939,7 @@ When creating personalization lines, fill this out first:
 - [ ] Would this work if I sent it to 10 different VCs? (If yes, make it more specific)
 - [ ] Is there a concrete proof point?
 - [ ] Did I lead with them, end with us?
-- [ ] **Does "I/my" match who's sending?** (Founder B = agency/Amazon, Founder A = Google/IIT)
+- [ ] **Does "I/my" match who's sending?** (Founder B = agency/BigTech, Founder A = BigTech/IIT)
 
 **If all checks pass → send it.**
 **If any check fails → rewrite it.**

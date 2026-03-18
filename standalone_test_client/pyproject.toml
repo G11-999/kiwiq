@@ -3,7 +3,7 @@ name = "kiwi-client"
 version = "0.1.0"
 description = "Test and Integrate with KiwiQ Workflow API"
 authors = [
-    {name = "Founder A",email = "admin@example.com"}
+    {name = "Raunak Bhandari"}
 ]
 readme = "README.md"
 requires-python = ">=3.12,<3.14"

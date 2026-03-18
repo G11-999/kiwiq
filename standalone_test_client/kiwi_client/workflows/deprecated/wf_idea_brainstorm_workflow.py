@@ -249,7 +249,7 @@ workflow_graph_schema = {
         },
 
         # --- 9. Construct Brief Prompt (Inside Map Branch) ---
-        "construct_initial_ideas_prompt": {                                  # Founder A can you check this node? we are not getting input from the previous node in the context - "interpreted_user_input"
+        "construct_initial_ideas_prompt": {                                  # TODO: check this node - we are not getting input from the previous node in the context - "interpreted_user_input"
             "node_id": "construct_initial_ideas_prompt",
             "node_name": "prompt_constructor",
             "enable_node_fan_in": True,  # Wait for all data loads before proceeding

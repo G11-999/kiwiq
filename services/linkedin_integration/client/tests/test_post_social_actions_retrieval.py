@@ -249,10 +249,10 @@ async def test_getting_post_reactions(linkedin_client: LinkedInClient) -> None:
 
 
         org_post_id = "urn:li:activity:7313213674821730304"  # KIWIQ Post
-        other_user_post_id = "urn:li:activity:7311079094459252736"  # (test post)
-        other_post_id_share_urn = "urn:li:share:7311079092169187328"  # (test post)      urn%3Ali%3Ashare%3A7311079092169187328
-        user_post_id = "urn:li:activity:7288408229108203520"  # (test post with reshare)     urn%3Ali%3Aactivity%3A7288408229108203520
-        user_post_id_share_urn = "urn:li:share:7288408228378427392"  # (test post with reshare)      urn%3Ali%3Ashare%3A7288408228378427392
+        other_user_post_id = "urn:li:activity:7311079094459252736"  # test post
+        other_post_id_share_urn = "urn:li:share:7311079092169187328"  # test post
+        user_post_id = "urn:li:activity:7288408229108203520"  # test post with reshare
+        user_post_id_share_urn = "urn:li:share:7288408228378427392"  # test post with reshare
         org_share_post_id = "urn:li:share:7328113604275142657"  # KIWIQ Post      urn%3Ali%3Ashare%3A7328113604275142657
 
         # print(quote(user_post_id_share_urn, safe=""))
@@ -429,7 +429,7 @@ async def main() -> None:
     # Prompt user for necessary credentials.
     client_id = settings.LINKEDIN_CLIENT_ID
     client_secret = settings.LINKEDIN_CLIENT_SECRET
-    access_token = settings.LINKEDIN_ACCESS_TOKEN  # LINKEDIN_ACCESS_TOKEN  LINKEDIN_ACCESS_TOKEN
+    access_token = settings.LINKEDIN_ACCESS_TOKEN
     # urn:li:person:NxwL-IvR2n
     # urn:li:person:qUvas1UvE2
     version_input = settings.LINKEDIN_API_VERSION
