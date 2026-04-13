@@ -353,9 +353,7 @@ Contributions are welcome! Please:
 
 The KiwiQ AI platform was designed, built from scratch and open-sourced by **[Raunak Bhandari](https://github.com/rbcorx)**, CTO and co-founder of [KiwiQ AI](https://www.linkedin.com/company/kiwiq-ai/), including the core platform, workflow engine, node system, infrastructure, shared libraries, many of the production workflows, and auxiliary systems such as scraping services and browser pools.
 
-**Gaurav Kumar** and **Anish Bharadwaj** built and tested several of the marketing and deep market research focused workflows, helped with platform testing and productizing for our customers, and handled the frontend roadmap alongside Ashish Kumar Behera.
-
-**Ashish Kumar Behera** built the frontend KiwiQ app and visual workflow builder/tester (not part of the OSS release).
+**Gaurav Kumar** and **Anish Bharadwaj** built and tested several of the marketing and deep market research focused workflows, helped with platform testing and productizing for our customers.
 
 ## Disclaimer
 
