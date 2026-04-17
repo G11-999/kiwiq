@@ -1,3 +1,5 @@
+WIP Fork to create an alternative node path as per issue https://github.com/rcortx/kiwiq/issues/2
+
 # KiwiQ AI Platform
 
 **Production-grade multi-agent orchestration platform — JSON-defined agents, multi-tier memory, and built-in observability.**
